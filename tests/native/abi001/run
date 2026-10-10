@@ -1,0 +1,10 @@
+. ../../testutils.sh
+
+# The ABI's placement of a Direct function's arguments and results, words and
+# doubles, beyond both register files, rendered and run. It uses the code
+# generator's modules, installed as the package `idris2-native`.
+idris2 -p idris2-native -p idris2 Gen.idr -o gen > /dev/null
+./build/exec/gen
+./abi
+echo "exit status: $?"
+rm -f abi

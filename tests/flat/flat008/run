@@ -1,0 +1,4 @@
+. ../../testutils.sh
+
+idris2 --cg flat-oracle -o untranslatable Untranslatable.idr
+idris2 --cg flat-oracle -o leak Mem/Leak.idr

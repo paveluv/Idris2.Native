@@ -1,0 +1,7 @@
+exit42: 8640 bytes
+unsupported: 8640 bytes
+alloc: 8640 bytes
+exit42 status: 42
+unsupported status: 70
+unsupported stderr: idris: unsupported
+alloc status: 42

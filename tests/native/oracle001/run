@@ -1,0 +1,7 @@
+. ../../testutils.sh
+
+# The native backend against Chez, program by program, over the
+# whole corpus. A program moves from "unsupported" to "agree" as the backend
+# learns to lower it; a mismatch or an error fails the test.
+export LC_ALL=C
+sh ../oracle/oracle.sh "$idris2" ../oracle/programs/*.idr

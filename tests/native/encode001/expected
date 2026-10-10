@@ -1,0 +1,4 @@
+groupA: 32458 instructions, 178784 bytes, missing labels: 0
+groupB: 87 instructions, 453 bytes, missing labels: 0
+group A: byte-exact
+group B: disassembly agrees

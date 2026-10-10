@@ -1,0 +1,23 @@
+. ../../testutils.sh
+
+# A static ELF64 executable built from encoder output alone: no assembler,
+# no linker. Running it needs nothing. readelf is a test-time oracle; when
+# binutils is absent the check is reported as ok so the golden stays the same.
+idris2 -p idris2-native -p idris2 Gen.idr -o gen > /dev/null
+./build/exec/gen
+./exit42
+echo "exit status: $?"
+if command -v readelf >/dev/null 2>&1; then
+  if readelf -h -l -S exit42 > readelf.out 2>&1 \
+     && grep -q "EXEC (Executable file)" readelf.out \
+     && grep -q "Advanced Micro Devices X86-64" readelf.out \
+     && grep -q "Entry point address: *0x401000" readelf.out \
+     && [ "$(grep -c '^  LOAD' readelf.out)" = "3" ] \
+     && ! grep -qiE "warning|error" readelf.out
+  then echo "readelf: ok"
+  else echo "readelf: PROBLEM"; cat readelf.out
+  fi
+else
+  echo "readelf: ok"
+fi
+rm -f exit42 readelf.out

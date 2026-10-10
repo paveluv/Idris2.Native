@@ -1,0 +1,259 @@
+function Main.sumTo CPS [slot0:Val, slot1:Val] entry 0
+  0:
+    IsFixnum [slot0:Val] 2 3
+  1:
+    IsFixnum [slot1:Val] 5 6
+  2:
+    slot3:Fix := Narrow Fix slot0:Val
+    slot4:W64 := Untag slot3:Fix
+    slot2:W64 := slot4:W64
+    Jump 1
+  3:
+    slot5:Ptr INT64 := Narrow Ptr INT64 slot0:Val
+    slot6:W64 := Load W64 [slot5:Ptr INT64 + 8]
+    slot2:W64 := slot6:W64
+    Jump 1
+  4:
+    slot12:W64 := DirectCall _flat.Main.sumTo (slot2:W64, slot7:W64) live []
+    slot14:Fix := TagOv slot12:W64 overflow 8
+    slot15:Val := Widen slot14:Fix
+    slot13:Val := slot15:Val
+    Jump 7
+  5:
+    slot8:Fix := Narrow Fix slot1:Val
+    slot9:W64 := Untag slot8:Fix
+    slot7:W64 := slot9:W64
+    Jump 4
+  6:
+    slot10:Ptr INT64 := Narrow Ptr INT64 slot1:Val
+    slot11:W64 := Load W64 [slot10:Ptr INT64 + 8]
+    slot7:W64 := slot11:W64
+    Jump 4
+  7:
+    Return slot13:Val
+  8:
+    slot16:Ptr INT64 := AllocObj INT64 (slot12:W64) live [slot12:W64]
+    slot17:Val := Widen slot16:Ptr INT64
+    slot13:Val := slot17:Val
+    Jump 7
+
+function Main.side CPS [slot0:Val] entry 0
+  0:
+    slot1:Ptr CON := Narrow Ptr CON slot0:Val
+    slot2:W64 := LoadPart ConId slot1:Ptr CON
+    Switch slot2:W64 [0 -> 2, 1 -> 3, 2 -> 10] else 11
+  1:
+    slot26:W64 := DirectCall _flat.Main.side (slot3:W64, slot4:F64, slot5:W64, slot6:W64) live []
+    slot28:Fix := TagOv slot26:W64 overflow 13
+    slot29:Val := Widen slot28:Fix
+    slot27:Val := slot29:Val
+    Jump 12
+  2:
+    slot7:Ptr CON := Narrow Ptr CON slot0:Val
+    slot8:Val := Load Val [slot7:Ptr CON + 8]
+    slot9:Ptr DOUBLE := Narrow Ptr DOUBLE slot8:Val
+    slot10:F64 := Load F64 [slot9:Ptr DOUBLE + 8]
+    slot3:W64 := Const 0
+    slot4:F64 := slot10:F64
+    slot5:W64 := Const 0
+    slot6:W64 := Const 0
+    Jump 1
+  3:
+    slot11:Ptr CON := Narrow Ptr CON slot0:Val
+    slot12:Val := Load Val [slot11:Ptr CON + 8]
+    IsFixnum [slot12:Val] 5 6
+  4:
+    slot18:Val := Load Val [slot11:Ptr CON + 16]
+    IsFixnum [slot18:Val] 8 9
+  5:
+    slot14:Fix := Narrow Fix slot12:Val
+    slot15:W64 := Untag slot14:Fix
+    slot13:W64 := slot15:W64
+    Jump 4
+  6:
+    slot16:Ptr INT64 := Narrow Ptr INT64 slot12:Val
+    slot17:W64 := Load W64 [slot16:Ptr INT64 + 8]
+    slot13:W64 := slot17:W64
+    Jump 4
+  7:
+    slot24:F64 := FConst 0.0
+    slot3:W64 := Const 1
+    slot4:F64 := slot24:F64
+    slot5:W64 := slot13:W64
+    slot6:W64 := slot19:W64
+    Jump 1
+  8:
+    slot20:Fix := Narrow Fix slot18:Val
+    slot21:W64 := Untag slot20:Fix
+    slot19:W64 := slot21:W64
+    Jump 7
+  9:
+    slot22:Ptr INT64 := Narrow Ptr INT64 slot18:Val
+    slot23:W64 := Load W64 [slot22:Ptr INT64 + 8]
+    slot19:W64 := slot23:W64
+    Jump 7
+  10:
+    slot25:F64 := FConst 0.0
+    slot3:W64 := Const 2
+    slot4:F64 := slot25:F64
+    slot5:W64 := Const 0
+    slot6:W64 := Const 0
+    Jump 1
+  11:
+    Crash "no constructor of the type"
+  12:
+    Return slot27:Val
+  13:
+    slot30:Ptr INT64 := AllocObj INT64 (slot26:W64) live [slot26:W64]
+    slot31:Val := Widen slot30:Ptr INT64
+    slot27:Val := slot31:Val
+    Jump 12
+
+function Main.grow CPS [slot0:Val] entry 0
+  0:
+    slot1:Ptr CON := Narrow Ptr CON slot0:Val
+    slot2:W64 := LoadPart ConId slot1:Ptr CON
+    Switch slot2:W64 [0 -> 2, 1 -> 3, 2 -> 10] else 11
+  1:
+    slot26:W64, slot27:F64, slot28:W64, slot29:W64 := DirectCall _flat.Main.grow (slot3:W64, slot4:F64, slot5:W64, slot6:W64) live []
+    Switch slot26:W64 [0 -> 13, 1 -> 14, 2 -> 19] else 20
+  2:
+    slot7:Ptr CON := Narrow Ptr CON slot0:Val
+    slot8:Val := Load Val [slot7:Ptr CON + 8]
+    slot9:Ptr DOUBLE := Narrow Ptr DOUBLE slot8:Val
+    slot10:F64 := Load F64 [slot9:Ptr DOUBLE + 8]
+    slot3:W64 := Const 0
+    slot4:F64 := slot10:F64
+    slot5:W64 := Const 0
+    slot6:W64 := Const 0
+    Jump 1
+  3:
+    slot11:Ptr CON := Narrow Ptr CON slot0:Val
+    slot12:Val := Load Val [slot11:Ptr CON + 8]
+    IsFixnum [slot12:Val] 5 6
+  4:
+    slot18:Val := Load Val [slot11:Ptr CON + 16]
+    IsFixnum [slot18:Val] 8 9
+  5:
+    slot14:Fix := Narrow Fix slot12:Val
+    slot15:W64 := Untag slot14:Fix
+    slot13:W64 := slot15:W64
+    Jump 4
+  6:
+    slot16:Ptr INT64 := Narrow Ptr INT64 slot12:Val
+    slot17:W64 := Load W64 [slot16:Ptr INT64 + 8]
+    slot13:W64 := slot17:W64
+    Jump 4
+  7:
+    slot24:F64 := FConst 0.0
+    slot3:W64 := Const 1
+    slot4:F64 := slot24:F64
+    slot5:W64 := slot13:W64
+    slot6:W64 := slot19:W64
+    Jump 1
+  8:
+    slot20:Fix := Narrow Fix slot18:Val
+    slot21:W64 := Untag slot20:Fix
+    slot19:W64 := slot21:W64
+    Jump 7
+  9:
+    slot22:Ptr INT64 := Narrow Ptr INT64 slot18:Val
+    slot23:W64 := Load W64 [slot22:Ptr INT64 + 8]
+    slot19:W64 := slot23:W64
+    Jump 7
+  10:
+    slot25:F64 := FConst 0.0
+    slot3:W64 := Const 2
+    slot4:F64 := slot25:F64
+    slot5:W64 := Const 0
+    slot6:W64 := Const 0
+    Jump 1
+  11:
+    Crash "no constructor of the type"
+  12:
+    Return slot30:Val
+  13:
+    slot31:Ptr DOUBLE := AllocObj DOUBLE (slot27:F64) live [slot27:F64]
+    slot32:Val := Widen slot31:Ptr DOUBLE
+    slot33:Ptr CON := AllocObj CON ConId=0 ConArity=1 (slot32:Val) live [slot32:Val]
+    slot34:Val := Widen slot33:Ptr CON
+    slot30:Val := slot34:Val
+    Jump 12
+  14:
+    slot36:Fix := TagOv slot28:W64 overflow 16
+    slot37:Val := Widen slot36:Fix
+    slot35:Val := slot37:Val
+    Jump 15
+  15:
+    slot41:Fix := TagOv slot29:W64 overflow 18
+    slot42:Val := Widen slot41:Fix
+    slot40:Val := slot42:Val
+    Jump 17
+  16:
+    slot38:Ptr INT64 := AllocObj INT64 (slot28:W64) live [slot28:W64, slot29:W64]
+    slot39:Val := Widen slot38:Ptr INT64
+    slot35:Val := slot39:Val
+    Jump 15
+  17:
+    slot45:Ptr CON := AllocObj CON ConId=1 ConArity=2 (slot35:Val, slot40:Val) live [slot35:Val, slot40:Val]
+    slot46:Val := Widen slot45:Ptr CON
+    slot30:Val := slot46:Val
+    Jump 12
+  18:
+    slot43:Ptr INT64 := AllocObj INT64 (slot29:W64) live [slot29:W64, slot35:Val]
+    slot44:Val := Widen slot43:Ptr INT64
+    slot40:Val := slot44:Val
+    Jump 17
+  19:
+    slot47:Ptr CON := StaticAddr _native.con2
+    slot48:Val := Widen slot47:Ptr CON
+    slot30:Val := slot48:Val
+    Jump 12
+  20:
+    Crash "no constructor of the type"
+
+function _flat.Main.sumTo Direct [slot0:W64, slot1:W64] -> [W64] entry 0
+  0:
+    slot2:W64 := slot0:W64
+    slot3:W64 := slot1:W64
+    Jump 1
+  1:
+    Switch slot3:W64 [0 -> 2] else 3
+  2:
+    Ret slot2:W64
+  3:
+    slot4:W64 := Add slot2:W64, slot3:W64
+    slot5:W64 := Sub slot3:W64, #1
+    slot2:W64 := slot4:W64
+    slot3:W64 := slot5:W64
+    Jump 1
+
+function _flat.Main.side Direct [slot0:W64, slot1:F64, slot2:W64, slot3:W64] -> [W64] entry 0
+  0:
+    Switch slot0:W64 [1 -> 2] else 3
+  1:
+    slot5:W64 := Add slot4:W64, #1
+    Ret slot5:W64
+  2:
+    slot4:W64 := slot2:W64
+    Jump 1
+  3:
+    slot4:W64 := Const 0
+    Jump 1
+
+function _flat.Main.grow Direct [slot0:W64, slot1:F64, slot2:W64, slot3:W64] -> [W64, F64, W64, W64] entry 0
+  0:
+    Switch slot0:W64 [0 -> 1, 1 -> 2, 2 -> 3] else 4
+  1:
+    slot4:F64 := FConst 2.0
+    slot5:F64 := FMul slot1:F64, slot4:F64
+    Ret #0, slot5:F64, #0, #0
+  2:
+    slot6:F64 := FConst 0.0
+    Ret #1, slot6:F64, slot3:W64, slot2:W64
+  3:
+    slot7:F64 := FConst 0.0
+    Ret #2, slot7:F64, #0, #0
+  4:
+    Crash "no case alternative matched"
+

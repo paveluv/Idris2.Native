@@ -1,0 +1,11 @@
+. ../../testutils.sh
+
+# The harness itself, and the flat translation. The flat oracle, which
+# compiles each flat function from its flat form made ordinary again, agrees
+# with Chez on the whole corpus; Codegen.idr prints its code generator's
+# name, so under Node it must be reported as a mismatch; and the native
+# backend refuses the stack lowering.
+export LC_ALL=C
+sh ../oracle/oracle.sh "$idris2" --subject flat-oracle ../oracle/programs/*.idr
+sh ../oracle/oracle.sh "$idris2" --subject node Codegen.idr
+sh ../oracle/oracle.sh "$idris2" --cont stack ../oracle/programs/Hello.idr

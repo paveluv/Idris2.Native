@@ -1,0 +1,5 @@
+. ../../testutils.sh
+
+idris2 --cg flat-oracle --directive dump-flat=flat.txt --exec main Shapes.idr
+cat flat.txt
+rm -f flat.txt

@@ -1,0 +1,24 @@
+. ../../testutils.sh
+
+# The rendering on the shared example: count's x86-64 as the renderer emits
+# it, under each encoding of uniform values with fixnums. Program labels (64
+# and up) are renumbered in order of appearance so the rest of the program
+# does not shift them; seed labels are fixed and kept.
+count () {
+  awk '/^# / { on = ($0 == "# Main.count") }
+       on {
+         out = ""
+         while (match($0, /L[0-9]+/)) {
+           l = substr($0, RSTART, RLENGTH)
+           if (substr(l, 2) + 0 >= 64 && !(l in name)) name[l] = "L" (64 + n++)
+           out = out substr($0, 1, RSTART - 1) (l in name ? name[l] : l)
+           $0 = substr($0, RSTART + RLENGTH)
+         }
+         print out $0
+       }' "$1"
+}
+for e in tag1 tag0; do
+  echo "== val-encoding=$e"
+  idris2 --cg native --directive val-encoding=$e --directive dump-asm=build/asm-$e.s Wrap.idr -o wrap-$e > /dev/null
+  count build/asm-$e.s
+done

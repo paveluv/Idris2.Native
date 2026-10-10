@@ -1,0 +1,42 @@
+arguments:
+  0 W64: word register 7
+  1 F64: float register 0
+  2 W64: word register 6
+  3 F64: float register 1
+  4 W64: word register 2
+  5 F64: float register 2
+  6 W64: word register 1
+  7 F64: float register 3
+  8 W64: word register 8
+  9 F64: float register 4
+  10 W64: word register 9
+  11 F64: float register 5
+  12 W64: ARGS word 0
+  13 F64: float register 6
+  14 W64: ARGS word 1
+  15 F64: float register 7
+  16 W64: ARGS word 2
+  17 F64: ARGS word 3
+  18 W64: ARGS word 4
+results:
+  0 F64: float register 0
+  1 W64: word register 7
+  2 F64: float register 1
+  3 W64: word register 6
+  4 F64: float register 2
+  5 W64: word register 2
+  6 F64: float register 3
+  7 W64: word register 1
+  8 F64: float register 4
+  9 W64: word register 8
+  10 F64: float register 5
+  11 W64: word register 9
+  12 F64: float register 6
+  13 W64: ARGS word 0
+  14 F64: float register 7
+  15 W64: ARGS word 1
+  16 F64: ARGS word 2
+  17 W64: ARGS word 3
+  18 W64: ARGS word 4
+ARGS words: 5
+exit status: 42

@@ -1,0 +1,70 @@
+Error: parity is flat, but it has a value of type String: String lives on the heap.
+
+Untranslatable:8:1--8:25
+ 4 | -- chain of calls that reaches it.
+ 5 |
+ 6 | -- A value whose type is not flat: the case is on a String.
+ 7 | %cg native flat Untranslatable.parity
+ 8 | parity : Bits64 -> Bits8
+     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+Error: chosen is flat, but it has a value of type Maybe (Bits64 -> Bits64): the field x of Just has type Bits64 -> Bits64, and a function is not flat.
+
+Untranslatable:16:1--16:26
+ 12 |
+ 13 | -- A function that is not static: which one is chosen at run time, and it is
+ 14 | -- held in a value.
+ 15 | %cg native flat Untranslatable.chosen
+ 16 | chosen : Bits64 -> Bits64
+      ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Error: viaList is flat, but it calls sumList, and its argument number 1 has type List Bits64: List is recursive.
+
+Untranslatable:28:1--28:27
+ 24 | sumList [] = 0
+ 25 | sumList (x :: xs) = x + sumList xs
+ 26 |
+ 27 | %cg native flat Untranslatable.viaList
+ 28 | viaList : Bits64 -> Bits64
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Error: viaGeneric is flat, but it calls twice at static arguments, which needs a flat copy.
+
+Untranslatable:36:1--36:30
+ 32 | twice : (a -> a) -> a -> a
+ 33 | twice f x = f (f x)
+ 34 |
+ 35 | %cg native flat Untranslatable.viaGeneric
+ 36 | viaGeneric : Bits64 -> Bits64
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Error: viaLazy is flat, but it calls orElse at static arguments, which needs a flat copy.
+
+Untranslatable:44:1--44:27
+ 40 | orElse : Bits64 -> Lazy Bits64 -> Bits64
+ 41 | orElse x y = if x == 0 then y else x
+ 42 |
+ 43 | %cg native flat Untranslatable.viaLazy
+ 44 | viaLazy : Bits64 -> Bits64
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Error: viaChain is flat, but it calls lengthOf, and it calls prim__cast_IntegerBits64, and its argument number 1 has type Integer: an Integer may need the heap.
+
+Untranslatable:52:1--52:28
+ 48 | lengthOf : Bits64 -> Bits64
+ 49 | lengthOf n = cast (length (show n))
+ 50 |
+ 51 | %cg native flat Untranslatable.viaChain
+ 52 | viaChain : Bits64 -> Bits64
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Error: leak is flat, but it uses the private primitive prim__abs outside its module.
+
+Mem.Leak:8:1--8:18
+ 4 |
+ 5 | import Mem
+ 6 |
+ 7 | %cg native flat Mem.Leak.leak
+ 8 | leak : Int -> Int
+     ^^^^^^^^^^^^^^^^^
+

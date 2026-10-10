@@ -1,0 +1,18 @@
+||| A binary produced with no assembler and no linker in the path: encoder
+||| bytes wrapped in a static ELF64 image. The program is
+||| `_start: exit_group(42)`.
+module Gen
+
+import Compiler.Native.X86.Asm
+import Compiler.Native.X86.Encode
+import Compiler.Native.ELF
+import System.File
+
+main : IO ()
+main = do
+  let prog = [Lbl 0, MovRI RDI 42, MovRI RAX 231, Syscall]
+  let (text, _, missing) = assemble textBase prog
+  let lay = planLayout (cast (length text)) 0 0
+  Right () <- writeImage "exit42" (elfImage X86_64 lay text [] 0 textBase)
+    | Left err => putStrLn ("write failed: " ++ show err)
+  putStrLn ("text bytes: " ++ show (length text) ++ ", missing labels: " ++ show (length missing))

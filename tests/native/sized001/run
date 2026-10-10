@@ -1,0 +1,11 @@
+. ../../testutils.sh
+
+# AllocSized checks the count against its header part before allocating: a
+# negative Int, read as a word, and a count of 2^60 both end the program with
+# the message, never with an object smaller than its header claims.
+idris2 --cg native -o negative Negative.idr
+./build/exec/negative 2>&1
+echo "status: $?"
+idris2 --cg native -o huge Huge.idr
+./build/exec/huge 2>&1
+echo "status: $?"

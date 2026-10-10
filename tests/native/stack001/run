@@ -1,0 +1,8 @@
+. ../../testutils.sh
+
+# Direct code checks the stack pointer against the limit the seed sets at
+# start-up, so recursion too deep for the stack ends with a message and
+# status 1, not a fault.
+idris2 --cg native Deep.idr -o deep > /dev/null
+./build/exec/deep 2>&1
+echo "exit status: $?"

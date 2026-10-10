@@ -1,0 +1,25 @@
+Arith: unsupported
+Bignum: unsupported
+Case: unsupported
+Closure: unsupported
+Count: unsupported
+Exit: unsupported
+Hello: unsupported
+Interface: unsupported
+StatusArray: agree
+StatusCase: agree
+StatusClosure: agree
+StatusCount: agree
+StatusFixnum: agree
+StatusFlatData: agree
+StatusFlatDoubles: agree
+StatusFlatWords: agree
+StatusInteger: agree
+StatusIntegerSmall: agree
+StatusInterface: agree
+StatusMutual: agree
+StatusNarrow: agree
+StatusWide: agree
+Strings: unsupported
+TailCall: unsupported
+24 programs: 14 agree, 10 unsupported, 0 mismatch, 0 error, 0 timeout

@@ -1,0 +1,8 @@
+. ../../testutils.sh
+
+# The flat lowering (Compiler.Native.LowerFlat): each flat form a Direct
+# function, and the ordinary function that has one a wrapper around it,
+# which takes its arguments apart into the form's registers and builds its
+# result as ordinary code represents it.
+idris2 --cg native --directive dump-ir=build/ir.txt Flat.idr -o flat > /dev/null
+awk '/^function (_flat\.)?Main\.(sumTo|grow|side) /,/^$/' build/ir.txt

@@ -1,0 +1,6 @@
+. ../../testutils.sh
+
+# The encoder writes the low bits of a field that does not fit, so the
+# assembler reports such an instruction instead of encoding it silently.
+idris2 -p idris2-native -p idris2 Gen.idr -o gen > /dev/null
+./build/exec/gen

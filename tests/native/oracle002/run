@@ -1,0 +1,12 @@
+. ../../testutils.sh
+
+# Allocation-heavy programs with a tiny allocation window, so that the slow
+# path, with its rooting stub, and once the runtime collects, collection,
+# happens inside them: the string and bignum programs, and those that
+# allocate constructors, closures and continuations, those that box values
+# at the boundary with flat code among them.
+P=../oracle/programs
+sh ../oracle/oracle.sh "$idris2" --nursery 64 $P/Strings.idr $P/Bignum.idr \
+  $P/StatusCount.idr $P/StatusClosure.idr $P/StatusCase.idr $P/StatusInterface.idr \
+  $P/StatusFixnum.idr $P/StatusNarrow.idr $P/StatusWide.idr $P/StatusIntegerSmall.idr \
+  $P/StatusArray.idr $P/StatusFlatData.idr

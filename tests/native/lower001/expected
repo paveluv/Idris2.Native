@@ -1,0 +1,124 @@
+function Main.wrap CPS [slot0:Val] entry 0
+  0:
+    slot1:Ptr CON := StaticAddr _native.con0
+    slot2:Val := Widen slot1:Ptr CON
+    slot3:Ptr CON := AllocObj CON ConId=1 ConArity=2 (slot0:Val, slot2:Val) live [slot0:Val, slot2:Val]
+    slot4:Val := Widen slot3:Ptr CON
+    Call Main.count (slot0:Val, #1) resume 1 live [slot4:Val]
+  1 [slot4:Val, slot5:Val]:
+    Call Main.first (slot4:Val) resume 2 live [slot5:Val]
+  2 [slot5:Val, slot6:Val]:
+    TailCall Main.count (slot6:Val, slot5:Val)
+
+function Main.first CPS [slot0:Val] entry 0
+  0:
+    slot1:Ptr CON := Narrow Ptr CON slot0:Val
+    slot2:W64 := LoadPart ConId slot1:Ptr CON
+    Switch slot2:W64 [1 -> 1, 0 -> 2] else 3
+  1:
+    slot3:Ptr CON := Narrow Ptr CON slot0:Val
+    slot4:Val := Load Val [slot3:Ptr CON + 8]
+    Return slot4:Val
+  2:
+    Return #0
+  3:
+    Crash "no case alternative matched"
+
+function Main.count CPS [slot0:Val, slot1:Val] entry 0
+  0:
+    IsFixnum [slot0:Val] 3 2
+  1:
+    Return slot1:Val
+  2:
+    IsFixnum [slot0:Val] 6 8
+  3:
+    slot2:Fix := Narrow Fix slot0:Val
+    Switch slot2:Fix [0 -> 1] else 2
+  4:
+    IsFixnum [slot1:Val] 16 18
+  5:
+    slot15:W64 := Sub slot4:W64, slot5:W64
+    slot17:Fix := TagOv slot15:W64 overflow 13
+    slot18:Val := Widen slot17:Fix
+    slot16:Val := slot18:Val
+    Jump 12
+  6:
+    slot6:Fix := Narrow Fix slot0:Val
+    slot7:Fix := SubOv slot6:Fix, #1 overflow 7
+    slot8:Val := Widen slot7:Fix
+    slot3:Val := slot8:Val
+    Jump 4
+  7:
+    slot9:W64 := Untag slot6:Fix
+    slot4:W64 := slot9:W64
+    slot5:W64 := Const 1
+    Jump 5
+  8:
+    IsFixnum [slot0:Val] 10 11
+  9:
+    slot4:W64 := slot10:W64
+    slot5:W64 := Const 1
+    Jump 5
+  10:
+    slot11:Fix := Narrow Fix slot0:Val
+    slot12:W64 := Untag slot11:Fix
+    slot10:W64 := slot12:W64
+    Jump 9
+  11:
+    slot13:Ptr INT64 := Narrow Ptr INT64 slot0:Val
+    slot14:W64 := Load W64 [slot13:Ptr INT64 + 8]
+    slot10:W64 := slot14:W64
+    Jump 9
+  12:
+    slot3:Val := slot16:Val
+    Jump 4
+  13:
+    slot19:Ptr INT64 := AllocObj INT64 (slot15:W64) live [slot1:Val, slot15:W64]
+    slot20:Val := Widen slot19:Ptr INT64
+    slot16:Val := slot20:Val
+    Jump 12
+  14:
+    TailCall Main.count (slot3:Val, slot21:Val)
+  15:
+    slot33:W64 := Add slot22:W64, slot23:W64
+    slot35:Fix := TagOv slot33:W64 overflow 23
+    slot36:Val := Widen slot35:Fix
+    slot34:Val := slot36:Val
+    Jump 22
+  16:
+    slot24:Fix := Narrow Fix slot1:Val
+    slot25:Fix := AddOv slot24:Fix, #1 overflow 17
+    slot26:Val := Widen slot25:Fix
+    slot21:Val := slot26:Val
+    Jump 14
+  17:
+    slot27:W64 := Untag slot24:Fix
+    slot22:W64 := slot27:W64
+    slot23:W64 := Const 1
+    Jump 15
+  18:
+    IsFixnum [slot1:Val] 20 21
+  19:
+    slot22:W64 := slot28:W64
+    slot23:W64 := Const 1
+    Jump 15
+  20:
+    slot29:Fix := Narrow Fix slot1:Val
+    slot30:W64 := Untag slot29:Fix
+    slot28:W64 := slot30:W64
+    Jump 19
+  21:
+    slot31:Ptr INT64 := Narrow Ptr INT64 slot1:Val
+    slot32:W64 := Load W64 [slot31:Ptr INT64 + 8]
+    slot28:W64 := slot32:W64
+    Jump 19
+  22:
+    slot21:Val := slot34:Val
+    Jump 14
+  23:
+    slot37:Ptr INT64 := AllocObj INT64 (slot33:W64) live [slot3:Val, slot33:W64]
+    slot38:Val := Widen slot37:Ptr INT64
+    slot34:Val := slot38:Val
+    Jump 22
+
+the same IR under val-encoding=tag0

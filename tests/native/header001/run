@@ -1,0 +1,6 @@
+. ../../testutils.sh
+
+# The header encoding: every header round-trips at its parts' boundaries,
+# parts too wide are caught, and words that no header encodes are rejected.
+idris2 -p idris2-native -p idris2 Test.idr -o test > /dev/null
+./build/exec/test

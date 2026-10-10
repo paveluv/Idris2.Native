@@ -1,0 +1,10 @@
+Error: weight is flat, but its argument number 1 has type Labelled: the field label of MkLabelled has type String, and String lives on the heap.
+
+Labelled:8:1--8:28
+ 4 |   value : Bits64
+ 5 |
+ 6 | -- The reason names the field that is not flat.
+ 7 | %cg native flat Main.weight
+ 8 | weight : Labelled -> Bits64
+     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+

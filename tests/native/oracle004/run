@@ -1,0 +1,14 @@
+. ../../testutils.sh
+
+# The native backend under fixnum tag 0 against Chez: the whole
+# corpus, then the allocation-heavy programs with a 64-byte window, so that
+# the slow path with its rooting stub runs inside them. Under this encoding
+# a pointer word is the object's address plus 1, so every access through a
+# pointer, the continuation's included, folds a -1 into its displacement.
+export LC_ALL=C
+P=../oracle/programs
+sh ../oracle/oracle.sh "$idris2" --val-encoding tag0 $P/*.idr
+sh ../oracle/oracle.sh "$idris2" --val-encoding tag0 --nursery 64 $P/Strings.idr $P/Bignum.idr \
+  $P/StatusCount.idr $P/StatusClosure.idr $P/StatusCase.idr $P/StatusInterface.idr \
+  $P/StatusFixnum.idr $P/StatusNarrow.idr $P/StatusWide.idr $P/StatusIntegerSmall.idr \
+  $P/StatusArray.idr $P/StatusFlatData.idr

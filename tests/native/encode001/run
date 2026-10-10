@@ -1,0 +1,42 @@
+. ../../testutils.sh
+
+# Differential test of the x86-64 encoder against GNU binutils (a test-time
+# oracle only; nothing in the product depends on it). Skipped when binutils
+# is absent.
+# Without binutils there is no oracle: reproduce the golden and stop (a skip).
+if ! command -v as >/dev/null 2>&1 || ! command -v objcopy >/dev/null 2>&1 || ! command -v objdump >/dev/null 2>&1; then
+  cat expected
+  exit 0
+fi
+
+idris2 -p idris2-native -p idris2 Gen.idr -o gen > /dev/null
+./build/exec/gen
+
+# Group A: as must produce exactly our bytes.
+as -o groupA.o groupA.s && objcopy -O binary -j .text groupA.o groupA.as.bin
+if cmp -s groupA.bin groupA.as.bin; then
+  echo "group A: byte-exact"
+else
+  echo "group A: MISMATCH"
+  cmp -l groupA.bin groupA.as.bin | head -5
+  objdump -D -b binary -m i386:x86-64 -M intel groupA.bin | tail -n +8 > a.ours
+  objdump -D -b binary -m i386:x86-64 -M intel groupA.as.bin | tail -n +8 > a.theirs
+  diff a.ours a.theirs | head -20
+fi
+
+# Group B: forms where as chooses a different valid encoding; compare
+# disassembly (mnemonic and operands, addresses stripped, branch targets
+# ignored since layouts differ).
+disas() { objdump -D -b binary -m i386:x86-64 -M intel "$1" | tail -n +8 | sed -e 's/^ *[0-9a-f]*:\t[0-9a-f ]*\t//' -e 's/\(j[a-z]*\|call\) *0x[0-9a-f]*/\1 TARGET/' ; }
+as -o groupB.o groupB.s && objcopy -O binary -j .text groupB.o groupB.as.bin
+disas groupB.bin | sed 's/,0x1$/,1/' > b.ours
+disas groupB.as.bin | sed 's/,0x1$/,1/' > b.theirs
+if cmp -s b.ours b.theirs; then
+  echo "group B: disassembly agrees"
+else
+  echo "group B: MISMATCH"
+  diff b.ours b.theirs | head -20
+fi
+
+# leave nothing behind but what the harness manages
+rm -f groupA.s groupA.bin groupA.o groupA.as.bin groupB.s groupB.bin groupB.o groupB.as.bin a.ours a.theirs b.ours b.theirs

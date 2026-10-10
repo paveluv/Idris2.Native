@@ -1,0 +1,3 @@
+. ../../testutils.sh
+
+idris2 --cg flat-oracle -o rejected Rejected.idr

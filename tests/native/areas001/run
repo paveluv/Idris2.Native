@@ -1,0 +1,8 @@
+. ../../testutils.sh
+
+# The per-thread areas ARGS, ROOTS and SCRATCH are sized from the program,
+# so a program that needs more of each than the old fixed sizes runs
+# correctly (see Areas.idr).
+idris2 --cg native -o areas Areas.idr
+./build/exec/areas
+echo "status: $?"

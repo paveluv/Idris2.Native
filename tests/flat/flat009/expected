@@ -1,0 +1,20 @@
+Main.colour ({arg:0} : Main.Colour [Word]) : (Prelude.Types.Maybe Double) [Word, Dbl] =
+  case {arg:0} of
+    Main.Red{0} => Prelude.Types.Just{1}(1.0)
+    _ => Prelude.Types.Nothing{0}
+  shape Main.Colour = {Main.Red#0 as tag | Main.Green#1 as tag | Main.Blue#2 as tag}
+  shape (Prelude.Types.Maybe Double) = {Prelude.Types.Nothing#0 as object 0 | Prelude.Types.Just#1 as object 1 (Double)}
+
+Main.meters ({arg:1} : Main.Meters [Dbl]) : Main.Shape [Word, Dbl, Word, Word] =
+  case {arg:1} of
+    Main.MkMeters ({e:2} : Double [Dbl]) => Main.Circle{0}({e:2})
+  shape Main.Meters = {Main.MkMeters#0 as field 0 (Double)}
+  shape Main.Shape = {Main.Circle#0 as object 0 (Double) | Main.Rect#1 as object 1 (Bits64, Bits64) | Main.Empty#2 as object 2}
+
+Main.mixed ({arg:3} : Main.Mixed [Word, Dbl, Word]) : (Builtin.Pair Bits64 (Builtin.Pair Bits64 Bits64)) [Word, Word, Word] =
+  Builtin.MkPair(let {orig:11} : Bits8 [Word] = case {arg:3} of
+      Main.MkMixed ({e:7} : Bits8 [Word]) ({e:8} : Double [Dbl]) ({e:9} : Main.Heap []) ({e:10} : Prelude.Basics.Bool [Word]) => {e:7}
+  cast-Bits8-Bits64({orig:11}), Builtin.MkPair(2, 3))
+  shape Main.Mixed = {Main.MkMixed#0 as object 0 (Bits8, Double, {Main.MkHeap#0 as object 0}, {Prelude.Basics.False#0 as tag | Prelude.Basics.True#1 as tag})}
+  shape (Builtin.Pair Bits64 (Builtin.Pair Bits64 Bits64)) = {Builtin.MkPair#0 as object 1 (Bits64, {Builtin.MkPair#0 as object 1 (Bits64, Bits64)})}
+
