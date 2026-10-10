@@ -1,0 +1,42 @@
+package idris2-native
+
+version = 0.1.0
+authors = "Pavel Uvarov"
+license = "BSD-3-Clause"
+brief = "Idris 2 with a native code generator"
+
+depends = idris2, contrib, network
+
+sourcedir = "src"
+
+-- Installed as a library too, for the tests that build terms and programs
+-- with the code generator's own modules.
+modules =
+    Compiler.Native.Allocate,
+    Compiler.Native.Bytes,
+    Compiler.Native.ELF,
+    Compiler.Native.HeapObject,
+    Compiler.Native.IRCommon,
+    Compiler.Native.LocatedIR,
+    Compiler.Native.LocatedIR.Dump,
+    Compiler.Native.Lower,
+    Compiler.Native.LowerFlat,
+    Compiler.Native.Native,
+    Compiler.Native.Seed,
+    Compiler.Native.Target,
+    Compiler.Native.TermIR,
+    Compiler.Native.TermIR.Build,
+    Compiler.Native.Words,
+    Compiler.Native.X86.Asm,
+    Compiler.Native.X86.Encode,
+    Compiler.Native.X86.Render,
+    Compiler.Native.X86.Target,
+    Flat.Exp,
+    Flat.Judgement,
+    Flat.Marked,
+    Flat.Oracle,
+    Flat.Problem,
+    Flat.Translate
+
+main = Main
+executable = idris2-native
