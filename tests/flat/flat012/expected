@@ -1,0 +1,21 @@
+1/1: Building CopyErrors (CopyErrors.idr)
+Error: viaShow is flat, but it calls describe, and it calls prim__cast_IntegerBits64, and its argument number 1 has type Integer: an Integer may need the heap.
+
+CopyErrors:13:13--13:21
+ 09 | describe x = cast (length (show x))
+ 10 |
+ 11 | %cg native flat CopyErrors.viaShow
+ 12 | viaShow : Bits64 -> Bits64
+ 13 | viaShow n = describe n
+                  ^^^^^^^^
+
+Error: viaGrow is flat, but it calls grow, nested 8 deep, and its calls of grow at static arguments grow without end, each needing a copy of its own.
+
+CopyErrors:22:13--22:17
+ 18 | grow f n x = grow (\p => f (fst p)) (n - 1) (x, x)
+ 19 |
+ 20 | %cg native flat CopyErrors.viaGrow
+ 21 | viaGrow : Bits64 -> Bits64
+ 22 | viaGrow n = grow id n n
+                  ^^^^
+

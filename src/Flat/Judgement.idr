@@ -292,6 +292,12 @@ newtypeOverFunction _ = pure Nothing
 ||| Check the signature of `fn`, a flat function: every run-time argument and
 ||| the result must be flat. What is not is the error.
 |||
+||| An argument of a function type is judged by its own signature, in turn:
+||| each of its run-time arguments and its result must be flat, or a
+||| function type judged the same way. A flat function at such an argument
+||| has no form of its own, since the function is static; each call of it
+||| gets a copy at the function it passes (`Flat.Translate`).
+|||
 ||| A newtype over a function type at the result (`IO a`, over `(1 x :
 ||| %World) -> IORes a`) adds that function's arguments to the signature, as
 ||| does a synonym for a function type (`Op h a`), which normalising unfolds.
@@ -314,17 +320,53 @@ checkFlatSignature fc fn
     isAutoImplicit AutoImplicit = True
     isAutoImplicit _ = False
 
+    mutual
+      -- Why a type is not flat, a function type judged by its signature.
+      reason : Judging -> ClosedNF -> Core (Maybe NotFlatReason)
+      reason j ty@(NBind _ _ (Pi {}) _) = function j 0 [] ty
+      reason j ty
+          = case !(judge j ty) of
+                 Rejected why => pure (Just why)
+                 _ => pure Nothing
+
+      -- Why a function type is not flat: its first argument or result that
+      -- is not, with its position. A newtype over a function at the result
+      -- (`IO a`) adds that function's arguments, once, as at the top.
+      function : Judging -> (explicit : Nat) -> (unfolded : List Name) -> ClosedNF ->
+                 Core (Maybe NotFlatReason)
+      function j i ns (NBind bfc x (Pi _ rig pinfo aty) sc)
+          = do defs <- get Ctxt
+               let i' = case pinfo of
+                             Explicit => S i
+                             _ => i
+               argNF <- evalClosure defs aty
+               argWhy <- if isErased rig then pure Nothing else reason j argNF
+               case argWhy of
+                    Just why => pure (Just (InFunction (Just (i', x)) !(quote defs Env.empty argNF) why))
+                    Nothing =>
+                      do let j' = if isErased rig then { deferred $= (x ::) } j else j
+                         function j' i' ns !(sc defs (toClosure defaultOpts Env.empty (Ref bfc Bound x)))
+      function j i ns res
+          = do Just (n, fnTy) <- newtypeOverFunction res
+                 | Nothing => result
+               if n `elem` ns then result else function j i (n :: ns) fnTy
+        where
+          result : Core (Maybe NotFlatReason)
+          result = do Just why <- reason j res
+                        | Nothing => pure Nothing
+                      defs <- get Ctxt
+                      pure (Just (InFunction Nothing !(quote defs Env.empty res) why))
+
     -- Judge an argument (`Just`) or the result (`Nothing`); an auto-implicit
     -- argument is not rejected here.
     check : (autoImplicit : Bool) -> Judging -> Maybe (Nat, Name) -> ClosedNF -> Core (Maybe FlatError)
     check autoImplicit j arg ty
-        = case !(judge j ty) of
-               Rejected why =>
-                 if autoImplicit then pure Nothing else do
-                   defs <- get Ctxt
-                   tm <- quote defs Env.empty ty
-                   pure (Just (NotFlat fc !(toFullNames fn) arg tm why))
-               _ => pure Nothing
+        = do Just why <- reason j ty
+               | Nothing => pure Nothing
+             if autoImplicit then pure Nothing else do
+               defs <- get Ctxt
+               tm <- quote defs Env.empty ty
+               pure (Just (NotFlat fc !(toFullNames fn) arg tm why))
 
     -- `unfolded`: the newtypes over functions whose arguments the signature
     -- has taken already. Met again (a type such as `record Stream where next

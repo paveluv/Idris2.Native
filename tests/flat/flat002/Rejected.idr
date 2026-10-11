@@ -32,11 +32,6 @@ int _ = 0
 list : List Bits64 -> Bits64
 list _ = 0
 
--- has type Bits64 -> Bits64: a function is not flat
-%cg native flat Rejected.apply
-apply : (Bits64 -> Bits64) -> Bits64 -> Bits64
-apply f x = f x
-
 -- has type Lazy Bits64: a lazy value is not flat
 %cg native flat Rejected.later
 later : Lazy Bits64 -> Bits64
@@ -121,6 +116,18 @@ data Tree = Leaf (Maybe Bits64) | Node Tree Tree
 %cg native flat Rejected.tree
 tree : Tree -> Bits64
 tree _ = 0
+
+-- A function argument is judged by its own signature, which names the
+-- position that is not flat.
+-- its argument number 1 has type String -> Bits64: the function's argument number 1 has type String
+%cg native flat Rejected.onStrings
+onStrings : (String -> Bits64) -> Bits64
+onStrings f = f "x"
+
+-- and inside a function argument's own function argument
+%cg native flat Rejected.nested
+nested : ((Bits64 -> String) -> Bits64) -> Bits64
+nested g = 0
 
 main : IO ()
 main = pure ()

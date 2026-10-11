@@ -38,133 +38,143 @@ Rejected:32:1--32:29
  32 | list : List Bits64 -> Bits64
       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Error: apply is flat, but its argument number 1 has type Bits64 -> Bits64: a function is not flat.
-
-Rejected:37:1--37:47
- 33 | list _ = 0
- 34 |
- 35 | -- has type Bits64 -> Bits64: a function is not flat
- 36 | %cg native flat Rejected.apply
- 37 | apply : (Bits64 -> Bits64) -> Bits64 -> Bits64
-      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
 Error: later is flat, but its argument number 1 has type Lazy Bits64: a lazy value is not flat.
 
-Rejected:42:1--42:30
- 38 | apply f x = f x
- 39 |
- 40 | -- has type Lazy Bits64: a lazy value is not flat
- 41 | %cg native flat Rejected.later
- 42 | later : Lazy Bits64 -> Bits64
+Rejected:37:1--37:30
+ 33 | list _ = 0
+ 34 |
+ 35 | -- has type Lazy Bits64: a lazy value is not flat
+ 36 | %cg native flat Rejected.later
+ 37 | later : Lazy Bits64 -> Bits64
       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Error: runtimeType is flat, but its argument a has type Type: a type at run time is not flat.
 
-Rejected:47:1--47:35
- 43 | later x = x
- 44 |
- 45 | -- its argument a has type Type: a type at run time is not flat
- 46 | %cg native flat Rejected.runtimeType
- 47 | runtimeType : (a : Type) -> Bits64
+Rejected:42:1--42:35
+ 38 | later x = x
+ 39 |
+ 40 | -- its argument a has type Type: a type at run time is not flat
+ 41 | %cg native flat Rejected.runtimeType
+ 42 | runtimeType : (a : Type) -> Bits64
       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Error: labelled is flat, but its argument number 1 has type Labelled: the field label of MkLabelled has type String, and String lives on the heap.
 
-Rejected:52:1--52:30
- 48 | runtimeType _ = 0
- 49 |
- 50 | -- has type Labelled: the field label of MkLabelled has type String, and String lives on the heap
- 51 | %cg native flat Rejected.labelled
- 52 | labelled : Labelled -> Bits64
+Rejected:47:1--47:30
+ 43 | runtimeType _ = 0
+ 44 |
+ 45 | -- has type Labelled: the field label of MkLabelled has type String, and String lives on the heap
+ 46 | %cg native flat Rejected.labelled
+ 47 | labelled : Labelled -> Bits64
       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Error: result is flat, but its result has type List Bits64: List is recursive.
 
-Rejected:57:1--57:31
- 53 | labelled _ = 0
- 54 |
- 55 | -- its result has type List Bits64
- 56 | %cg native flat Rejected.result
- 57 | result : Bits64 -> List Bits64
+Rejected:52:1--52:31
+ 48 | labelled _ = 0
+ 49 |
+ 50 | -- its result has type List Bits64
+ 51 | %cg native flat Rejected.result
+ 52 | result : Bits64 -> List Bits64
       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Error: unnamed is flat, but its argument number 2 has type String: String lives on the heap.
 
-Rejected:62:1--62:37
- 58 | result _ = []
- 59 |
- 60 | -- its argument number 2 has type String
- 61 | %cg native flat Rejected.unnamed
- 62 | unnamed : Bits64 -> String -> Bits64
+Rejected:57:1--57:37
+ 53 | result _ = []
+ 54 |
+ 55 | -- its argument number 2 has type String
+ 56 | %cg native flat Rejected.unnamed
+ 57 | unnamed : Bits64 -> String -> Bits64
       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Error: boxed is flat, but its argument number 1 has type Box: the type of a field of MkBox is not determined by the type's arguments.
 
-Rejected:67:1--67:22
- 63 | unnamed x _ = x
- 64 |
- 65 | -- the type of a field of MkBox is not determined by the type's arguments
- 66 | %cg native flat Rejected.boxed
- 67 | boxed : Box -> Bits64
+Rejected:62:1--62:22
+ 58 | unnamed x _ = x
+ 59 |
+ 60 | -- the type of a field of MkBox is not determined by the type's arguments
+ 61 | %cg native flat Rejected.boxed
+ 62 | boxed : Box -> Bits64
       ^^^^^^^^^^^^^^^^^^^^^
 
 Error: pointer is flat, but its argument number 1 has type AnyPtr: AnyPtr is an external type.
 
-Rejected:72:1--72:27
- 68 | boxed _ = 0
- 69 |
- 70 | -- has type AnyPtr: AnyPtr is an external type
- 71 | %cg native flat Rejected.pointer
- 72 | pointer : AnyPtr -> Bits64
+Rejected:67:1--67:27
+ 63 | boxed _ = 0
+ 64 |
+ 65 | -- has type AnyPtr: AnyPtr is an external type
+ 66 | %cg native flat Rejected.pointer
+ 67 | pointer : AnyPtr -> Bits64
       ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Error: afterImplicit is flat, but its argument number 2 has type String: String lives on the heap.
 
-Rejected:78:1--78:58
- 74 |
- 75 | -- Positions count the explicit arguments only.
- 76 | -- its argument number 2 has type String
- 77 | %cg native flat Rejected.afterImplicit
- 78 | afterImplicit : {0 n : Nat} -> Bits64 -> String -> Bits64
+Rejected:73:1--73:58
+ 69 |
+ 70 | -- Positions count the explicit arguments only.
+ 71 | -- its argument number 2 has type String
+ 72 | %cg native flat Rejected.afterImplicit
+ 73 | afterImplicit : {0 n : Nat} -> Bits64 -> String -> Bits64
       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Error: stream is flat, but its result has type Stream: Stream is recursive.
 
-Rejected:89:1--89:16
- 85 |   next : Bits64 -> Stream
- 86 |
- 87 | -- its result has type Stream: Stream is recursive
- 88 | %cg native flat Rejected.stream
- 89 | stream : Stream
+Rejected:84:1--84:16
+ 80 |   next : Bits64 -> Stream
+ 81 |
+ 82 | -- its result has type Stream: Stream is recursive
+ 83 | %cg native flat Rejected.stream
+ 84 | stream : Stream
       ^^^^^^^^^^^^^^^
 
 Error: loop is flat, but its argument number 1 has type Loop: Loop is recursive.
 
-Rejected:100:1--100:22
- 096 |   next : Loop
- 097 |
- 098 | -- has type Loop: Loop is recursive
- 099 | %cg native flat Rejected.loop
- 100 | loop : Loop -> Bits64
-       ^^^^^^^^^^^^^^^^^^^^^
+Rejected:95:1--95:22
+ 91 |   next : Loop
+ 92 |
+ 93 | -- has type Loop: Loop is recursive
+ 94 | %cg native flat Rejected.loop
+ 95 | loop : Loop -> Bits64
+      ^^^^^^^^^^^^^^^^^^^^^
 
 Error: ping is flat, but its argument number 1 has type Ping: Ping is recursive.
 
-Rejected:114:1--114:22
- 110 |     ping : Ping
- 111 |
- 112 | -- has type Ping: Ping is recursive
- 113 | %cg native flat Rejected.ping
- 114 | ping : Ping -> Bits64
+Rejected:109:1--109:22
+ 105 |     ping : Ping
+ 106 |
+ 107 | -- has type Ping: Ping is recursive
+ 108 | %cg native flat Rejected.ping
+ 109 | ping : Ping -> Bits64
        ^^^^^^^^^^^^^^^^^^^^^
 
 Error: tree is flat, but its argument number 1 has type Tree: Tree is recursive.
 
-Rejected:122:1--122:22
- 118 | data Tree = Leaf (Maybe Bits64) | Node Tree Tree
- 119 |
- 120 | -- has type Tree: Tree is recursive
- 121 | %cg native flat Rejected.tree
- 122 | tree : Tree -> Bits64
+Rejected:117:1--117:22
+ 113 | data Tree = Leaf (Maybe Bits64) | Node Tree Tree
+ 114 |
+ 115 | -- has type Tree: Tree is recursive
+ 116 | %cg native flat Rejected.tree
+ 117 | tree : Tree -> Bits64
        ^^^^^^^^^^^^^^^^^^^^^
+
+Error: onStrings is flat, but its argument number 1 has type String -> Bits64: the function's argument number 1 has type String, and String lives on the heap.
+
+Rejected:124:1--124:41
+ 120 | -- A function argument is judged by its own signature, which names the
+ 121 | -- position that is not flat.
+ 122 | -- its argument number 1 has type String -> Bits64: the function's argument number 1 has type String
+ 123 | %cg native flat Rejected.onStrings
+ 124 | onStrings : (String -> Bits64) -> Bits64
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Error: nested is flat, but its argument number 1 has type (Bits64 -> String) -> Bits64: the function's argument number 1 has type Bits64 -> String, and the function's result has type String, and String lives on the heap.
+
+Rejected:129:1--129:50
+ 125 | onStrings f = f "x"
+ 126 |
+ 127 | -- and inside a function argument's own function argument
+ 128 | %cg native flat Rejected.nested
+ 129 | nested : ((Bits64 -> String) -> Bits64) -> Bits64
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

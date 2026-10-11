@@ -121,6 +121,17 @@ inner : Maybe (Maybe Bits64) -> Bits64
 inner (Just (Just x)) = x
 inner _ = 0
 
+-- A function argument whose own argument and result are flat: the function
+-- has no form of its own, and each call gets a copy at the function it
+-- passes.
+%cg native flat Main.applyTwice
+applyTwice : (Bits64 -> Bits64) -> Bits64 -> Bits64
+applyTwice f x = f (f x)
+
+%cg native flat Main.useTwice
+useTwice : Bits64 -> Bits64
+useTwice k = applyTwice (+ k) 1 + applyTwice (* 2) k
+
 main : IO ()
 main = do
   printLn (norm2 (MkPoint 3 4))
@@ -142,3 +153,4 @@ main = do
   printLn (either (Left 2), either (Right 2.5))
   printLn (width (Circle (MkPoint 0 0) 1.5), width (Rect (MkPoint 1 0) (MkPoint 4 2)))
   printLn (inner (Just (Just 6)), inner (Just Nothing))
+  printLn (useTwice 5)

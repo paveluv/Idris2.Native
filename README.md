@@ -48,6 +48,14 @@ library's marks reach the programs that import it:
 Each name is qualified as far as it takes to name one function. Every other
 code generator ignores the directive and compiles the function as usual.
 
+Everything a flat function calls is compiled flat too, without marking:
+a function whose arguments and result are flat gets a flat form of its
+own, and a generic or higher-order one gets a copy for each distinct
+dictionary, function or other static argument it is called with, a
+lambda's captured variables passed as the copy's parameters. A flat
+function may itself take function arguments whose own arguments and result
+are flat; it is then copied at each call.
+
 Each marked function is translated into its flat form (`Flat.Translate`) as
 its module is built, `--check` included, and one that is not flat is
 reported then, with the reason, the chain of calls that reaches it, and the

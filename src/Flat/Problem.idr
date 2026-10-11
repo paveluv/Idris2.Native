@@ -42,6 +42,9 @@ data NotFlatReason : Type where
   ||| a constructor's field whose type is not flat
   InField : (con : Name) -> (field : Name) -> (fieldTy : ClosedTerm) ->
             NotFlatReason -> NotFlatReason
+  ||| a function whose argument (its position among the explicit arguments
+  ||| and its name) or result (`Nothing`) has a type that is not flat
+  InFunction : Maybe (Nat, Name) -> (ty : ClosedTerm) -> NotFlatReason -> NotFlatReason
 
 ||| What makes the body of a flat function, or of a function it calls, not
 ||| flat: what its translation into the flat regime (`Flat.Translate`) meets.
@@ -51,14 +54,14 @@ data FlatProblem : Type where
   ValueNotFlat : ClosedTerm -> NotFlatReason -> FlatProblem
   ||| a function or a lazy value used other than by applying or forcing it
   NotStatic : FlatProblem
-  ||| a call of a function at static arguments (a dictionary, a function,
-  ||| a type that decides a layout), which needs a flat copy at them
-  NeedsCopy : Name -> FlatProblem
   ||| a call of a function whose argument (its position among the explicit
   ||| arguments and its name) or result (`Nothing`) is not flat
   CalleeNotFlat : Name -> Maybe (Nat, Name) -> ClosedTerm -> NotFlatReason -> FlatProblem
   ||| a private primitive used where its own module did not write it
   PrivateElsewhere : Name -> FlatProblem
+  ||| calls of a function at static arguments that grow without end, each
+  ||| needing a copy of its own
+  CopiesDoNotEnd : Name -> FlatProblem
   ||| a construct the translation does not handle
   Unhandled : String -> FlatProblem
 
@@ -117,6 +120,15 @@ reasonDoc (UndeterminedField c f)
 reasonDoc (InField c f fty w)
     = pure (fieldDoc f <++> reflow "of" <++> !(name c) <++> reflow "has type"
               <++> code !(term fty) <+> comma <++> reflow "and" <++> !(reasonDoc w))
+reasonDoc (InFunction pos ty w)
+    = pure (reflow "the function's" <++> position pos <++> reflow "has type"
+              <++> code !(term ty) <+> comma <++> reflow "and" <++> !(reasonDoc w))
+  where
+    position : Maybe (Nat, Name) -> Doc IdrisAnn
+    position Nothing = reflow "result"
+    position (Just (i, x))
+        = if isUserName x then reflow "argument" <++> code (pretty0 x)
+             else reflow "argument number" <++> byShow i
 
 problemDoc : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} ->
              FlatProblem -> Core (Doc IdrisAnn)
@@ -124,13 +136,14 @@ problemDoc (ValueNotFlat ty why)
     = pure (reflow "it has a value of type" <++> code !(term ty) <+> colon <++> !(reasonDoc why))
 problemDoc NotStatic
     = pure (reflow "it uses a function or a lazy value other than by applying or forcing it")
-problemDoc (NeedsCopy g)
-    = pure (reflow "it calls" <++> !(name g) <++> reflow "at static arguments, which needs a flat copy")
 problemDoc (CalleeNotFlat g arg ty why)
     = pure (reflow "it calls" <++> !(name g) <+> comma <++> reflow "and" <++> argDoc arg
               <++> reflow "has type" <++> code !(term ty) <+> colon <++> !(reasonDoc why))
 problemDoc (PrivateElsewhere g)
     = pure (reflow "it uses the private primitive" <++> !(name g) <++> reflow "outside its module")
+problemDoc (CopiesDoNotEnd g)
+    = pure (reflow "its calls of" <++> !(name g)
+              <++> reflow "at static arguments grow without end, each needing a copy of its own")
 problemDoc (Unhandled what) = pure (reflow what <++> reflow "is not handled in the flat regime")
 
 message : FC -> Doc IdrisAnn -> Core Error
@@ -149,5 +162,18 @@ asError (NotFlat fc n arg ty why)
     = message fc (!(name n) <++> reflow "is flat, but" <++> argDoc arg <++> reflow "has type"
                     <++> code !(term ty) <+> colon <++> !(reasonDoc why) <+> dot)
 asError (NotFlatBody fc n chain p)
-    = do calls <- traverse (\g => pure (reflow "it calls" <++> !(name g) <+> comma <++> reflow "and")) chain
+    = do calls <- traverse call (runs chain)
          message fc (!(name n) <++> reflow "is flat, but" <++> hsep calls <++> !(problemDoc p) <+> dot)
+  where
+    -- The chain with each run of calls of one function as one entry, with
+    -- how many calls deep it goes.
+    runs : List Name -> List (Name, Nat)
+    runs [] = []
+    runs (g :: gs) = case runs gs of
+                          ((h, k) :: rest) => if g == h then (g, S k) :: rest else (g, 1) :: (h, k) :: rest
+                          [] => [(g, 1)]
+
+    call : (Name, Nat) -> Core (Doc IdrisAnn)
+    call (g, 1) = pure (reflow "it calls" <++> !(name g) <+> comma <++> reflow "and")
+    call (g, k) = pure (reflow "it calls" <++> !(name g) <+> comma <++> reflow "nested" <++> byShow k
+                          <++> reflow "deep, and")

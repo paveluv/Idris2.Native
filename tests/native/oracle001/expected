@@ -11,6 +11,7 @@ StatusCase: agree
 StatusClosure: agree
 StatusCount: agree
 StatusFixnum: agree
+StatusFlatCopies: agree
 StatusFlatData: agree
 StatusFlatDoubles: agree
 StatusFlatWords: agree
@@ -22,4 +23,4 @@ StatusNarrow: agree
 StatusWide: agree
 Strings: unsupported
 TailCall: unsupported
-24 programs: 14 agree, 10 unsupported, 0 mismatch, 0 error, 0 timeout
+25 programs: 15 agree, 10 unsupported, 0 mismatch, 0 error, 0 timeout

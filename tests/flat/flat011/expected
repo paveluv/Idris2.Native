@@ -1,0 +1,111 @@
+25 19 13 22 21
+25 19 13 22 21
+25 19 13 22 21
+Main.digits ({arg:36} : Bits64 [Word], {x:37} : %World []) : (PrimIO.IORes Builtin.Unit) [] =
+  let {scr:85} : Prelude.Basics.Bool [Word] = Prelude.EqOrd.<({arg:36}, 10)
+  case {scr:85} of
+    Prelude.Basics.True{1} => let {arg:101} : Char [Word] = Main.2799:969:digit({arg:36}, {arg:36})
+      %prim Prelude.IO.prim__putChar({arg:101}, {x:37})
+    Prelude.Basics.False{0} => let {scr:140} : (PrimIO.IORes Builtin.Unit) [] = Main.digits(Prelude.Num.div({arg:36}, 10), {x:37})
+      case {scr:140} of
+        PrimIO.MkIORes ({e:141} : Builtin.Unit []) ({e:142} : %World []) => %prim Prelude.IO.prim__putChar(Main.2799:969:digit({arg:36}, Prelude.Num.mod({arg:36}, 10)), {e:142})
+  shape (PrimIO.IORes Builtin.Unit) = {PrimIO.MkIORes#0 as field 0 ({Builtin.MkUnit#0 as object 0}, %World)}
+
+Main.main ({x:0} : %World []) : (PrimIO.IORes Builtin.Unit) [] =
+  let {scr:21} : (PrimIO.IORes Bits64) [Word] = Main.tick(2, {x:0})
+  case {scr:21} of
+    PrimIO.MkIORes ({e:22} : Bits64 [Word]) ({e:23} : %World []) => let {scr:173} : (PrimIO.IORes Builtin.Unit) [] = Main.digits(Main.{total2:45}(Main.MkSquare({e:22}), Main.MkSquare(4)), {e:23})
+      case {scr:173} of
+        PrimIO.MkIORes ({e:174} : Builtin.Unit []) ({e:175} : %World []) => let {scr:196} : (PrimIO.IORes Builtin.Unit) [] = %prim Prelude.IO.prim__putChar(' ', {e:175})
+          case {scr:196} of
+            PrimIO.MkIORes ({e:197} : Builtin.Unit []) ({e:198} : %World []) => let {scr:245} : (PrimIO.IORes Builtin.Unit) [] = Main.digits(Main.{total2:220}(Main.MkRect({e:22}, 5), Main.MkRect(2, 2)), {e:198})
+              case {scr:245} of
+                PrimIO.MkIORes ({e:246} : Builtin.Unit []) ({e:247} : %World []) => let {scr:268} : (PrimIO.IORes Builtin.Unit) [] = %prim Prelude.IO.prim__putChar(' ', {e:247})
+                  case {scr:268} of
+                    PrimIO.MkIORes ({e:269} : Builtin.Unit []) ({e:270} : %World []) => let {scr:313} : (PrimIO.IORes Builtin.Unit) [] = Main.digits(Main.{applyTwice:290}(1, {e:22}), {e:270})
+                      case {scr:313} of
+                        PrimIO.MkIORes ({e:314} : Builtin.Unit []) ({e:315} : %World []) => let {scr:336} : (PrimIO.IORes Builtin.Unit) [] = %prim Prelude.IO.prim__putChar(' ', {e:315})
+                          case {scr:336} of
+                            PrimIO.MkIORes ({e:337} : Builtin.Unit []) ({e:338} : %World []) => let {scr:358} : (PrimIO.IORes Builtin.Unit) [] = Main.digits(Main.{applyTwice:290}(2, {e:22}), {e:338})
+                              case {scr:358} of
+                                PrimIO.MkIORes ({e:359} : Builtin.Unit []) ({e:360} : %World []) => let {scr:381} : (PrimIO.IORes Builtin.Unit) [] = %prim Prelude.IO.prim__putChar(' ', {e:360})
+                                  case {scr:381} of
+                                    PrimIO.MkIORes ({e:382} : Builtin.Unit []) ({e:383} : %World []) => let {scr:419} : (PrimIO.IORes Builtin.Unit) [] = Main.digits(Main.{orElse:403}(0, {e:22}), {e:383})
+                                      case {scr:419} of
+                                        PrimIO.MkIORes ({e:420} : Builtin.Unit []) ({e:421} : %World []) => %prim Prelude.IO.prim__putChar('\n', {e:421})
+  shape (PrimIO.IORes Builtin.Unit) = {PrimIO.MkIORes#0 as field 0 ({Builtin.MkUnit#0 as object 0}, %World)}
+
+Main.tick ({arg:9} : Bits64 [Word], {x:10} : %World []) : (PrimIO.IORes Bits64) [Word] =
+  let {arg:20} : Bits64 [Word] = +Bits64({arg:9}, 1)
+  PrimIO.MkIORes({arg:20}, {x:10})
+  shape (PrimIO.IORes Bits64) = {PrimIO.MkIORes#0 as field 0 (Bits64, %World)}
+
+Main.{total2:45} ({arg:43} : Main.Square [Word], {arg:44} : Main.Square [Word]) : Bits64 [Word] =
+  let {arg:64} : Bits64 [Word] = Main.area({arg:43})
+  let {arg:67} : Bits64 [Word] = Main.area({arg:44})
+  +Bits64({arg:64}, {arg:67})
+  shape Main.Square = {Main.MkSquare#0 as field 0 (Bits64)}
+
+Main.{total2:220} ({arg:218} : Main.Rect [Word, Word], {arg:219} : Main.Rect [Word, Word]) : Bits64 [Word] =
+  let {arg:241} : Bits64 [Word] = Main.area({arg:218})
+  let {arg:244} : Bits64 [Word] = Main.area({arg:219})
+  +Bits64({arg:241}, {arg:244})
+  shape Main.Rect = {Main.MkRect#0 as object 1 (Bits64, Bits64)}
+
+Main.{applyTwice:290} ({arg:288} : Bits64 [Word], {flat captured:0} : Bits64 [Word]) : Bits64 [Word] =
+  let {v:302} : Bits64 [Word] = let {arg:301} : Bits64 [Word] = *Bits64({arg:288}, {flat captured:0})
+    +Bits64({arg:301}, 1)
+  let {arg:312} : Bits64 [Word] = *Bits64({v:302}, {flat captured:0})
+  +Bits64({arg:312}, 1)
+
+Main.{orElse:403} ({arg:400} : Bits64 [Word], {flat captured:0} : Bits64 [Word]) : Bits64 [Word] =
+  let {scr:414} : Prelude.Basics.Bool [Word] = Prelude.EqOrd.==({arg:400}, 0)
+  case {scr:414} of
+    Prelude.Basics.True{1} => *Bits64({flat captured:0}, 7)
+    Prelude.Basics.False{0} => {arg:400}
+
+Prelude.EqOrd.< ({arg:82} : Bits64 [Word], {arg:83} : Bits64 [Word]) : Prelude.Basics.Bool [Word] =
+  let {arg:84} : Int [Word] = <Bits64({arg:82}, {arg:83})
+  case {arg:84} of
+    0 => Prelude.Basics.False{0}
+    _ => Prelude.Basics.True{1}
+  shape Prelude.Basics.Bool = {Prelude.Basics.False#0 as tag | Prelude.Basics.True#1 as tag}
+
+Prelude.EqOrd.== ({arg:136} : Bits64 [Word], {arg:137} : Bits64 [Word]) : Prelude.Basics.Bool [Word] =
+  let {arg:138} : Int [Word] = ==Bits64({arg:136}, {arg:137})
+  case {arg:138} of
+    0 => Prelude.Basics.False{0}
+    _ => Prelude.Basics.True{1}
+  shape Prelude.Basics.Bool = {Prelude.Basics.False#0 as tag | Prelude.Basics.True#1 as tag}
+
+Main.area ({arg:228} : Main.Rect [Word, Word]) : Bits64 [Word] =
+  let {arg:237} : Bits64 [Word] = case {arg:228} of
+      Main.MkRect ({e:235} : Bits64 [Word]) ({e:236} : Bits64 [Word]) => {e:235}
+  let {arg:240} : Bits64 [Word] = case {arg:228} of
+      Main.MkRect ({e:238} : Bits64 [Word]) ({e:239} : Bits64 [Word]) => {e:239}
+  *Bits64({arg:237}, {arg:240})
+  shape Main.Rect = {Main.MkRect#0 as object 1 (Bits64, Bits64)}
+
+Main.area ({arg:53} : Main.Square [Word]) : Bits64 [Word] =
+  let {arg:61} : Bits64 [Word] = case {arg:53} of
+      Main.MkSquare ({e:60} : Bits64 [Word]) => {e:60}
+  let {arg:63} : Bits64 [Word] = case {arg:53} of
+      Main.MkSquare ({e:62} : Bits64 [Word]) => {e:62}
+  *Bits64({arg:61}, {arg:63})
+  shape Main.Square = {Main.MkSquare#0 as field 0 (Bits64)}
+
+Prelude.Num.div ({arg:126} : Bits64 [Word], {arg:127} : Bits64 [Word]) : Bits64 [Word] =
+  let {scr:139} : Prelude.Basics.Bool [Word] = Prelude.EqOrd.==({arg:127}, 0)
+  case {scr:139} of
+    Prelude.Basics.False{0} => /Bits64({arg:126}, {arg:127})
+
+Prelude.Num.mod ({arg:160} : Bits64 [Word], {arg:161} : Bits64 [Word]) : Bits64 [Word] =
+  let {scr:172} : Prelude.Basics.Bool [Word] = Prelude.EqOrd.==({arg:161}, 0)
+  case {scr:172} of
+    Prelude.Basics.False{0} => %Bits64({arg:160}, {arg:161})
+
+Main.2799:969:digit ({n:87} : Bits64 [Word], {arg:88} : Bits64 [Word]) : Char [Word] =
+  let {orig:100} : Bits32 [Word] = let {arg:99} : Bits32 [Word] = cast-Bits64-Bits32({arg:88})
+    +Bits32({arg:99}, 48)
+  cast-Bits32-Char({orig:100})
+

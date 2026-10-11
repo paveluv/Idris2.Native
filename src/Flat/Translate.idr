@@ -24,12 +24,21 @@
 ||| methods refer to unfolds where a program uses it, and the continuation
 ||| of a `do` block unfolds `io_bind` although an `io_bind` is applying it.
 |||
-||| A call of any other function is a call of its flat form. A function whose
-||| signature is *ground*, every run-time argument and its result laid out
-||| with no erased argument deciding a layout, has one, made on demand and
-||| memoised: a function being translated counts as having one, so recursion
-||| ends. A call at static arguments needs a form at them,
-||| which is not made yet.
+||| A call of any other function is a call of a flat form of it, made on
+||| demand and memoised: a form being made counts as made, so recursion ends.
+||| A function whose signature is *ground*, every run-time argument and its
+||| result laid out with no erased argument deciding a layout, has one form,
+||| its own. A call of any other function is at *static arguments*: erased
+||| ones, dictionaries, functions, lazy values, and closed values without a
+||| layout. It is a call of a *copy* of the function made for them: the
+||| function's case tree with the static arguments substituted, which keeps
+||| it typed, translated as any form is. A copy's parameters are the call's
+||| other, flat arguments, and then the flat variables the static arguments
+||| capture, such as those a lambda refers to, renamed in the copy; so one
+||| copy, keyed by the function and its static terms, serves every call
+||| whose static arguments are the same. Copies of one function nest only
+||| when it calls itself at other static arguments, and a chain that nests
+||| them too deep is reported, since such arguments can grow without end.
 |||
 ||| A function whose result is a newtype over a function (`IO a`) takes that
 ||| function's arguments as its own, as `checkFlatSignature` walks it, so a
@@ -44,9 +53,10 @@
 ||| function it started from to it.
 |||
 ||| The flat functions are the ones a code generator's directive names
-||| (`flatNames`). The translation runs when a program is compiled, on the
-||| whole context, the imported modules' case trees included, and keeps the
-||| forms it makes for that compilation alone.
+||| (`flatNames`), and everything they call is translated in turn. The
+||| translation runs on the whole context, the imported modules' case trees
+||| included, and keeps the forms it makes for the one compilation or check
+||| that asked for them.
 module Flat.Translate
 
 import Compiler.Opts.Constructor
@@ -87,16 +97,26 @@ data Static : Type where
   ||| definitions `value` was written inside.
   Unwrapped : (value : ClosedTerm) -> (origin : List Name) -> Static
 
-||| The translation's state: a counter for the names it makes, the
-||| definitions whose forms it is making, which count as having one, the
-||| static values that names stand for, the forms made, and the problem the
-||| translation stopped at, which `fail` records.
+||| A copy of a function at static arguments: the function, the key that
+||| tells its static arguments apart (one entry per argument, `Nothing` for a
+||| dynamic one), and the name of the copy's form.
+record Copy where
+  constructor MkCopy
+  function : Name
+  key : List (Maybe ClosedTerm)
+  form : Name
+
+||| The translation's state: a counter for the names it makes, the forms
+||| being made, which count as made, the static values that names stand
+||| for, the forms made, the copies made, and the problem the translation
+||| stopped at, which `fail` records.
 record FlatState where
   constructor MkFlatState
   nextName : Int
   making : List Name
   statics : NameMap Static
   forms : NameMap FlatDef
+  copies : List Copy
   failure : Maybe FlatError
 
 ||| The label of the reference that holds the translation's state, a
@@ -176,6 +196,10 @@ takeArgs (S k) (PArg a :: ps)
          Just (a :: as, rest)
 takeArgs (S k) _ = Nothing
 
+pendingArg : Pending -> Maybe ClosedTerm
+pendingArg (PArg a) = Just a
+pendingArg _ = Nothing
+
 -- A term that names a value without computing it.
 isAtom : Tr -> ClosedTerm -> Bool
 isAtom tr (Ref _ Bound x) = isJust (lookup x tr.vars)
@@ -222,6 +246,99 @@ resolved tm = pure (resolve (statics !(get FlatSt)) tm)
 staticPending : {auto s : Ref FlatSt FlatState} -> Tr -> Pending -> Core Pending
 staticPending tr (PArg a) = PArg <$> static tr a
 staticPending tr p = pure p
+
+-- The terms a binder holds.
+binderTerms : Binder (Term vars) -> List (Term vars)
+binderTerms (Lam _ _ _ ty) = [ty]
+binderTerms (Let _ _ v ty) = [v, ty]
+binderTerms (Pi _ _ _ ty) = [ty]
+binderTerms (PVar _ _ _ ty) = [ty]
+binderTerms (PLet _ _ v ty) = [v, ty]
+binderTerms (PVTy _ _ ty) = [ty]
+
+-- The `Bound` names a term refers to, in the order it first refers to them.
+boundRefs : Term vars -> List Name
+boundRefs tm = nub (go tm)
+  where
+    go : Term vs -> List Name
+    go (Ref _ Bound x) = [x]
+    go (Bind _ _ b sc) = concatMap go (assert_total (binderTerms b)) ++ go sc
+    go (App _ f a) = go f ++ go a
+    go (As _ _ a p) = go a ++ go p
+    go (TDelayed _ _ t) = go t
+    go (TDelay _ _ t v) = go t ++ go v
+    go (TForce _ _ t) = go t
+    go (Meta _ _ _ args) = concatMap go args
+    go _ = []
+
+-- A term with `Bound` names renamed.
+renameRefs : NameMap Name -> Term vars -> Term vars
+renameRefs m (Ref fc Bound x) = Ref fc Bound (fromMaybe x (lookup x m))
+renameRefs m (Bind fc x b sc) = Bind fc x (map (renameRefs m) b) (renameRefs m sc)
+renameRefs m (App fc f a) = App fc (renameRefs m f) (renameRefs m a)
+renameRefs m (As fc u a p) = As fc u (renameRefs m a) (renameRefs m p)
+renameRefs m (TDelayed fc r t) = TDelayed fc r (renameRefs m t)
+renameRefs m (TDelay fc r t v) = TDelay fc r (renameRefs m t) (renameRefs m v)
+renameRefs m (TForce fc r t) = TForce fc r (renameRefs m t)
+renameRefs m (Meta fc n i args) = Meta fc n i (map (renameRefs m) args)
+renameRefs m tm = tm
+
+-- The term a static value stands for.
+staticTerm : Static -> ClosedTerm
+staticTerm (Closure t _) = t
+staticTerm (Unwrapped v _) = v
+
+renameStatic : NameMap Name -> Static -> Static
+renameStatic m (Closure t o) = Closure (renameRefs m t) o
+renameStatic m (Unwrapped v o) = Unwrapped (renameRefs m v) o
+
+||| Terms that are static arguments of a copy, with the flat variables they
+||| capture renamed by `caps`. A name that stands for a static value whose
+||| term captures one, directly or through another such name, stands for a
+||| renamed copy of it, written where the original was, so that each copy
+||| sees only its own parameters.
+relocate : {auto s : Ref FlatSt FlatState} ->
+           (caps : NameMap Name) -> List ClosedTerm -> Core (List ClosedTerm)
+relocate caps ts
+    = do sts <- statics <$> get FlatSt
+         let moved = filter (captures sts []) (nub (concatMap (reachable sts []) ts))
+         renames <- traverse (\x => pure (x, !(fresh x))) moved
+         let m = foldl (\acc, (x, x') => insert x x' acc) caps renames
+         traverse_ (\(x, x') => case lookup x sts of
+                                    Just st => update FlatSt { statics $= insert x' (renameStatic m st) }
+                                    Nothing => pure ())
+                   renames
+         pure (map (renameRefs m) ts)
+  where
+    -- The names standing for static values that a term reaches.
+    reachable : NameMap Static -> List Name -> Term vs -> List Name
+    reachable sts seen tm
+        = concatMap (\x => if elem x seen then [] else
+                             case lookup x sts of
+                                  Just st => x :: reachable sts (x :: seen) (staticTerm st)
+                                  Nothing => [])
+                    (boundRefs tm)
+
+    captures : NameMap Static -> List Name -> Name -> Bool
+    captures sts seen x
+        = case lookup x sts of
+               Nothing => False
+               Just st => any (\y => isJust (lookup y caps)
+                                     || (not (elem y seen) && captures sts (x :: seen) y))
+                              (boundRefs (staticTerm st))
+
+-- The name of the form of a copy of `fn`.
+copyName : Name -> Int -> Name
+copyName (NS ns n) k = NS ns (copyName n k)
+copyName (DN _ n) k = copyName n k
+copyName n k = MN (nameRoot n) k
+
+-- How many copies of one function may nest in a chain of calls before its
+-- static arguments count as growing without end. Only recursion at other
+-- static arguments nests them, and such arguments, and the types they
+-- decide, can double at each step, so the bound is small.
+copyDepth : Nat
+copyDepth = 8
 
 mkSubst : (vars : Scope) -> List ClosedTerm -> Maybe (SubstEnv vars Scope.empty)
 mkSubst [] [] = Just []
@@ -363,55 +480,44 @@ staticOnly (InField _ _ _ why) = staticOnly why
 staticOnly _ = False
 
 ||| The flat variables of a ground signature's run-time arguments, with their
-||| types, and its result's skeleton and layout; or why `fn`, of this
-||| signature, has no flat form that a call can use.
+||| types, and its result's skeleton and layout: if every run-time argument
+||| and the result are flat. A function of any other signature has flat
+||| forms only at static arguments: its copies.
 groundSignature : {auto c : Ref Ctxt Defs} ->
-                  Name -> Signature ->
-                  Core (Either FlatProblem (List (FlatVar, ClosedTerm), (Skeleton, Layout)))
-groundSignature fn sig
+                  Signature -> Core (Maybe (List (FlatVar, ClosedTerm), (Skeleton, Layout)))
+groundSignature sig
     = do let deferred = mapMaybe erasedVar sig.parts
-         Right ps <- params deferred [] sig.parts
-           | Left p => pure (Left p)
+         Just ps <- params deferred [] sig.parts
+           | Nothing => pure Nothing
          case !(layout deferred sig.result) of
-              LaidOut l => pure (Right (ps, (!(skeleton sig.result), l)))
-              Deferred => pure (Left (NeedsCopy fn))
-              Rejected why =>
-                if staticOnly why
-                   then pure (Left (NeedsCopy fn))
-                   else pure (Left (CalleeNotFlat fn Nothing !(quoteClosed sig.result) why))
+              LaidOut l => pure (Just (ps, (!(skeleton sig.result), l)))
+              _ => pure Nothing
   where
     erasedVar : SigPart -> Maybe Name
     erasedVar (SigArg b v) = if isErased b.rig then Just v else Nothing
     erasedVar _ = Nothing
 
     params : List Name -> List (FlatVar, ClosedTerm) -> List SigPart ->
-             Core (Either FlatProblem (List (FlatVar, ClosedTerm)))
-    params deferred acc [] = pure (Right (reverse acc))
+             Core (Maybe (List (FlatVar, ClosedTerm)))
+    params deferred acc [] = pure (Just (reverse acc))
     params deferred acc (SigUnwrap :: ps) = params deferred acc ps
     params deferred acc (SigArg b v :: ps)
         = if isErased b.rig then params deferred acc ps else
-            case !(layout deferred b.type) of
-                 LaidOut l =>
-                   do fv <- pure (MkFlatVar v !(skeleton b.type) l)
-                      params deferred ((fv, !(quoteClosed b.type)) :: acc) ps
-                 Deferred => pure (Left (NeedsCopy fn))
-                 Rejected why =>
-                   if b.autoImplicit || staticOnly why
-                      then pure (Left (NeedsCopy fn))
-                      else pure (Left (CalleeNotFlat fn b.position !(quoteClosed b.type) why))
+            if b.autoImplicit then pure Nothing else
+              case !(layout deferred b.type) of
+                   LaidOut l =>
+                     do fv <- pure (MkFlatVar v !(skeleton b.type) l)
+                        params deferred ((fv, !(quoteClosed b.type)) :: acc) ps
+                   _ => pure Nothing
 
--- The terms for a signature's first `k` binders, which a case tree of `k`
--- arguments binds, and the rest of the signature as pending arguments.
-splitParts : Nat -> List SigPart -> Maybe (List ClosedTerm, List Pending)
-splitParts Z ps = Just ([], map pending ps)
+-- A signature's parts as what its function's case tree is applied to: the
+-- variable of each binder, and each unwrapping.
+sigPending : List SigPart -> List Pending
+sigPending = map pending
   where
     pending : SigPart -> Pending
     pending (SigArg _ v) = PArg (Ref EmptyFC Bound v)
     pending SigUnwrap = PUnwrap
-splitParts (S k) (SigArg _ v :: ps)
-    = do (ts, rest) <- splitParts k ps
-         Just (Ref EmptyFC Bound v :: ts, rest)
-splitParts (S k) _ = Nothing
 
 -- The arguments of a call as static values, those of erased binders as they
 -- are, so that types keep them.
@@ -724,52 +830,162 @@ mutual
       keep a' = do (as, wrap, tr') <- bindArgs tr fc bas
                    pure (a' :: as, wrap, tr')
 
-  -- A call of a function that is not unfolded: a call of its flat form.
+  -- A call of a function that is not unfolded: a call of its flat form, or,
+  -- at static arguments, of its copy at them.
   demand : {auto c : Ref Ctxt Defs} -> {auto s : Ref FlatSt FlatState} ->
            Tr -> FC -> Name -> GlobalDef -> List Pending -> Core FlatExp
   demand tr fc fn gdef ps
       = do sig <- signature (type gdef)
-           Right (params, res) <- groundSignature fn sig
-             | Left p => fail tr fc p
+           Just (params, res) <- groundSignature sig
+             | Nothing => copy tr fc fn gdef ps
            let args = mapMaybe pendingArg ps
            let erasure = mapMaybe binderErased sig.parts
            when (length args /= length erasure) $ fail tr fc NotStatic
            as <- traverse (\a => trTerm tr a []) (map fst (filter (not . snd) (zip args erasure)))
-           makeForm tr fc fn gdef sig params res
+           makeForm tr fc fn fn gdef (sigPending sig.parts) params res
            pure (FCall fc fn as)
     where
-      pendingArg : Pending -> Maybe ClosedTerm
-      pendingArg (PArg a) = Just a
-      pendingArg _ = Nothing
-
       binderErased : SigPart -> Maybe Bool
       binderErased (SigArg b _) = Just (isErased b.rig)
       binderErased _ = Nothing
 
-  ||| Make the flat form of `fn`, of a ground signature, unless it has one or
-  ||| is being made.
+  -- A call of `fn` at static arguments: a call of its copy at them, made on
+  -- demand and memoised by the function and its static arguments.
+  --
+  -- The callee's type is walked with the call's arguments, which instantiate
+  -- the types of the binders after them. An argument is static if its binder
+  -- is erased or auto-implicit, if its type's values are static only (a
+  -- function, a type, a lazy value, a dictionary), or if it is closed and
+  -- its type has no layout (a message to `idris_crash`); it is substituted
+  -- into the copy's case tree. Any other argument of a flat type is dynamic,
+  -- a parameter of the copy. The flat variables the static arguments capture,
+  -- such as those a lambda refers to, are parameters too, after the dynamic
+  -- ones, renamed in the copy so that one copy serves every call whose static
+  -- arguments are the same terms.
+  copy : {auto c : Ref Ctxt Defs} -> {auto s : Ref FlatSt FlatState} ->
+         Tr -> FC -> Name -> GlobalDef -> List Pending -> Core FlatExp
+  copy tr fc fn gdef ps
+      = do defs <- get Ctxt
+           (parts, params, actuals, res) <- walk [] 0 (mapMaybe pendingArg ps)
+                                                !(nf defs Env.empty (type gdef)) [] [] []
+           Right res' <- laidOut res
+             | Left why => fail tr fc (CalleeNotFlat fn Nothing !(quoteClosed res) why)
+           -- the flat variables the static arguments capture
+           sts <- statics <$> get FlatSt
+           let staticTerms = mapMaybe staticOf parts
+           let caps = filter (\x => isJust (lookup x tr.vars))
+                             (nub (concatMap (boundRefs . resolve sts) staticTerms))
+           let canon = zip caps (map (MN "flat captured" . cast) [0 .. length caps])
+           parts' <- relocateParts (fromList canon) parts
+           key <- traverse keyOf parts'
+           as <- traverse (\a => trTerm tr a []) actuals
+           let capArgs = map (FVar fc) caps
+           st <- get FlatSt
+           case find (\cp => cp.function == fn && sameKey cp.key key) st.copies of
+                Just cp => pure (FCall fc cp.form (as ++ capArgs))
+                Nothing =>
+                  do when (count (== fn) tr.chain >= copyDepth) $ fail tr fc (CopiesDoNotEnd fn)
+                     name <- pure (copyName fn st.nextName)
+                     update FlatSt { nextName $= (+ 1), copies $= (MkCopy fn key name ::) }
+                     capParams <- traverse (capParam canon) caps
+                     makeForm tr fc name fn gdef (map snd parts') (params ++ capParams) res'
+                     pure (FCall fc name (as ++ capArgs))
+    where
+      closed : ClosedTerm -> Bool
+      closed t = all (\x => isNothing (lookup x tr.vars)) (boundRefs t)
+
+      -- Each part: what the case tree is applied to, and whether it is
+      -- static (`True`, an argument the key holds) or not.
+      walk : (unfolded : List Name) -> (explicit : Nat) -> List ClosedTerm -> ClosedNF ->
+             List (Bool, Pending) -> List (FlatVar, ClosedTerm) -> List ClosedTerm ->
+             Core (List (Bool, Pending), List (FlatVar, ClosedTerm), List ClosedTerm, ClosedNF)
+      walk ns i (a :: as) (NBind bfc x (Pi _ rig pinfo aty) sc) parts params actuals
+          = do defs <- get Ctxt
+               let i' = if isExplicit pinfo then S i else i
+               tyNF <- evalClosure defs aty
+               a' <- resolved a
+               let next : ClosedTerm -> Core ClosedNF
+                         = \t => sc defs (toClosure defaultOpts Env.empty t)
+               if isErased rig
+                  then walk ns i' as !(next a') (parts ++ [(True, PArg a)]) params actuals
+                  else if isAutoImplicit pinfo
+                    then do sa <- static tr a
+                            walk ns i' as !(next a') (parts ++ [(True, PArg sa)]) params actuals
+                    else case !(layout [] tyNF) of
+                      LaidOut l =>
+                        do v <- fresh x
+                           fv <- pure (MkFlatVar v !(skeleton tyNF) l)
+                           walk ns i' as !(next (Ref bfc Bound v)) (parts ++ [(False, PArg (Ref bfc Bound v))])
+                                (params ++ [(fv, !(quoteClosed tyNF))]) (actuals ++ [a])
+                      Rejected why =>
+                        if staticOnly why || closed a'
+                           then do sa <- static tr a
+                                   walk ns i' as !(next a') (parts ++ [(True, PArg sa)]) params actuals
+                           else fail tr fc (CalleeNotFlat fn (Just (i', x)) !(quoteClosed tyNF) why)
+                      Deferred => fail tr fc (Unhandled "A type made of erased arguments at a call")
+      walk ns i as res parts params actuals
+          = do Just (n, fnTy) <- newtypeOverFunction res
+                 | Nothing => done
+               if elem n ns || isNil as then done
+                  else walk (n :: ns) i as fnTy (parts ++ [(False, PUnwrap)]) params actuals
+        where
+          done : Core (List (Bool, Pending), List (FlatVar, ClosedTerm), List ClosedTerm, ClosedNF)
+          done = if isNil as then pure (parts, params, actuals, res) else fail tr fc NotStatic
+
+      staticOf : (Bool, Pending) -> Maybe ClosedTerm
+      staticOf (True, PArg t) = Just t
+      staticOf _ = Nothing
+
+      relocateParts : NameMap Name -> List (Bool, Pending) -> Core (List (Bool, Pending))
+      relocateParts canon parts
+          = do moved <- relocate canon (mapMaybe staticOf parts)
+               pure (place parts moved)
+        where
+          place : List (Bool, Pending) -> List ClosedTerm -> List (Bool, Pending)
+          place ((True, PArg _) :: ps') (t :: ts) = (True, PArg t) :: place ps' ts
+          place (p :: ps') ts = p :: place ps' ts
+          place [] _ = []
+
+      keyOf : (Bool, Pending) -> Core (Maybe ClosedTerm)
+      keyOf (True, PArg t) = Just <$> toFullNames !(resolved t)
+      keyOf _ = pure Nothing
+
+      sameKey : List (Maybe ClosedTerm) -> List (Maybe ClosedTerm) -> Bool
+      sameKey [] [] = True
+      sameKey (Nothing :: ks) (Nothing :: ks') = sameKey ks ks'
+      sameKey (Just t :: ks) (Just t' :: ks') = eqTerm t t' && sameKey ks ks'
+      sameKey _ _ = False
+
+      capParam : List (Name, Name) -> Name -> Core (FlatVar, ClosedTerm)
+      capParam canon x
+          = do Just (fv, ty) <- pure (lookup x tr.vars)
+                 | Nothing => fail tr fc (Unhandled "A captured variable out of scope")
+               pure ({ name := fromMaybe fv.name (lookup x canon) } fv, ty)
+
+  ||| Make the flat form `form` of `fn`, its case tree applied to `parts`,
+  ||| unless it is made or being made: `fn`'s own, or a copy of it.
   makeForm : {auto c : Ref Ctxt Defs} -> {auto s : Ref FlatSt FlatState} ->
-             Tr -> FC -> Name -> GlobalDef -> Signature ->
+             Tr -> FC -> (form : Name) -> (fn : Name) -> GlobalDef -> (parts : List Pending) ->
              List (FlatVar, ClosedTerm) -> (Skeleton, Layout) -> Core ()
-  makeForm tr fc fn gdef sig params (rsk, rl)
-      = do Nothing <- pure (lookup fn (forms !(get FlatSt)))
+  makeForm tr fc form fn gdef parts params (rsk, rl)
+      = do Nothing <- pure (lookup form (forms !(get FlatSt)))
              | Just _ => pure ()
            st <- get FlatSt
-           when (not (fn `elem` st.making)) $
+           when (not (form `elem` st.making)) $
              do let tr' = { chain := if fn == tr.root then [] else tr.chain ++ [fn]
                           , unfolding := [fn]
                           , vars := fromList (map (\p => ((fst p).name, p)) params)
                           } (if fn == tr.root then tr else leave tr fc)
                 let PMDef _ targs ct _ _ = definition gdef
                   | _ => fail tr' fc (Unhandled "A definition without clauses")
-                put FlatSt ({ making $= (fn ::) } st)
-                let Just (envTms, pending) = splitParts (length targs) sig.parts
+                put FlatSt ({ making $= (form ::) } st)
+                let Just (envTms, pending) = takeArgs (length targs) parts
                   | Nothing => fail tr' fc (Unhandled "Clauses with more arguments than the type")
                 let Just env = mkSubst targs envTms
                   | Nothing => fail tr' fc (Unhandled "Clauses with more arguments than the type")
                 body <- trTree tr' env ct pending
-                let d = MkFlatDef fn (map fst params) rsk rl body (location gdef)
-                update FlatSt { forms $= insert fn d }
+                let d = MkFlatDef form (map fst params) rsk rl body (location gdef)
+                update FlatSt { forms $= insert form d }
 
   ||| Translate a case tree, its variables bound to `env`, applied to `ps`.
   trTree : {auto c : Ref Ctxt Defs} -> {auto s : Ref FlatSt FlatState} ->
@@ -1071,10 +1287,10 @@ root n
            | Nothing => pure ()
          fn <- toFullNames n
          sig <- signature (type gdef)
-         Right (params, res) <- groundSignature fn sig
-           | Left _ => pure ()
+         Just (params, res) <- groundSignature sig
+           | Nothing => pure ()
          let tr = MkTr fn [] (location gdef) [] empty
-         makeForm tr (location gdef) fn gdef sig params res
+         makeForm tr (location gdef) fn fn gdef (sigPending sig.parts) params res
 
 ||| The flat functions a code generator's directives name: each directive
 ||| `flat` followed by names, each as written in the program, qualified as
@@ -1128,7 +1344,7 @@ flatNames directives
 export
 flatForms : {auto c : Ref Ctxt Defs} -> List Name -> Core (NameMap FlatDef, List FlatError)
 flatForms ns
-    = do s <- newRef FlatSt (MkFlatState 0 [] empty empty Nothing)
+    = do s <- newRef FlatSt (MkFlatState 0 [] empty empty [] Nothing)
          errs <- catMaybes <$> traverse tryRoot ns
          pure ((forms !(get FlatSt)), errs)
   where
@@ -1390,9 +1606,10 @@ references (FCrash _ _) = []
 references (FNone _) = []
 
 ||| Compile each function that has one of the flat forms from that form,
-||| made ordinary again: the flat oracle. Done before code generation narrows
-||| the context to the compiled forms, since `forget` reads constructors and
-||| types.
+||| made ordinary again: the flat oracle. A copy at static arguments, which
+||| has no function of its own, becomes a definition of the context that has
+||| only its compiled form. Done before code generation narrows the context
+||| to the compiled forms, since `forget` reads constructors and types.
 export
 useFlatForms : {auto c : Ref Ctxt Defs} -> NameMap FlatDef -> Core ()
 useFlatForms forms = traverse_ use (toList forms)
@@ -1400,9 +1617,11 @@ useFlatForms forms = traverse_ use (toList forms)
     use : (Name, FlatDef) -> Core ()
     use (n, d)
         = do defs <- get Ctxt
-             Just gdef <- lookupCtxtExact n (gamma defs)
-               | Nothing => pure ()
              cd <- forget d
+             gdef <- case !(lookupCtxtExact n (gamma defs)) of
+                          Just gdef => pure gdef
+                          Nothing => pure (newDef d.fc n top Scope.empty (Erased d.fc Placeholder)
+                                                  (specified Public) None)
              let refs = foldr (\r => insert r False) (refersToRuntime gdef) (references d.body)
              ignore $ addDef n ({ compexpr := Just cd
                                 , namedcompexpr := Just (forgetDef cd)

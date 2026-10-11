@@ -1,0 +1,7 @@
+. ../../testutils.sh
+
+run Main.idr
+idris2 --cg flat-oracle --exec main Main.idr
+idris2 --cg flat-oracle --directive dump-flat=flat.txt --exec main Main.idr
+cat flat.txt
+rm -f flat.txt

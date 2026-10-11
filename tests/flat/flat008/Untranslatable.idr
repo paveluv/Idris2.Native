@@ -1,7 +1,8 @@
 module Untranslatable
 
 -- Bodies that the flat translation rejects, each with its reason and the
--- chain of calls that reaches it.
+-- chain of calls that reaches it. Calls at static arguments get copies
+-- (flat011); flat012 has the copies that are rejected.
 
 -- A value whose type is not flat: the case is on a String.
 %cg native flat Untranslatable.parity
@@ -27,22 +28,6 @@ sumList (x :: xs) = x + sumList xs
 %cg native flat Untranslatable.viaList
 viaList : Bits64 -> Bits64
 viaList x = sumList [x, x]
-
--- A callee at static arguments: a generic function, which needs a copy.
-twice : (a -> a) -> a -> a
-twice f x = f (f x)
-
-%cg native flat Untranslatable.viaGeneric
-viaGeneric : Bits64 -> Bits64
-viaGeneric x = twice (+ 1) x
-
--- A callee at a lazy argument, which is static only, so it too needs a copy.
-orElse : Bits64 -> Lazy Bits64 -> Bits64
-orElse x y = if x == 0 then y else x
-
-%cg native flat Untranslatable.viaLazy
-viaLazy : Bits64 -> Bits64
-viaLazy x = orElse x (x + 1)
 
 -- The chain: a ground callee, flat itself, whose body is not.
 lengthOf : Bits64 -> Bits64
