@@ -8,9 +8,9 @@
 ||| which exits with the value `main` returns; the abort stub, which every
 ||| construct the backend does not lower jumps to; and the allocator's slow
 ||| path. Each program here is a hand-written `main` in x86-64 instructions.
-||| The routines that are the runtime library's now, such as `idris_crash`,
-||| which the allocator's slow path jumps to when the system has no memory,
-||| each program brings by hand, as the seed had them.
+||| The routines that are the runtime library's now, `idris_start`, which the
+||| entry calls, and `idris_crash`, which the allocator's slow path jumps to
+||| when the system has no memory, each program brings by hand.
 module Gen
 
 import Compiler.Native.HeapObject
@@ -82,8 +82,19 @@ crashByHand =
   , MovRR RDX RSI, MovRR RSI RDI, MovRI RDI 2, MovRI RAX 1, Syscall
   , MovRI RDI 1, MovRI RAX 231, Syscall ]
 
+||| `idris_start(rdi = entry, rsi = window)`, reduced to the first window:
+||| mmap(NULL, window, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS,
+||| -1, 0), whose address is the allocation pointer, and the window's end its
+||| limit. The system call keeps rsi.
+startByHand : List Instr
+startByHand =
+  [ Lbl (symLabel SymRuntimeStart)
+  , MovRI RAX 9, MovRI RDI 0, MovRI RDX 3, MovRI R10 0x22, MovRI R8 (-1), MovRI R9 0, Syscall
+  , MovRR R15 RAX, MovRR R14 RAX, Alu ADD R14 RSI
+  , Ret ]
+
 emit : String -> List Instr -> IO ()
-emit name prog = case link SeedEnc (prog ++ crashByHand) of
+emit name prog = case link SeedEnc (prog ++ startByHand ++ crashByHand) of
   Left missing => putStrLn (name ++ ": unresolved labels " ++ show missing)
   Right image => do
     Right () <- writeImage name image

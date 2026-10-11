@@ -640,6 +640,15 @@ parameters {0 enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef)
       p <- emit1 (Arith Add base off)
       emit0 (StoreN sw (MkMem (AtWord p) Nothing 0) x)
       pure noRegs
+    intrinsic _ SetHp [w] = do
+      emit0 (WriteHp w)
+      pure noRegs
+    intrinsic _ SetHpLim [w] = do
+      emit0 (WriteHpLim w)
+      pure noRegs
+    intrinsic _ (AreaAddress a) [] = do
+      p <- emit1 (AreaAddr a)
+      pure (MkValue [Word] [p])
     intrinsic n _ _ = unsupported ("the intrinsic " ++ show n ++ " with another number of arguments")
 
     ||| A `let`: the variable bound to the value.

@@ -69,3 +69,43 @@ mapMemory bytes = do
   if r > 0xFFFFFFFFFFFFF000
      then assert_total (idris_crash "idris: cannot map memory")
      else pure (MkAddr r)
+
+%extern prim__setHp : (hp : Bits64) -> (1 m : Heap) -> Ret Heap ()
+%extern prim__setHpLim : (hplim : Bits64) -> (1 m : Heap) -> Ret Heap ()
+%extern prim__stackLimitArea : (1 m : Heap) -> Ret Heap Bits64
+%extern prim__argvArea : (1 m : Heap) -> Ret Heap Bits64
+
+||| Make `bytes` at the address the allocation window: inline allocation
+||| bumps the allocation pointer from the address until the limit.
+export
+setWindow : Addr k -> (bytes : Bits64) -> Op Heap ()
+setWindow a bytes = do
+  prim__setHp a.word
+  prim__setHpLim (a.word + bytes)
+
+||| The word that holds the lowest the machine stack pointer may go in
+||| direct code, which every direct function checks on entry.
+export
+stackLimitArea : Op Heap (Addr k)
+stackLimitArea = do
+  w <- prim__stackLimitArea
+  pure (MkAddr w)
+
+||| The word that holds the stack pointer at the program's entry: the
+||| argument count, the arguments' addresses and the environment's are there.
+export
+argvArea : Op Heap (Addr k)
+argvArea = do
+  w <- prim__argvArea
+  pure (MkAddr w)
+
+||| The soft limit of the process's stack, in bytes, by getrlimit, which
+||| writes it into the 16 bytes at `buffer`; `otherwise` if the system does
+||| not say.
+export
+stackSoftLimit : (buffer : Addr k) -> (otherwise : Bits64) -> Op Heap Bits64
+stackSoftLimit buffer otherwise = do
+  store64 buffer 0 otherwise
+  -- getrlimit(RLIMIT_STACK, buffer)
+  _ <- syscall 97 3 buffer.word 0 0 0 0
+  load64 buffer 0

@@ -11,4 +11,5 @@ modules =
     Runtime,
     Runtime.Heap,
     Runtime.Memory,
+    Runtime.Start,
     Runtime.System

@@ -741,6 +741,12 @@ parameters (enc : Enc)
     emit (Store (width sw) (MBase RAX (m.offset - baseTag m.base)) RCX)
   -- The number in rax and the arguments where Linux takes them. The kernel
   -- keeps every register but rcx and r11, and the result is in rax.
+  instr blk (AreaAddr d a) = do
+    emit (Lea RAX (MRip (sym (areaSym a)) 0))
+    store d RAX
+  -- the pinned registers of the allocation window
+  instr blk (Intrinsic SetHp Nothing [x]) = load R15 x
+  instr blk (Intrinsic SetHpLim Nothing [x]) = load R14 x
   instr blk (Intrinsic Syscall (Just d) (n :: args)) =
     if length args > 6 then failWith "a system call of more than six arguments" else do
       traverse_ (\(r, x) => load r x) (zip [RDI, RSI, RDX, R10, R8, R9] args)

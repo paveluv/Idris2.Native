@@ -5,8 +5,9 @@
 -- and exits with 42, or with 1 + the index of the first wrong one. Both are
 -- written with the builder (Compiler.Native.TermIR.Build), and so is the
 -- `exit` the caller ends with, a system call as the runtime's is. A crash
--- jumps to the runtime's `crash`, which the program defines itself, under
--- the name the runtime contract gives it.
+-- jumps to the runtime's `crash`, and the entry calls the runtime's
+-- `start`, which the program defines itself, under the names the runtime
+-- contract gives them.
 --
 -- A Direct function is how a flat function is compiled: a machine function
 -- whose arguments and results are its registers' values. `spread` is as a
@@ -67,7 +68,8 @@ D : Decls TestEnc
 D = MkDecls [ MkSig (nm "main") InCPS [] False
             , MkSig (nm "spread") (InDirect Results False) Params False
             , MkSig (nm "exit") (InDirect [] False) [W64] False
-            , MkSig (flatName runtimeCrash) (InDirect [] False) [W64, W64] False ]
+            , MkSig (flatName runtimeCrash) (InDirect [] False) [W64, W64] False
+            , MkSig (flatName runtimeStart) (InDirect [] False) [W64, W64] False ]
             []
 
 spreadRef : Var (sigs D) (MkSig (nm "spread") (InDirect Results False) Params False)
@@ -75,6 +77,18 @@ spreadRef = later here
 
 exitRef : Var (sigs D) (MkSig (nm "exit") (InDirect [] False) [W64] False)
 exitRef = later (later here)
+
+||| The runtime's `start`, reduced to what this program needs: the first
+||| allocation window, mapped, of `window` bytes, as the allocation pointer
+||| and its limit. The stack limit stays 0, so the stack is not checked.
+startBody : Closed D (InDirect [] False) False [W64, W64]
+startBody = build $ \[entry, window] => do
+  -- mmap(NULL, window, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)
+  w <- emit1 (SystemCall (W 9) [W 0, window, W 3, W 0x22, W (-1), W 0])
+  emit0 (WriteHp w)
+  lim <- emit1 (Arith Add w window)
+  emit0 (WriteHpLim lim)
+  ret []
 
 ||| The runtime's `crash`: the message, `length` bytes at `message`, written
 ||| to the standard error, then the process ended with status 1.
@@ -151,10 +165,11 @@ main = do
   let Just s = close spreadBody | Nothing => putStrLn "spread: a level outside its context"
   let Just e = close exitBody | Nothing => putStrLn "exit: a level outside its context"
   let Just cr = close crashBody | Nothing => putStrLn "crash: a level outside its context"
+  let Just st = close startBody | Nothing => putStrLn "start: a level outside its context"
   case choose (distinct (map (.name) (sigs D)) && distinct (map (.sym) (statics D))) of
     Right _ => putStrLn "names repeat"
     Left ok => do
-      let ir = allocRegs x86_64 (MkProgram {d = D} [Defined m, Defined s, Defined e, Defined cr] [] (MkEntry here) noConIds)
+      let ir = allocRegs x86_64 (MkProgram {d = D} [Defined m, Defined s, Defined e, Defined cr, Defined st] [] (MkEntry here) noConIds)
       let Right rendered = render TestEnc ir
         | Left err => putStrLn ("render: " ++ err)
       let Right image = linkProgram TestEnc windowBytes rendered.areas rendered.text rendered.rodata

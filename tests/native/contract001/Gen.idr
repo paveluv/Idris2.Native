@@ -43,6 +43,10 @@ exit = form runtimeExit [word "status"] unit []
 crash : FlatDef
 crash = form runtimeCrash [word "message", word "length"] unit []
 
+||| `start (entry, window : Bits64) : ()`, as the contract has it.
+start : FlatDef
+start = form runtimeStart [word "entry", word "window"] unit []
+
 check : String -> List FlatDef -> IO ()
 check what forms = putStrLn $ what ++ ": " ++
   case lowerProgram TestEnc forms [] [] of
@@ -51,9 +55,9 @@ check what forms = putStrLn $ what ++ ": " ++
 
 main : IO ()
 main = do
-  check "as declared" [exit, crash]
-  check "no exit" [crash]
+  check "as declared" [start, exit, crash]
+  check "no exit" [start, crash]
   -- exit (status, code : Bits64) : ()
-  check "exit of two words" [form runtimeExit [word "status", word "code"] unit [], crash]
+  check "exit of two words" [start, form runtimeExit [word "status", word "code"] unit [], crash]
   -- crash (message, length : Bits64) : Bits64
-  check "crash with a result" [exit, form runtimeCrash [word "message", word "length"] (SPrim Bits64Type) [Word]]
+  check "crash with a result" [start, exit, form runtimeCrash [word "message", word "length"] (SPrim Bits64Type) [Word]]

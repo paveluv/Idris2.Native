@@ -217,6 +217,13 @@ data Area
     NROOTS
   | ||| Extra registers for register allocation; see `Slot`.
     SCRATCH
+  | ||| The lowest the machine stack pointer may go in direct code, which
+    ||| every direct function checks on entry. Set at start-up.
+    STACK_LIMIT
+  | ||| The stack pointer at the program's entry, where the system put the
+    ||| argument count, the arguments' addresses and the environment's. Set
+    ||| at start-up.
+    ARGV
 
 ||| Operations on machine state that the runtime needs and no instruction
 ||| expresses. Each is a fixed instruction sequence per target, never a call.

@@ -6,4 +6,5 @@ module Runtime
 
 import public Runtime.Heap
 import public Runtime.Memory
+import public Runtime.Start
 import public Runtime.System

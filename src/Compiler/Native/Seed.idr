@@ -18,30 +18,11 @@ import Data.SortedMap
 
 %default total
 
-||| The most of the process stack direct code may use, whatever the stack's
-||| limit: 1 GiB.
-stackCap : Integer
-stackCap = 1024 * 1024 * 1024
-
-||| What the stack check leaves below the limit, for the arguments and
-||| environment above the stack pointer at entry and for the frames of code
-||| that does not check, such as a direct call's saved values: 256 KiB.
-stackMargin : Int
-stackMargin = 256 * 1024
-
-||| The stack's limit assumed when `getrlimit` fails: Linux's default, 8 MiB.
-defaultStackBytes : Integer
-defaultStackBytes = 8 * 1024 * 1024
-
 -- Linux x86-64 system calls and mmap arguments
-sysWrite, sysMmap, sysGetrlimit, sysExitGroup : Integer
+sysWrite, sysMmap, sysExitGroup : Integer
 sysWrite = 1
 sysMmap = 9
-sysGetrlimit = 97
 sysExitGroup = 231
-
-rlimitStack : Integer
-rlimitStack = 3
 
 protReadWrite, mapPrivateAnon : Integer
 protReadWrite = 3      -- PROT_READ | PROT_WRITE
@@ -59,33 +40,19 @@ mmapCall =
 ------------------------------------------------------------------------------
 -- The routines
 
-||| `_start`: set the stack limit, map the first window, set `k` to HALT, and
-||| enter the program. Superseded by the fragment runtime's start-up, which
-||| also maps the fixed runtime stack; the seed runs direct code on the
-||| process stack the kernel provides, 16-aligned.
-|||
-||| Direct code, which recursion in flat code deepens, checks the stack
-||| pointer against `STACK_LIMIT` on entry: the stack pointer at start-up,
-||| less the stack's limit (`getrlimit`, at most `stackCap`), plus
-||| `stackMargin`. Below the limit, the kernel's guard gap still faults.
+||| `_start`, the ELF entry: the runtime's `idris_start` with the stack
+||| pointer at entry, where the system put the arguments, and the allocation
+||| window's size, which sets up the program; then `main`, entered under the
+||| continuation HALT, as the heap lowering of continuations enters code. The
+||| stack pointer at entry is 16-aligned, and is again when `idris_start`
+||| returns, so every direct call generated code makes finds it aligned.
 startText : ValEnc -> (window : Int) -> List Instr
 startText venc window =
-  [ Comment "_start: STACK_LIMIT, map the first window, k := HALT, enter main"
+  [ Comment "_start: idris_start(entry, window), then main under k = HALT"
   , Lbl (symLabel SymStart)
-  , MovRR RBX RSP                                 -- the stack pointer at entry
-  , AluI SUB RSP 16, MovRR RSI RSP                -- a struct rlimit, which the syscall keeps rsi pointing to
-  , MovRI RCX defaultStackBytes, MovMR (MBase RSI 0) RCX   -- left as it is if getrlimit fails
-  , MovRI RDI rlimitStack, MovRI RAX sysGetrlimit, Syscall
-  , MovRM RAX (MBase RSI 0)                       -- the soft limit
-  , MovRI RCX stackCap, Alu CMP RAX RCX, Cmov A RAX RCX   -- at most the cap; unlimited is above it
-  , MovRR RCX RBX, Alu SUB RCX RAX, AluI ADD RCX stackMargin
-  , Lea RAX (MRip (symLabel SymStackLimit) 0), MovMR (MBase RAX 0) RCX
-  , MovRR RSP RBX
-  , MovRI RSI (cast window) ] ++ mmapCall ++
-  [ MovRR R15 RAX                                 -- hp
-  , Lea R14 (MBase RAX window)                    -- hplim
+  , MovRR RDI RSP, MovRI RSI (cast window)
+  , Call (symLabel SymRuntimeStart)
   , Lea R12 (MRip (symLabel SymHALT) (cast (pointerTag venc)))   -- k := HALT, a pointer word
-  , AluI AND RSP (-16)                            -- generated code never moves rsp: 16-aligned at every direct call
   , Jmp (symLabel SymMain) ]
 
 ||| `idris_halt`: HALT's code. Entered by `jmp [k]` with the final result in
@@ -297,15 +264,16 @@ seedAreas : Areas
 seedAreas = MkAreas 0 2 0
 
 ||| The zero-initialised per-thread areas, 8-aligned, in bss: `ARGS`, then
-||| `ROOTS`, `NROOTS`, `SCRATCH` and `STACK_LIMIT`.
+||| `ROOTS`, `NROOTS`, `SCRATCH`, `STACK_LIMIT` and `ARGV`.
 export
 seedBss : Areas -> List (Sym, Int)
 seedBss a =
   let roots = 8 * cast a.args
       nroots = roots + 8 * cast a.roots
       limit = nroots + 8 + 8 * cast a.scratch
-  in [ (SymArgs, 0), (SymRoots, roots), (SymNRoots, nroots), (SymScratch, nroots + 8), (SymStackLimit, limit) ]
+  in [ (SymArgs, 0), (SymRoots, roots), (SymNRoots, nroots), (SymScratch, nroots + 8), (SymStackLimit, limit)
+     , (SymArgv, limit + 8) ]
 
 export
 seedBssSize : Areas -> Int
-seedBssSize a = 8 * cast (a.args + a.roots + 1 + a.scratch + 1)
+seedBssSize a = 8 * cast (a.args + a.roots + 1 + a.scratch + 2)

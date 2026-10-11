@@ -39,6 +39,8 @@ data Sym
   | SymStackLimit      -- bss: STACK_LIMIT, 1 word: the lowest the stack pointer may go in direct code
   | SymStackOverflow   -- `idris_stack_overflow`: where direct code's stack check fails; message, exit 1
   | SymMsgStackOverflow  -- rodata
+  | SymArgv            -- bss: ARGV, 1 word: the stack pointer at entry
+  | SymRuntimeStart    -- `idris_start(entry, window)`: the runtime's start-up, which `_start` calls
 
 public export
 symLabel : Sym -> Label
@@ -61,6 +63,8 @@ symLabel SymAllocMutable = 16
 symLabel SymStackLimit = 17
 symLabel SymStackOverflow = 18
 symLabel SymMsgStackOverflow = 19
+symLabel SymArgv = 20
+symLabel SymRuntimeStart = 21
 
 ||| Names as the ABI documents write them (for dumps).
 public export
@@ -84,6 +88,18 @@ symName SymAllocMutable = "idris_alloc_mutable"
 symName SymStackLimit = "STACK_LIMIT"
 symName SymStackOverflow = "idris_stack_overflow"
 symName SymMsgStackOverflow = "msg_stack_overflow"
+symName SymArgv = "ARGV"
+symName SymRuntimeStart = "idris_start"
+
+||| The symbol of a per-thread area.
+public export
+areaSym : Area -> Sym
+areaSym ARGS = SymArgs
+areaSym ROOTS = SymRoots
+areaSym NROOTS = SymNRoots
+areaSym SCRATCH = SymScratch
+areaSym STACK_LIMIT = SymStackLimit
+areaSym ARGV = SymArgv
 
 ||| The first label a program may use for itself.
 public export
@@ -129,6 +145,12 @@ record Routine (enc : Enc) where
   results : List (Ty enc)
   params : List (Ty enc)
 
+||| The routine that starts the program, before `main`: the stack limit, the
+||| first allocation window, the arguments.
+public export
+runtimeStart : Name
+runtimeStart = NS (mkNamespace "Runtime.Start") (UN (Basic "start"))
+
 ||| The routine that ends the process with a status.
 public export
 runtimeExit : Name
@@ -150,7 +172,8 @@ integerRoutine op = UN (Basic ("idris_integer_" ++ op))
 export
 routines : {enc : Enc} -> List (Routine enc)
 routines =
-  [ MkRoutine runtimeExit True Nothing [] [W64]
+  [ MkRoutine runtimeStart True (Just SymRuntimeStart) [] [W64, W64]
+  , MkRoutine runtimeExit True Nothing [] [W64]
   , MkRoutine runtimeCrash True (Just SymCrash) [] [W64, W64]
   , integer "add" [Val] [Val, Val]
   , integer "sub" [Val] [Val, Val]
@@ -196,6 +219,12 @@ data Intrinsic
     Store64
   | ||| Store a word's low 8, 16 or 32 bits.
     StoreNarrow SubWord
+  | ||| Set the allocation pointer.
+    SetHp
+  | ||| Set the allocation limit.
+    SetHpLim
+  | ||| The address of a per-thread area.
+    AreaAddress Area
 
 ||| An intrinsic as the runtime library declares it: the registers of its
 ||| arguments, the token among them taking none, and of its result.
@@ -219,7 +248,11 @@ intrinsics =
   , memory "prim__store64" Store64 [W64, W64, W64] []
   , memory "prim__store32" (StoreNarrow Sub32) [W64, W64, W64] []
   , memory "prim__store16" (StoreNarrow Sub16) [W64, W64, W64] []
-  , memory "prim__store8" (StoreNarrow Sub8) [W64, W64, W64] [] ]
+  , memory "prim__store8" (StoreNarrow Sub8) [W64, W64, W64] []
+  , memory "prim__setHp" SetHp [W64] []
+  , memory "prim__setHpLim" SetHpLim [W64] []
+  , memory "prim__stackLimitArea" (AreaAddress STACK_LIMIT) [] [W64]
+  , memory "prim__argvArea" (AreaAddress ARGV) [] [W64] ]
   where
     system : String -> Name
     system n = NS (mkNamespace "Runtime.System") (UN (Basic n))
