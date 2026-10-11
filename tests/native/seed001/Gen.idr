@@ -9,8 +9,8 @@
 ||| construct the backend does not lower jumps to; and the allocator's slow
 ||| path. Each program here is a hand-written `main` in x86-64 instructions.
 ||| The routines that are the runtime library's now, `idris_start`, which the
-||| entry calls, and `idris_crash`, which the allocator's slow path jumps to
-||| when the system has no memory, each program brings by hand.
+||| entry calls, `idris_alloc_slow`, the allocation slow path, and
+||| `idris_crash`, each program brings by hand.
 module Gen
 
 import Compiler.Native.HeapObject
@@ -93,8 +93,23 @@ startByHand =
   , MovRR R15 RAX, MovRR R14 RAX, Alu ADD R14 RSI
   , Ret ]
 
+||| `idris_alloc_slow(rdi = n bytes)`, grow-only: a fresh window of a
+||| megabyte and `n` more from the system, the object at its start, the rest
+||| the allocation window; the object's address in rdi, where a routine's
+||| result goes. r13 keeps `n` across the system call, which keeps it.
+allocSlowByHand : List Instr
+allocSlowByHand =
+  [ Lbl (symLabel SymAllocSlow)
+  , MovRR R13 RDI
+  , Lea RSI (MBase RDI 1048576)
+  , MovRI RAX 9, MovRI RDI 0, MovRI RDX 3, MovRI R10 0x22, MovRI R8 (-1), MovRI R9 0, Syscall
+  , MovRR R15 RAX, Alu ADD R15 R13
+  , MovRR R14 RAX, Alu ADD R14 RSI
+  , MovRR RDI RAX
+  , Ret ]
+
 emit : String -> List Instr -> IO ()
-emit name prog = case link SeedEnc (prog ++ startByHand ++ crashByHand) of
+emit name prog = case link SeedEnc (prog ++ startByHand ++ allocSlowByHand ++ crashByHand) of
   Left missing => putStrLn (name ++ ": unresolved labels " ++ show missing)
   Right image => do
     Right () <- writeImage name image

@@ -1116,9 +1116,9 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
       (Yes Refl, Just ce) =>
         Defined (fromMaybe (Unsupported "a level outside its context") (close (lowerBoundary d refs ce ss r arity)))
       _ => Defined (Unsupported ("the boundary of " ++ show n))
-  defOf d refs fs (MkSig n (InDirect rs False) ps False) (Form fd) =
-    case (decEq rs (tys fd.result), decEq ps (tys (paramsLayout fd.params))) of
-      (Yes Refl, Yes Refl) => Defined (fromMaybe (Unsupported "a level outside its context") (close (lowerForm d fs fd)))
+  defOf d refs fs (MkSig n (InDirect rs False) ps cv) (Form fd) =
+    case (decEq rs (tys fd.result), decEq ps (tys (paramsLayout fd.params)), decEq cv (convertsIn fd.name)) of
+      (Yes Refl, Yes Refl, Yes Refl) => Defined (fromMaybe (Unsupported "a level outside its context") (close (lowerForm d fs fd)))
       _ => Defined (Unsupported ("the registers of the flat form of " ++ show fd.name))
   defOf d refs fs (MkSig n InCPS ps False) (Foreign arity) = case decEq ps (replicate arity Val) of
     Yes Refl => Defined (fromMaybe (Unsupported "a level outside its context") (close (lowerForeign d refs n arity)))

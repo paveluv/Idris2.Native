@@ -245,6 +245,88 @@ record FlatDef where
   body : FlatExp
   fc : FC
 
+------------------------------------------------------------------------------
+-- The type of an expression
+
+||| The layout of a primitive type.
+public export
+primLayout : PrimType -> Layout
+primLayout DoubleType = [Dbl]
+primLayout WorldType = []
+primLayout _ = [Word]
+
+||| The type of a constant.
+public export
+constType : Constant -> Maybe PrimType
+constType (I _) = Just IntType
+constType (I8 _) = Just Int8Type
+constType (I16 _) = Just Int16Type
+constType (I32 _) = Just Int32Type
+constType (I64 _) = Just Int64Type
+constType (BI _) = Just IntegerType
+constType (B8 _) = Just Bits8Type
+constType (B16 _) = Just Bits16Type
+constType (B32 _) = Just Bits32Type
+constType (B64 _) = Just Bits64Type
+constType (Str _) = Just StringType
+constType (Ch _) = Just CharType
+constType (Db _) = Just DoubleType
+constType WorldVal = Just WorldType
+constType (PrT _) = Nothing
+
+||| The type of a primitive operation's result.
+public export
+opResult : PrimFn n -> Maybe PrimType
+opResult (Add t) = Just t
+opResult (Sub t) = Just t
+opResult (Mul t) = Just t
+opResult (Div t) = Just t
+opResult (Mod t) = Just t
+opResult (Neg t) = Just t
+opResult (ShiftL t) = Just t
+opResult (ShiftR t) = Just t
+opResult (BAnd t) = Just t
+opResult (BOr t) = Just t
+opResult (BXOr t) = Just t
+opResult (LT _) = Just IntType
+opResult (LTE _) = Just IntType
+opResult (EQ _) = Just IntType
+opResult (GTE _) = Just IntType
+opResult (GT _) = Just IntType
+opResult (Cast _ t) = Just t
+opResult _ = Nothing
+
+||| The skeleton and layout of an expression's value, from its variables'
+||| (`var`) and the results of the forms it calls (`form`). Nothing if no
+||| value comes of it, a crash or every alternative one, or a form's result
+||| is not known.
+export
+expType : (var : Name -> Maybe (Skeleton, Layout)) -> (form : Name -> Maybe (Skeleton, Layout)) ->
+          FlatExp -> Maybe (Skeleton, Layout)
+expType var form (FVar _ x) = var x
+expType var form (FLet _ fv _ sc) = expType (bound [fv]) form sc
+  where
+    bound : List FlatVar -> Name -> Maybe (Skeleton, Layout)
+    bound vs y = case find (\v => v.name == y) vs of
+      Just v => Just (v.skeleton, v.layout)
+      Nothing => var y
+expType var form (FConst _ k) = (\t => (SPrim t, primLayout t)) <$> constType k
+expType var form (FOp _ op _) = (\t => (SPrim t, primLayout t)) <$> opResult op
+expType var form (FCall _ n _) = form n
+expType var form (FPrim _ _ sk lay _) = Just (sk, lay)
+expType var form (FCon _ _ _ sk lay _) = Just (sk, lay)
+expType var form (FCase _ _ alts def) = head' (catMaybes (map alt alts ++ [def >>= expType var form]))
+  where
+    bound : List FlatVar -> Name -> Maybe (Skeleton, Layout)
+    bound vs y = case find (\v => v.name == y) vs of
+      Just v => Just (v.skeleton, v.layout)
+      Nothing => var y
+    alt : FlatAlt -> Maybe (Skeleton, Layout)
+    alt (FConAlt _ _ vs b) = expType (bound vs) form b
+    alt (FConstAlt _ b) = expType var form b
+expType var form (FCrash _ _) = Nothing
+expType var form (FNone _) = Just (SOther, [])
+
 ||| The forms a form calls.
 export
 formCallees : FlatDef -> List Name

@@ -239,6 +239,18 @@ resolve sts (TForce fc r t) = TForce fc r (resolve sts t)
 resolve sts (Meta fc n i args) = Meta fc n i (map (resolve sts) args)
 resolve sts tm = tm
 
+-- A term with every let substituted into its scope.
+substLets : Term vars -> Term vars
+substLets (Bind fc x (Let _ _ v _) sc) = substLets (subst v sc)
+substLets (Bind fc x b sc) = Bind fc x (map substLets b) (substLets sc)
+substLets (App fc f a) = App fc (substLets f) (substLets a)
+substLets (As fc u a p) = As fc u (substLets a) (substLets p)
+substLets (TDelayed fc r t) = TDelayed fc r (substLets t)
+substLets (TDelay fc r t v) = TDelay fc r (substLets t) (substLets v)
+substLets (TForce fc r t) = TForce fc r (substLets t)
+substLets (Meta fc n i args) = Meta fc n i (map substLets args)
+substLets tm = tm
+
 resolved : {auto s : Ref FlatSt FlatState} -> ClosedTerm -> Core ClosedTerm
 resolved tm = pure (resolve (statics !(get FlatSt)) tm)
 
@@ -310,13 +322,16 @@ relocate caps ts
          pure (map (renameRefs m) ts)
   where
     -- The names standing for static values that a term reaches.
+    -- Through lets, as a key looks: a let is a substitution, and one that
+    -- Idris binds around a case alternative's right-hand side names the
+    -- alternative's variables without the static term capturing them.
     reachable : NameMap Static -> List Name -> Term vs -> List Name
     reachable sts seen tm
         = concatMap (\x => if elem x seen then [] else
                              case lookup x sts of
                                   Just st => x :: reachable sts (x :: seen) (staticTerm st)
                                   Nothing => [])
-                    (boundRefs tm)
+                    (boundRefs (substLets tm))
 
     captures : NameMap Static -> List Name -> Name -> Bool
     captures sts seen x
@@ -324,7 +339,7 @@ relocate caps ts
                Nothing => False
                Just st => any (\y => isJust (lookup y caps)
                                      || (not (elem y seen) && captures sts (x :: seen) y))
-                              (boundRefs (staticTerm st))
+                              (boundRefs (substLets (staticTerm st)))
 
 -- The name of the form of a copy of `fn`.
 copyName : Name -> Int -> Name
@@ -668,15 +683,35 @@ mutual
       = if isErased rig || isAtom tr v then trTerm tr (subst v sc) ps else
           do defs <- get Ctxt
              ty' <- resolved ty
-             Right (sk, l) <- laidOut !(nf defs Env.empty ty')
-               | Left _ => trTerm tr (subst v sc) ps
+             tyNF <- nf defs Env.empty ty'
+             -- Idris leaves the type out of a `let` whose type it inferred:
+             -- then the value's own, as its form shows
+             let NErased _ _ = tyNF
+               | _ => do Right (sk, l) <- laidOut tyNF
+                           | Left _ => trTerm tr (subst v sc) ps
+                         v' <- trTerm tr v []
+                         bindFlat sk l v'
              v' <- trTerm tr v []
-             let Nothing = atomOf v'
-               | Just a => trTerm tr (subst a sc) ps
-             x' <- fresh x
-             let fv = MkFlatVar x' sk l
-             body <- trTerm (addVar fv ty' tr) (subst (Ref fc Bound x') sc) ps
-             pure (FLet fc fv v' body)
+             sts <- get FlatSt
+             let Just (sk, l) = expType (varType tr) (formType sts) v'
+               | Nothing => fail tr fc (Unhandled "A let whose type is not known")
+             bindFlat sk l v'
+    where
+      varType : Tr -> Name -> Maybe (Skeleton, Layout)
+      varType tr y = (\(fv, _) => (fv.skeleton, fv.layout)) <$> lookup y tr.vars
+
+      formType : FlatState -> Name -> Maybe (Skeleton, Layout)
+      formType sts n = (\fd => (fd.resultSkeleton, fd.result)) <$> lookup n sts.forms
+
+      -- the value bound to a fresh flat variable, unless it is an atom
+      bindFlat : Skeleton -> Layout -> FlatExp -> Core FlatExp
+      bindFlat sk l v'
+          = do let Nothing = atomOf v'
+                 | Just a => trTerm tr (subst a sc) ps
+               x' <- fresh x
+               let fv = MkFlatVar x' sk l
+               body <- trTerm (addVar fv !(resolved ty) tr) (subst (Ref fc Bound x') sc) ps
+               pure (FLet fc fv v' body)
 
   -- A constructor applied to `ps`: a flat value, or a newtype's function
   -- when the context unwraps it.
@@ -874,7 +909,7 @@ mutual
            sts <- statics <$> get FlatSt
            let staticTerms = mapMaybe staticOf parts
            let caps = filter (\x => isJust (lookup x tr.vars))
-                             (nub (concatMap (boundRefs . resolve sts) staticTerms))
+                             (nub (concatMap (boundRefs . substLets . resolve sts) staticTerms))
            let canon = zip caps (map (MN "flat captured" . cast) [0 .. length caps])
            parts' <- relocateParts (fromList canon) parts
            key <- traverse keyOf parts'
@@ -946,8 +981,12 @@ mutual
           place (p :: ps') ts = p :: place ps' ts
           place [] _ = []
 
+      -- A let is a substitution, so a key sees through it: inside a case
+      -- alternative Idris binds the matched variable to its value with one,
+      -- around the whole right-hand side, and a recursive call there would
+      -- otherwise carry one more let per level and never meet its memo.
       keyOf : (Bool, Pending) -> Core (Maybe ClosedTerm)
-      keyOf (True, PArg t) = Just <$> toFullNames !(resolved t)
+      keyOf (True, PArg t) = Just <$> toFullNames (substLets !(resolved t))
       keyOf _ = pure Nothing
 
       sameKey : List (Maybe ClosedTerm) -> List (Maybe ClosedTerm) -> Bool

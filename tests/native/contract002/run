@@ -9,6 +9,7 @@
 cp -r ../../../runtime broken
 sed -i -e 's/^%extern prim__load64 : (base, offset : Bits64)/%extern prim__load64 : (base, offset, extra : Bits64)/' \
        -e 's/^load64 a = prim__load64 a.word$/load64 a off = prim__load64 a.word off 0/' \
+       -e 's/^loadAt = prim__load64$/loadAt b o = prim__load64 b o 0/' \
        -e 's/^%extern prim__store8 : (base, offset, value : Bits64) -> (1 m : Heap) -> Ret Heap ()$/%extern prim__store8 : (base, offset, value : Bits64) -> (1 m : Heap) -> Ret Heap Bits64/' \
        -e 's/^store8 a = prim__store8 a.word$/store8 a off v m = let (m2 # _) = prim__store8 a.word off v m in m2 # ()/' \
        broken/Runtime/Memory.idr

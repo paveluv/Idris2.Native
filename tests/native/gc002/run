@@ -1,0 +1,12 @@
+. ../../testutils.sh
+
+# The heap limit: the same program under no limit and under one its data
+# does not fit, which a copy of it sets before allocating.
+idris2 --cg native -p idris2-native-runtime -p idris2-native --directive nursery=4096 -o free Main.idr > /dev/null
+./build/exec/free 2>&1
+echo "status: $?"
+sed -e 's/^  pure ()   -- the limited program sets its limit here$/  setHeapLimit 262144/' Main.idr > Limited.idr
+idris2 --cg native -p idris2-native-runtime -p idris2-native --directive nursery=4096 -o limited Limited.idr > /dev/null
+./build/exec/limited 2>&1
+echo "status: $?"
+rm -f Limited.idr

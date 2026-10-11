@@ -1,10 +1,12 @@
-||| The runtime seed: the handful of routines a binary needs before the
-||| runtime exists as fragment Idris, written as instruction constants: data
-||| in Idris, no assembler source, no C. Every routine names what supersedes
-||| it, and the whole module goes once the runtime is written in the
-||| fragment. x86-64 Linux only, with the register roles of
-||| `Compiler.Native.X86.Target.x86_64`: r15 and r14 hold the allocation window,
-||| r12 the current continuation.
+||| The runtime seed: what remains of the routines a binary needed before
+||| the runtime existed as fragment Idris, written as instruction constants:
+||| data in Idris, no assembler source, no C. The entry, HALT's code, the
+||| abort stub, the stack overflow's exit and `idris_apply`; start-up,
+||| allocation, collection, exit and crash are the runtime library's. Every
+||| routine names what supersedes it, and the whole module goes once the
+||| rest is written in the fragment. x86-64 Linux only, with the register
+||| roles of `Compiler.Native.X86.Target.x86_64`: r15 and r14 hold the
+||| allocation window, r12 the current continuation.
 module Compiler.Native.Seed
 
 import public Compiler.Native.HeapObject
@@ -19,23 +21,9 @@ import Data.SortedMap
 %default total
 
 -- Linux x86-64 system calls and mmap arguments
-sysWrite, sysMmap, sysExitGroup : Integer
+sysWrite, sysExitGroup : Integer
 sysWrite = 1
-sysMmap = 9
 sysExitGroup = 231
-
-protReadWrite, mapPrivateAnon : Integer
-protReadWrite = 3      -- PROT_READ | PROT_WRITE
-mapPrivateAnon = 0x22  -- MAP_PRIVATE | MAP_ANONYMOUS
-
-||| mmap(NULL, rsi, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) with
-||| the length already in rsi; on return rax is the address or, if it is
-||| unsigned-above -4096, an error.
-mmapCall : List Instr
-mmapCall =
-  [ MovRI RAX sysMmap, MovRI RDI 0, MovRI RDX protReadWrite, MovRI R10 mapPrivateAnon
-  , MovRI R8 (-1), MovRI R9 0, Syscall
-  , AluI CMP RAX (-4096), Jcc A (symLabel SymMmapFailed) ]
 
 ------------------------------------------------------------------------------
 -- The routines
@@ -65,9 +53,8 @@ haltText =
   [ MovRR RDI RAX, ShiftI SAR RDI 1
   , MovRI RAX sysExitGroup, Syscall ]
 
-msgUnsupported, msgNoMemory, msgStackOverflow : List Bits8
+msgUnsupported, msgStackOverflow : List Bits8
 msgUnsupported = map (cast . ord) (unpack "idris: unsupported\n")
-msgNoMemory = map (cast . ord) (unpack "idris: cannot map memory\n")
 msgStackOverflow = map (cast . ord) (unpack "idris: stack overflow\n")
 
 ||| `idris_stack_overflow`: where direct code goes when the stack pointer is
@@ -91,40 +78,6 @@ unsupportedText =
   , Lea RSI (MRip (symLabel SymMsgUnsupported) 0), MovRI RDX (cast (length msgUnsupported))
   , MovRI RDI 2, MovRI RAX sysWrite, Syscall
   , MovRI RDI (cast unsupportedStatus), MovRI RAX sysExitGroup, Syscall ]
-
-||| `idris_alloc_slow(rdi = n bytes)`: returns the object in rax and publishes
-||| a new window in hp/hplim (pinned, so the caller sees it). Grow-only: a
-||| fresh window of max(windowBytes, n) bytes, never a collection; ROOTS is
-||| untouched because nothing moves. Superseded by the fragment runtime's slow
-||| path, which collects before it maps.
-allocSlowText : (window : Int) -> List Instr
-allocSlowText window =
-  [ Comment "idris_alloc_slow(n): map a fresh window, bump"
-  , Lbl (symLabel SymAllocSlow)
-  , MovRR R13 RDI                                  -- n (r13 is scratch; syscall keeps it)
-  , MovRI RSI (cast window)
-  , Alu CMP RDI RSI, Cmov A RSI RDI ] ++ mmapCall ++  -- rsi := max(window, n)
-  [ MovRR R15 RAX, MovRR R14 RAX, Alu ADD R14 RSI   -- the new window
-  , MovRR RAX R15, Alu ADD R15 R13                  -- the object; hp += n
-  , Ret
-  , Lbl (symLabel SymMmapFailed)
-  , Lea RDI (MRip (symLabel SymMsgNoMemory) 0), MovRI RSI (cast (length msgNoMemory))
-  , Jmp (symLabel SymCrash) ]
-
-||| `idris_alloc_mutable(rdi = n bytes)`: returns the space of a mutable object
-||| in rax, as the inline allocation does: the window's bump, or the slow path
-||| when the window is exhausted. A mutable object is allocated only by this
-||| routine, never inline, so that a collector with a nursery can keep every
-||| mutable object out of it by changing this routine alone. The seed has no
-||| nursery, and bumps the shared window.
-allocMutableText : List Instr
-allocMutableText =
-  [ Comment "idris_alloc_mutable(n): bump, or the slow path"
-  , Lbl (symLabel SymAllocMutable)
-  , MovRR RAX R15, MovRR RCX R15, Alu ADD RCX RDI
-  , Alu CMP RCX R14, Jcc A (symLabel SymAllocSlow)  -- rdi still holds n
-  , MovRR R15 RCX
-  , Ret ]
 
 ||| `idris_apply(rdi = closure, rsi = argument)`, entered by a jump under the
 ||| current continuation in r12. If the argument completes the closure, the
@@ -189,7 +142,7 @@ applyText abi venc =
   , Lea RSI (MRip (symLabel SymNRoots) 0), MovRM RDX (MBase RSI 0), AluI SUB RDX 2, MovMR (MBase RSI 0) RDX
   , ShiftI SHL RDX 3, Lea RCX (MRip (symLabel SymRoots) 0), Alu ADD RCX RDX
   , MovRM R10 (MBase RCX 0), MovRM R11 (MBase RCX 8)
-  , MovRR RDI RAX, Jmp initClosure ]
+  , Jmp initClosure ]                                            -- the new space in rdi, the routine's result
   where
     ||| The pointer tag: the closure in r10 and the continuation in r12 are
     ||| pointer words, the closure allocated in rdi an address.
@@ -211,7 +164,7 @@ applyText abi venc =
 
     ||| A part of the closure header in `rax`, extracted into a register.
     part : Reg64 -> HeaderPart CLOSURE -> List Instr
-    part r p = extractField r (fst (place p)) (snd (place p))
+    part r p = extractField r (cast (fst (place p))) (cast (snd (place p)))
 
     -- local labels, below the program's
     extend, copy, copied, copyArgs, regs, initClosure, pcopy, pdone, slow : Label
@@ -233,7 +186,6 @@ export
 seedText : (enc : Enc) -> {auto 0 _ : HasFixnums enc.val} -> (window : Int) -> List Instr
 seedText enc window = startText enc.val window ++ haltText ++ unsupportedText
                       ++ stackOverflowText
-                      ++ allocSlowText window ++ allocMutableText
                       ++ applyText x86_64.abi enc.val
 
 ------------------------------------------------------------------------------
@@ -248,13 +200,11 @@ seedRodata tl =
   let haltCode = fromMaybe 0 (lookup (symLabel SymHalt) tl)
       halt = le64 (cast haltCode) ++ le64 0            -- code, parent
       m1 = pad8 msgUnsupported
-      m2 = pad8 msgNoMemory
       m3 = pad8 msgStackOverflow
-  in ( halt ++ m1 ++ m2 ++ m3
+  in ( halt ++ m1 ++ m3
      , [ (SymHALT, 0)
        , (SymMsgUnsupported, cast (length halt))
-       , (SymMsgNoMemory, cast (length halt + length m1))
-       , (SymMsgStackOverflow, cast (length halt + length m1 + length m2)) ] )
+       , (SymMsgStackOverflow, cast (length halt + length m1)) ] )
 
 ||| What the seed's own code needs: `idris_apply`'s slow path roots the
 ||| closure and its argument. What it stages for a closure is the program's
@@ -264,7 +214,7 @@ seedAreas : Areas
 seedAreas = MkAreas 0 2 0
 
 ||| The zero-initialised per-thread areas, 8-aligned, in bss: `ARGS`, then
-||| `ROOTS`, `NROOTS`, `SCRATCH`, `STACK_LIMIT` and `ARGV`.
+||| `ROOTS`, `NROOTS`, `SCRATCH`, `STACK_LIMIT`, `ARGV` and `RUNTIME`.
 export
 seedBss : Areas -> List (Sym, Int)
 seedBss a =
@@ -272,8 +222,8 @@ seedBss a =
       nroots = roots + 8 * cast a.roots
       limit = nroots + 8 + 8 * cast a.scratch
   in [ (SymArgs, 0), (SymRoots, roots), (SymNRoots, nroots), (SymScratch, nroots + 8), (SymStackLimit, limit)
-     , (SymArgv, limit + 8) ]
+     , (SymArgv, limit + 8), (SymRuntime, limit + 16) ]
 
 export
 seedBssSize : Areas -> Int
-seedBssSize a = 8 * cast (a.args + a.roots + 1 + a.scratch + 2)
+seedBssSize a = 8 * cast (a.args + a.roots + 1 + a.scratch + 2 + runtimeWords)

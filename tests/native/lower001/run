@@ -1,10 +1,14 @@
 . ../../testutils.sh
 
 # The produce pass on the shared example: the IR of count and wrap, made
-# from the typed term, registers allocated and live lists computed. The IR is the same
-# under every encoding of uniform values: its immediates are integers, and
-# the rendering encodes them.
+# from the typed term, registers allocated and live lists computed. The
+# program's IR is the same under every encoding of uniform values: its
+# immediates are integers, and the rendering encodes them. (The runtime's
+# forms, in the same dump, differ by the one constant that names the
+# encoding's pointer tag.)
 idris2 --cg native --directive dump-ir=build/ir.txt Wrap.idr -o wrap > /dev/null
 awk '/^function Main\.(count|first|wrap) /,/^$/' build/ir.txt
 idris2 --cg native --directive val-encoding=tag0 --directive dump-ir=build/ir-tag0.txt Wrap.idr -o wrap-tag0 > /dev/null
-cmp -s build/ir.txt build/ir-tag0.txt && echo "the same IR under val-encoding=tag0" || echo "a different IR under val-encoding=tag0"
+awk '/^function Main\./,/^$/' build/ir.txt > build/main.txt
+awk '/^function Main\./,/^$/' build/ir-tag0.txt > build/main-tag0.txt
+cmp -s build/main.txt build/main-tag0.txt && echo "the same IR under val-encoding=tag0" || echo "a different IR under val-encoding=tag0"

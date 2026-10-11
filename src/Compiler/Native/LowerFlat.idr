@@ -15,8 +15,11 @@
 ||| registers in turn and whose results are its result's, and which never
 ||| collects. It is a function of the program, whose term IR is indexed by
 ||| the encoding of uniform values; flat code holds no uniform value, so the
-||| lowering is the same under every encoding, which the encoding being
-||| erased here states. A `case` on a sum is a switch on the tag, and one that is not
+||| lowering is the same under every encoding but for the intrinsic that
+||| names the encoding's pointer tag. The functions of the module that
+||| implements the runtime's memory may convert between words and addresses
+||| (`convertsIn`), which the intrinsics on the current continuation need; no
+||| other may. A `case` on a sum is a switch on the tag, and one that is not
 ||| in tail position a join, whose parameters are the case's registers. A
 ||| call of a form is a `DirectCall`; a call of the form itself in tail
 ||| position jumps back to its start, so self tail recursion is a loop. The
@@ -70,7 +73,7 @@ paramsLayout (p :: ps) = p.layout ++ paramsLayout ps
 ||| The signature of a form's `Direct` function.
 export
 formSig : FlatDef -> Sig enc
-formSig fd = MkSig (flatName fd.name) (InDirect (tys fd.result) False) (tys (paramsLayout fd.params)) False
+formSig fd = MkSig (flatName fd.name) (InDirect (tys fd.result) False) (tys (paramsLayout fd.params)) (convertsIn fd.name)
 
 ------------------------------------------------------------------------------
 -- Values
@@ -216,7 +219,7 @@ public export
 record Callee (d : Decls enc) where
   constructor MkCallee
   form : FlatDef
-  var : (n ** Var d.sigs (MkSig n (InDirect (tys form.result) False) (tys (paramsLayout form.params)) False))
+  var : (n ** Var d.sigs (MkSig n (InDirect (tys form.result) False) (tys (paramsLayout form.params)) (convertsIn form.name)))
 
 ||| The forms the declarations have `Direct` functions for, by the forms'
 ||| names.
@@ -228,10 +231,10 @@ callees d fds = fromList (mapMaybe one (enumerate d.sigs))
     byName = fromList [(flatName fd.name, fd) | fd <- fds]
 
     one : (s ** Var d.sigs s) -> Maybe (Name, Callee d)
-    one (MkSig n (InDirect rs False) ps False ** var) = do
+    one (MkSig n (InDirect rs False) ps cv ** var) = do
       fd <- lookup n byName
-      case (decEq rs (tys fd.result), decEq ps (tys (paramsLayout fd.params))) of
-        (Yes Refl, Yes Refl) => Just (fd.name, MkCallee fd (n ** var))
+      case (decEq rs (tys fd.result), decEq ps (tys (paramsLayout fd.params)), decEq cv (convertsIn fd.name)) of
+        (Yes Refl, Yes Refl, Yes Refl) => Just (fd.name, MkCallee fd (n ** var))
         _ => Nothing
     one _ = Nothing
 
@@ -255,30 +258,6 @@ calls n (FNone _) = False
 ------------------------------------------------------------------------------
 -- Primitive types and operations
 
-||| The layout of a primitive type.
-primLayout : PrimType -> Layout
-primLayout DoubleType = [Dbl]
-primLayout WorldType = []
-primLayout _ = [Word]
-
-||| The type of a constant.
-constType : Constant -> Maybe PrimType
-constType (I _) = Just IntType
-constType (I8 _) = Just Int8Type
-constType (I16 _) = Just Int16Type
-constType (I32 _) = Just Int32Type
-constType (I64 _) = Just Int64Type
-constType (BI _) = Just IntegerType
-constType (B8 _) = Just Bits8Type
-constType (B16 _) = Just Bits16Type
-constType (B32 _) = Just Bits32Type
-constType (B64 _) = Just Bits64Type
-constType (Str _) = Just StringType
-constType (Ch _) = Just CharType
-constType (Db _) = Just DoubleType
-constType WorldVal = Just WorldType
-constType (PrT _) = Nothing
-
 ||| The word of an integer or character constant, extended as its type is.
 constWord : Constant -> Maybe Int64
 constWord (I n) = Just (cast n)
@@ -293,27 +272,6 @@ constWord (B64 n) = let i : Integer = cast n in
                     Just (cast (if i >= 9223372036854775808 then i - 18446744073709551616 else i))
 constWord (Ch c) = Just (cast (ord c))
 constWord _ = Nothing
-
-||| The type of a primitive operation's result.
-opResult : PrimFn n -> Maybe PrimType
-opResult (Add t) = Just t
-opResult (Sub t) = Just t
-opResult (Mul t) = Just t
-opResult (Div t) = Just t
-opResult (Mod t) = Just t
-opResult (Neg t) = Just t
-opResult (ShiftL t) = Just t
-opResult (ShiftR t) = Just t
-opResult (BAnd t) = Just t
-opResult (BOr t) = Just t
-opResult (BXOr t) = Just t
-opResult (LT _) = Just IntType
-opResult (LTE _) = Just IntType
-opResult (EQ _) = Just IntType
-opResult (GTE _) = Just IntType
-opResult (GT _) = Just IntType
-opResult (Cast _ t) = Just t
-opResult _ = Nothing
 
 ||| How a machine integer type is held in a word: narrower than it, extended
 ||| from the width as the type is signed or not, or the whole word.
@@ -369,17 +327,17 @@ record Forms (enc : Enc) (d : Decls enc) where
 Env : (enc : Enc) -> (Ty enc -> Type) -> Type
 Env enc v = SortedMap Name (Skeleton, Value enc v)
 
-parameters {0 enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef)
+parameters {enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef) (m : Bool)
            {0 v : Ty enc -> Type} {0 l : List (Ty enc) -> Type}
 
   0 B : Type -> Type
-  B = Build d (InDirect (tys self.result) False) False v l
+  B = Build d (InDirect (tys self.result) False) m v l
 
   0 E : Type
-  E = End d (InDirect (tys self.result) False) False v l
+  E = End d (InDirect (tys self.result) False) m v l
 
   0 Again : Type
-  Again = Jumper d (InDirect (tys self.result) False) False v l (tys (paramsLayout self.params))
+  Again = Jumper d (InDirect (tys self.result) False) m v l (tys (paramsLayout self.params))
 
   ------------------------------------------------------------------------------
   -- Words and doubles
@@ -545,24 +503,11 @@ parameters {0 enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef)
   ------------------------------------------------------------------------------
   -- Expressions
 
-  ||| The skeleton and layout of an expression's value, from the variables'.
-  ||| Nothing if no value comes of it: a crash, or every alternative of a
-  ||| case one.
+  ||| The skeleton and layout of an expression's value, from the variables'
+  ||| and the callees' results.
   typeOf : SortedMap Name (Skeleton, Layout) -> FlatExp -> Maybe (Skeleton, Layout)
-  typeOf env (FVar _ x) = lookup x env
-  typeOf env (FLet _ fv _ sc) = typeOf (insert fv.name (fv.skeleton, fv.layout) env) sc
-  typeOf env (FConst _ k) = (\t => (SPrim t, primLayout t)) <$> constType k
-  typeOf env (FOp _ op _) = (\t => (SPrim t, primLayout t)) <$> opResult op
-  typeOf env (FCall _ n _) = (\c => (c.form.resultSkeleton, c.form.result)) <$> lookup n pr.callees
-  typeOf env (FPrim _ _ sk lay _) = Just (sk, lay)
-  typeOf env (FCon _ _ _ sk lay _) = Just (sk, lay)
-  typeOf env (FCase _ _ alts def) = head' (catMaybes (map alt alts ++ [def >>= typeOf env]))
-    where
-      alt : FlatAlt -> Maybe (Skeleton, Layout)
-      alt (FConAlt _ _ vs b) = typeOf (foldl (\e, fv => insert fv.name (fv.skeleton, fv.layout) e) env vs) b
-      alt (FConstAlt _ b) = typeOf env b
-  typeOf env (FCrash _ _) = Nothing
-  typeOf env (FNone _) = Just (SOther, [])
+  typeOf env = expType (\x => lookup x env)
+                       (\n => (\c => (c.form.resultSkeleton, c.form.result)) <$> lookup n pr.callees)
 
   layouts : Env enc v -> SortedMap Name (Skeleton, Layout)
   layouts = map (\(sk, x) => (sk, x.layout))
@@ -640,12 +585,32 @@ parameters {0 enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef)
       p <- emit1 (Arith Add base off)
       emit0 (StoreN sw (MkMem (AtWord p) Nothing 0) x)
       pure noRegs
+    intrinsic _ GetHp [] = do
+      w <- emit1 ReadHp
+      pure (MkValue [Word] [w])
     intrinsic _ SetHp [w] = do
       emit0 (WriteHp w)
       pure noRegs
+    intrinsic _ GetHpLim [] = do
+      w <- emit1 ReadHpLim
+      pure (MkValue [Word] [w])
     intrinsic _ SetHpLim [w] = do
       emit0 (WriteHpLim w)
       pure noRegs
+    -- the continuation is a pointer: its word needs the conversions
+    intrinsic n GetK [] = case m of
+      True => do
+        k <- emit1 ReadK
+        w <- emit1 (AddrToWord k)
+        pure (MkValue [Word] [w])
+      False => unsupported ("the intrinsic " ++ show n ++ " outside the memory module")
+    intrinsic n SetK [w] = case m of
+      True => do
+        k <- emit1 (WordToAddr CONT w)
+        emit0 (WriteK k)
+        pure noRegs
+      False => unsupported ("the intrinsic " ++ show n ++ " outside the memory module")
+    intrinsic _ PointerTag [] = pure (MkValue [Word] [W (cast (pointerTag enc.val))])
     intrinsic _ (AreaAddress a) [] = do
       p <- emit1 (AreaAddr a)
       pure (MkValue [Word] [p])
@@ -757,9 +722,9 @@ parameters {0 enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef)
 ||| A form as the body of its `Direct` function. A form that calls itself
 ||| is a loop, which a call in tail position jumps back to.
 export
-lowerForm : {0 enc : Enc} -> (0 d : Decls enc) -> Forms enc d -> (fd : FlatDef) ->
-            Closed d (InDirect (tys fd.result) False) False (tys (paramsLayout fd.params))
+lowerForm : {enc : Enc} -> (0 d : Decls enc) -> Forms enc d -> (fd : FlatDef) ->
+            Closed d (InDirect (tys fd.result) False) (convertsIn fd.name) (tys (paramsLayout fd.params))
 lowerForm d pr fd = build $ \xs =>
   if calls fd.name fd.body
-     then loop (tys (paramsLayout fd.params)) xs $ \again, ys => formBody d pr fd (Just again) ys
-     else formBody d pr fd Nothing xs
+     then loop (tys (paramsLayout fd.params)) xs $ \again, ys => formBody d pr fd (convertsIn fd.name) (Just again) ys
+     else formBody d pr fd (convertsIn fd.name) Nothing xs

@@ -10,9 +10,11 @@
 -- function is flat code: a machine function on words and doubles, which
 -- returns its results. Each body below says the Idris it stands for.
 --
--- A crash jumps to the runtime's `crash`, and the entry calls the runtime's
--- `start`, which the program defines itself, as the runtime library's flat
--- forms would be, under the names the runtime contract gives them.
+-- A crash jumps to the runtime's `crash`, the entry calls the runtime's
+-- `start`, and allocation's slow paths call its `allocSlow` and
+-- `allocMutable`, which the program defines itself, as the runtime
+-- library's flat forms would be, under the names the runtime contract gives
+-- them.
 module Main
 
 import Compiler.Native.ELF
@@ -58,7 +60,9 @@ Run = MkDecls
   , MkSig (nm "floats") (InDirect [W64] False) [F64, F64] False
   , MkSig (nm "bytes") (InDirect [W64] False) [] False
   , MkSig (flatName runtimeCrash) (InDirect [] False) [W64, W64] False
-  , MkSig (flatName runtimeStart) (InDirect [] False) [W64, W64] False ]
+  , MkSig (flatName runtimeStart) (InDirect [] False) [W64, W64] False
+  , MkSig (flatName runtimeAllocSlow) (InDirect [W64] False) [W64] False
+  , MkSig (flatName runtimeAllocMutable) (InDirect [W64] False) [W64] False ]
   [ MkStaticSig (nm "two") CON ]
 
 pairRef : Var (sigs Run) (MkSig (nm "pair") InCPS [Val, Val] False)
@@ -99,6 +103,32 @@ startBody = build $ \[entry, window] => do
   lim <- emit1 (Arith Add w window)
   emit0 (WriteHpLim lim)
   ret []
+
+||| The runtime's allocation slow path, reduced to what this program needs:
+||| a fresh megabyte and `bytes` more from the system, the object at its
+||| start, and the rest the allocation window. Nothing is collected.
+allocSlowBody : Closed Run (InDirect [W64] False) False [W64]
+allocSlowBody = build $ \[bytes] => do
+  size <- emit1 (Arith Add bytes (W 1048576))
+  -- mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)
+  w <- emit1 (SystemCall (W 9) [W 0, size, W 3, W 0x22, W (-1), W 0])
+  hp <- emit1 (Arith Add w bytes)
+  emit0 (WriteHp hp)
+  lim <- emit1 (Arith Add w size)
+  emit0 (WriteHpLim lim)
+  ret [w]
+
+||| The runtime's `allocMutable`, which allocates a mutable object by a
+||| call: here the slow path's body, since nothing distinguishes the two.
+allocMutableBody : Closed Run (InDirect [W64] False) False [W64]
+allocMutableBody = build $ \[bytes] => do
+  size <- emit1 (Arith Add bytes (W 1048576))
+  w <- emit1 (SystemCall (W 9) [W 0, size, W 3, W 0x22, W (-1), W 0])
+  hp <- emit1 (Arith Add w bytes)
+  emit0 (WriteHp hp)
+  lim <- emit1 (Arith Add w size)
+  emit0 (WriteHpLim lim)
+  ret [w]
 
 ||| The runtime's `crash`: the message, `length` bytes at `message`, written
 ||| to the standard error, then the process ended with status 1.
@@ -384,10 +414,12 @@ main = do
   let Just by = close bytesBody | Nothing => putStrLn "bytes: a level outside its context"
   let Just cr = close crashBody | Nothing => putStrLn "crash: a level outside its context"
   let Just st = close startBody | Nothing => putStrLn "start: a level outside its context"
+  let Just al = close allocSlowBody | Nothing => putStrLn "allocSlow: a level outside its context"
+  let Just am = close allocMutableBody | Nothing => putStrLn "allocMutable: a level outside its context"
   -- the names' distinctness decided here, as a producer decides it
   let Left ok = choose (distinct (map (.name) (sigs Run)) && distinct (map (.sym) (statics Run)))
     | Right _ => putStrLn "the running program: names repeat"
-  let run = allocRegs x86_64 (MkProgram {d = Run} [Defined m, Defined p, Defined s, Defined sa, Defined at, Defined sm, Defined dm, Defined fl, Defined by, Defined cr, Defined st]
+  let run = allocRegs x86_64 (MkProgram {d = Run} [Defined m, Defined p, Defined s, Defined sa, Defined at, Defined sm, Defined dm, Defined fl, Defined by, Defined cr, Defined st, Defined al, Defined am]
                                    [MkStaticDef (ConH 2 0) []] (MkEntry here) noConIds)
   let Right rendered = render TestEnc run
     | Left err => putStrLn ("render: " ++ err)

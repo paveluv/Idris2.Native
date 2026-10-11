@@ -222,6 +222,7 @@ push rcx
 push rcx
 mov rdi, 16
 call L5
+mov rax, rdi
 lea rbx, [rip+L13]
 pop rcx
 pop rcx
@@ -252,6 +253,7 @@ push rcx
 push rcx
 mov rdi, 16
 call L5
+mov rax, rdi
 lea rbx, [rip+L13]
 pop rcx
 pop rcx
@@ -490,6 +492,7 @@ push rcx
 push rcx
 mov rdi, 16
 call L5
+mov rax, rdi
 lea rbx, [rip+L13]
 pop rcx
 pop rcx
@@ -520,6 +523,7 @@ push rcx
 push rcx
 mov rdi, 16
 call L5
+mov rax, rdi
 lea rbx, [rip+L13]
 pop rcx
 pop rcx

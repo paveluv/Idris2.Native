@@ -398,6 +398,7 @@ parameters (enc : Enc)
     saveLive True coldEmit live
     coldEmit (MovRI RDI (cast bytes))
     coldEmit (Call (sym SymAllocSlow))
+    coldEmit (MovRR RAX RDI)                   -- the routine's result, where a Direct result goes
     restoreLive True coldEmit live
     coldEmit (Jmp done)
 
@@ -419,6 +420,7 @@ parameters (enc : Enc)
     saveLive True emit live
     bytesInto RDI
     emit (Call (sym SymAllocMutable))
+    emit (MovRR RAX RDI)
     restoreLive True emit live
 
   ||| Allocate an object whose size depends on `count`, as `allocate` does a
@@ -441,6 +443,7 @@ parameters (enc : Enc)
     coldEmit (MovRM RDI (slotMem n))
     traverse_ coldEmit (size RDI)
     coldEmit (Call (sym SymAllocSlow))
+    coldEmit (MovRR RAX RDI)
     restoreLive True coldEmit live
     coldEmit (Jmp done)
 
@@ -601,10 +604,13 @@ parameters (enc : Enc)
   instr blk (Narrow _ d x) = do loadReg RAX x; store d RAX
   instr blk (Widen d x) = do loadReg RAX x; store d RAX
   instr blk (Move d x) = do loadReg RAX x; store d RAX
+  -- a pointer word and an address are the same word
+  instr blk (AddrToWord d x) = do loadReg RAX x; store d RAX
+  instr blk (WordToAddr _ d x) = do loadReg RAX x; store d RAX
   instr blk (LoadPart p d o) = do
     loadReg RAX o
     emit (MovRM RAX (MBase RAX (negate (baseTag o))))
-    emits (extractField RAX (fst (place p)) (snd (place p)))
+    emits (extractField RAX (cast (fst (place p))) (cast (snd (place p))))
     store d RAX
   instr blk (AllocObj {k} d h fs live) = do
     if mutableKind k
@@ -632,7 +638,7 @@ parameters (enc : Enc)
     traverse_ coldEmit [ Lbl big, Lea RDI (MRip msg 0), MovRI RSI (cast (length bytes))
                        , Jmp (sym SymCrash) ]
     loadReg RCX count
-    emits [MovRI RDX (cast (pow2 (snd (place p)) - 1)), Alu CMP RCX RDX, Jcc A big]
+    emits [MovRI RDX (cast (pow2 (cast (snd (place p))) - 1)), Alu CMP RCX RDX, Jcc A big]
     size <- sizeOf p
     if mutableKind k
        then allocateMutable (\r => do n <- slotOf count
@@ -744,9 +750,13 @@ parameters (enc : Enc)
   instr blk (AreaAddr d a) = do
     emit (Lea RAX (MRip (sym (areaSym a)) 0))
     store d RAX
-  -- the pinned registers of the allocation window
+  -- the pinned registers: the allocation window and the current continuation
+  instr blk (Intrinsic GetHp (Just d) []) = store d R15
   instr blk (Intrinsic SetHp Nothing [x]) = load R15 x
+  instr blk (Intrinsic GetHpLim (Just d) []) = store d R14
   instr blk (Intrinsic SetHpLim Nothing [x]) = load R14 x
+  instr blk (Intrinsic GetK (Just d) []) = store d R12
+  instr blk (Intrinsic SetK Nothing [x]) = load R12 x
   instr blk (Intrinsic Syscall (Just d) (n :: args)) =
     if length args > 6 then failWith "a system call of more than six arguments" else do
       traverse_ (\(r, x) => load r x) (zip [RDI, RSI, RDX, R10, R8, R9] args)

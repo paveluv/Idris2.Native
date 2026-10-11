@@ -36,8 +36,8 @@ Main.dot ({arg:68} : Main.Point [Dbl, Dbl], {arg:69} : Main.Point [Dbl, Dbl]) : 
   shape Main.Point = {Main.MkPoint#0 as object 1 (Double, Double)}
 
 Main.local ({arg:38} : Bits64 [Word]) : Bits64 [Word] =
-  let {y:43} : _ [] = *Bits64({arg:38}, 2)
-  let {z:48} : _ [] = +Bits64({y:43}, 1)
+  let {y:43} : Bits64 [Word] = *Bits64({arg:38}, 2)
+  let {z:48} : Bits64 [Word] = +Bits64({y:43}, 1)
   Main.2707:941:helper({arg:38}, {z:48}, {z:48})
 
 Main.main ({x:105} : %World []) : (PrimIO.IORes Builtin.Unit) [] =

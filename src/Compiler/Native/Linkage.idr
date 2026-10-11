@@ -25,22 +25,21 @@ data Sym
   | SymHalt            -- `idris_halt`: the code of the HALT continuation; result in rax -> exit_group
   | SymCrash           -- `idris_crash(msg, len)`: write to fd 2, exit_group(1)
   | SymUnsupported     -- `idris_unsupported`: the abort stub for unlowered code; writes a message, exit_group(70)
-  | SymAllocSlow       -- `idris_alloc_slow(n)`: the allocation slow path (grow-only here)
-  | SymMmapFailed      -- internal: crash with the out-of-memory message
+  | SymAllocSlow       -- `idris_alloc_slow(n)`: the allocation slow path, the runtime's
   | SymHALT            -- rodata: the static HALT continuation, the bottom of every continuation chain
   | SymMsgUnsupported  -- rodata
-  | SymMsgNoMemory     -- rodata
   | SymArgs            -- bss: ARGS, sized by `Areas`: arguments beyond the argument registers
   | SymRoots           -- bss: ROOTS, sized by `Areas`: the root buffer of the rooting stubs
   | SymNRoots          -- bss: NROOTS, 1 word: the entries of ROOTS in use
   | SymScratch         -- bss: SCRATCH, sized by `Areas`: extra registers for register allocation
   | SymApply           -- `idris_apply(f, a)`: apply a closure to one argument (CPS)
-  | SymAllocMutable    -- `idris_alloc_mutable(n)`: the only way a mutable object is allocated
+  | SymAllocMutable    -- `idris_alloc_mutable(n)`: the only way a mutable object is allocated, the runtime's
   | SymStackLimit      -- bss: STACK_LIMIT, 1 word: the lowest the stack pointer may go in direct code
   | SymStackOverflow   -- `idris_stack_overflow`: where direct code's stack check fails; message, exit 1
   | SymMsgStackOverflow  -- rodata
   | SymArgv            -- bss: ARGV, 1 word: the stack pointer at entry
   | SymRuntimeStart    -- `idris_start(entry, window)`: the runtime's start-up, which `_start` calls
+  | SymRuntime         -- bss: RUNTIME, `runtimeWords` words: the runtime's state
 
 public export
 symLabel : Sym -> Label
@@ -50,10 +49,8 @@ symLabel SymHalt = 2
 symLabel SymCrash = 3
 symLabel SymUnsupported = 4
 symLabel SymAllocSlow = 5
-symLabel SymMmapFailed = 6
 symLabel SymHALT = 7
 symLabel SymMsgUnsupported = 8
-symLabel SymMsgNoMemory = 9
 symLabel SymArgs = 10
 symLabel SymRoots = 11
 symLabel SymNRoots = 12
@@ -65,6 +62,7 @@ symLabel SymStackOverflow = 18
 symLabel SymMsgStackOverflow = 19
 symLabel SymArgv = 20
 symLabel SymRuntimeStart = 21
+symLabel SymRuntime = 22
 
 ||| Names as the ABI documents write them (for dumps).
 public export
@@ -75,10 +73,8 @@ symName SymHalt = "idris_halt"
 symName SymCrash = "idris_crash"
 symName SymUnsupported = "idris_unsupported"
 symName SymAllocSlow = "idris_alloc_slow"
-symName SymMmapFailed = "idris_mmap_failed"
 symName SymHALT = "HALT"
 symName SymMsgUnsupported = "msg_unsupported"
-symName SymMsgNoMemory = "msg_no_memory"
 symName SymArgs = "ARGS"
 symName SymRoots = "ROOTS"
 symName SymNRoots = "NROOTS"
@@ -90,6 +86,7 @@ symName SymStackOverflow = "idris_stack_overflow"
 symName SymMsgStackOverflow = "msg_stack_overflow"
 symName SymArgv = "ARGV"
 symName SymRuntimeStart = "idris_start"
+symName SymRuntime = "RUNTIME"
 
 ||| The symbol of a per-thread area.
 public export
@@ -100,6 +97,15 @@ areaSym NROOTS = SymNRoots
 areaSym SCRATCH = SymScratch
 areaSym STACK_LIMIT = SymStackLimit
 areaSym ARGV = SymArgv
+areaSym RUNTIME = SymRuntime
+
+||| Whether a function may convert between words and addresses in the term
+||| IR: only the functions of the module that implements the runtime's
+||| memory, where an address is made from a word and taken apart.
+public export
+convertsIn : Name -> Bool
+convertsIn (NS ns _) = ns == mkNamespace "Runtime.Memory"
+convertsIn _ = False
 
 ||| The first label a program may use for itself.
 public export
@@ -151,6 +157,18 @@ public export
 runtimeStart : Name
 runtimeStart = NS (mkNamespace "Runtime.Start") (UN (Basic "start"))
 
+||| The allocation slow path: `bytes` in, the space of an object out, with
+||| the window moved past it; it collects when the heap has grown enough.
+public export
+runtimeAllocSlow : Name
+runtimeAllocSlow = NS (mkNamespace "Runtime.Space") (UN (Basic "allocSlow"))
+
+||| The allocation of a mutable object, which is never inline: `bytes` in,
+||| the object's space out.
+public export
+runtimeAllocMutable : Name
+runtimeAllocMutable = NS (mkNamespace "Runtime.Space") (UN (Basic "allocMutable"))
+
 ||| The routine that ends the process with a status.
 public export
 runtimeExit : Name
@@ -173,6 +191,8 @@ export
 routines : {enc : Enc} -> List (Routine enc)
 routines =
   [ MkRoutine runtimeStart True (Just SymRuntimeStart) [] [W64, W64]
+  , MkRoutine runtimeAllocSlow True (Just SymAllocSlow) [W64] [W64]
+  , MkRoutine runtimeAllocMutable True (Just SymAllocMutable) [W64] [W64]
   , MkRoutine runtimeExit True Nothing [] [W64]
   , MkRoutine runtimeCrash True (Just SymCrash) [] [W64, W64]
   , integer "add" [Val] [Val, Val]
@@ -219,10 +239,21 @@ data Intrinsic
     Store64
   | ||| Store a word's low 8, 16 or 32 bits.
     StoreNarrow SubWord
+  | ||| The allocation pointer.
+    GetHp
   | ||| Set the allocation pointer.
     SetHp
+  | ||| The allocation limit.
+    GetHpLim
   | ||| Set the allocation limit.
     SetHpLim
+  | ||| The current continuation, as the pointer word it is.
+    GetK
+  | ||| Set the current continuation from a pointer word.
+    SetK
+  | ||| The pointer tag of the program's encoding: what a pointer word is
+    ||| beyond the object's address.
+    PointerTag
   | ||| The address of a per-thread area.
     AreaAddress Area
 
@@ -249,10 +280,18 @@ intrinsics =
   , memory "prim__store32" (StoreNarrow Sub32) [W64, W64, W64] []
   , memory "prim__store16" (StoreNarrow Sub16) [W64, W64, W64] []
   , memory "prim__store8" (StoreNarrow Sub8) [W64, W64, W64] []
+  , memory "prim__getHp" GetHp [] [W64]
   , memory "prim__setHp" SetHp [W64] []
+  , memory "prim__getHpLim" GetHpLim [] [W64]
   , memory "prim__setHpLim" SetHpLim [W64] []
+  , memory "prim__getK" GetK [] [W64]
+  , memory "prim__setK" SetK [W64] []
+  , memory "prim__pointerTag" PointerTag [] [W64]
   , memory "prim__stackLimitArea" (AreaAddress STACK_LIMIT) [] [W64]
-  , memory "prim__argvArea" (AreaAddress ARGV) [] [W64] ]
+  , memory "prim__argvArea" (AreaAddress ARGV) [] [W64]
+  , memory "prim__rootsArea" (AreaAddress ROOTS) [] [W64]
+  , memory "prim__nrootsArea" (AreaAddress NROOTS) [] [W64]
+  , memory "prim__runtimeArea" (AreaAddress RUNTIME) [] [W64] ]
   where
     system : String -> Name
     system n = NS (mkNamespace "Runtime.System") (UN (Basic n))
@@ -268,10 +307,10 @@ intrinsicOf n = (.intrinsic) <$> find (\i => i.name == n) (intrinsics {enc})
 ------------------------------------------------------------------------------
 -- Parameters
 
-||| The default allocation window: 4 MiB. The seed never collects: when a
-||| window is exhausted, it maps another of the same size, or larger if one
-||| allocation needs more. A tiny window, chosen with `linkWith`, makes tests
-||| take the slow path often.
+||| The default allocation window: 4 MiB, the bytes the inline bump may
+||| allocate before the runtime's slow path runs, which extends the window
+||| or collects. A tiny window, chosen with `linkWith` or the directive
+||| `nursery=`, makes tests take the slow path, and collect, often.
 export
 windowBytes : Int
 windowBytes = 4 * 1024 * 1024

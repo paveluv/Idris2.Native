@@ -224,6 +224,14 @@ data Area
     ||| argument count, the arguments' addresses and the environment's. Set
     ||| at start-up.
     ARGV
+  | ||| The runtime's state: the spaces, the limits, what the last collection
+    ||| left live. `runtimeWords` words, which the runtime library lays out.
+    RUNTIME
+
+||| The words of `RUNTIME`.
+public export
+runtimeWords : Nat
+runtimeWords = 32
 
 ||| Operations on machine state that the runtime needs and no instruction
 ||| expresses. Each is a fixed instruction sequence per target, never a call.

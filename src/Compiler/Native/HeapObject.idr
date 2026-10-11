@@ -201,14 +201,15 @@ data Kind
     ||| initialised. Only the rendering of `Call` and `Apply` makes one.
     CONT
 
-||| The kind's id, in bits 0..3 of a header word. Every id is between 1 and
+||| The kind's id, in bits 0..3 of a header word, as the word the runtime's
+||| code compares it with. Every id is between 1 and
 ||| 15, so a header word's low four bits are never all zero; a continuation's
 ||| word 0, a 16-aligned code address, has them all zero, which is how a
 ||| `CONT` is told apart from an object with a header. Id 15 is reserved for
 ||| the forwarding header a copying collector writes over an object it has
 ||| moved; 12 to 14 are free.
 public export
-kindId : Kind -> Nat
+kindId : Kind -> Bits64
 kindId CON = 1
 kindId CLOSURE = 2
 kindId INT64 = 3
@@ -223,7 +224,7 @@ kindId CONT = 11
 
 ||| The kind with this id, if any.
 public export
-kindOfId : Nat -> Maybe Kind
+kindOfId : Bits64 -> Maybe Kind
 kindOfId 1 = Just CON
 kindOfId 2 = Just CLOSURE
 kindOfId 3 = Just INT64
@@ -338,12 +339,13 @@ data HeaderPart : Kind -> Type where
   ArrayElems     : HeaderPart ARRAY
   BufferBytes    : HeaderPart BUFFER
 
-||| Where a part lives in the header word: its first bit and its width. This
+||| Where a part lives in the header word: its first bit and its width, as
+||| the words the runtime's code shifts and masks by. This
 ||| is the only place the bit layout is written down; encoding, decoding,
 ||| the rendering of `LoadPart` and the seed's `idris_apply` all read it here. A kind's parts lie in bits
 ||| 8..63 and do not overlap.
 public export
-place : {0 k : Kind} -> HeaderPart k -> (Nat, Nat)
+place : {0 k : Kind} -> HeaderPart k -> (Bits64, Bits64)
 place ConId = (8, 28)
 place ConArity = (36, 28)
 place ClosureArity = (8, 28)
@@ -358,7 +360,7 @@ place BufferBytes = (8, 56)
 ||| more argument filled is its header plus `partUnit ClosureFilled`.
 public export
 partUnit : {0 k : Kind} -> HeaderPart k -> Integer
-partUnit p = pow2 (fst (place p))
+partUnit p = pow2 (cast (fst (place p)))
 
 public export
 Show (HeaderPart kn) where
@@ -400,7 +402,7 @@ sameHeader h h' = k == k' && map snd (parts h) == map snd (parts h')
 ||| not fit loses the high bits of the part, and never touches its neighbours.
 public export
 fits : {0 k : Kind} -> Header enc k -> Bool
-fits h = all (\pv => cast (snd pv) < pow2 (snd (place (fst pv)))) (parts h)
+fits h = all (\pv => cast (snd pv) < pow2 (cast (snd (place (fst pv))))) (parts h)
 
 unsigned : Int64 -> Integer
 unsigned w = if w < 0 then cast w + pow2 64 else cast w
@@ -414,7 +416,7 @@ encodeHeader : {k : Kind} -> Header enc k -> Int64
 encodeHeader h = signed (cast (kindId k) + sum (map part (parts h)))
   where
     part : (HeaderPart k', Nat) -> Integer
-    part (p, v) = (cast v `mod` pow2 (snd (place p))) * pow2 (fst (place p))
+    part (p, v) = (cast v `mod` pow2 (cast (snd (place p)))) * pow2 (cast (fst (place p)))
 
 ||| The header a word encodes, if the word is exactly what `encodeHeader`
 ||| makes of some header: a kind's id other than `CONT`'s, flags 0, and no
@@ -432,7 +434,7 @@ decodeHeader enc w = do
     u = unsigned w
 
     get : HeaderPart k' -> Nat
-    get p = cast ((u `div` pow2 (fst (place p))) `mod` pow2 (snd (place p)))
+    get p = cast ((u `div` pow2 (cast (fst (place p)))) `mod` pow2 (cast (snd (place p))))
 
     -- A sign-magnitude program's BIGNUM header, matched on the record so
     -- that the match proves the sign is in the header.

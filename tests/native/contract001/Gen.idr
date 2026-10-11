@@ -47,6 +47,12 @@ crash = form runtimeCrash [word "message", word "length"] unit []
 start : FlatDef
 start = form runtimeStart [word "entry", word "window"] unit []
 
+||| `allocSlow (bytes : Bits64) : Addr k` and `allocMutable`, as the
+||| contract has them: a word in, the object's address out.
+allocSlow, allocMutable : FlatDef
+allocSlow = form runtimeAllocSlow [word "bytes"] (SPrim Bits64Type) [Word]
+allocMutable = form runtimeAllocMutable [word "bytes"] (SPrim Bits64Type) [Word]
+
 check : String -> List FlatDef -> IO ()
 check what forms = putStrLn $ what ++ ": " ++
   case lowerProgram TestEnc forms [] [] of
@@ -55,9 +61,9 @@ check what forms = putStrLn $ what ++ ": " ++
 
 main : IO ()
 main = do
-  check "as declared" [start, exit, crash]
-  check "no exit" [start, crash]
+  check "as declared" [start, allocSlow, allocMutable, exit, crash]
+  check "no exit" [start, allocSlow, allocMutable, crash]
   -- exit (status, code : Bits64) : ()
-  check "exit of two words" [start, form runtimeExit [word "status", word "code"] unit [], crash]
+  check "exit of two words" [start, allocSlow, allocMutable, form runtimeExit [word "status", word "code"] unit [], crash]
   -- crash (message, length : Bits64) : Bits64
-  check "crash with a result" [start, exit, form runtimeCrash [word "message", word "length"] (SPrim Bits64Type) [Word]]
+  check "crash with a result" [start, allocSlow, allocMutable, exit, form runtimeCrash [word "message", word "length"] (SPrim Bits64Type) [Word]]

@@ -1,0 +1,8 @@
+. ../../testutils.sh
+
+# The collector: a program that allocates far more than its heap, with a
+# window of 4 KiB, keeps its live data across hundreds of collections. It
+# imports the runtime as a package for the collection count.
+idris2 --cg native -p idris2-native-runtime -p idris2-native --directive nursery=4096 -o gc Main.idr > /dev/null
+./build/exec/gc
+echo "status: $?"

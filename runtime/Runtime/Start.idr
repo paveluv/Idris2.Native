@@ -4,7 +4,7 @@
 ||| lowering of continuations enters code.
 module Runtime.Start
 
-import public Runtime.Memory
+import public Runtime.Space
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
@@ -28,23 +28,51 @@ stackMargin = 262144
 defaultStack : Bits64
 defaultStack = 8388608
 
+||| A space's reservation: as large as the system allows, from 32 TiB
+||| halving to 64 MiB, so that only the system, or a limit the user set on
+||| the process's address space, bounds the heap. Its address and size.
+covering
+reserveSpace : (bytes : Bits64) -> Op Heap (Bits64, Bits64)
+reserveSpace bytes =
+  if bytes < 67108864 then crashOp "idris: cannot reserve memory" else do
+    a <- reserveMemory bytes
+    if a == 0 then reserveSpace (prim__shr_Bits64 bytes 1) else pure (a, bytes)
+  where
+    crashOp : String -> Op Heap a
+    crashOp msg = assert_total (idris_crash msg)
+
 %cg native flat Runtime.Start.start
-||| `idris_start`: the first allocation window, mapped, of `window` bytes;
-||| the stack limit, which direct code, deepened by recursion in flat code,
-||| checks on entry: the stack pointer at entry less the stack's limit, at
-||| most `stackCap`, plus `stackMargin`, so that recursion too deep ends with
-||| a message before the system's guard gap faults; and the stack pointer at
-||| entry, `entry`, kept for the program's arguments.
-export
+||| `idris_start`: the two spaces reserved and the first window committed,
+||| of `window` bytes, as the allocation window; the stack limit, which
+||| direct code, deepened by recursion in flat code, checks on entry: the
+||| stack pointer at entry less the stack's limit, at most `stackCap`, plus
+||| `stackMargin`, so that recursion too deep ends with a message before the
+||| system's guard gap faults; and the stack pointer at entry, `entry`, kept
+||| for the program's arguments.
+export covering
 start : (entry, window : Bits64) -> Op Heap ()
 start entry window = do
-  w <- mapMemory {k = BUFFER} window
-  -- the window's first 16 bytes lent to getrlimit, then zeroed again
-  soft <- stackSoftLimit w defaultStack
-  store64 w 0 0
-  store64 w 8 0
+  (fb, fs) <- reserveSpace 35184372088832
+  (tb, ts) <- reserveSpace 35184372088832
+  setState fromBase fb
+  setState fromEnd (fb + fs)
+  setState fromCommitted fb
+  setState toBase tb
+  setState toEnd (tb + ts)
+  setState toCommitted tb
+  setState toTop tb
+  setState scanCursor tb
+  setState liveBytes 0
+  setState heapLimit 0
+  setState windowBytes window
+  setState collections 0
+  let firstEnd = roundToPage (fb + window)
+  commitMemory fb (firstEnd - fb)
+  setState fromCommitted firstEnd
+  setAllocation fb (fb + window)
+  scratch <- scratchArea {k = BUFFER}
+  soft <- stackSoftLimit scratch defaultStack
   limit <- stackLimitArea {k = BUFFER}
   store64 limit 0 (entry - (if soft > stackCap then stackCap else soft) + stackMargin)
   argv <- argvArea {k = BUFFER}
   store64 argv 0 entry
-  setWindow w window

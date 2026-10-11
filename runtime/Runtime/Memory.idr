@@ -70,34 +70,158 @@ mapMemory bytes = do
      then assert_total (idris_crash "idris: cannot map memory")
      else pure (MkAddr r)
 
+------------------------------------------------------------------------------
+-- Words as addresses, for the module that manages the spaces
+
+||| The address a word is. `Runtime.Space`, which manages the heap's spaces
+||| and so sees addresses as words, is the one client meant.
+export %inline
+fromWord : Bits64 -> Addr k
+fromWord = MkAddr
+
+||| The word an address is.
+export %inline
+toWord : Addr k -> Bits64
+toWord a = a.word
+
+||| The word at an address plus a byte offset, both words, and storing one:
+||| the loads and stores for code that works on addresses as words.
+export %inline
+loadAt : (base, offset : Bits64) -> Op Heap Bits64
+loadAt = prim__load64
+
+export %inline
+storeAt : (base, offset, value : Bits64) -> Op Heap ()
+storeAt = prim__store64
+
+------------------------------------------------------------------------------
+-- The pinned registers, the encoding, the areas
+
+%extern prim__getHp : (1 m : Heap) -> Ret Heap Bits64
 %extern prim__setHp : (hp : Bits64) -> (1 m : Heap) -> Ret Heap ()
+%extern prim__getHpLim : (1 m : Heap) -> Ret Heap Bits64
 %extern prim__setHpLim : (hplim : Bits64) -> (1 m : Heap) -> Ret Heap ()
+%extern prim__getK : (1 m : Heap) -> Ret Heap Bits64
+%extern prim__setK : (k : Bits64) -> (1 m : Heap) -> Ret Heap ()
+%extern prim__pointerTag : (1 m : Heap) -> Ret Heap Bits64
 %extern prim__stackLimitArea : (1 m : Heap) -> Ret Heap Bits64
 %extern prim__argvArea : (1 m : Heap) -> Ret Heap Bits64
+%extern prim__rootsArea : (1 m : Heap) -> Ret Heap Bits64
+%extern prim__nrootsArea : (1 m : Heap) -> Ret Heap Bits64
+%extern prim__runtimeArea : (1 m : Heap) -> Ret Heap Bits64
 
-||| Make `bytes` at the address the allocation window: inline allocation
-||| bumps the allocation pointer from the address until the limit.
+||| The allocation window: inline allocation bumps the allocation pointer
+||| until the limit, and takes the slow path past it.
+export %inline
+allocationPointer : Op Heap Bits64
+allocationPointer = prim__getHp
+
+export %inline
+allocationLimit : Op Heap Bits64
+allocationLimit = prim__getHpLim
+
+export %inline
+setAllocation : (hp, hplim : Bits64) -> Op Heap ()
+setAllocation hp hplim = do
+  prim__setHp hp
+  prim__setHpLim hplim
+
+||| Make `bytes` at the address the allocation window.
 export
 setWindow : Addr k -> (bytes : Bits64) -> Op Heap ()
-setWindow a bytes = do
-  prim__setHp a.word
-  prim__setHpLim (a.word + bytes)
+setWindow a bytes = setAllocation a.word (a.word + bytes)
 
-||| The word that holds the lowest the machine stack pointer may go in
-||| direct code, which every direct function checks on entry.
+||| The current continuation, as the pointer word it is, and setting it:
+||| the collector's first root, which it rewrites when it moves the
+||| continuation. The conversions between the continuation and its word are
+||| this module's, so these are not inlined into their callers.
+export
+continuation : Op Heap Bits64
+continuation = prim__getK
+
+export
+setContinuation : Bits64 -> Op Heap ()
+setContinuation = prim__setK
+
+||| The pointer tag of the program's encoding: a pointer word is the
+||| object's address plus the tag, and a word is a pointer exactly when its
+||| low bit is the tag's. The runtime's one knowledge of the encoding.
+export %inline
+pointerTag : Op Heap Bits64
+pointerTag = prim__pointerTag
+
+||| The per-thread areas, as addresses: the word that holds the lowest the
+||| machine stack pointer may go in direct code; the word that holds the
+||| stack pointer at the program's entry, where the argument count, the
+||| arguments' addresses and the environment's are; the root buffer and the
+||| word that counts its entries in use; and the runtime's state.
 export
 stackLimitArea : Op Heap (Addr k)
 stackLimitArea = do
   w <- prim__stackLimitArea
   pure (MkAddr w)
 
-||| The word that holds the stack pointer at the program's entry: the
-||| argument count, the arguments' addresses and the environment's are there.
 export
 argvArea : Op Heap (Addr k)
 argvArea = do
   w <- prim__argvArea
   pure (MkAddr w)
+
+export %inline
+rootsArea : Op Heap Bits64
+rootsArea = prim__rootsArea
+
+export %inline
+nrootsArea : Op Heap Bits64
+nrootsArea = prim__nrootsArea
+
+export %inline
+runtimeArea : Op Heap Bits64
+runtimeArea = prim__runtimeArea
+
+------------------------------------------------------------------------------
+-- The system's memory
+
+||| Linux's page: what the system commits and releases by.
+export
+pageBytes : Bits64
+pageBytes = 4096
+
+||| `x` rounded up to a page.
+export
+roundToPage : Bits64 -> Bits64
+roundToPage x = prim__and_Bits64 (x + (pageBytes - 1)) 0xFFFFFFFFFFFFF000
+
+||| `bytes` of address space reserved, at an address the system chooses, and
+||| not yet usable: no memory is committed to it, and no overcommit setting
+||| counts it, until `commitMemory`. 0 if the system has no such range.
+export
+reserveMemory : (bytes : Bits64) -> Op Heap Bits64
+reserveMemory bytes = do
+  -- mmap(NULL, bytes, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0)
+  r <- syscall 9 0 bytes 0 0x4022 0xFFFFFFFFFFFFFFFF 0
+  pure (if r > 0xFFFFFFFFFFFFF000 then 0 else r)
+
+||| Memory committed to `bytes` of a reserved range from `addr`, both whole
+||| pages: readable, writable and zero. The program ends if the system has
+||| none.
+export
+commitMemory : (addr, bytes : Bits64) -> Op Heap ()
+commitMemory addr bytes = do
+  -- mprotect(addr, bytes, PROT_READ | PROT_WRITE)
+  r <- syscall 10 addr bytes 3 0 0 0
+  if r == 0 then pure () else assert_total (idris_crash "idris: cannot map memory")
+
+||| Memory given back from `bytes` of a committed range from `addr`, both
+||| whole pages: released to the system, and the range reserved again as
+||| `reserveMemory` left it.
+export
+releaseMemory : (addr, bytes : Bits64) -> Op Heap ()
+releaseMemory addr bytes = do
+  -- madvise(addr, bytes, MADV_DONTNEED); mprotect(addr, bytes, PROT_NONE)
+  _ <- syscall 28 addr bytes 4 0 0 0
+  _ <- syscall 10 addr bytes 0 0 0 0
+  pure ()
 
 ||| The soft limit of the process's stack, in bytes, by getrlimit, which
 ||| writes it into the 16 bytes at `buffer`; `otherwise` if the system does

@@ -5,9 +5,9 @@
 -- and exits with 42, or with 1 + the index of the first wrong one. Both are
 -- written with the builder (Compiler.Native.TermIR.Build), and so is the
 -- `exit` the caller ends with, a system call as the runtime's is. A crash
--- jumps to the runtime's `crash`, and the entry calls the runtime's
--- `start`, which the program defines itself, under the names the runtime
--- contract gives them.
+-- jumps to the runtime's `crash`, the entry calls the runtime's `start`,
+-- and a continuation's allocation may call its `allocSlow`, which the
+-- program defines itself, under the names the runtime contract gives them.
 --
 -- A Direct function is how a flat function is compiled: a machine function
 -- whose arguments and results are its registers' values. `spread` is as a
@@ -69,7 +69,8 @@ D = MkDecls [ MkSig (nm "main") InCPS [] False
             , MkSig (nm "spread") (InDirect Results False) Params False
             , MkSig (nm "exit") (InDirect [] False) [W64] False
             , MkSig (flatName runtimeCrash) (InDirect [] False) [W64, W64] False
-            , MkSig (flatName runtimeStart) (InDirect [] False) [W64, W64] False ]
+            , MkSig (flatName runtimeStart) (InDirect [] False) [W64, W64] False
+            , MkSig (flatName runtimeAllocSlow) (InDirect [W64] False) [W64] False ]
             []
 
 spreadRef : Var (sigs D) (MkSig (nm "spread") (InDirect Results False) Params False)
@@ -89,6 +90,20 @@ startBody = build $ \[entry, window] => do
   lim <- emit1 (Arith Add w window)
   emit0 (WriteHpLim lim)
   ret []
+
+||| The runtime's allocation slow path, reduced to what this program needs:
+||| a fresh megabyte and `bytes` more from the system, the object at its
+||| start, and the rest the allocation window. Nothing is collected.
+allocSlowBody : Closed D (InDirect [W64] False) False [W64]
+allocSlowBody = build $ \[bytes] => do
+  size <- emit1 (Arith Add bytes (W 1048576))
+  -- mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)
+  w <- emit1 (SystemCall (W 9) [W 0, size, W 3, W 0x22, W (-1), W 0])
+  hp <- emit1 (Arith Add w bytes)
+  emit0 (WriteHp hp)
+  lim <- emit1 (Arith Add w size)
+  emit0 (WriteHpLim lim)
+  ret [w]
 
 ||| The runtime's `crash`: the message, `length` bytes at `message`, written
 ||| to the standard error, then the process ended with status 1.
@@ -166,10 +181,11 @@ main = do
   let Just e = close exitBody | Nothing => putStrLn "exit: a level outside its context"
   let Just cr = close crashBody | Nothing => putStrLn "crash: a level outside its context"
   let Just st = close startBody | Nothing => putStrLn "start: a level outside its context"
+  let Just al = close allocSlowBody | Nothing => putStrLn "allocSlow: a level outside its context"
   case choose (distinct (map (.name) (sigs D)) && distinct (map (.sym) (statics D))) of
     Right _ => putStrLn "names repeat"
     Left ok => do
-      let ir = allocRegs x86_64 (MkProgram {d = D} [Defined m, Defined s, Defined e, Defined cr, Defined st] [] (MkEntry here) noConIds)
+      let ir = allocRegs x86_64 (MkProgram {d = D} [Defined m, Defined s, Defined e, Defined cr, Defined st, Defined al] [] (MkEntry here) noConIds)
       let Right rendered = render TestEnc ir
         | Left err => putStrLn ("render: " ++ err)
       let Right image = linkProgram TestEnc windowBytes rendered.areas rendered.text rendered.rodata
