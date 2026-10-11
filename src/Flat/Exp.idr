@@ -142,6 +142,17 @@ mutual
   consLayout [] = []
   consLayout (c :: cs) = fieldsLayout c.fields ++ consLayout cs
 
+||| The shapes of the data types the forms handle, by skeleton.
+public export
+Shapes : Type
+Shapes = List (Skeleton, Shape)
+
+||| A type's shape: a primitive's is its own.
+export
+shapeOf : Shapes -> Skeleton -> Maybe Shape
+shapeOf ss (SPrim t) = Just (PrimShape t)
+shapeOf ss sk = lookup sk ss
+
 ||| Where the fields of a data type's `i`-th constructor lie among the
 ||| registers that follow its tag: those before them, theirs, and those
 ||| after. Every constructor has registers of its own, so the three make up
@@ -233,6 +244,50 @@ record FlatDef where
   result : Layout
   body : FlatExp
   fc : FC
+
+||| The forms a form calls.
+export
+formCallees : FlatDef -> List Name
+formCallees fd = go fd.body
+  where
+    go : FlatExp -> List Name
+    go (FVar _ _) = []
+    go (FLet _ _ val sc) = go val ++ go sc
+    go (FConst _ _) = []
+    go (FOp _ _ as) = concatMap go (toList as)
+    go (FCall _ f as) = f :: concatMap go as
+    go (FPrim _ _ as) = concatMap go as
+    go (FCon _ _ _ _ _ as) = concatMap go as
+    go (FCase _ sc alts def) = go sc ++ concatMap alt alts ++ maybe [] go def
+      where
+        alt : FlatAlt -> List Name
+        alt (FConAlt _ _ _ b) = go b
+        alt (FConstAlt _ b) = go b
+    go (FCrash _ _) = []
+    go (FNone _) = []
+
+||| The skeletons of the types a form handles: its parameters', its
+||| result's, its variables' and its constructors'. The lowering needs the
+||| shapes of the data types among them.
+export
+formSkeletons : FlatDef -> List Skeleton
+formSkeletons fd = fd.resultSkeleton :: map skeleton fd.params ++ go fd.body
+  where
+    go : FlatExp -> List Skeleton
+    go (FVar _ _) = []
+    go (FLet _ fv val sc) = fv.skeleton :: go val ++ go sc
+    go (FConst _ _) = []
+    go (FOp _ _ as) = concatMap go (toList as)
+    go (FCall _ _ as) = concatMap go as
+    go (FPrim _ _ as) = concatMap go as
+    go (FCon _ _ _ sk _ as) = sk :: concatMap go as
+    go (FCase _ sc alts def) = go sc ++ concatMap alt alts ++ maybe [] go def
+      where
+        alt : FlatAlt -> List Skeleton
+        alt (FConAlt _ _ vs b) = map skeleton vs ++ go b
+        alt (FConstAlt _ b) = go b
+    go (FCrash _ _) = []
+    go (FNone _) = []
 
 mutual
   covering

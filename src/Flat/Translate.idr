@@ -64,7 +64,6 @@ import Compiler.Opts.Constructor
 import Core.Case.CaseTree
 import Core.CompileExpr
 import Core.Context
-import Core.Context.Log
 import Core.Core
 import Core.Env
 import Flat.Exp

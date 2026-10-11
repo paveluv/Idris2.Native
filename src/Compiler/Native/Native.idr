@@ -20,7 +20,6 @@ import Compiler.Native.LocatedIR
 import Compiler.Native.LocatedIR.Dump
 import Compiler.Native.Lower
 import Compiler.Native.RegAlloc
-import Compiler.Native.LowerFlat
 import Flat.Exp
 import Flat.Marked
 import Flat.Translate
@@ -108,7 +107,7 @@ flatInputs table vmdefs = do
     reach : SortedMap Name () -> List FlatDef -> List Name -> Core (List FlatDef)
     reach seen acc [] = pure (reverse acc)
     reach seen acc (n :: ns) =
-      if isJust (lookup n seen) then reach seen acc ns else do
+      if isJust (Data.SortedMap.lookup n seen) then reach seen acc ns else do
         Just fd <- pure (lookup n table)
           | Nothing => reach (insert n () seen) acc ns
         reach (insert n () seen) (fd :: acc) (formCallees fd ++ ns)

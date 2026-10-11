@@ -31,7 +31,6 @@ module Flat.Judgement
 
 import Core.CompileExpr
 import Core.Context
-import Core.Context.Log
 import Core.Core
 import Core.Env
 import public Flat.Exp

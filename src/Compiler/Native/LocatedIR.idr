@@ -43,7 +43,6 @@ module Compiler.Native.LocatedIR
 
 import Core.FC
 import Core.Name
-import public Compiler.Native.HeapObject
 import public Compiler.Native.IRCommon
 import Compiler.Native.Target
 import Data.List

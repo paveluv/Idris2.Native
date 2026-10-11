@@ -33,11 +33,13 @@ modules =
     Compiler.Native.X86.Encode,
     Compiler.Native.X86.Render,
     Compiler.Native.X86.Target,
+    Flat.Check,
     Flat.Exp,
     Flat.Judgement,
     Flat.Marked,
     Flat.Oracle,
     Flat.Problem,
+    Flat.Report,
     Flat.Translate
 
 main = Main

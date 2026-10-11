@@ -5,8 +5,7 @@
 ||| given first: without `--cg`, `idris2-native` compiles as `idris2` does.
 |||
 ||| `flat-check` compiles nothing: as an incremental code generator it checks
-||| each module's flat functions as the module is built
-||| (`Flat.Marked.codegenFlatCheck`). `idris2-native` adds it to the
+||| each module's flat functions as the module is built (`Flat.Check`). `idris2-native` adds it to the
 ||| incremental code generators Idris reads from `IDRIS2_INC_CGS`, so a
 ||| function that is not flat is reported when its module is checked, with
 ||| the location of the term at fault.
@@ -15,7 +14,7 @@ module Main
 import Compiler.Common
 import Compiler.Native.Native
 import Compiler.Scheme.Chez
-import Flat.Marked
+import Flat.Check
 import Flat.Oracle
 
 import Data.List1
