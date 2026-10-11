@@ -225,7 +225,7 @@ data Instr : Enc -> Type where
   ||| the constructor id of a `CON`, for instance. The pointer's kind is the
   ||| part's kind, which the instruction keeps, so that a pass reads it here
   ||| instead of rebuilding it from the part.
-  LoadPart   : {k : Kind} -> HeaderPart k -> Reg enc -> Reg enc -> Instr enc
+  LoadPart   : {0 k : Kind} -> HeaderPart k -> Reg enc -> Reg enc -> Instr enc
   ||| A whole object in one step: the destination, a `PtrTo k` of the
   ||| header's kind, becomes a new object with this header and these initial
   ||| fields. Since one instruction makes the whole object, no collection can

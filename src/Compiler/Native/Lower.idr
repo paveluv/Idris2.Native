@@ -418,7 +418,7 @@ allVals {n = Z} [] = []
 allVals {n = S n} (x :: xs) = x :: allVals xs
 
 parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
-           (d : Decls enc) (refs : Refs enc d)
+           (0 d : Decls enc) (refs : Refs enc d)
            {0 v : Ty enc -> Type} {0 l : List (Ty enc) -> Type}
 
   0 B : Type -> Type

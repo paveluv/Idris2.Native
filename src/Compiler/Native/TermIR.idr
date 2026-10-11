@@ -306,7 +306,7 @@ data Base : (var : Ty enc -> Type) -> Type where
 ||| A memory reference: a base, an optional index counting units of the
 ||| access's width, and a constant byte offset.
 public export
-record Mem {enc : Enc} (var : Ty enc -> Type) where
+record Mem {0 enc : Enc} (var : Ty enc -> Type) where
   constructor MkMem
   base : Base var
   index : Maybe (Opnd var W64)
@@ -354,7 +354,7 @@ data Instr : Decls enc -> Bool -> (var : Ty enc -> Type) -> List (Ty enc) -> Typ
   WordToAddr : (k : Kind) -> Opnd var W64 -> Instr d True var [PtrTo k]
   ||| The header word of an object; a continuation's layout word.
   LoadHeader : Opnd var (PtrTo k) -> Instr d m var [W64]
-  LoadPart : {k : Kind} -> HeaderPart k -> Opnd var (PtrTo k) -> Instr d m var [W64]
+  LoadPart : {0 k : Kind} -> HeaderPart k -> Opnd var (PtrTo k) -> Instr d m var [W64]
   ||| A whole object in one step, from a header known when the program is
   ||| compiled and its fields.
   AllocObj : {k : Kind} -> (h : Header enc k) -> {auto 0 ok : So (wellFormed h)} ->

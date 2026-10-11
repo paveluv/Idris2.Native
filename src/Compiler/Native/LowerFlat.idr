@@ -13,7 +13,10 @@
 |||
 ||| A form becomes a `Direct` function whose parameters are its parameters'
 ||| registers in turn and whose results are its result's, and which never
-||| collects. A `case` on a sum is a switch on the tag, and one that is not
+||| collects. It is a function of the program, whose term IR is indexed by
+||| the encoding of uniform values; flat code holds no uniform value, so the
+||| lowering is the same under every encoding, which the encoding being
+||| erased here states. A `case` on a sum is a switch on the tag, and one that is not
 ||| in tail position a join, whose parameters are the case's registers. A
 ||| call of a form is a `DirectCall`; a call of the form itself in tail
 ||| position jumps back to its start, so self tail recursion is a loop. The
@@ -415,7 +418,7 @@ record Forms (enc : Enc) (d : Decls enc) where
 Env : (enc : Enc) -> (Ty enc -> Type) -> Type
 Env enc v = SortedMap Name (Skeleton, Value enc v)
 
-parameters {enc : Enc} (d : Decls enc) (pr : Forms enc d) (self : FlatDef)
+parameters {0 enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef)
            {0 v : Ty enc -> Type} {0 l : List (Ty enc) -> Type}
 
   0 B : Type -> Type
@@ -763,7 +766,7 @@ parameters {enc : Enc} (d : Decls enc) (pr : Forms enc d) (self : FlatDef)
 ||| A form as the body of its `Direct` function. A form that calls itself
 ||| is a loop, which a call in tail position jumps back to.
 export
-lowerForm : {enc : Enc} -> (d : Decls enc) -> Forms enc d -> (fd : FlatDef) ->
+lowerForm : {0 enc : Enc} -> (0 d : Decls enc) -> Forms enc d -> (fd : FlatDef) ->
             Closed d (InDirect (tys fd.result) False) False (tys (paramsLayout fd.params))
 lowerForm d pr fd = build $ \xs =>
   if calls fd.name fd.body
