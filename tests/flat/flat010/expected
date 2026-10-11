@@ -1,0 +1,5 @@
+Error: The flat directive names missing, which is no function
+
+Error: The flat directive names swap, which is ambiguous: Builtin.swap, Main.swap. Qualify it with its namespace.
+
+(2, 1)

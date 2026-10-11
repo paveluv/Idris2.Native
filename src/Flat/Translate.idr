@@ -1083,7 +1083,8 @@ root n
 export
 flatNames : {auto c : Ref Ctxt Defs} -> (directives : List String) -> Core (List Name, List FlatError)
 flatNames directives
-    = do found <- traverse one (concatMap names directives)
+    = do -- Idris gives a module's directives last first
+         found <- traverse one (concatMap names (reverse directives))
          pure (mapMaybe ok found, mapMaybe bad found)
   where
     names : String -> List String

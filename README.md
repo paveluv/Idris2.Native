@@ -47,9 +47,15 @@ library's marks reach the programs that import it:
 
 Each name is qualified as far as it takes to name one function. Every other
 code generator ignores the directive and compiles the function as usual.
-When a program is compiled, each marked function is translated into its flat
-form (`Flat.Translate`), and one that is not flat is reported, with the
-reason and the chain of calls that reaches it.
+
+Each marked function is translated into its flat form (`Flat.Translate`) as
+its module is built, `--check` included, and one that is not flat is
+reported then, with the reason, the chain of calls that reaches it, and the
+term at fault. The check is the incremental code generator `flat-check`,
+which compiles nothing and which `idris2-native` adds to the ones
+`IDRIS2_INC_CGS` names. Compiling a program translates the functions again,
+and reports what no check reported: a name that names no function, or more
+than one, and functions of modules built without the check.
 
 `--cg flat-oracle` compiles each marked function from its flat form, made
 ordinary again, with Chez: it tests the translation, since the program must

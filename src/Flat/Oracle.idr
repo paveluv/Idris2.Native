@@ -34,24 +34,24 @@ dumpFlatFile (d :: ds) = case forget (split (== '=') d) of
   _ => dumpFlatFile ds
 
 -- The program's flat forms, used in place of their functions' ordinary
--- forms.
-useForms : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} -> Core ()
+-- forms: whether there are, or errors have been reported already.
+useForms : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} -> Core Bool
 useForms
-    = do forms <- markedForms
+    = do Just forms <- markedForms
+           | Nothing => pure False
          whenJust (dumpFlatFile !(getDirectives (Other "flat-oracle"))) $ \f => dumpFlat f forms
          useFlatForms forms
+         pure True
 
 compileExpr : Ref Ctxt Defs -> Ref Syn SyntaxInfo ->
               (tmpDir : String) -> (outputDir : String) ->
               ClosedTerm -> (outfile : String) -> Core (Maybe String)
 compileExpr c s tmpDir outputDir tm outfile
-    = do useForms
-         codegenChez.compileExpr c s tmpDir outputDir tm outfile
+    = if !useForms then codegenChez.compileExpr c s tmpDir outputDir tm outfile else pure Nothing
 
 executeExpr : Ref Ctxt Defs -> Ref Syn SyntaxInfo -> (tmpDir : String) -> ClosedTerm -> Core ()
 executeExpr c s tmpDir tm
-    = do useForms
-         codegenChez.executeExpr c s tmpDir tm
+    = when !useForms $ codegenChez.executeExpr c s tmpDir tm
 
 export
 codegenFlatOracle : Codegen

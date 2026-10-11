@@ -142,7 +142,8 @@ compileExpr : Ref Ctxt Defs -> Ref Syn SyntaxInfo ->
 compileExpr c s _ outputDir tm outfile = do
   Right settings <- parseSettings <$> getDirectives markingCG
     | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
-  table <- markedForms
+  Just table <- markedForms
+    | Nothing => pure Nothing
   whenJust settings.dumpFlat $ \f => dumpFlat f table
   cdata <- getCompileData False VMCode tm
   image <- case settings.encodings of

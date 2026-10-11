@@ -75,15 +75,77 @@ report errs
     go [e] = throw e
     go (e :: es) = do source e; emitError e; go es
 
+-- The session directive that records that a module's check (`checkModule`)
+-- has reported errors in this run of the compiler.
+reportedMark : String
+reportedMark = "flat-errors-reported"
+
 ||| The flat forms of the functions the program marks, and of the ground
 ||| functions they call. Any function marked that cannot be in the flat
-||| regime is an error, and every such error is reported.
+||| regime is an error, and every such error is reported. Idris compiles a
+||| program after a module of it failed to build, so errors that a module's
+||| check has reported already are not reported again: there are no forms
+||| then, `Nothing`, and the program is not compiled.
 export
-markedForms : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} -> Core (NameMap FlatDef)
+markedForms : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} -> Core (Maybe (NameMap FlatDef))
 markedForms
-    = do directives <- getDirectives markingCG
-         marked <- flatNames directives
+    = do marked <- flatNames !(getDirectives markingCG)
          (forms, errs) <- flatForms (fst marked)
          let nameErrs = snd marked
-         report (nameErrs ++ errs)
-         pure forms
+         session <- getSession
+         if not (null errs) && elem reportedMark session.directives
+            then pure Nothing
+            else do report (nameErrs ++ errs)
+                    pure (Just forms)
+
+||| Check the flat functions a module defines, as it is built, before its TTC
+||| is written: what `flat-check` does as an incremental code generator
+||| (`codegenFlatCheck`). The module's definitions still carry the locations of
+||| their terms then, which the TTC drops, so an error in a body points at
+||| the term, as an error of the module's own. A name a directive gives that
+||| names no function, or more than one, is left to the compilation of a
+||| program, since a directive does not say which module wrote it.
+export
+checkModule : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} ->
+              (sourceFile : String) -> Core ()
+checkModule sourceFile
+    = do here <- ctxtPathToNS sourceFile
+         marked <- flatNames !(getDirectives markingCG)
+         mine <- filterM (definedIn here) (fst marked)
+         (_, errs) <- flatForms mine
+         unless (null errs) $ setSession ({ directives $= (reportedMark ::) } !getSession)
+         report errs
+  where
+    definedIn : ModuleIdent -> Name -> Core Bool
+    definedIn here n
+        = do defs <- get Ctxt
+             Just gdef <- lookupCtxtExact n (gamma defs)
+               | Nothing => pure False
+             pure $ case isNonEmptyFC (location gdef) of
+                         Just (PhysicalIdrSrc ident, _, _) => ident == here
+                         _ => False
+
+||| The code generator `flat-check`, which compiles nothing: as an incremental
+||| code generator (`--inc flat-check`), it checks each module's flat
+||| functions as the module is built (`checkModule`), and records the source
+||| file as its data. It is not the native code generator, because Idris stops
+||| treating the code generator in use as incremental as soon as an imported
+||| module, such as the Prelude, was built without it, which would turn the
+||| check off under `--cg native` and rebuild every module each time.
+export
+codegenFlatCheck : Codegen
+codegenFlatCheck = MkCG compileExpr executeExpr (Just check) Nothing
+  where
+    nothing : Core a
+    nothing = throw (GenericMsg EmptyFC "flat-check only checks modules as they are built; it compiles nothing")
+
+    compileExpr : Ref Ctxt Defs -> Ref Syn SyntaxInfo -> String -> String -> ClosedTerm -> String -> Core (Maybe String)
+    compileExpr _ _ _ _ _ _ = nothing
+
+    executeExpr : Ref Ctxt Defs -> Ref Syn SyntaxInfo -> String -> ClosedTerm -> Core ()
+    executeExpr _ _ _ _ = nothing
+
+    check : Ref Ctxt Defs -> Ref Syn SyntaxInfo -> (sourceFile : String) -> Core (Maybe (String, List String))
+    check c s sourceFile
+        = do checkModule sourceFile
+             pure (Just (sourceFile, []))

@@ -1,4 +1,4 @@
-Main.double ({arg:5} : Double [Dbl]) : Main.Heap [] =
+Main.double ({arg:1} : Double [Dbl]) : Main.Heap [] =
   Main.MkHeap
   shape Main.Heap = {Main.MkHeap#0 as object 0}
 
@@ -7,16 +7,16 @@ Main.enum ({arg:3} : Prelude.Basics.Bool [Word]) : (Prelude.Types.Maybe Double) 
   shape Prelude.Basics.Bool = {Prelude.Basics.False#0 as tag | Prelude.Basics.True#1 as tag}
   shape (Prelude.Types.Maybe Double) = {Prelude.Types.Nothing#0 as object 0 | Prelude.Types.Just#1 as object 1 (Double)}
 
-Main.mixed ({arg:4} : Main.Mixed [Word, Dbl, Word]) : (Builtin.Pair Bits64 (Builtin.Pair Bits64 Bits64)) [Word, Word, Word] =
+Main.mixed ({arg:2} : Main.Mixed [Word, Dbl, Word]) : (Builtin.Pair Bits64 (Builtin.Pair Bits64 Bits64)) [Word, Word, Word] =
   Builtin.MkPair(1, Builtin.MkPair(2, 3))
   shape Main.Mixed = {Main.MkMixed#0 as object 0 (Bits8, Double, {Main.MkHeap#0 as object 0}, {Prelude.Basics.False#0 as tag | Prelude.Basics.True#1 as tag})}
   shape (Builtin.Pair Bits64 (Builtin.Pair Bits64 Bits64)) = {Builtin.MkPair#0 as object 1 (Bits64, {Builtin.MkPair#0 as object 1 (Bits64, Bits64)})}
 
-Main.shape ({arg:2} : Main.Shape [Word, Dbl, Word, Word]) : Builtin.Unit [] =
+Main.shape ({arg:4} : Main.Shape [Word, Dbl, Word, Word]) : Builtin.Unit [] =
   Builtin.MkUnit
   shape Main.Shape = {Main.Circle#0 as object 0 (Double) | Main.Rect#1 as object 1 (Bits64, Bits64) | Main.Empty#2 as object 2}
   shape Builtin.Unit = {Builtin.MkUnit#0 as object 0}
 
-Main.word ({arg:6} : Bits64 [Word]) : Char [Word] =
+Main.word ({arg:0} : Bits64 [Word]) : Char [Word] =
   'a'
 
