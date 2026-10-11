@@ -11,7 +11,7 @@ module Runtime.Memory
 -- translation reaches through it, as it checks that module's flat functions
 import public Compiler.Native.HeapObject
 import public Runtime.Heap
-import public Runtime.System
+import public Runtime.OS
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
@@ -57,18 +57,6 @@ store32, store16, store8 : Addr k -> (offset, value : Bits64) -> Op Heap ()
 store32 a = prim__store32 a.word
 store16 a = prim__store16 a.word
 store8 a = prim__store8 a.word
-
-||| `bytes` of fresh memory, zeroed, readable and writable, at an address the
-||| system chooses; the program ends if the system has none.
-export
-mapMemory : (bytes : Bits64) -> Op Heap (Addr k)
-mapMemory bytes = do
-  -- mmap(NULL, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)
-  r <- syscall 9 0 bytes 3 0x22 0xFFFFFFFFFFFFFFFF 0
-  -- an error is a negative number from -4095 to -1
-  if r > 0xFFFFFFFFFFFFF000
-     then assert_total (idris_crash "idris: cannot map memory")
-     else pure (MkAddr r)
 
 ------------------------------------------------------------------------------
 -- Words as addresses, for the module that manages the spaces
@@ -182,25 +170,19 @@ runtimeArea = prim__runtimeArea
 ------------------------------------------------------------------------------
 -- The system's memory
 
-||| Linux's page: what the system commits and releases by.
+||| `x` rounded up to a whole number of the system's pages, what it commits
+||| and releases by.
 export
-pageBytes : Bits64
-pageBytes = 4096
+roundToPage : Bits64 -> Op Heap Bits64
+roundToPage x = do
+  page <- osPageBytes
+  pure (prim__and_Bits64 (x + (page - 1)) (0 - page))
 
-||| `x` rounded up to a page.
-export
-roundToPage : Bits64 -> Bits64
-roundToPage x = prim__and_Bits64 (x + (pageBytes - 1)) 0xFFFFFFFFFFFFF000
-
-||| `bytes` of address space reserved, at an address the system chooses, and
-||| not yet usable: no memory is committed to it, and no overcommit setting
-||| counts it, until `commitMemory`. 0 if the system has no such range.
-export
+||| `bytes` of address space reserved, not yet usable; 0 if the system has
+||| no such range.
+export %inline
 reserveMemory : (bytes : Bits64) -> Op Heap Bits64
-reserveMemory bytes = do
-  -- mmap(NULL, bytes, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0)
-  r <- syscall 9 0 bytes 0 0x4022 0xFFFFFFFFFFFFFFFF 0
-  pure (if r > 0xFFFFFFFFFFFFF000 then 0 else r)
+reserveMemory = osReserve
 
 ||| Memory committed to `bytes` of a reserved range from `addr`, both whole
 ||| pages: readable, writable and zero. The program ends if the system has
@@ -208,28 +190,23 @@ reserveMemory bytes = do
 export
 commitMemory : (addr, bytes : Bits64) -> Op Heap ()
 commitMemory addr bytes = do
-  -- mprotect(addr, bytes, PROT_READ | PROT_WRITE)
-  r <- syscall 10 addr bytes 3 0 0 0
-  if r == 0 then pure () else assert_total (idris_crash "idris: cannot map memory")
+  ok <- osCommit addr bytes
+  if ok == 1 then pure () else assert_total (idris_crash "idris: cannot map memory")
 
 ||| Memory given back from `bytes` of a committed range from `addr`, both
-||| whole pages: released to the system, and the range reserved again as
-||| `reserveMemory` left it.
-export
+||| whole pages, and the range reserved again.
+export %inline
 releaseMemory : (addr, bytes : Bits64) -> Op Heap ()
-releaseMemory addr bytes = do
-  -- madvise(addr, bytes, MADV_DONTNEED); mprotect(addr, bytes, PROT_NONE)
-  _ <- syscall 28 addr bytes 4 0 0 0
-  _ <- syscall 10 addr bytes 0 0 0 0
-  pure ()
+releaseMemory = osRelease
 
-||| The soft limit of the process's stack, in bytes, by getrlimit, which
-||| writes it into the 16 bytes at `buffer`; `otherwise` if the system does
-||| not say.
+||| `bytes` of fresh memory, zeroed, readable and writable, at an address the
+||| system chooses; the program ends if the system has none.
 export
-stackSoftLimit : (buffer : Addr k) -> (otherwise : Bits64) -> Op Heap Bits64
-stackSoftLimit buffer otherwise = do
-  store64 buffer 0 otherwise
-  -- getrlimit(RLIMIT_STACK, buffer)
-  _ <- syscall 97 3 buffer.word 0 0 0 0
-  load64 buffer 0
+mapMemory : (bytes : Bits64) -> Op Heap (Addr k)
+mapMemory bytes = do
+  whole <- roundToPage bytes
+  a <- osReserve whole
+  ok <- if a == 0 then pure 0 else osCommit a whole
+  if ok == 0
+     then assert_total (idris_crash "idris: cannot map memory")
+     else pure (MkAddr a)

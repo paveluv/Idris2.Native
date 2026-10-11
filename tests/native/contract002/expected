@@ -1,3 +1,4 @@
 Error: native: Runtime.Memory.prim__load64 is declared as [W64, W64, W64] -> [W64], but the native code generator provides it as [W64, W64] -> [W64]
 Runtime.Memory.prim__store8 is declared as [W64, W64, W64] -> [W64], but the native code generator provides it as [W64, W64, W64] -> []
+Runtime.OS.prim__os_write is declared as [W64, W64, W64, W64] -> [W64], but the native code generator provides it as [W64, W64, W64] -> [W64]
 

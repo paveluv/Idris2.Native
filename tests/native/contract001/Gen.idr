@@ -13,6 +13,10 @@
 -- Here the runtime's forms are stood in for by forms of the same names and
 -- the signatures each case gives, with bodies that are never run: only the
 -- check is shown.
+--
+-- The OS services are checked the same way, against the functions that
+-- implement them on the platform: x86-64 Linux's `write` takes a handle,
+-- an address and a count, and returns the bytes written.
 module Main
 
 import Compiler.Native.Lower
@@ -55,7 +59,7 @@ allocMutable = form runtimeAllocMutable [word "bytes"] (SPrim Bits64Type) [Word]
 
 check : String -> List FlatDef -> IO ()
 check what forms = putStrLn $ what ++ ": " ++
-  case lowerProgram TestEnc forms [] [] of
+  case lowerProgram TestEnc defaultPlatform forms [] [] of
     Left err => err
     Right _ => "lowered"
 
@@ -67,3 +71,10 @@ main = do
   check "exit of two words" [start, allocSlow, allocMutable, form runtimeExit [word "status", word "code"] unit [], crash]
   -- crash (message, length : Bits64) : Bits64
   check "crash with a result" [start, allocSlow, allocMutable, exit, form runtimeCrash [word "message", word "length"] (SPrim Bits64Type) [Word]]
+  -- write (handle, address, bytes : Bits64) : Bits64, on x86-64 Linux
+  check "write as declared" [start, allocSlow, allocMutable, exit, crash, form linuxWrite [word "handle", word "address", word "bytes"] (SPrim Bits64Type) [Word]]
+  -- write (handle, address : Bits64) : Bits64
+  check "write of two words" [start, allocSlow, allocMutable, exit, crash, form linuxWrite [word "handle", word "address"] (SPrim Bits64Type) [Word]]
+  where
+    linuxWrite : Name
+    linuxWrite = NS (mkNamespace "Runtime.OS.LinuxX86_64") (UN (Basic "write"))

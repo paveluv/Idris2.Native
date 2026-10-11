@@ -10,6 +10,7 @@
 module Main
 
 import Compiler.Native.LocatedIR
+import Compiler.Native.Platform
 import Compiler.Native.Linkage
 import Compiler.Native.Target
 import Compiler.Native.X86.Asm
@@ -33,6 +34,12 @@ Sample Nat where
 
 Sample Kind where
   sample = CON
+
+Sample Arch where
+  sample = X86_64
+
+Sample OS where
+  sample = Linux
 
 ||| The fully qualified name a short name refers to; `getCons` needs one.
 resolve : Name -> Elab Name
@@ -195,10 +202,21 @@ syms = %runElab enumerate `{Sym}
 brokens : List (String, Broken)
 brokens = %runElab enumerate `{Broken}
 
+arches : List (String, Arch)
+arches = %runElab enumerate `{Arch}
+
+oses : List (String, OS)
+oses = %runElab enumerate `{OS}
+
+||| A record has one constructor, so its gate is every combination of its
+||| fields' constructors, written here.
+platforms : List (String, Platform)
+platforms = [ (show a ++ "-" ++ show o, MkPlatform a o) | (_, a) <- arches, (_, o) <- oses ]
+
 ||| The types whose hand-written `Eq` the gate checks. The test's `run`
 ||| compares this list with the `Eq` instances in the backend's source.
 gatedEq : List String
-gatedEq = ["CallingConvention", "Kind", "Lowering", "Reg64", "Ty", "ValEnc"]
+gatedEq = ["Arch", "CallingConvention", "Kind", "Lowering", "OS", "Platform", "Reg64", "Ty", "ValEnc"]
 
 failures : List String
 failures = concat
@@ -207,7 +225,10 @@ failures = concat
   , nonEmpty "HeaderPart" parts, nonEmpty "Reg64" regs, nonEmpty "Xmm" xmms, nonEmpty "Cond" conds
   , nonEmpty "AluOp" aluOps, nonEmpty "ShiftOp" shiftOps, nonEmpty "SseOp" sseOps
   , nonEmpty "Width" widths, nonEmpty "Sym" syms, nonEmpty "ValEnc" encodings
-  , nonEmpty "Broken" brokens
+  , nonEmpty "Broken" brokens, nonEmpty "Arch" arches, nonEmpty "OS" oses
+  , eqFailures "Arch" arches, eqFailures "OS" oses, eqFailures "Platform" platforms
+  , showFailures "Arch" arches, showFailures "OS" oses, showFailures "Platform" platforms
+  , inverseFailures "parsePlatform" show parsePlatform platforms
   , eqFailures "Kind" kinds, eqFailures "Ty" tys
   , eqFailures "CallingConvention" convs, eqFailures "Lowering" lowerings, eqFailures "Reg64" regs
   , eqFailures "ValEnc" encodings, showFailures "ValEnc" encodings

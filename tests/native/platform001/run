@@ -1,0 +1,17 @@
+. ../../testutils.sh
+
+# The platform structure. The generic runtime reaches the system only
+# through the OS services (Runtime.OS): no module of it outside Runtime/OS/
+# imports the raw system call or names one. The platform is chosen by the
+# directive `target=<arch>-<os>`: x86_64-linux, the default, is built; every
+# other platform the backend names is refused by name, and a name that is no
+# platform is refused with the form a target takes.
+runtime=../../../runtime
+for f in "$runtime"/Runtime.idr "$runtime"/Runtime/*.idr; do
+  if grep -qE 'Runtime\.OS\.Syscall|syscall' "$f"; then echo "system call outside Runtime/OS: $(basename "$f")"; fi
+done
+echo "the generic runtime: $(ls "$runtime"/Runtime/*.idr | wc -l) modules checked"
+idris2 --cg native --directive target=x86_64-linux -o main Main.idr > /dev/null && ./build/exec/main && echo "x86_64-linux: built and run"
+for t in x86_64-freebsd x86_64-openbsd x86_64-macos aarch64-macos x86_64-windows aarch64-linux sparc-linux x86_64; do
+  idris2 --cg native --directive target=$t -o main Main.idr 2>&1 | grep -o 'native: .*' | head -1
+done

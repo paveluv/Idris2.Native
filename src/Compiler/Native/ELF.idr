@@ -7,6 +7,8 @@
 ||| executables and shared objects are later work.
 module Compiler.Native.ELF
 
+import public Compiler.Native.Platform
+
 import Compiler.Native.Bytes
 import Data.Buffer
 import Data.List
@@ -15,10 +17,8 @@ import System.File.Permissions
 
 %default total
 
-public export
-data Machine = X86_64 | AArch64
-
-machineCode : Machine -> Int
+||| The ELF machine of an architecture.
+machineCode : Arch -> Int
 machineCode X86_64 = 0x3E
 machineCode AArch64 = 0xB7
 
@@ -93,7 +93,7 @@ u32 = le32
 u64 : Int -> List Bits8
 u64 = le64 . cast
 
-elfHeader : Machine -> (entry : Int) -> (shoff : Int) -> (phnum : Int) -> (shnum : Int) -> (shstrndx : Int) -> List Bits8
+elfHeader : Arch -> (entry : Int) -> (shoff : Int) -> (phnum : Int) -> (shnum : Int) -> (shstrndx : Int) -> List Bits8
 elfHeader m entry shoff phnum shnum shstrndx =
      [0x7F, 0x45, 0x4C, 0x46, 2, 1, 1, 0] ++ zeros 8     -- magic, 64-bit, little-endian, version, SysV ABI
   ++ u16 2                                               -- ET_EXEC
@@ -129,7 +129,7 @@ nameShstrtab = 20
 ||| label). Section headers are not needed to run but let `readelf`/`objdump`
 ||| and debuggers see the regions.
 export
-elfImage : Machine -> Layout -> (text : List Bits8) -> (rodata : List Bits8) -> (bssSize : Int) -> (entry : Int) -> List Bits8
+elfImage : Arch -> Layout -> (text : List Bits8) -> (rodata : List Bits8) -> (bssSize : Int) -> (entry : Int) -> List Bits8
 elfImage m lay text rodata bssSize entry =
   let ts = cast (length text)
       rs = cast (length rodata)

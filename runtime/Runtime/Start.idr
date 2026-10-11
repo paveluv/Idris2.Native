@@ -66,12 +66,12 @@ start entry window = do
   setState heapLimit 0
   setState windowBytes window
   setState collections 0
-  let firstEnd = roundToPage (fb + window)
+  firstEnd <- roundToPage (fb + window)
   commitMemory fb (firstEnd - fb)
   setState fromCommitted firstEnd
   setAllocation fb (fb + window)
-  scratch <- scratchArea {k = BUFFER}
-  soft <- stackSoftLimit scratch defaultStack
+  given <- osStackLimit
+  let soft = if given == 0 then defaultStack else given
   limit <- stackLimitArea {k = BUFFER}
   store64 limit 0 (entry - (if soft > stackCap then stackCap else soft) + stackMargin)
   argv <- argvArea {k = BUFFER}

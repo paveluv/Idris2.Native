@@ -77,6 +77,9 @@ import Idris.SetOptions
 |||   (`ValEnc` in `Compiler.Native.HeapObject`): fixnum tag 1, the
 |||   default; fixnum tag 0; or no fixnums, every integer boxed, which is not
 |||   implemented yet and so is refused.
+||| * `target=<arch>-<os>`: the platform the program is compiled for
+|||   (`Compiler.Native.Platform`), `x86_64-linux` by default; one not built
+|||   yet is refused by name.
 record Settings where
   constructor MkSettings
   window : Int
@@ -84,9 +87,10 @@ record Settings where
   dumpIr : Maybe String
   dumpAsm : Maybe String
   encodings : Enc
+  platform : Platform
 
 parseSettings : List String -> Either String Settings
-parseSettings = foldlM setting (MkSettings windowBytes Nothing Nothing Nothing defaultEnc)
+parseSettings = foldlM setting (MkSettings windowBytes Nothing Nothing Nothing defaultEnc defaultPlatform)
   where
     setting : Settings -> String -> Either String Settings
     setting o d = case forget (split (== '=') d) of
@@ -105,12 +109,18 @@ parseSettings = foldlM setting (MkSettings windowBytes Nothing Nothing Nothing d
       ["val-encoding", "tag0"] => Right ({ encodings.val := FixnumTag0 } o)
       ["val-encoding", "nofixnums"] => Left "the encoding nofixnums, every integer boxed, is not implemented"
       ["val-encoding", v] => Left ("val-encoding= takes tag1, tag0 or nofixnums, not " ++ show v)
+      ["target", v] => case parsePlatform v of
+        Just p => if built p then Right ({ platform := p } o)
+                  else Left ("the target " ++ show p ++ " is not implemented; only x86_64-linux is")
+        Nothing => Left ("target= takes <arch>-<os>, such as x86_64-linux, not " ++ show v)
       _ => Right o
 
 ||| Of the flat forms, those of the functions named and of the forms they
-||| call, and the shapes of the data types among their types.
-flatInputs : {auto c : Ref Ctxt Defs} -> NameMap FlatDef -> List Name -> Core (List FlatDef, Shapes)
-flatInputs table roots = do
+||| call, the functions of the OS services they call among them, and the
+||| shapes of the data types among their types.
+flatInputs : {auto c : Ref Ctxt Defs} -> NameMap FlatDef -> List (Name, Name) -> List Name ->
+             Core (List FlatDef, Shapes)
+flatInputs table services roots = do
   forms <- reach empty [] roots
   let skeletons = nub (filter isData (concatMap formSkeletons forms))
   shapes <- traverse (\sk => map (sk,) <$> shape sk) skeletons
@@ -126,15 +136,17 @@ flatInputs table roots = do
       if isJust (Data.SortedMap.lookup n seen) then reach seen acc ns else do
         Just fd <- pure (lookup n table)
           | Nothing => reach (insert n () seen) acc ns
-        reach (insert n () seen) (fd :: acc) (formCallees fd ++ ns)
+        reach (insert n () seen) (fd :: acc)
+              (formCallees fd ++ mapMaybe (\p => Data.List.lookup p services) (formPrims fd) ++ ns)
 
 ||| From VMCode to the image, under encodings whose value encoding has
 ||| fixnums: produce the term, allocate its registers, render, link.
 pipeline : {auto c : Ref Ctxt Defs} -> (enc : Enc) -> {auto 0 _ : HasFixnums enc.val} ->
            Settings -> NameMap FlatDef -> List (Name, VMDef) -> Core (List Bits8)
 pipeline enc settings table defs = do
-  (forms, shapes) <- flatInputs table (map fst defs ++ [r.name | r <- routines {enc}, r.provided])
-  Right (_ ** term) <- pure (lowerProgram enc forms shapes defs)
+  (forms, shapes) <- flatInputs table (serviceBindings {enc} settings.platform)
+                                (map fst defs ++ [r.name | r <- routines {enc}, r.provided])
+  Right (_ ** term) <- pure (lowerProgram enc settings.platform forms shapes defs)
     | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
   let ir = allocRegs x86_64 term
   case settings.dumpIr of
@@ -155,13 +167,16 @@ pipeline enc settings table defs = do
     | Left problems => throw (InternalError ("native: the image cannot be assembled: " ++ show problems))
   pure image
 
-||| The intrinsics the loaded runtime declares, each checked against the
-||| contract (`Compiler.Native.Linkage.intrinsics`): an `%extern` whose
-||| arguments lay out as the declared registers, the token among them taking
-||| none, and whose result lays out as the declared ones. What differs is
-||| reported; an intrinsic the runtime does not declare is not missed.
+||| The intrinsics and the OS services the loaded runtime declares, each
+||| checked against the contract (`Compiler.Native.Linkage.intrinsics`,
+||| `osServices`): an `%extern` whose arguments lay out as the declared
+||| registers, the token among them taking none, and whose result lays out
+||| as the declared ones. What differs is reported; one the runtime does not
+||| declare is not missed.
 checkIntrinsics : {auto c : Ref Ctxt Defs} -> (enc : Enc) -> Core (List String)
-checkIntrinsics enc = catMaybes <$> traverse one (intrinsics {enc})
+checkIntrinsics enc
+    = catMaybes <$> traverse one ([(i.name, "an intrinsic", i.params, i.results) | i <- intrinsics {enc}]
+                                  ++ [(serviceExtern s, "an OS service", s.params, s.results) | s <- osServices {enc}])
   where
     -- the registers of the arguments, then of the result
     walk : ClosedNF -> Core (Either String (List (Ty enc), List (Ty enc)))
@@ -177,32 +192,32 @@ checkIntrinsics enc = catMaybes <$> traverse one (intrinsics {enc})
         | Left _ => pure (Left "its result is not flat")
       pure (Right ([], tys lay))
 
-    one : IntrinsicSig enc -> Core (Maybe String)
-    one i = do
+    one : (Name, String, List (Ty enc), List (Ty enc)) -> Core (Maybe String)
+    one (n, what, params, results) = do
       defs <- get Ctxt
-      Just gdef <- lookupCtxtExact i.name (gamma defs)
+      Just gdef <- lookupCtxtExact n (gamma defs)
         | Nothing => pure Nothing
       let ExternDef _ = definition gdef
-        | _ => pure (Just (show i.name ++ " is an intrinsic of the native code generator, but is not declared %extern"))
+        | _ => pure (Just (show n ++ " is " ++ what ++ " of the native code generator, but is not declared %extern"))
       Right (ps, rs) <- walk !(nf defs Env.empty (type gdef))
-        | Left e => pure (Just (show i.name ++ ": " ++ e))
-      pure $ if ps == i.params && rs == i.results then Nothing
-             else Just (show i.name ++ " is declared as " ++ show ps ++ " -> " ++ show rs
+        | Left e => pure (Just (show n ++ ": " ++ e))
+      pure $ if ps == params && rs == results then Nothing
+             else Just (show n ++ " is declared as " ++ show ps ++ " -> " ++ show rs
                         ++ ", but the native code generator provides it as "
-                        ++ show i.params ++ " -> " ++ show i.results)
+                        ++ show params ++ " -> " ++ show results)
 
 ||| Load the runtime's modules into the context: the module `Runtime`, which
-||| imports the others, from the installed package, with the backend's own
-||| package, whose `Compiler.Native.HeapObject` the runtime shares.
-loadRuntime : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} -> Core ()
-loadRuntime = do
+||| imports the generic ones, and the platform's module, which implements
+||| the OS services and which nothing generic imports, from the installed
+||| package, with the backend's own package, whose
+||| `Compiler.Native.HeapObject` the runtime shares.
+loadRuntime : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} -> Platform -> Core ()
+loadRuntime platform = do
   addPkgDir "idris2-native-runtime" anyBounds
   addPkgDir "idris2-native" anyBounds
   u <- newRef UST initUState
-  addImport (MkImport EmptyFC False (nsAsModuleIdent runtimeNS) runtimeNS)
-  where
-    runtimeNS : Namespace
-    runtimeNS = mkNamespace "Runtime"
+  traverse_ (\ns => addImport (MkImport EmptyFC False (nsAsModuleIdent ns) ns))
+            (mkNamespace "Runtime" :: toList (platformModule platform))
 
 compileExpr : Ref Ctxt Defs -> Ref Syn SyntaxInfo ->
               (tmpDir : String) -> (outputDir : String) ->
@@ -210,7 +225,7 @@ compileExpr : Ref Ctxt Defs -> Ref Syn SyntaxInfo ->
 compileExpr c s _ outputDir tm outfile = do
   Right settings <- parseSettings <$> getDirectives markingCG
     | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
-  Just table <- markedForms loadRuntime
+  Just table <- markedForms (loadRuntime settings.platform)
     | Nothing => pure Nothing
   [] <- checkIntrinsics settings.encodings
     | errs => throw (GenericMsg EmptyFC ("native: " ++ fastConcat (intersperse "\n" errs)))

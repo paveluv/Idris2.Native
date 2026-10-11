@@ -348,6 +348,27 @@ formCallees fd = go fd.body
     go (FCrash _ _) = []
     go (FNone _) = []
 
+||| The primitives a form calls.
+export
+formPrims : FlatDef -> List Name
+formPrims fd = go fd.body
+  where
+    go : FlatExp -> List Name
+    go (FVar _ _) = []
+    go (FLet _ _ val sc) = go val ++ go sc
+    go (FConst _ _) = []
+    go (FOp _ _ as) = concatMap go (toList as)
+    go (FCall _ _ as) = concatMap go as
+    go (FPrim _ p _ _ as) = p :: concatMap go as
+    go (FCon _ _ _ _ _ as) = concatMap go as
+    go (FCase _ sc alts def) = go sc ++ concatMap alt alts ++ maybe [] go def
+      where
+        alt : FlatAlt -> List Name
+        alt (FConAlt _ _ _ b) = go b
+        alt (FConstAlt _ b) = go b
+    go (FCrash _ _) = []
+    go (FNone _) = []
+
 ||| The skeletons of the types a form handles: its parameters', its
 ||| result's, its variables' and its constructors'. The lowering needs the
 ||| shapes of the data types among them.

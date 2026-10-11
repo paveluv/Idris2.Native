@@ -7,6 +7,7 @@
 module Compiler.Native.Linkage
 
 import public Compiler.Native.IRCommon
+import public Compiler.Native.Platform
 import Compiler.Native.X86.Asm
 
 import Core.Name
@@ -125,8 +126,13 @@ reservedLabels = 64
 -- library that the flat lowering turns into instructions; each is checked
 -- against its declaration when the runtime is loaded. A routine or an
 -- intrinsic that is missing or has another signature is an error of the
--- compilation. Code compiled to join a runtime that is already built
--- depends on the contract alone.
+-- compilation. The OS services are what an operating system provides to
+-- the rest of the runtime: `%extern` declarations of the generic runtime,
+-- each bound, for the platform a program is compiled for, to a function of
+-- that platform's module, which the flat lowering calls in its place; the
+-- declarations are checked when the runtime is loaded, and the functions
+-- when a program is lowered. Code compiled to join a runtime that is
+-- already built depends on the contract alone.
 
 ||| The name of the `Direct` function of a flat form, which a form's
 ||| function has: the name by which generated code calls a routine of the
@@ -271,7 +277,7 @@ record IntrinsicSig (0 enc : Enc) where
 export
 intrinsics : {0 enc : Enc} -> List (IntrinsicSig enc)
 intrinsics =
-  [ MkIntrinsicSig (system "prim__syscall6") Syscall6 (replicate 7 W64) [W64]
+  [ MkIntrinsicSig (NS (mkNamespace "Runtime.OS.Syscall") (UN (Basic "prim__syscall6"))) Syscall6 (replicate 7 W64) [W64]
   , memory "prim__load64" Load64 [W64, W64] [W64]
   , memory "prim__load32" (LoadNarrow Sub32) [W64, W64] [W64]
   , memory "prim__load16" (LoadNarrow Sub16) [W64, W64] [W64]
@@ -293,9 +299,6 @@ intrinsics =
   , memory "prim__nrootsArea" (AreaAddress NROOTS) [] [W64]
   , memory "prim__runtimeArea" (AreaAddress RUNTIME) [] [W64] ]
   where
-    system : String -> Name
-    system n = NS (mkNamespace "Runtime.System") (UN (Basic n))
-
     memory : String -> Intrinsic -> List (Ty enc) -> List (Ty enc) -> IntrinsicSig enc
     memory n = MkIntrinsicSig (NS (mkNamespace "Runtime.Memory") (UN (Basic n)))
 
@@ -303,6 +306,67 @@ intrinsics =
 export
 intrinsicOf : {0 enc : Enc} -> Name -> Maybe Intrinsic
 intrinsicOf n = (.intrinsic) <$> find (\i => i.name == n) (intrinsics {enc})
+
+||| An OS service: what the runtime asks of the operating system, by the
+||| name of the generic runtime's `%extern` for it, `Runtime.OS.prim__os_`
+||| and the service's own name, with the registers of its arguments, the
+||| token among them taking none, and of its result. A platform's module
+||| implements it as a function of the service's own name.
+public export
+record OSService (0 enc : Enc) where
+  constructor MkOSService
+  service : String
+  params : List (Ty enc)
+  results : List (Ty enc)
+
+||| The OS services. A result that reports success is 1 for success and 0
+||| for failure, so that the generic runtime decides what a failure means.
+|||
+||| * `exit status`: end the process.
+||| * `write handle address bytes`: write the bytes to the standard handle
+|||   (1 the output, 2 the errors); the bytes written.
+||| * `reserve bytes`: reserve address space, readable by nothing, which no
+|||   memory is committed to; its address, 0 if there is none.
+||| * `commit address bytes`: make reserved whole pages readable and
+|||   writable, and zero; success.
+||| * `release address bytes`: give committed whole pages back and reserve
+|||   them again.
+||| * `stackLimit`: the most bytes the process's stack may grow to, 0 if the
+|||   system does not say.
+||| * `pageBytes`: the system's page, the bytes memory is committed and
+|||   released by.
+export
+osServices : {0 enc : Enc} -> List (OSService enc)
+osServices =
+  [ MkOSService "exit" [W64] []
+  , MkOSService "write" [W64, W64, W64] [W64]
+  , MkOSService "reserve" [W64] [W64]
+  , MkOSService "commit" [W64, W64] [W64]
+  , MkOSService "release" [W64, W64] []
+  , MkOSService "stackLimit" [] [W64]
+  , MkOSService "pageBytes" [] [W64] ]
+
+||| The generic runtime's `%extern` for a service.
+export
+serviceExtern : OSService enc -> Name
+serviceExtern s = NS (mkNamespace "Runtime.OS") (UN (Basic ("prim__os_" ++ s.service)))
+
+||| The module of the runtime that implements the OS services on a platform,
+||| if the platform is built.
+export
+platformModule : Platform -> Maybe Namespace
+platformModule (MkPlatform X86_64 Linux) = Just (mkNamespace "Runtime.OS.LinuxX86_64")
+platformModule _ = Nothing
+
+||| The function that implements a service on the platform.
+export
+serviceFunction : Platform -> OSService enc -> Maybe Name
+serviceFunction p s = (\ns => NS ns (UN (Basic s.service))) <$> platformModule p
+
+||| Each service's extern bound to its function on the platform.
+export
+serviceBindings : {0 enc : Enc} -> Platform -> List (Name, Name)
+serviceBindings p = mapMaybe (\s => (serviceExtern s,) <$> serviceFunction p s) (osServices {enc})
 
 ------------------------------------------------------------------------------
 -- Parameters

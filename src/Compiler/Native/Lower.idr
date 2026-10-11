@@ -1163,13 +1163,13 @@ declsOf : (es : List (Sig enc, Plan)) -> (rs : List (s ** ({0 d : Decls enc} -> 
 declsOf es rs = MkDecls (mainSig :: map Builtin.fst es) (map DPair.fst rs)
 
 ||| The program of the declarations, the entry first.
-program : {enc : Enc} -> {auto 0 fx : HasFixnums enc.val} -> List FlatDef -> Shapes -> Plan ->
+program : {enc : Enc} -> {auto 0 fx : HasFixnums enc.val} -> List FlatDef -> Shapes -> SortedMap Name Name -> Plan ->
           (es : List (Sig enc, Plan)) -> (rs : List (s ** ({0 d : Decls enc} -> StaticDef d s))) -> TermProgram enc
-program forms shapes entry es rs =
+program forms shapes services entry es rs =
   case choose (distinct (map (.name) (mainSig :: map Builtin.fst es)) && distinct (map (.sym) (map DPair.fst rs))) of
     Left ok =>
       (declsOf es rs ** MkProgram
-                     (defs (declsOf es rs) (refsOf (declsOf es rs)) (MkForms (callees (declsOf es rs) forms) shapes)
+                     (defs (declsOf es rs) (refsOf (declsOf es rs)) (MkForms (callees (declsOf es rs) forms) shapes services)
                            ((mainSig, entry) :: es))
                      (staticDefs (declsOf es rs) rs) (MkEntry here) noConIds)
     Right _ =>
@@ -1201,12 +1201,15 @@ nullaries (DataShape cs) = concatMap con cs
 ||| runtime contract (`Compiler.Native.Linkage.routines`): a routine the
 ||| runtime has must have a form of the declared signature, or the program
 ||| is not lowered, and the error says which. One it does not have yet is
-||| declared as outside the program.
+||| declared as outside the program. So are the functions that implement
+||| the OS services on the platform (`Compiler.Native.Linkage.osServices`),
+||| each checked against its service where a form calls it.
 export
-lowerProgram : (enc : Enc) -> {auto 0 fx : HasFixnums enc.val} -> List FlatDef -> Shapes ->
+lowerProgram : (enc : Enc) -> {auto 0 fx : HasFixnums enc.val} -> Platform -> List FlatDef -> Shapes ->
                List (Name, VMDef) -> Either String (TermProgram enc)
-lowerProgram enc forms shapes vmdefs = do
+lowerProgram enc platform forms shapes vmdefs = do
   traverse_ provided (routines {enc})
+  traverse_ implemented (osServices {enc})
   let entryPlan = case Data.List.lookup mainExpression vmdefs of
                     Just (MkVMFun [] body) => FromVM [] body
                     _ => NoEntry
@@ -1217,8 +1220,22 @@ lowerProgram enc forms shapes vmdefs = do
                     | r <- routines {enc}, not r.provided]
       boxing = fromList [(nullaryCon c, Nullary c) | c <- concatMap (boxed . snd) planned]
       statics = Data.SortedMap.toList (foldl mergeLeft boxing (mapMaybe bodyStatics vmdefs))
-  pure (program forms shapes entryPlan others (mapMaybe ready statics))
+  pure (program forms shapes (fromList (serviceBindings {enc} platform)) entryPlan others (mapMaybe ready statics))
   where
+    -- A service's function, of the service's signature, if a form calls it.
+    implemented : OSService enc -> Either String ()
+    implemented s = case serviceFunction platform s of
+      Nothing => Left ("the platform " ++ show platform ++ " has no OS services")
+      Just f => case find (\fd => fd.name == f) forms of
+        Nothing => Right ()
+        Just fd =>
+          let rs = tys {enc} fd.result
+              ps = tys {enc} (paramsLayout fd.params)
+          in if rs == s.results && ps == s.params then Right ()
+             else Left (show f ++ ", the service " ++ s.service ++ " on " ++ show platform
+                        ++ ", has the signature " ++ show ps ++ " -> " ++ show rs
+                        ++ ", but the runtime calls it as " ++ show s.params ++ " -> " ++ show s.results)
+
     -- A routine the runtime has: its form, of the declared signature.
     provided : Routine enc -> Either String ()
     provided r =

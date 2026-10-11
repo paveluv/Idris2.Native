@@ -37,7 +37,7 @@ commitSpace committed end need = do
   limit <- getState end
   win <- getState windowBytes
   if need <= have then pure () else do
-    let upto = roundToPage (need + win)
+    upto <- roundToPage (need + win)
     if upto > limit then crashOp "idris: the heap's reserved space is exhausted" else do
       commitMemory have (upto - have)
       setState committed upto

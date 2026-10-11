@@ -22,6 +22,7 @@ modules =
     Compiler.Native.LocatedIR.Dump,
     Compiler.Native.Lower,
     Compiler.Native.LowerFlat,
+    Compiler.Native.Platform,
     Compiler.Native.Native,
     Compiler.Native.RegAlloc,
     Compiler.Native.Seed,

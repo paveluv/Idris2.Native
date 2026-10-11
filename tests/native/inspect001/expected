@@ -2,4 +2,4 @@ Broken: C is not equal to itself
 Broken: B and C both show as "B"
 brokenCode: B and C both have the code "1"
 brokenDecode: C does not come back from its code
-gated Eq: CallingConvention Kind Lowering Reg64 Ty ValEnc
+gated Eq: Arch CallingConvention Kind Lowering OS Platform Reg64 Ty ValEnc

@@ -8,6 +8,7 @@ import public Runtime.Collect
 import public Runtime.Heap
 import public Runtime.Memory
 import public Runtime.Object
+import public Runtime.OS
 import public Runtime.Space
 import public Runtime.Start
 import public Runtime.State

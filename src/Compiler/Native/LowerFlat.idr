@@ -24,7 +24,8 @@
 ||| call of a form is a `DirectCall`; a call of the form itself in tail
 ||| position jumps back to its start, so self tail recursion is a loop. The
 ||| runtime's intrinsics (`Compiler.Native.Linkage.intrinsics`) lower to the
-||| instructions they stand for; every other `%extern` and `%foreign` primitive (`FPrim`), the
+||| instructions they stand for, and its OS services to calls of the
+||| functions that implement them on the platform; every other `%extern` and `%foreign` primitive (`FPrim`), the
 ||| operations on strings and the double functions of the C library lower to
 ||| `Unsupported`.
 module Compiler.Native.LowerFlat
@@ -316,12 +317,14 @@ words _ = Nothing
 -- The lowering
 
 ||| What the lowering of a form knows of the program: the forms it may call,
-||| and the shapes of the data types.
+||| the shapes of the data types, and the OS services' externs, each bound to
+||| the form of the function that implements it on the platform.
 public export
 record Forms (enc : Enc) (d : Decls enc) where
   constructor MkForms
   callees : SortedMap Name (Callee d)
   shapes : Shapes
+  services : SortedMap Name Name
 
 ||| Each variable in scope: its type's skeleton and its value.
 Env : (enc : Enc) -> (Ty enc -> Type) -> Type
@@ -537,7 +540,14 @@ parameters {enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef) (m 
       xs <- traverse (\a => snd <$> expr env a) args
       callForm n xs
     expr env (FPrim _ n sk lay args) = case intrinsicOf {enc} n of
-      Nothing => unsupported ("the primitive " ++ show n ++ " in a flat form")
+      Nothing => case lookup n pr.services of
+        -- an OS service: a call of the platform's function for it
+        Just f => do
+          xs <- traverse (\a => snd <$> expr env a) args
+          (_, x) <- callForm f xs
+          maybe (unsupported ("the OS service " ++ show n ++ ", whose result is not its type's"))
+                (\rs => pure (sk, MkValue lay rs)) (regsAs lay x)
+        Nothing => unsupported ("the primitive " ++ show n ++ " in a flat form")
       Just i => do
         xs <- traverse (\a => snd <$> expr env a) args
         Just ws <- pure (words (concatValues xs))

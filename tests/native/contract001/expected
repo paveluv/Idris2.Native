@@ -2,3 +2,5 @@ as declared: lowered
 no exit: the runtime has no routine Runtime.System.exit, which generated code calls
 exit of two words: the runtime's Runtime.System.exit has the signature [W64, W64] -> [], but generated code calls it as [W64] -> []
 crash with a result: the runtime's Runtime.System.crash has the signature [W64, W64] -> [W64], but generated code calls it as [W64, W64] -> []
+write as declared: lowered
+write of two words: Runtime.OS.LinuxX86_64.write, the service write on x86_64-linux, has the signature [W64, W64] -> [W64], but the runtime calls it as [W64, W64, W64] -> [W64]
