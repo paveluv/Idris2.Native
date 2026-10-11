@@ -372,6 +372,7 @@ skeleton (NDCon _ n _ _ args) = SCon !(toFullNames n) <$> traverse argSkeleton a
 skeleton _ = pure SOther
 
 ||| A type's skeleton and layout, or why it is not flat.
+export
 laidOut : {auto c : Ref Ctxt Defs} -> ClosedNF -> Core (Either NotFlatReason (Skeleton, Layout))
 laidOut ty
     = case !(layout [] ty) of

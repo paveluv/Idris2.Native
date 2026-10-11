@@ -25,9 +25,15 @@ import Compiler.VMCode
 import Compiler.Native.LocatedIR
 import Compiler.Native.LocatedIR.Dump
 import Compiler.Native.Lower
+import Compiler.Native.LowerFlat
+import Core.Env
+import Core.Normalise
+import Core.TT
+import Core.Value
 import Compiler.Native.RegAlloc
 import Flat.Exp
 import Flat.Marked
+import Flat.Problem
 import Flat.Translate
 import Libraries.Data.NameMap
 import Compiler.Native.X86.Asm
@@ -149,6 +155,42 @@ pipeline enc settings table defs = do
     | Left problems => throw (InternalError ("native: the image cannot be assembled: " ++ show problems))
   pure image
 
+||| The intrinsics the loaded runtime declares, each checked against the
+||| contract (`Compiler.Native.Linkage.intrinsics`): an `%extern` whose
+||| arguments lay out as the declared registers, the token among them taking
+||| none, and whose result lays out as the declared ones. What differs is
+||| reported; an intrinsic the runtime does not declare is not missed.
+checkIntrinsics : {auto c : Ref Ctxt Defs} -> (enc : Enc) -> Core (List String)
+checkIntrinsics enc = catMaybes <$> traverse one (intrinsics {enc})
+  where
+    -- the registers of the arguments, then of the result
+    walk : ClosedNF -> Core (Either String (List (Ty enc), List (Ty enc)))
+    walk (NBind bfc x (Pi _ _ _ aty) sc) = do
+      defs <- get Ctxt
+      Right (_, lay) <- laidOut !(evalClosure defs aty)
+        | Left _ => pure (Left ("its argument " ++ show x ++ " is not flat"))
+      Right (ps, rs) <- walk !(sc defs (toClosure defaultOpts Env.empty (Ref bfc Bound x)))
+        | Left e => pure (Left e)
+      pure (Right (tys lay ++ ps, rs))
+    walk res = do
+      Right (_, lay) <- laidOut res
+        | Left _ => pure (Left "its result is not flat")
+      pure (Right ([], tys lay))
+
+    one : IntrinsicSig enc -> Core (Maybe String)
+    one i = do
+      defs <- get Ctxt
+      Just gdef <- lookupCtxtExact i.name (gamma defs)
+        | Nothing => pure Nothing
+      let ExternDef _ = definition gdef
+        | _ => pure (Just (show i.name ++ " is an intrinsic of the native code generator, but is not declared %extern"))
+      Right (ps, rs) <- walk !(nf defs Env.empty (type gdef))
+        | Left e => pure (Just (show i.name ++ ": " ++ e))
+      pure $ if ps == i.params && rs == i.results then Nothing
+             else Just (show i.name ++ " is declared as " ++ show ps ++ " -> " ++ show rs
+                        ++ ", but the native code generator provides it as "
+                        ++ show i.params ++ " -> " ++ show i.results)
+
 ||| Load the runtime's modules into the context: the module `Runtime`, which
 ||| imports the others, from the installed package, with the backend's own
 ||| package, whose `Compiler.Native.HeapObject` the runtime shares.
@@ -170,6 +212,8 @@ compileExpr c s _ outputDir tm outfile = do
     | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
   Just table <- markedForms loadRuntime
     | Nothing => pure Nothing
+  [] <- checkIntrinsics settings.encodings
+    | errs => throw (GenericMsg EmptyFC ("native: " ++ fastConcat (intersperse "\n" errs)))
   whenJust settings.dumpFlat $ \f => dumpFlat f table
   cdata <- getCompileData False VMCode tm
   image <- case settings.encodings of

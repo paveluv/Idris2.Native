@@ -162,8 +162,8 @@ encodings = %runElab enumerate `{ValEnc}
 arithOps : List (String, ArithOp)
 arithOps = %runElab enumerate `{ArithOp}
 
-intrinsics : List (String, IntrinsicName)
-intrinsics = %runElab enumerate `{IntrinsicName}
+intrinsicNames : List (String, IntrinsicName)
+intrinsicNames = %runElab enumerate `{IntrinsicName}
 
 parts : List (String, String)
 parts = %runElab shows `{HeaderPart}
@@ -203,7 +203,7 @@ gatedEq = ["CallingConvention", "Kind", "Lowering", "Reg64", "Ty", "ValEnc"]
 failures : List String
 failures = concat
   [ nonEmpty "Kind" kinds, nonEmpty "Ty" tys, nonEmpty "CallingConvention" convs
-  , nonEmpty "Lowering" lowerings, nonEmpty "ArithOp" arithOps, nonEmpty "IntrinsicName" intrinsics
+  , nonEmpty "Lowering" lowerings, nonEmpty "ArithOp" arithOps, nonEmpty "IntrinsicName" intrinsicNames
   , nonEmpty "HeaderPart" parts, nonEmpty "Reg64" regs, nonEmpty "Xmm" xmms, nonEmpty "Cond" conds
   , nonEmpty "AluOp" aluOps, nonEmpty "ShiftOp" shiftOps, nonEmpty "SseOp" sseOps
   , nonEmpty "Width" widths, nonEmpty "Sym" syms, nonEmpty "ValEnc" encodings
@@ -213,7 +213,7 @@ failures = concat
   , eqFailures "ValEnc" encodings, showFailures "ValEnc" encodings
   , showFailures "Kind" kinds, distinct "HeaderPart" "both show as" parts
   , showFailures "ArithOp" arithOps, showFailures "CallingConvention" convs, showFailures "Ty" tys
-  , showFailures "IntrinsicName" intrinsics, showFailures "Reg64" regs
+  , showFailures "IntrinsicName" intrinsicNames, showFailures "Reg64" regs
   , showFailures "Xmm" xmms, showFailures "Cond" conds, showFailures "AluOp" aluOps
   , showFailures "ShiftOp" shiftOps, showFailures "SseOp" sseOps, showFailures "Width" widths
   , tableFailures "kindId" kindId kinds, inverseFailures "kindOfId" kindId kindOfId kinds

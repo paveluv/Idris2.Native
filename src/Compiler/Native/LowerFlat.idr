@@ -20,8 +20,8 @@
 ||| in tail position a join, whose parameters are the case's registers. A
 ||| call of a form is a `DirectCall`; a call of the form itself in tail
 ||| position jumps back to its start, so self tail recursion is a loop. The
-||| runtime's intrinsics (`intrinsicOf`) lower to the instructions they stand
-||| for; every other `%extern` and `%foreign` primitive (`FPrim`), the
+||| runtime's intrinsics (`Compiler.Native.Linkage.intrinsics`) lower to the
+||| instructions they stand for; every other `%extern` and `%foreign` primitive (`FPrim`), the
 ||| operations on strings and the double functions of the C library lower to
 ||| `Unsupported`.
 module Compiler.Native.LowerFlat
@@ -348,47 +348,6 @@ unsignedRel r = r
 ------------------------------------------------------------------------------
 -- Intrinsics
 
-||| The `%extern` primitives of the runtime library that are instructions,
-||| never calls: what the runtime is written with. Each takes words and the
-||| token, which has no register, last, and returns the token with its value,
-||| so that its effect is ordered among the others by data dependence. A
-||| memory access is at a base address plus a byte offset; a narrow load
-||| extends the bits with zeros.
-public export
-data Intrinsic
-  = ||| A system call: its number and six arguments, then its result.
-    Syscall6
-  | ||| Load a word.
-    Load64
-  | ||| Load 8, 16 or 32 bits.
-    LoadNarrow SubWord
-  | ||| Store a word.
-    Store64
-  | ||| Store a word's low 8, 16 or 32 bits.
-    StoreNarrow SubWord
-
-||| The intrinsic a primitive of the runtime library is, by its name.
-export
-intrinsicOf : Name -> Maybe Intrinsic
-intrinsicOf (NS ns (UN (Basic s))) =
-  if ns == mkNamespace "Runtime.System" then
-    case s of
-      "prim__syscall6" => Just Syscall6
-      _ => Nothing
-  else if ns == mkNamespace "Runtime.Memory" then
-    case s of
-      "prim__load64" => Just Load64
-      "prim__load32" => Just (LoadNarrow Sub32)
-      "prim__load16" => Just (LoadNarrow Sub16)
-      "prim__load8" => Just (LoadNarrow Sub8)
-      "prim__store64" => Just Store64
-      "prim__store32" => Just (StoreNarrow Sub32)
-      "prim__store16" => Just (StoreNarrow Sub16)
-      "prim__store8" => Just (StoreNarrow Sub8)
-      _ => Nothing
-  else Nothing
-intrinsicOf _ = Nothing
-
 ||| The words of a value whose registers are all words.
 words : Value enc v -> Maybe (List (Opnd v W64))
 words (MkValue [] []) = Just []
@@ -632,7 +591,7 @@ parameters {0 enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef)
     expr env (FCall _ n args) = do
       xs <- traverse (\a => snd <$> expr env a) args
       callForm n xs
-    expr env (FPrim _ n sk lay args) = case intrinsicOf n of
+    expr env (FPrim _ n sk lay args) = case intrinsicOf {enc} n of
       Nothing => unsupported ("the primitive " ++ show n ++ " in a flat form")
       Just i => do
         xs <- traverse (\a => snd <$> expr env a) args

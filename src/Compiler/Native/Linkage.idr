@@ -93,14 +93,18 @@ reservedLabels = 64
 ------------------------------------------------------------------------------
 -- The runtime contract
 --
--- What generated code may assume of the runtime is declared here, not taken
--- from the runtime's compilation: the routines it reaches, by name or by
--- symbol, each with its signature in the term IR. The lowering calls the
--- routines as declared, and the runtime library's flat forms are checked
--- against the declarations when a program is lowered, so that a routine
--- that is missing or has another signature is an error of the compilation.
--- Code compiled to join a runtime that is already built depends on the
--- contract alone.
+-- What generated code and the runtime may assume of each other is declared
+-- here, not taken from the runtime's compilation, in both directions. The
+-- routines are what the runtime provides: each reached by name or by
+-- symbol, with its signature in the term IR; the lowering calls them as
+-- declared, and the runtime library's flat forms are checked against the
+-- declarations when a program is lowered. The intrinsics are what the
+-- lowering provides to fragment code: `%extern` declarations of the runtime
+-- library that the flat lowering turns into instructions; each is checked
+-- against its declaration when the runtime is loaded. A routine or an
+-- intrinsic that is missing or has another signature is an error of the
+-- compilation. Code compiled to join a runtime that is already built
+-- depends on the contract alone.
 
 ||| The name of the `Direct` function of a flat form, which a form's
 ||| function has: the name by which generated code calls a routine of the
@@ -173,6 +177,60 @@ routineSymbol : {enc : Enc} -> Name -> Maybe Sym
 routineSymbol n = do
   r <- find (\r => r.provided && flatName r.name == n) (routines {enc})
   r.symbol
+
+||| The intrinsics: the `%extern` primitives of the runtime library that are
+||| instructions, never calls, what the runtime is written with. Each takes
+||| words and the token, which has no register, last, and returns the token
+||| with its value, so that its effect is ordered among the others by data
+||| dependence. A memory access is at a base address plus a byte offset; a
+||| narrow load extends the bits with zeros.
+public export
+data Intrinsic
+  = ||| A system call: its number and six arguments, then its result.
+    Syscall6
+  | ||| Load a word.
+    Load64
+  | ||| Load 8, 16 or 32 bits.
+    LoadNarrow SubWord
+  | ||| Store a word.
+    Store64
+  | ||| Store a word's low 8, 16 or 32 bits.
+    StoreNarrow SubWord
+
+||| An intrinsic as the runtime library declares it: the registers of its
+||| arguments, the token among them taking none, and of its result.
+public export
+record IntrinsicSig (0 enc : Enc) where
+  constructor MkIntrinsicSig
+  name : Name
+  intrinsic : Intrinsic
+  params : List (Ty enc)
+  results : List (Ty enc)
+
+||| The intrinsics, with their signatures.
+export
+intrinsics : {0 enc : Enc} -> List (IntrinsicSig enc)
+intrinsics =
+  [ MkIntrinsicSig (system "prim__syscall6") Syscall6 (replicate 7 W64) [W64]
+  , memory "prim__load64" Load64 [W64, W64] [W64]
+  , memory "prim__load32" (LoadNarrow Sub32) [W64, W64] [W64]
+  , memory "prim__load16" (LoadNarrow Sub16) [W64, W64] [W64]
+  , memory "prim__load8" (LoadNarrow Sub8) [W64, W64] [W64]
+  , memory "prim__store64" Store64 [W64, W64, W64] []
+  , memory "prim__store32" (StoreNarrow Sub32) [W64, W64, W64] []
+  , memory "prim__store16" (StoreNarrow Sub16) [W64, W64, W64] []
+  , memory "prim__store8" (StoreNarrow Sub8) [W64, W64, W64] [] ]
+  where
+    system : String -> Name
+    system n = NS (mkNamespace "Runtime.System") (UN (Basic n))
+
+    memory : String -> Intrinsic -> List (Ty enc) -> List (Ty enc) -> IntrinsicSig enc
+    memory n = MkIntrinsicSig (NS (mkNamespace "Runtime.Memory") (UN (Basic n)))
+
+||| The intrinsic a primitive of the runtime library is, by its name.
+export
+intrinsicOf : {0 enc : Enc} -> Name -> Maybe Intrinsic
+intrinsicOf n = (.intrinsic) <$> find (\i => i.name == n) (intrinsics {enc})
 
 ------------------------------------------------------------------------------
 -- Parameters
