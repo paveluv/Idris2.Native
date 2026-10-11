@@ -56,7 +56,7 @@ module Compiler.Native.X86.Render
 
 import Compiler.Native.HeapObject
 import Compiler.Native.LocatedIR
-import Compiler.Native.Seed
+import Compiler.Native.Linkage
 import Compiler.Native.X86.Target
 import Compiler.Native.X86.Asm
 import Compiler.Native.Bytes

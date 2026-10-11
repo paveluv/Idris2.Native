@@ -10,7 +10,7 @@
 module Main
 
 import Compiler.Native.LocatedIR
-import Compiler.Native.Seed
+import Compiler.Native.Linkage
 import Compiler.Native.Target
 import Compiler.Native.X86.Asm
 import Data.List

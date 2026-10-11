@@ -27,7 +27,8 @@ import Libraries.Data.NameMap
 import Compiler.Native.X86.Asm
 import Compiler.Native.X86.Render
 import Compiler.Native.X86.Target
-import Compiler.Native.Seed
+import Compiler.Native.Linkage
+import Compiler.Native.Link
 import Compiler.Native.ELF
 import Idris.Syntax
 import Data.List

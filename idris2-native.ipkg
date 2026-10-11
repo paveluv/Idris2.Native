@@ -16,6 +16,8 @@ modules =
     Compiler.Native.ELF,
     Compiler.Native.HeapObject,
     Compiler.Native.IRCommon,
+    Compiler.Native.Link,
+    Compiler.Native.Linkage,
     Compiler.Native.LocatedIR,
     Compiler.Native.LocatedIR.Dump,
     Compiler.Native.Lower,

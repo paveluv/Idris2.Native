@@ -4,7 +4,8 @@
 module Gen
 
 import Compiler.Native.X86.Asm
-import Compiler.Native.Seed
+import Compiler.Native.Linkage
+import Compiler.Native.Link
 import Compiler.Native.ELF
 import System.File
 

@@ -76,3 +76,8 @@ doubleBits x =
       else if a < 2.2250738585072014e-308 then cast (doubled 1074 a)
       else let (m, e) = normalise 2100 a 0 in
            (e + 1023) * 0x10000000000000 + cast ((m - 1) * 4503599627370496.0)
+
+||| Bytes padded with zeros to a multiple of 8.
+export
+pad8 : List Bits8 -> List Bits8
+pad8 bs = bs ++ zeros (cast (alignUp (cast (length bs)) 8 - cast (length bs)))
