@@ -1,11 +1,12 @@
 ||| The located IR: the native backend's IR after register allocation, the
 ||| input of the per-target renderings into machine instructions. Producers
 ||| do not write it: they write the term IR (`Compiler.Native.TermIR`), whose
-||| types make its rules hold, and allocation (`Compiler.Native.Allocate`)
-||| makes this IR from it, computing every live list:
+||| types make its rules hold, and register allocation
+||| (`Compiler.Native.RegAlloc`) makes this IR from it, computing every live
+||| list:
 |||
 |||     VMCode   -- lower --+
-|||                         +--> term IR -- allocate --> located IR -- render --> machine code
+|||                         +--> term IR -- allocRegs --> located IR -- render --> machine code
 |||     fragment -- lower --+
 |||
 ||| Design rules:

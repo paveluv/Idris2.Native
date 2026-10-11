@@ -12,7 +12,6 @@ sourcedir = "src"
 -- Installed as a library too, for the tests that build terms and programs
 -- with the code generator's own modules.
 modules =
-    Compiler.Native.Allocate,
     Compiler.Native.Bytes,
     Compiler.Native.ELF,
     Compiler.Native.HeapObject,
@@ -22,6 +21,7 @@ modules =
     Compiler.Native.Lower,
     Compiler.Native.LowerFlat,
     Compiler.Native.Native,
+    Compiler.Native.RegAlloc,
     Compiler.Native.Seed,
     Compiler.Native.Target,
     Compiler.Native.TermIR,

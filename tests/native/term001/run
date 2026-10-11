@@ -1,7 +1,7 @@
 . ../../testutils.sh
 
 # The term IR (Compiler.Native.TermIR), built through the builder and
-# allocated into the located IR (Compiler.Native.Allocate): a program that runs, with
+# allocated into the located IR (Compiler.Native.RegAlloc): a program that runs, with
 # every construct the rendering supports, and the IR of a program with every
 # other construct. It uses the code
 # generator's modules, installed as the package `idris2-native`.

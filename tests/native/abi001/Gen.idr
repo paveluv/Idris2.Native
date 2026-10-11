@@ -10,7 +10,7 @@ import Compiler.Native.ELF
 import Compiler.Native.LocatedIR
 import Compiler.Native.Seed
 import Compiler.Native.TermIR.Build
-import Compiler.Native.Allocate
+import Compiler.Native.RegAlloc
 import Compiler.Native.X86.Render
 import Compiler.Native.X86.Target
 import Core.Name.Namespace
@@ -125,7 +125,7 @@ main = do
   case choose (distinct (map (.name) (sigs D)) && distinct (map (.sym) (statics D))) of
     Right _ => putStrLn "names repeat"
     Left ok => do
-      let ir = allocate x86_64 (MkProgram {d = D} [Defined m, Defined s, External] [] (MkEntry here) noConIds)
+      let ir = allocRegs x86_64 (MkProgram {d = D} [Defined m, Defined s, External] [] (MkEntry here) noConIds)
       let Right rendered = render TestEnc ir
         | Left err => putStrLn ("render: " ++ err)
       let Right image = linkProgram TestEnc windowBytes rendered.areas rendered.text rendered.rodata

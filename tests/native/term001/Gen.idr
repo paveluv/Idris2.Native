@@ -5,7 +5,7 @@ import Compiler.Native.LocatedIR
 import Compiler.Native.LocatedIR.Dump
 import Compiler.Native.Seed
 import Compiler.Native.TermIR.Build
-import Compiler.Native.Allocate
+import Compiler.Native.RegAlloc
 import Compiler.Native.X86.Render
 import Compiler.Native.X86.Target
 import Core.Name.Namespace
@@ -334,7 +334,7 @@ main = do
   let Just dm = close divModBody | Nothing => putStrLn "divMod: a level outside its context"
   let Just fl = close floatsBody | Nothing => putStrLn "floats: a level outside its context"
   let Just by = close bytesBody | Nothing => putStrLn "bytes: a level outside its context"
-  let run = allocate x86_64 (MkProgram {d = Run} [Defined m, Defined p, Defined s, Defined sa, Defined at, Defined sm, Defined dm, Defined fl, Defined by]
+  let run = allocRegs x86_64 (MkProgram {d = Run} [Defined m, Defined p, Defined s, Defined sa, Defined at, Defined sm, Defined dm, Defined fl, Defined by]
                                    [MkStaticDef (ConH 2 0) []] (MkEntry here) noConIds)
   let Right rendered = render TestEnc run
     | Left err => putStrLn ("render: " ++ err)
@@ -347,6 +347,6 @@ main = do
   -- the names' distinctness decided here, as a producer decides it
   case choose (distinct (map (.name) (sigs Cover)) && distinct (map (.sym) (statics Cover))) of
     Left ok => do
-      let cover = allocate x86_64 (MkProgram {d = Cover} [Defined c, Defined rt, External] [] (MkEntry here) noConIds)
+      let cover = allocRegs x86_64 (MkProgram {d = Cover} [Defined c, Defined rt, External] [] (MkEntry here) noConIds)
       putStr (dumpProgram cover)
     Right _ => putStrLn "the covering program: names repeat"

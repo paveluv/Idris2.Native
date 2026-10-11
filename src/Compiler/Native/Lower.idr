@@ -12,7 +12,7 @@
 ||| alternatives assign and the code after it reads, so that code is lowered
 ||| once; in tail position the alternatives return directly. A non-tail call
 ||| or application has the rest of the code as its continuation. What is
-||| live where is computed when the term becomes IR (`Compiler.Native.Allocate`).
+||| live where is computed when the term becomes IR (`Compiler.Native.RegAlloc`).
 |||
 ||| The program's declarations are fixed before any body is lowered: a
 ||| signature for each function and foreign function, one for each runtime
@@ -56,7 +56,7 @@ import Compiler.Native.Target
 import Compiler.Native.TermIR.Build
 import Compiler.Native.Words
 import Compiler.Native.LowerFlat
-import public Compiler.Native.Allocate
+import public Compiler.Native.RegAlloc
 import Core.FC
 import Flat.Exp
 import Core.Name
@@ -1201,12 +1201,12 @@ program : {enc : Enc} -> {auto 0 fx : HasFixnums enc.val} -> Target -> List Flat
 program target forms shapes entry es rs =
   case choose (distinct (map (.name) (mainSig :: map Builtin.fst es)) && distinct (map (.sym) (map DPair.fst rs))) of
     Left ok =>
-      allocate target (MkProgram {d = declsOf es rs}
+      allocRegs target (MkProgram {d = declsOf es rs}
                      (defs (declsOf es rs) (refsOf (declsOf es rs)) (MkForms (callees (declsOf es rs) forms) shapes)
                            ((mainSig, entry) :: es))
                      (staticDefs (declsOf es rs) rs) (MkEntry here) noConIds)
     Right _ =>
-      allocate target (MkProgram {d = MkDecls [mainSig] []}
+      allocRegs target (MkProgram {d = MkDecls [mainSig] []}
                      [Defined (Unsupported "a program with two definitions of one name")] [] (MkEntry here) noConIds)
 
 ||| The ids of the constructors of no fields that ordinary code represents

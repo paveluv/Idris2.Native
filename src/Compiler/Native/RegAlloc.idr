@@ -19,7 +19,7 @@
 ||| join point's block is the exception: its jumps need its free registers
 ||| before it is lowered, so `free` computes them first, with a jump to the
 ||| block itself contributing nothing, the least fixed point.
-module Compiler.Native.Allocate
+module Compiler.Native.RegAlloc
 
 import Compiler.Native.TermIR
 import Compiler.Native.LocatedIR
@@ -497,6 +497,6 @@ LocatedProgram enc = LocatedIR.Program enc
 
 ||| The program in the IR, for the target.
 export
-allocate : {d : Decls enc} -> Target -> TermIR.Program enc d -> LocatedIR.Program enc
-allocate target (MkProgram fs ss e conIds) =
+allocRegs : {d : Decls enc} -> Target -> TermIR.Program enc d -> LocatedIR.Program enc
+allocRegs target (MkProgram fs ss e conIds) =
   LocatedIR.MkProgram target (functions d d.sigs fs) (statics d d.statics ss) (entryName d e) conIds

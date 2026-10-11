@@ -34,7 +34,7 @@
 ||| `NarrowPtr`, the range of a word given to `Tag`, a field's offset in a
 ||| load or a store.
 |||
-||| The term is the input of `Compiler.Native.Allocate`, which turns it into
+||| The term is the input of `Compiler.Native.RegAlloc`, which turns it into
 ||| the IR, computing every live list. Producers build it through
 ||| `Compiler.Native.TermIR.Build`.
 module Compiler.Native.TermIR
