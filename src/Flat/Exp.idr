@@ -1,5 +1,12 @@
-||| The compiled form of a definition in the flat regime:
-||| an IR in which every variable carries the layout of its type, and which
+||| The *flat regime* is a way of compiling a definition: every value it
+||| handles is held in registers, a machine word or a double each, and none
+||| needs the heap, so the definition becomes a machine function. Ordinary
+||| code, by contrast, holds every value in the one uniform representation a
+||| code generator gives all values, boxed on the heap where it does not fit
+||| a word. A *flat function* is one compiled in the flat regime.
+|||
+||| This module is the flat regime's IR, the compiled form of a definition in
+||| it: an IR in which every variable carries the layout of its type, and which
 ||| has no lambda, no lazy value and no boxed object, so a flat form is flat
 ||| by its shape. `Flat.Translate` translates a definition's typed clauses into
 ||| it; a code generator that supports the regime lowers it, and the others

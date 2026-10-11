@@ -34,7 +34,8 @@
 |||
 ||| A function that has a flat form (`Flat.Exp`) is not lowered from its
 ||| VMCode: the form becomes a `Direct` function (`Compiler.Native.LowerFlat`),
-||| and the function a wrapper around it, the boundary between the regimes.
+||| and the function a wrapper around it, the boundary between ordinary code
+||| and flat code.
 ||| The wrapper takes each argument apart into the form's registers, calls
 ||| the form, and builds the result from the form's registers, each value as
 ||| ordinary code represents its type: an integer as above, a `Double` as a
