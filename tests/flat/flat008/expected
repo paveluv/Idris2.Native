@@ -1,50 +1,50 @@
 Error: parity is flat, but it has a value of type String: String lives on the heap.
 
-Untranslatable:10:17--10:23
- 06 |
- 07 | -- A value whose type is not flat: the case is on a String.
- 08 | %cg native flat Untranslatable.parity
- 09 | parity : Bits64 -> Bits8
- 10 | parity n = case show n of
+Untranslatable:16:17--16:23
+ 12 | -- A value whose type is not flat: the case is on a String, which `show`
+ 13 | -- builds on the heap.
+ 14 | %cg native flat Untranslatable.parity
+ 15 | parity : Bits64 -> Bits8
+ 16 | parity n = case show n of
                       ^^^^^^
 
 Error: chosen is flat, but it has a value of type Maybe (Bits64 -> Bits64): the field x of Just has type Bits64 -> Bits64, and a function is not flat.
 
-Untranslatable:18:17--18:88
- 14 | -- A function that is not static: which one is chosen at run time, and it is
- 15 | -- held in a value.
- 16 | %cg native flat Untranslatable.chosen
- 17 | chosen : Bits64 -> Bits64
- 18 | chosen x = case the (Maybe (Bits64 -> Bits64)) (if x == 0 then Nothing else Just (* 2)) of
+Untranslatable:26:17--26:88
+ 22 | -- static, and its calls reduce or get copies; one inside a `Maybe` that
+ 23 | -- depends on `x` is a closure on the heap.
+ 24 | %cg native flat Untranslatable.chosen
+ 25 | chosen : Bits64 -> Bits64
+ 26 | chosen x = case the (Maybe (Bits64 -> Bits64)) (if x == 0 then Nothing else Just (* 2)) of
                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Error: viaList is flat, but it calls sumList, and its argument number 1 has type List Bits64: List is recursive.
 
-Untranslatable:30:13--30:20
- 26 | sumList (x :: xs) = x + sumList xs
- 27 |
- 28 | %cg native flat Untranslatable.viaList
- 29 | viaList : Bits64 -> Bits64
- 30 | viaList x = sumList [x, x]
+Untranslatable:40:13--40:20
+ 36 | sumList (x :: xs) = x + sumList xs
+ 37 |
+ 38 | %cg native flat Untranslatable.viaList
+ 39 | viaList : Bits64 -> Bits64
+ 40 | viaList x = sumList [x, x]
                   ^^^^^^^
 
 Error: viaChain is flat, but it calls lengthOf, and it calls prim__cast_IntegerBits64, and its argument number 1 has type Integer: an Integer may need the heap.
 
-Untranslatable:38:14--38:22
- 34 | lengthOf n = cast (length (show n))
- 35 |
- 36 | %cg native flat Untranslatable.viaChain
- 37 | viaChain : Bits64 -> Bits64
- 38 | viaChain n = lengthOf n + 1
+Untranslatable:50:14--50:22
+ 46 | lengthOf n = cast (length (show n))
+ 47 |
+ 48 | %cg native flat Untranslatable.viaChain
+ 49 | viaChain : Bits64 -> Bits64
+ 50 | viaChain n = lengthOf n + 1
                    ^^^^^^^^
 
 Error: leak is flat, but it uses the private primitive prim__abs outside its module.
 
-Mem.Leak:9:10--9:19
- 5 | import Mem
- 6 |
- 7 | %cg native flat Mem.Leak.leak
- 8 | leak : Int -> Int
- 9 | leak x = prim__abs x
-              ^^^^^^^^^
+Mem.Leak:11:10--11:19
+ 07 | import Mem
+ 08 |
+ 09 | %cg native flat Mem.Leak.leak
+ 10 | leak : Int -> Int
+ 11 | leak x = prim__abs x
+               ^^^^^^^^^
 

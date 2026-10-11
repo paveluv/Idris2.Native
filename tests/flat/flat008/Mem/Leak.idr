@@ -1,5 +1,7 @@
 -- A module nested in `Mem` sees its private names, but the private
--- primitive is used where its own module did not write it.
+-- primitive is used where its own module did not write it. Idris accepts
+-- the call; the flat regime does not. Calling `magnitude` instead would be
+-- flat.
 module Mem.Leak
 
 import Mem
