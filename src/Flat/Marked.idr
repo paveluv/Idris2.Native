@@ -7,9 +7,11 @@
 |||     %cg native flat sumTo Main.classify
 |||
 ||| Each name is written as in the program, qualified as far as it takes to
-||| name one function. The translation (`Flat.Translate`) runs when a program
-||| is compiled, so a function that is not flat is reported then, not when its
-||| module is checked.
+||| name one function. The translation (`Flat.Translate`) runs twice: as each
+||| module is built, by the incremental code generator `flat-check`, which
+||| reports a function that is not flat as an error of the module, at the
+||| term at fault; and when a program is compiled, which makes the forms, and
+||| reports what no module's check did.
 module Flat.Marked
 
 import Core.Context
@@ -25,9 +27,16 @@ import public Flat.Exp
 import Flat.Problem
 import Flat.Translate
 
-import Idris.REPL.Common
+import Idris.Error
+import Idris.Pretty
 import Idris.REPL.Opts
 import Idris.Syntax
+
+import Data.List
+import Data.Maybe
+
+import Libraries.Text.PrettyPrint.Prettyprinter
+import Libraries.Text.PrettyPrint.Prettyprinter.Render.String
 
 import public Libraries.Data.NameMap
 
@@ -44,18 +53,36 @@ place (UnknownFlatName _ _) = (0, 0)
 place (NotFlat fc _ _ _ _) = maybe (0, 0) startPos (isNonEmptyFC fc)
 place (NotFlatBody fc _ _ _) = maybe (0, 0) startPos (isNonEmptyFC fc)
 
-||| Report the errors as Idris reports its own, in the order of the source,
-||| and stop at the last. A code generator does not see the options of the
-||| REPL, so every error but the last, which Idris shows itself, is shown
-||| without colour or line breaks.
+||| Report the errors, in the order of the source, as one error of Idris's:
+||| at the last error's location, with every error in its text as Idris
+||| prints one, without colour. A code generator sees neither the REPL's
+||| options nor its output mode, so it cannot print the errors itself: what
+||| it printed would be text in the middle of the IDE protocol. Thrown, the
+||| one error is shown as the mode asks.
 report : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} -> List FlatError -> Core ()
-report [] = pure ()
 report errs
     = do o <- newRef ROpts ({ color := False, consoleWidth := Just 0 }
                               (defaultOpts Nothing (REPL ErrorLvl) []))
          es <- traverse asError (sortBy (\a, b => compare (place a) (place b)) errs)
-         go es
+         case reverse es of
+              [] => pure ()
+              (e :: earlier) =>
+                do texts <- traverse rendered (numbered (reverse earlier))
+                   let (fc, msg) = messageOf e
+                   throw (GenericMsg fc (fastConcat (map (++ "\n") texts) ++ prefixed (length earlier) msg))
   where
+    numbered : List a -> List (Nat, a)
+    numbered xs = zip [0 .. length xs] xs
+
+    -- Idris prefixes the whole with "Error:", so only the errors after the
+    -- first carry their own.
+    prefixed : Nat -> String -> String
+    prefixed Z msg = msg
+    prefixed _ msg = "Error: " ++ msg
+
+    messageOf : Error -> (FC, String)
+    messageOf (GenericMsg fc msg) = (fc, msg)
+    messageOf e = (fromMaybe EmptyFC (getErrorLoc e), show e)
     -- The text of the file the error is in, for the excerpt Idris shows, if
     -- the file is found.
     sourceOf : Error -> Core String
@@ -67,13 +94,13 @@ report errs
                        (\_ => pure "")
                _ => pure ""
 
-    source : {auto o : Ref ROpts REPLOpts} -> Error -> Core ()
-    source e = setCurrentElabSource !(sourceOf e)
-
-    go : {auto o : Ref ROpts REPLOpts} -> List Error -> Core ()
-    go [] = pure ()
-    go [e] = throw e
-    go (e :: es) = do source e; emitError e; go es
+    -- An error as Idris prints one: its message, then where it is, with
+    -- the source around.
+    rendered : {auto o : Ref ROpts REPLOpts} -> (Nat, Error) -> Core String
+    rendered (i, e)
+        = do setCurrentElabSource !(sourceOf e)
+             doc <- if i == 0 then perror e else display e
+             pure (renderString (layoutPretty (MkLayoutOptions Unbounded) doc))
 
 -- The session directive that records that a module's check (`checkModule`)
 -- has reported errors in this run of the compiler.

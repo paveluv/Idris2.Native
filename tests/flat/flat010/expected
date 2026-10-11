@@ -3,3 +3,18 @@ Error: The flat directive names missing, which is no function
 Error: The flat directive names swap, which is ambiguous: Builtin.swap, Main.swap. Qualify it with its namespace.
 
 (2, 1)
+1/1: Building Twice (Twice.idr)
+Error: f is flat, but its argument number 1 has type String: String lives on the heap.
+
+Twice:9:1--9:21
+ 5 |
+ 6 | export infixl 8 +!
+ 7 |
+ 8 | %cg native flat f Twice.f
+ 9 | f : String -> Bits64
+     ^^^^^^^^^^^^^^^^^^^^
+
+2
+Operator.(+!) ({arg:0} : Bits64 [Word], {arg:1} : Bits64 [Word]) : Bits64 [Word] =
+  +Bits64({arg:0}, {arg:1})
+

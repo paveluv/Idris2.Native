@@ -1084,19 +1084,26 @@ export
 flatNames : {auto c : Ref Ctxt Defs} -> (directives : List String) -> Core (List Name, List FlatError)
 flatNames directives
     = do -- Idris gives a module's directives last first
-         found <- traverse one (concatMap names (reverse directives))
-         pure (mapMaybe ok found, mapMaybe bad found)
+         found <- traverse one (nub (concatMap names (reverse directives)))
+         pure (nub (mapMaybe ok found), mapMaybe bad found)
   where
     names : String -> List String
     names d = case words d of
                    ("flat" :: ns) => ns
                    _ => []
 
+    -- An operator is written in parentheses, as in a program; its name has
+    -- none.
+    basic : String -> Name
+    basic n = UN (Basic (if isPrefixOf "(" n && isSuffixOf ")" n
+                            then substr 1 (minus (length n) 2) n
+                            else n))
+
     parsed : String -> Name
     parsed str = case reverse (forget (split (== '.') str)) of
-                      [n] => UN (Basic n)
-                      (n :: ns) => NS (mkNamespace (concat (intersperse "." (reverse ns)))) (UN (Basic n))
-                      [] => UN (Basic str)
+                      [n] => basic n
+                      (n :: ns) => NS (mkNamespace (concat (intersperse "." (reverse ns)))) (basic n)
+                      [] => basic str
 
     one : String -> Core (Either FlatError Name)
     one str
