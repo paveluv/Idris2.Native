@@ -1,5 +1,10 @@
 -- Case analysis on user data types, Maybe and Either, and on Int and Char
 -- constants; constructors with and without fields.
+--
+-- A constructor with fields is an object whose header holds its constructor
+-- id; one without, such as `Empty` or `Nothing`, is one static object that
+-- every use shares, and a case reads its id the same way. The status is
+-- 38 + 16 + 40 + 1 = 95.
 module Main
 
 import Data.So

@@ -2,6 +2,12 @@
 -- from the integer types and to Int, and a record of two doubles. Ordinary code
 -- makes no double itself: it passes on the ones flat functions return. The
 -- exit status is the number of checks that fail.
+--
+-- Outside, a `Double` is a boxed double, an object on the heap; inside a
+-- flat function, it is a double register. The boundary unboxes each
+-- argument and boxes the result, so a `Point` returned to ordinary code is
+-- an object holding two boxed doubles, taken apart again when it is passed
+-- back in.
 module Main
 
 import Data.So

@@ -3,6 +3,9 @@
 -- bitwise operations on negative values, comparisons, casts to and from the
 -- fixed-width types and Char, and a case on a constant. The exit status is
 -- the number of checks that fail.
+--
+-- Within the fixnum range an `Integer` is a fixnum, as an `Int` is; past it,
+-- it would be a bignum, which these checks do not reach.
 module Main
 
 import Data.So

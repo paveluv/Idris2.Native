@@ -6,6 +6,10 @@
 ||| holds forms where as legitimately chooses a different valid encoding
 ||| (accumulator-immediate short forms, D1 shift-by-one, rel8 branches); the
 ||| run script compares disassembly text for those instead.
+|||
+||| The encoder is the backend's assembler: it turns `Instr`, an Idris data
+||| type of the x86-64 instructions the backend renders, into machine code.
+||| GNU as is used here as a reference only; the product never runs it.
 module Gen
 
 import Compiler.Native.X86.Asm

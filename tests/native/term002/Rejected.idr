@@ -1,3 +1,8 @@
+-- What makes a program of the term IR well formed is its typing: each
+-- block below breaks one rule, and is rejected when it is compiled, for the
+-- reason its `failing` names. A producer of the IR that breaks a rule
+-- therefore does not compile either, so the backend cannot emit such a
+-- program.
 module Rejected
 
 import Compiler.Native.TermIR.Build
@@ -26,7 +31,8 @@ nil : Var (statics D) (MkStaticSig (nm "nil") CON)
 nil = here
 
 ------------------------------------------------------------------------------
--- Rule 1: types
+-- Types: every operand has the type its instruction takes. `Val` is a
+-- uniform value, `Fix` a fixnum, `W64` a word.
 
 -- An operand of the wrong type.
 failing "Mismatch between: Val and W64"
@@ -86,7 +92,8 @@ failing "keysFit Fix"
     (return x)
 
 ------------------------------------------------------------------------------
--- Rule 2: structure
+-- Structure: a variable is used in scope, a jump passes what its block
+-- takes, and names and switch keys are distinct.
 
 -- A variable out of scope: no position of the empty context has a type.
 failing "Mismatch between: Val :: ?xs and []"
@@ -111,7 +118,9 @@ failing "So (distinct (mapImpl .name"
   twins = MkProgram [Defined (Crash "a"), Defined (Crash "b")] [] (MkEntry here) noConIds
 
 ------------------------------------------------------------------------------
--- Rule 3: conventions
+-- Conventions: a CPS function, ordinary code, returns to its continuation
+-- and calls and applies with continuations; a Direct function, flat code,
+-- returns its results and makes only direct calls.
 
 -- A machine return in a CPS function.
 failing "Mismatch between: InDirect ?rs ?col and InCPS"
@@ -150,7 +159,9 @@ failing "Mismatch between: InDirect [W64] False and InCPS"
     return x
 
 ------------------------------------------------------------------------------
--- Rule 6: objects
+-- Objects: what is allocated or read fits the object's kind and header:
+-- a constructor's fields are uniform values, a closure has fewer arguments
+-- than its arity, an array has a fill and a string none.
 
 -- A constructor's field that is not a `Val`.
 failing "Mismatch between: W64 and Val"
@@ -196,7 +207,8 @@ failing "Mismatch between: CON and STRING"
     return x
 
 ------------------------------------------------------------------------------
--- Rule 8: word/address conversion
+-- Word/address conversion: only a function allowed to make one may turn a
+-- word into an address.
 
 -- A conversion in a function that may not make one.
 failing "Mismatch between: True and False"

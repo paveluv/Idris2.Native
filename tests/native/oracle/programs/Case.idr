@@ -1,5 +1,7 @@
 -- Case analysis: on constructors of a user type, on Maybe and Either, and on
--- Int, Char and String constants.
+-- Int, Char and String constants. A case on constructors switches on the
+-- constructor id that the object's header holds; one on integer or
+-- character constants switches on the value.
 module Main
 
 data Shape = Circle Int | Rect Int Int | Triangle Int Int Int

@@ -1,5 +1,7 @@
 -- Interfaces: a user interface with a default method, instances for a base
--- type and for a list of any instance, passed as dictionaries.
+-- type and for a list of any instance, passed as dictionaries. A dictionary
+-- is a record of the instance's methods, an ordinary argument at run time:
+-- `describe` at `List a` is given `a`'s dictionary, and builds the list's.
 module Main
 
 interface Describe a where

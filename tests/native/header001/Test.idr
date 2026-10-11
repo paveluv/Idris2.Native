@@ -3,6 +3,14 @@
 -- largest value; a part one beyond its width does not fit; words that no
 -- header encodes are rejected; and under bignums in two's complement, whose
 -- header does not exist yet, no BIGNUM header decodes.
+--
+-- Every object on the heap starts with a header word: its kind, and the
+-- parts that say how big it is and what it holds. `Just x` is a CON, a
+-- constructor's object, of constructor id 1 and arity 1, its field `x`
+-- after the header; a closure's header holds the function's arity and the
+-- number of arguments filled; a string's, its number of bytes. Compiled
+-- code writes the header when it allocates and reads the constructor id in
+-- a `case`; the collector reads the size and which words to scan.
 module Main
 
 import Compiler.Native.HeapObject

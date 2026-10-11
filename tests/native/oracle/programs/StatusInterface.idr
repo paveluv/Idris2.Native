@@ -1,6 +1,10 @@
 -- Interfaces passed as dictionaries: a user interface with a default
 -- method, instances for a base type and for lists, and Eq and Ord on a user
 -- data type.
+--
+-- `weigh` at `List Int` is given the dictionary of `Weigh Int` to build the
+-- list's, and `heavy`, a default method, calls `weigh` through the
+-- dictionary it is in. The status is 6 + 40 + 7 + 11 = 64.
 module Main
 
 import Data.So

@@ -2,6 +2,13 @@
 -- the boundary: arithmetic that wraps at each width, signed and unsigned
 -- division, shifts, comparisons, casts, and loops. The exit status is the
 -- number of checks that fail.
+--
+-- Each check is ordinary code calling a flat function: the call goes
+-- through the boundary, which takes each uniform value apart into a word,
+-- runs the flat function on words, and makes its result a uniform value
+-- again. Inside, an integer narrower than 64 bits is held in a word,
+-- extended as its type is signed or not, and wrapped to its width after
+-- each operation; a `Char` is its code point.
 module Main
 
 import Data.So
@@ -32,12 +39,13 @@ i32 x = x
 int : Int -> Int
 int x = x
 
--- A loop: a tail call of the function itself.
+-- A loop: a tail call of the function itself, a jump back to its start.
 %cg native flat Main.sumTo
 sumTo : Bits64 -> Bits64 -> Bits64
 sumTo acc 0 = acc
 sumTo acc n = sumTo (acc + n) (n - 1)
 
+-- 20 * 13 + 7 is 267, which wraps to 11 in eight bits.
 %cg native flat Main.wrap8
 wrap8 : Bits8 -> Bits8 -> Bits8
 wrap8 a b = a * b + 7
@@ -46,6 +54,8 @@ wrap8 a b = a * b + 7
 neg8 : Int8 -> Int8
 neg8 x = negate x - 100
 
+-- `div` and `mod` on `Int` are Euclidean: the remainder is never negative,
+-- so -7 is 2 * (-4) + 1, and 7 is (-2) * (-3) + 1.
 %cg native flat Main.divs
 divs : Int -> Int -> Int
 divs a b = div a b * 1000 + mod a b
@@ -82,7 +92,8 @@ widened x = cast x
 code : Int -> Int
 code x = ord (chr x)
 
--- A loop whose step calls other flat functions.
+-- A loop whose step calls other flat functions: `mod` and `div` at
+-- `Bits64`, each a flat function of its own.
 %cg native flat Main.collatz
 collatz : Bits64 -> Bits64 -> Bits64
 collatz steps 1 = steps

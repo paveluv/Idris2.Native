@@ -30,7 +30,12 @@
 #   --timeout SECONDS       per run, when `timeout` is available (default 60)
 #
 # A program is a `module Main`; its behaviour is its standard output and its
-# exit status. The report has one line per program, then a summary:
+# exit status. The native backend does not lower output yet, so the programs
+# named Status* report through their exit status alone: each folds what it
+# computes, or the number of its checks that fail, into the status, which
+# the system keeps modulo 256. The others print, and stay unsupported under
+# the native backend until it lowers output. The report has one line per
+# program, then a summary:
 #
 #   agree          the same standard output and exit status
 #   MISMATCH       they differ; the differences follow, indented

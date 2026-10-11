@@ -4,6 +4,10 @@
 -- lambda's captured variables are the copy's parameters, so one copy serves
 -- calls of the same lambda. The exit status is the number of checks that
 -- fail.
+--
+-- The comments show each copy as if it had been written by hand in Idris.
+-- A copy takes the call's flat arguments first, then the variables its
+-- static arguments capture.
 module Main
 
 import Data.So
@@ -36,24 +40,55 @@ Shape Square where
 Shape Rect where
   area r = r.w * r.h
 
--- Generic over an interface: a copy at each instance.
+-- Generic over an interface: a copy at each instance. `squares` calls it as
+-- if written
+--
+--   total2Square : Square -> Square -> Bits64
+--   total2Square x y = area x + area y        -- `area` of `Shape Square`
+--
+-- and `rects` the same at `Rect`.
 total2 : Shape a => a -> a -> Bits64
 total2 x y = area x + area y
 
--- Higher-order: a copy at each function.
+-- Higher-order: a copy at each function. Both calls in `twice` pass the
+-- same lambda, so they share one copy, which takes the captured `k`:
+--
+--   applyTwiceStep : Bits64 -> Bits64 -> Bits64
+--   applyTwiceStep x k = let v = x * k + 1 in v * k + 1
 applyTwice : (Bits64 -> Bits64) -> Bits64 -> Bits64
 applyTwice f x = f (f x)
 
--- Recursion in a copy, at the same static arguments: a loop.
+-- Recursion in a copy, at the same static arguments: a loop. The copy for
+-- `sums` is as if written
+--
+--   sumWithTimes : Bits64 -> Bits64 -> Bits64 -> Bits64
+--   sumWithTimes acc 0 k = acc
+--   sumWithTimes acc n k = sumWithTimes (acc + n * k) (n - 1) k
+--
+-- whose recursive call is at the same lambda, so it calls the copy itself.
 sumWith : (Bits64 -> Bits64) -> Bits64 -> Bits64 -> Bits64
 sumWith f acc 0 = acc
 sumWith f acc n = sumWith f (acc + f n) (n - 1)
 
 -- A copy that calls another generic function at its own static arguments.
+-- `nested` makes two copies, one inside the other:
+--
+--   bothSquare : Square -> Bits64 -> Bits64
+--   bothSquare x k = applyTwicePlus (area x) k   -- `area` of `Shape Square`
+--
+--   applyTwicePlus : Bits64 -> Bits64 -> Bits64
+--   applyTwicePlus x k = (x + k) + k
 both : Shape a => (Bits64 -> Bits64) -> a -> Bits64
 both f x = applyTwice f (area x)
 
--- A flat function with function arguments: copied at each call.
+-- A flat function with function arguments: copied at each call. The call in
+-- `composed` passes `k` both as the argument `x` and as the variable its
+-- section captures:
+--
+--   composeTimesPlus : Bits64 -> Bits64 -> Bits64
+--   composeTimesPlus x k = (x + 1) * k
+--
+-- called as `composeTimesPlus k k`.
 %cg native flat Main.compose
 compose : (Bits64 -> Bits64) -> (Bits64 -> Bits64) -> Bits64 -> Bits64
 compose f g x = f (g x)

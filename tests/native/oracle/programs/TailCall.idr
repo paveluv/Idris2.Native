@@ -1,5 +1,6 @@
 -- Self and mutual tail calls, many of them: under the native backend each is
--- a jump, so neither the stack nor the heap grows with the count.
+-- a jump, so neither the stack nor the heap grows with the count. Only a
+-- call that is not a tail call allocates a continuation, and none here is.
 module Main
 
 loop : Int -> Int -> Int

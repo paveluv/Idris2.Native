@@ -1,5 +1,6 @@
 -- Three million mutual tail calls: real tail calls run them in constant
--- space, while a call stack would need far more than the usual 8 MiB.
+-- space, while a call stack would need far more than the usual 8 MiB. The
+-- status is (2 + 4 + 3000000) mod 256 = 198.
 module Main
 
 import Data.So

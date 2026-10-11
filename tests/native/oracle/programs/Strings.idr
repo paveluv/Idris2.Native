@@ -1,5 +1,6 @@
 -- String primitives that allocate: unpack, pack, append, substrings,
--- conversions and long strings.
+-- conversions and long strings. A string is an object of its bytes on the
+-- heap, its length in its header.
 module Main
 
 import Data.String

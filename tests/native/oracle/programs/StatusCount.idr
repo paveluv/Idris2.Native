@@ -1,5 +1,7 @@
 -- The shared example, reporting through the exit status: an allocation, a
 -- non-tail call with the cell live across it, and tail calls. wrap 2 is 5.
+-- The status is wrap 2 + wrap 50 = 5 + 101 = 106. lower001 and render001
+-- show how `wrap` is compiled.
 module Main
 
 import Data.So

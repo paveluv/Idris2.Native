@@ -3,6 +3,10 @@
 -- largest fixnum, subtraction, multiplication, negation, the bitwise
 -- operations, every comparison, and a case on negative constants. The exit
 -- status is the number of checks that fail.
+--
+-- A fixnum is an `Int` tagged in its word: under the default encoding, n is
+-- the word 2n + 1. Each operation computes on the tagged words where it
+-- can, `x - 1` as the word minus 2, and checks for overflow.
 module Main
 
 import Data.Bits

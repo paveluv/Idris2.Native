@@ -2,6 +2,9 @@
 -- each width, division and remainder (Euclidean when signed), shifts by
 -- counts within and beyond the width, the bitwise operations, comparisons,
 -- and casts among them. The exit status is the number of checks that fail.
+-- Under an encoding with fixnums, a narrow integer is always a fixnum,
+-- wrapped to its width after each operation, so `i8 127 + 1` is -128 as
+-- Idris says.
 module Main
 
 import Data.Bits

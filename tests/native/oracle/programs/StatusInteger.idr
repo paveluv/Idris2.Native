@@ -1,4 +1,6 @@
--- Integer and Nat arithmetic within the fixnum range, and comparisons.
+-- Integer and Nat arithmetic within the fixnum range, and comparisons. A
+-- `Nat` is an `Integer` at run time, so `len` counts in fixnums. The status
+-- is (338350 + 10 + 1) mod 256 = 185.
 module Main
 
 import Data.So

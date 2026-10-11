@@ -1,6 +1,11 @@
 ||| The encoder reports what it cannot encode faithfully: a field that does
 ||| not fit its bits, a displacement to a label included, and a label that
 ||| nothing defines. Each one in turn, after one that fits.
+|||
+||| An instruction field has a fixed width, such as a 32-bit displacement. A
+||| value that does not fit would be truncated into a valid but different
+||| instruction, so the encoder reports it instead, and the backend's
+||| compilation fails rather than produce wrong code.
 module Gen
 
 import Compiler.Native.X86.Asm

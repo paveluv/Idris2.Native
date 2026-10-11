@@ -1,3 +1,14 @@
+-- The term IR, written by hand through its builder: a program that runs,
+-- using every construct the rendering supports, and a program with every
+-- other construct, whose IR is printed.
+--
+-- The term IR is what the backend compiles both ordinary and flat code to:
+-- a typed term, so that an ill-formed program does not compile (term002).
+-- A function has one of two conventions. A CPS function is ordinary code:
+-- its values are uniform, it returns to a continuation, and a call that is
+-- not a tail call names the code after it as its continuation. A Direct
+-- function is flat code: a machine function on words and doubles, which
+-- returns its results. Each body below says the Idris it stands for.
 module Main
 
 import Compiler.Native.ELF
@@ -73,7 +84,8 @@ twoRef = here
 
 ||| Unbounded addition of two `Val`s: the fixnum fast path, and `slowAdd` when
 ||| either is not a fixnum or the sum overflows, both slow cases in one block,
-||| both paths meeting at a join.
+||| both paths meeting at a join. This is how ordinary code computes `x + y`
+||| at `Integer`.
 addInteger : Opnd vr Val -> Opnd vr Val -> Build Run c False vr l (Opnd vr Val)
 addInteger x y = do
   [s] <- joinPoint [Val] $ \exit => do
@@ -85,7 +97,8 @@ addInteger x y = do
       (slow [])
   pure s
 
-||| A case on a constructor, with a join: the sum of a pair's fields.
+||| A case on a constructor, with a join: the sum of a pair's fields, as
+||| `case p of MkPair a b => a + b` at `Integer`.
 sumFields : Opnd vr Val -> Build Run c False vr l (Opnd vr Val)
 sumFields p = do
   q <- emit1 (NarrowPtr CON p)
@@ -100,13 +113,15 @@ sumFields p = do
       (crash "no such constructor")
   pure r
 
+||| `pair a b = MkPair a b`: an object of constructor id 0 with two fields.
 pairBody : Closed Run InCPS False [Val, Val]
 pairBody = build $ \[a, b] => do
   p <- emit1 (AllocObj (ConH 0 2) [a, b])
   w <- emit1 (WidenPtr p)
   return w
 
-||| 1 + 2 + … + n, by a loop.
+||| 1 + 2 + … + n, by a loop, as the flat function
+||| `sumTo : Bits64 -> Bits64` would be.
 sumToBody : Closed Run (InDirect [W64] False) False [W64]
 sumToBody = build $ \[n] =>
   loop [W64, W64] [n, W 0] $ \again, [i, acc] =>
@@ -124,16 +139,19 @@ slowAddBody = build $ \[a, _] =>
     (\[f] => arithOv OvAdd f f (\r => do w <- emit1 (WidenFix r); ret [w]) (crash "slowAdd: overflow"))
     (crash "slowAdd: not a fixnum")
 
-||| A closure's code: the sum of its two arguments, through a tail call.
+||| A closure's code: the sum of its two arguments, through a tail call, as
+||| `addTo a b = same (a + b)`.
 addToBody : Closed Run InCPS False [Val, Val]
 addToBody = build $ \[a, b] => do
   s <- addInteger a b
   tailCall sameRef [s]
 
+||| `same x = x`.
 sameBody : Closed Run InCPS False [Val]
 sameBody = build $ \[x] => return x
 
-||| Two results.
+||| Two results, as a flat function returning `(div a b, mod a b)` at
+||| `Bits64` would.
 divModBody : Closed Run (InDirect [W64, W64] False) False [W64, W64]
 divModBody = build $ \[a, b] => do
   q <- emit1 (Arith DivS a b)
@@ -216,7 +234,8 @@ bytesBody = build $ \[] => do
 ||| (20 + 9) + 7 + slowAdd 3 = 42 through calls, joins, a loop, the slow path,
 ||| a static, an array, two results, a closure and a round trip through
 ||| words and doubles, once the doubles' and the narrow accesses' checks
-||| pass.
+||| pass. The closure is as `addTo w`, `addTo` with one of its two arguments
+||| filled, and applying it to `z` fills the second and calls `addTo`.
 mainBody : Closed Run InCPS False []
 mainBody = build $ \[] => do
   emit0 (Comment "a value live across a call")
@@ -279,7 +298,9 @@ roundTripRef = later here
 routineRef : Var (sigs Cover) (MkSig (UN (Basic "idris_routine")) (InDirect [] True) [] False)
 routineRef = later (later here)
 
-||| The word/address conversions, in a function that may make them.
+||| The word/address conversions, in a function that may make them. Only the
+||| runtime's own code may turn a word into an address, and the producer
+||| decides which functions those are by their module, here `Main.Memory`.
 roundTripBody : Closed Cover (InDirect [W64] False) True [W64]
 roundTripBody = build $ \[w] => do
   p <- emit1 (WordToAddr CON w)

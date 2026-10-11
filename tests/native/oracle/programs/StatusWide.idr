@@ -5,6 +5,10 @@
 -- unsigned order, division and shifts for Bits64; casts among the widths;
 -- and a case on a constant beyond the fixnum range. The exit status is the
 -- number of checks that fail.
+--
+-- Under an encoding with fixnums, a 64-bit value is a fixnum when it fits in
+-- 63 bits and a boxed integer otherwise, whichever operation made it: the
+-- result of each is tagged when it fits and boxed when not.
 module Main
 
 import Data.Bits

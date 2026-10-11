@@ -2,6 +2,11 @@
 -- array, written inside and outside its bounds, and one of 200 elements,
 -- larger than a small allocation window, filled and summed by loops. The
 -- elements nobody wrote are the fill, Nothing, read here as 100.
+--
+-- An array is an object of its elements, uniform values, its number in its
+-- header. The small array sums to 100 + 7 + 100, the write at index 3 is
+-- refused, and the large one sums to 594, so the status is
+-- (207 + 594 + 1) mod 256 = 34.
 module Main
 
 import Data.IOArray

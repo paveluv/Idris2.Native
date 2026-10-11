@@ -1,5 +1,9 @@
 -- Closures: partial application of known functions and of lambdas, folds,
 -- composition, and a closure kept in a data structure.
+--
+-- `add3 1` is a closure of `add3` holding one argument, `partly 2` one
+-- holding two, and `more 3` fills the arity and calls `add3`. The status is
+-- 50 + 32 + 6 + 20 - 30 = 78.
 module Main
 
 import Data.So

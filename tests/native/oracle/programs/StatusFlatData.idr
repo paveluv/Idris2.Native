@@ -3,6 +3,13 @@
 -- represents it: a user sum, an enumeration, `Bool`, `Maybe`, `Either`,
 -- pairs, a newtype, a record holding a sum, and `IO`. The exit status is
 -- the number of checks that fail.
+--
+-- Inside, a value is its registers: a `Shape` is a tag, `Circle`'s word and
+-- `Rect`'s two words, so `Rect 2 3` is (1, 0, 2, 3). Outside, it is as
+-- ordinary code holds it: an object of its constructor holding its fields,
+-- or, for `Empty`, the one static object. An enumeration such as `Colour`
+-- or `Bool` is its tag, a fixnum, outside and a word inside; a newtype such
+-- as `Meters` is its field.
 module Main
 
 import Data.So
@@ -64,6 +71,8 @@ orZero (Just x) = x
 swapped : (Bits64, Bool) -> (Bool, Bits64)
 swapped (a, b) = (b, a)
 
+-- A record holding a sum: `Mixed` takes a word for `count`, a word each for
+-- the tags of `colour` and `flag`, and `Shape`'s four.
 %cg native flat Main.summary
 summary : Mixed -> (Bits64, Colour)
 summary m = (cast m.count + area m.shape + (if m.flag then 100 else 0), next m.colour)
@@ -85,6 +94,8 @@ sideOf s = (case s of
 twice : Meters -> Meters
 twice (MkMeters m) = MkMeters (2 * m)
 
+-- `IO Bits64` is a function of the world: the flat function takes it as one
+-- more argument, which takes no register.
 %cg native flat Main.tick
 tick : Bits64 -> IO Bits64
 tick n = pure (n + 1)

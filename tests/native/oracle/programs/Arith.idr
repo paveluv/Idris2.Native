@@ -1,5 +1,8 @@
 -- Int arithmetic, across the edge of the 63-bit fixnum range, where the
--- native backend changes from tagged to boxed integers.
+-- native backend changes from tagged to boxed integers. An `Int` is 64 bits;
+-- a uniform value is one word, which holds the integer itself, tagged, when
+-- it fits in 63 bits, and otherwise points to a box of 64. Each operation
+-- checks its fixnum result for overflow, and boxes it when it overflows.
 module Main
 
 ||| 2^62 - 1, the largest fixnum.

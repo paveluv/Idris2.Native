@@ -1,5 +1,8 @@
 -- Closures: partial application, lambdas, higher-order functions and
--- function composition.
+-- function composition. A closure is an object holding a function's code
+-- and the arguments given so far: `(+) 1` holds `(+)` and 1. Applying a
+-- closure to one more argument either makes a new closure with it, or, when
+-- that fills the function's arity, calls the code with them all.
 module Main
 
 adders : List (Int -> Int)

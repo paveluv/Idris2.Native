@@ -4,6 +4,14 @@
 -- results land elsewhere than its arguments. The caller checks every result
 -- and exits with 42, or with 1 + the index of the first wrong one. Both are
 -- written with the builder (Compiler.Native.TermIR.Build).
+--
+-- A Direct function is how a flat function is compiled: a machine function
+-- whose arguments and results are its registers' values. `spread` is as a
+-- flat function of nineteen arguments, `Bits64` and `Double` in turn, would
+-- be, returning nineteen values. x86-64 has six word argument registers and
+-- eight double ones; what does not fit goes in the per-thread area ARGS,
+-- never on the machine stack, so that a call of any arity, a tail call
+-- included, is moves and a jump. Results come back the same way.
 module Main
 
 import Compiler.Native.ELF

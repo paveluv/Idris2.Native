@@ -1,5 +1,6 @@
 -- Integer arithmetic beyond 64 bits: products, powers, division and
--- remainder with negative operands.
+-- remainder with negative operands. An `Integer` that fits a fixnum is one;
+-- any other is a bignum object, its sign and 64-bit limbs.
 module Main
 
 fact : Integer -> Integer

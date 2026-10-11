@@ -1,4 +1,5 @@
--- The smallest program with output.
+-- The smallest program with output. Under the native backend it reaches
+-- the abort stub, since output is not lowered yet.
 module Main
 
 main : IO ()
