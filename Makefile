@@ -36,7 +36,7 @@ native:
 testbin:
 	cd tests && $(WITH_PREFIX) $(UPSTREAM_IDRIS2) --build tests.ipkg
 
-test: testbin
+test: native testbin
 	cd tests && $(WITH_PREFIX) NAME_VERSION=$(NAME_VERSION) ./build/exec/runtests $(TARGET) \
 	  --timing --failure-file failures --threads $(threads) --only "$(only)" < /dev/null
 

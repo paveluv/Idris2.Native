@@ -19,6 +19,7 @@ import Compiler.VMCode
 import Compiler.Native.LocatedIR
 import Compiler.Native.LocatedIR.Dump
 import Compiler.Native.Lower
+import Compiler.Native.RegAlloc
 import Compiler.Native.LowerFlat
 import Flat.Exp
 import Flat.Marked
@@ -113,12 +114,13 @@ flatInputs table vmdefs = do
         reach (insert n () seen) (fd :: acc) (formCallees fd ++ ns)
 
 ||| From VMCode to the image, under encodings whose value encoding has
-||| fixnums: produce the term and its IR, render, link.
+||| fixnums: produce the term, allocate its registers, render, link.
 pipeline : {auto c : Ref Ctxt Defs} -> (enc : Enc) -> {auto 0 _ : HasFixnums enc.val} ->
            Settings -> NameMap FlatDef -> List (Name, VMDef) -> Core (List Bits8)
 pipeline enc settings table defs = do
   (forms, shapes) <- flatInputs table defs
-  let ir = lowerProgram enc x86_64 forms shapes defs
+  let (_ ** term) = lowerProgram enc forms shapes defs
+  let ir = allocRegs x86_64 term
   case settings.dumpIr of
     Just path => do
       Right () <- coreLift (writeFile path (dumpProgram ir))

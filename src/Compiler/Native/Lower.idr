@@ -1,6 +1,6 @@
 ||| The produce pass: VMCode and flat forms to the typed term
-||| (`Compiler.Native.TermIR`), and through it to the IR
-||| (`Compiler.Native.LocatedIR`).
+||| (`Compiler.Native.TermIR`), from which register allocation
+||| (`Compiler.Native.RegAlloc`) makes the located IR.
 |||
 ||| Every VMCode function becomes a `CPS` function of `Val` parameters,
 ||| written through the builder (`Compiler.Native.TermIR.Build`), so Idris
@@ -53,11 +53,9 @@ module Compiler.Native.Lower
 
 import Compiler.VMCode
 import Core.CompileExpr
-import Compiler.Native.Target
-import Compiler.Native.TermIR.Build
+import public Compiler.Native.TermIR
 import Compiler.Native.Words
 import Compiler.Native.LowerFlat
-import public Compiler.Native.RegAlloc
 import Core.FC
 import Flat.Exp
 import Core.Name
@@ -1197,17 +1195,17 @@ declsOf : (es : List (Sig enc, Plan)) -> (rs : List (s ** ({0 d : Decls enc} -> 
 declsOf es rs = MkDecls (mainSig :: map Builtin.fst es) (map DPair.fst rs)
 
 ||| The program of the declarations, the entry first.
-program : {enc : Enc} -> {auto 0 fx : HasFixnums enc.val} -> Target -> List FlatDef -> Shapes -> Plan ->
-          (es : List (Sig enc, Plan)) -> (rs : List (s ** ({0 d : Decls enc} -> StaticDef d s))) -> LocatedProgram enc
-program target forms shapes entry es rs =
+program : {enc : Enc} -> {auto 0 fx : HasFixnums enc.val} -> List FlatDef -> Shapes -> Plan ->
+          (es : List (Sig enc, Plan)) -> (rs : List (s ** ({0 d : Decls enc} -> StaticDef d s))) -> TermProgram enc
+program forms shapes entry es rs =
   case choose (distinct (map (.name) (mainSig :: map Builtin.fst es)) && distinct (map (.sym) (map DPair.fst rs))) of
     Left ok =>
-      allocRegs target (MkProgram {d = declsOf es rs}
+      (declsOf es rs ** MkProgram
                      (defs (declsOf es rs) (refsOf (declsOf es rs)) (MkForms (callees (declsOf es rs) forms) shapes)
                            ((mainSig, entry) :: es))
                      (staticDefs (declsOf es rs) rs) (MkEntry here) noConIds)
     Right _ =>
-      allocRegs target (MkProgram {d = MkDecls [mainSig] []}
+      (MkDecls [mainSig] [] ** MkProgram
                      [Defined (Unsupported "a program with two definitions of one name")] [] (MkEntry here) noConIds)
 
 ||| The ids of the constructors of no fields that ordinary code represents
@@ -1221,7 +1219,7 @@ nullaries (DataShape cs) = concatMap con cs
                (AsObject cid, []) => [cid]
                _ => []) ++ concatMap nullaries c.fields
 
-||| A whole program for the target: every function and foreign function, the
+||| A whole program, as a term: every function and foreign function, the
 ||| runtime's routines, the statics of the nullary constructors and of the
 ||| big constants, and `__mainExpression` as the entry, first.
 |||
@@ -1231,9 +1229,9 @@ nullaries (DataShape cs) = concatMap con cs
 ||| and the shapes of its parameters and result are known, and every form
 ||| becomes a `Direct` function.
 export
-lowerProgram : (enc : Enc) -> {auto 0 fx : HasFixnums enc.val} -> Target -> List FlatDef -> Shapes ->
-               List (Name, VMDef) -> LocatedProgram enc
-lowerProgram enc target forms shapes vmdefs =
+lowerProgram : (enc : Enc) -> {auto 0 fx : HasFixnums enc.val} -> List FlatDef -> Shapes ->
+               List (Name, VMDef) -> TermProgram enc
+lowerProgram enc forms shapes vmdefs =
   let entryPlan = case Data.List.lookup mainExpression vmdefs of
                     Just (MkVMFun [] body) => FromVM [] body
                     _ => NoEntry
@@ -1243,7 +1241,7 @@ lowerProgram enc target forms shapes vmdefs =
                  ++ [(MkSig n (InDirect rs False) ps False, Routine) | (n, rs, ps) <- routines]
       boxing = fromList [(nullaryCon c, Nullary c) | c <- concatMap (boxed . snd) planned]
       statics = Data.SortedMap.toList (foldl mergeLeft boxing (mapMaybe bodyStatics vmdefs))
-  in program target forms shapes entryPlan others (mapMaybe ready statics)
+  in program forms shapes entryPlan others (mapMaybe ready statics)
   where
     byName : SortedMap Name FlatDef
     byName = fromList [(fd.name, fd) | fd <- forms]
