@@ -3,7 +3,10 @@
 -- than either register file holds, returns them rotated by one, so that its
 -- results land elsewhere than its arguments. The caller checks every result
 -- and exits with 42, or with 1 + the index of the first wrong one. Both are
--- written with the builder (Compiler.Native.TermIR.Build).
+-- written with the builder (Compiler.Native.TermIR.Build), and so is the
+-- `exit` the caller ends with, a system call as the runtime's is. A crash
+-- jumps to the runtime's `crash`, which the program defines itself, under
+-- the name the runtime contract gives it.
 --
 -- A Direct function is how a flat function is compiled: a machine function
 -- whose arguments and results are its registers' values. `spread` is as a
@@ -63,14 +66,29 @@ Results = map (tyOf . source) indices
 D : Decls TestEnc
 D = MkDecls [ MkSig (nm "main") InCPS [] False
             , MkSig (nm "spread") (InDirect Results False) Params False
-            , MkSig (UN (Basic "idris_exit")) (InDirect [] False) [W64] False ]
+            , MkSig (nm "exit") (InDirect [] False) [W64] False
+            , MkSig (flatName runtimeCrash) (InDirect [] False) [W64, W64] False ]
             []
 
 spreadRef : Var (sigs D) (MkSig (nm "spread") (InDirect Results False) Params False)
 spreadRef = later here
 
-exitRef : Var (sigs D) (MkSig (UN (Basic "idris_exit")) (InDirect [] False) [W64] False)
+exitRef : Var (sigs D) (MkSig (nm "exit") (InDirect [] False) [W64] False)
 exitRef = later (later here)
+
+||| The runtime's `crash`: the message, `length` bytes at `message`, written
+||| to the standard error, then the process ended with status 1.
+crashBody : Closed D (InDirect [] False) False [W64, W64]
+crashBody = build $ \[message, length] => do
+  _ <- emit1 (SystemCall (W 1) [W 2, message, length, W 0, W 0, W 0])
+  _ <- emit1 (SystemCall (W 231) [W 1, W 0, W 0, W 0, W 0, W 0])
+  ret []
+
+||| The system call exit_group with the status.
+exitBody : Closed D (InDirect [] False) False [W64]
+exitBody = build $ \[status] => do
+  _ <- emit1 (SystemCall (W 231) [status, W 0, W 0, W 0, W 0, W 0])
+  ret []
 
 ||| The arguments, rotated by one: what `spread` returns.
 rotate : All p (x :: xs) -> All p (xs ++ [x])
@@ -131,10 +149,12 @@ main = do
             (zip indices (place x86_64.abi (map (classOfIndex . source) indices)))
   let Just m = close mainBody | Nothing => putStrLn "main: a level outside its context"
   let Just s = close spreadBody | Nothing => putStrLn "spread: a level outside its context"
+  let Just e = close exitBody | Nothing => putStrLn "exit: a level outside its context"
+  let Just cr = close crashBody | Nothing => putStrLn "crash: a level outside its context"
   case choose (distinct (map (.name) (sigs D)) && distinct (map (.sym) (statics D))) of
     Right _ => putStrLn "names repeat"
     Left ok => do
-      let ir = allocRegs x86_64 (MkProgram {d = D} [Defined m, Defined s, External] [] (MkEntry here) noConIds)
+      let ir = allocRegs x86_64 (MkProgram {d = D} [Defined m, Defined s, Defined e, Defined cr] [] (MkEntry here) noConIds)
       let Right rendered = render TestEnc ir
         | Left err => putStrLn ("render: " ++ err)
       let Right image = linkProgram TestEnc windowBytes rendered.areas rendered.text rendered.rodata

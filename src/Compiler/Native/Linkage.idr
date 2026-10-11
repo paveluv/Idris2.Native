@@ -1,12 +1,15 @@
-||| What generated code, the runtime seed and the linker agree on: the
-||| image's symbols and their labels, the per-thread memory areas, the shape
-||| of a resume point, and the parameters an image is built with. Nothing
-||| here is code: the seed's routines are `Compiler.Native.Seed`, and
+||| What generated code, the runtime and the linker agree on: the runtime
+||| contract, the image's symbols and their labels, the per-thread memory
+||| areas, the shape of a resume point, and the parameters an image is built
+||| with. Nothing here is code: the runtime's routines are the runtime
+||| library's, the rest of the seed's are `Compiler.Native.Seed`, and
 ||| `Compiler.Native.Link` makes the image.
 module Compiler.Native.Linkage
 
+import public Compiler.Native.IRCommon
 import Compiler.Native.X86.Asm
 
+import Core.Name
 import Data.List
 
 %default total
@@ -32,7 +35,6 @@ data Sym
   | SymNRoots          -- bss: NROOTS, 1 word: the entries of ROOTS in use
   | SymScratch         -- bss: SCRATCH, sized by `Areas`: extra registers for register allocation
   | SymApply           -- `idris_apply(f, a)`: apply a closure to one argument (CPS)
-  | SymExit            -- `idris_exit(status)`: exit_group with the status (direct)
   | SymAllocMutable    -- `idris_alloc_mutable(n)`: the only way a mutable object is allocated
   | SymStackLimit      -- bss: STACK_LIMIT, 1 word: the lowest the stack pointer may go in direct code
   | SymStackOverflow   -- `idris_stack_overflow`: where direct code's stack check fails; message, exit 1
@@ -55,7 +57,6 @@ symLabel SymRoots = 11
 symLabel SymNRoots = 12
 symLabel SymScratch = 13
 symLabel SymApply = 14
-symLabel SymExit = 15
 symLabel SymAllocMutable = 16
 symLabel SymStackLimit = 17
 symLabel SymStackOverflow = 18
@@ -79,7 +80,6 @@ symName SymRoots = "ROOTS"
 symName SymNRoots = "NROOTS"
 symName SymScratch = "SCRATCH"
 symName SymApply = "idris_apply"
-symName SymExit = "idris_exit"
 symName SymAllocMutable = "idris_alloc_mutable"
 symName SymStackLimit = "STACK_LIMIT"
 symName SymStackOverflow = "idris_stack_overflow"
@@ -89,6 +89,90 @@ symName SymMsgStackOverflow = "msg_stack_overflow"
 public export
 reservedLabels : Label
 reservedLabels = 64
+
+------------------------------------------------------------------------------
+-- The runtime contract
+--
+-- What generated code may assume of the runtime is declared here, not taken
+-- from the runtime's compilation: the routines it reaches, by name or by
+-- symbol, each with its signature in the term IR. The lowering calls the
+-- routines as declared, and the runtime library's flat forms are checked
+-- against the declarations when a program is lowered, so that a routine
+-- that is missing or has another signature is an error of the compilation.
+-- Code compiled to join a runtime that is already built depends on the
+-- contract alone.
+
+||| The name of the `Direct` function of a flat form, which a form's
+||| function has: the name by which generated code calls a routine of the
+||| runtime.
+public export
+flatName : Name -> Name
+flatName n = NS (mkNamespace "_flat") n
+
+||| A routine of the runtime that generated code reaches.
+public export
+record Routine (enc : Enc) where
+  constructor MkRoutine
+  ||| The function of the runtime library that is the routine; for one the
+  ||| runtime does not have yet, the name its calls use.
+  name : Name
+  ||| Whether the runtime has it. A call of a routine it does not have ends
+  ||| the program as `Unsupported` does.
+  provided : Bool
+  ||| The symbol by which the rendering and the seed reach it, if they do:
+  ||| the rendering defines it at the routine's function.
+  symbol : Maybe Sym
+  results : List (Ty enc)
+  params : List (Ty enc)
+
+||| The routine that ends the process with a status.
+public export
+runtimeExit : Name
+runtimeExit = NS (mkNamespace "Runtime.System") (UN (Basic "exit"))
+
+||| The routine that writes a message to the standard error and ends the
+||| process with status 1.
+public export
+runtimeCrash : Name
+runtimeCrash = NS (mkNamespace "Runtime.System") (UN (Basic "crash"))
+
+||| The routine for an `Integer` operation the fast paths leave to the
+||| runtime, which has none yet.
+public export
+integerRoutine : String -> Name
+integerRoutine op = UN (Basic ("idris_integer_" ++ op))
+
+||| The routines, with their signatures.
+export
+routines : {enc : Enc} -> List (Routine enc)
+routines =
+  [ MkRoutine runtimeExit True Nothing [] [W64]
+  , MkRoutine runtimeCrash True (Just SymCrash) [] [W64, W64]
+  , integer "add" [Val] [Val, Val]
+  , integer "sub" [Val] [Val, Val]
+  , integer "mul" [Val] [Val, Val]
+  , integer "and" [Val] [Val, Val]
+  , integer "or" [Val] [Val, Val]
+  , integer "xor" [Val] [Val, Val]
+  , integer "div" [Val] [Val, Val]
+  , integer "mod" [Val] [Val, Val]
+  , integer "shl" [Val] [Val, Val]
+  , integer "shr" [Val] [Val, Val]
+  , integer "neg" [Val] [Val]
+  , integer "compare" [W64] [Val, Val]
+  , integer "to_bits64" [W64] [Val]
+  , integer "from_int64" [Val] [W64]
+  , integer "from_bits64" [Val] [W64] ]
+  where
+    integer : String -> List (Ty enc) -> List (Ty enc) -> Routine enc
+    integer op rs ps = MkRoutine (integerRoutine op) False Nothing rs ps
+
+||| The symbol the routine whose function has the name is reached by.
+export
+routineSymbol : {enc : Enc} -> Name -> Maybe Sym
+routineSymbol n = do
+  r <- find (\r => r.provided && flatName r.name == n) (routines {enc})
+  r.symbol
 
 ------------------------------------------------------------------------------
 -- Parameters

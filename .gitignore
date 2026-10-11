@@ -4,3 +4,4 @@
 /tests/**/build
 /tests/**/prefix
 /tests/**/output*
+/runtime/build

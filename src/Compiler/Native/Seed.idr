@@ -98,15 +98,6 @@ haltText =
   [ MovRR RDI RAX, ShiftI SAR RDI 1
   , MovRI RAX sysExitGroup, Syscall ]
 
-||| `idris_crash(rdi = message, rsi = length)`: write to fd 2, exit 1.
-||| Superseded by the fragment runtime's crash routine.
-crashText : List Instr
-crashText =
-  [ Comment "idris_crash(msg, len)"
-  , Lbl (symLabel SymCrash)
-  , MovRR RDX RSI, MovRR RSI RDI, MovRI RDI 2, MovRI RAX sysWrite, Syscall
-  , MovRI RDI 1, MovRI RAX sysExitGroup, Syscall ]
-
 msgUnsupported, msgNoMemory, msgStackOverflow : List Bits8
 msgUnsupported = map (cast . ord) (unpack "idris: unsupported\n")
 msgNoMemory = map (cast . ord) (unpack "idris: cannot map memory\n")
@@ -167,15 +158,6 @@ allocMutableText =
   , Alu CMP RCX R14, Jcc A (symLabel SymAllocSlow)  -- rdi still holds n
   , MovRR R15 RCX
   , Ret ]
-
-||| The seed's code, for allocation windows of the given size in bytes.
-||| `idris_exit(rdi = status)`: exit_group with the status. Superseded by the
-||| fragment runtime's exit, which flushes first.
-exitText : List Instr
-exitText =
-  [ Comment "idris_exit(status)"
-  , Lbl (symLabel SymExit)
-  , MovRI RAX sysExitGroup, Syscall ]
 
 ||| `idris_apply(rdi = closure, rsi = argument)`, entered by a jump under the
 ||| current continuation in r12. If the argument completes the closure, the
@@ -282,9 +264,9 @@ applyText abi venc =
 ||| one under either.
 export
 seedText : (enc : Enc) -> {auto 0 _ : HasFixnums enc.val} -> (window : Int) -> List Instr
-seedText enc window = startText enc.val window ++ haltText ++ crashText ++ unsupportedText
+seedText enc window = startText enc.val window ++ haltText ++ unsupportedText
                       ++ stackOverflowText
-                      ++ allocSlowText window ++ allocMutableText ++ exitText
+                      ++ allocSlowText window ++ allocMutableText
                       ++ applyText x86_64.abi enc.val
 
 ------------------------------------------------------------------------------

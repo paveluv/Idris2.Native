@@ -9,6 +9,10 @@
 -- not a tail call names the code after it as its continuation. A Direct
 -- function is flat code: a machine function on words and doubles, which
 -- returns its results. Each body below says the Idris it stands for.
+--
+-- A crash jumps to the runtime's `crash`, which the program defines itself,
+-- as the runtime library's flat form would be, under the name the runtime
+-- contract gives it.
 module Main
 
 import Compiler.Native.ELF
@@ -52,7 +56,8 @@ Run = MkDecls
   , MkSig (nm "same") InCPS [Val] False
   , MkSig (nm "divMod") (InDirect [W64, W64] False) [W64, W64] False
   , MkSig (nm "floats") (InDirect [W64] False) [F64, F64] False
-  , MkSig (nm "bytes") (InDirect [W64] False) [] False ]
+  , MkSig (nm "bytes") (InDirect [W64] False) [] False
+  , MkSig (flatName runtimeCrash) (InDirect [] False) [W64, W64] False ]
   [ MkStaticSig (nm "two") CON ]
 
 pairRef : Var (sigs Run) (MkSig (nm "pair") InCPS [Val, Val] False)
@@ -81,6 +86,14 @@ bytesRef = later (later (later (later (later (later (later (later here)))))))
 
 twoRef : Var (statics Run) (MkStaticSig (nm "two") CON)
 twoRef = here
+
+||| The runtime's `crash`: the message, `length` bytes at `message`, written
+||| to the standard error, then the process ended with status 1.
+crashBody : Closed Run (InDirect [] False) False [W64, W64]
+crashBody = build $ \[message, length] => do
+  _ <- emit1 (SystemCall (W 1) [W 2, message, length, W 0, W 0, W 0])
+  _ <- emit1 (SystemCall (W 231) [W 1, W 0, W 0, W 0, W 0, W 0])
+  ret []
 
 ||| Unbounded addition of two `Val`s: the fixnum fast path, and `slowAdd` when
 ||| either is not a fixnum or the sum overflows, both slow cases in one block,
@@ -356,7 +369,11 @@ main = do
   let Just dm = close divModBody | Nothing => putStrLn "divMod: a level outside its context"
   let Just fl = close floatsBody | Nothing => putStrLn "floats: a level outside its context"
   let Just by = close bytesBody | Nothing => putStrLn "bytes: a level outside its context"
-  let run = allocRegs x86_64 (MkProgram {d = Run} [Defined m, Defined p, Defined s, Defined sa, Defined at, Defined sm, Defined dm, Defined fl, Defined by]
+  let Just cr = close crashBody | Nothing => putStrLn "crash: a level outside its context"
+  -- the names' distinctness decided here, as a producer decides it
+  let Left ok = choose (distinct (map (.name) (sigs Run)) && distinct (map (.sym) (statics Run)))
+    | Right _ => putStrLn "the running program: names repeat"
+  let run = allocRegs x86_64 (MkProgram {d = Run} [Defined m, Defined p, Defined s, Defined sa, Defined at, Defined sm, Defined dm, Defined fl, Defined by, Defined cr]
                                    [MkStaticDef (ConH 2 0) []] (MkEntry here) noConIds)
   let Right rendered = render TestEnc run
     | Left err => putStrLn ("render: " ++ err)

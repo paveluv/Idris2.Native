@@ -20,10 +20,13 @@
 ||| in tail position a join, whose parameters are the case's registers. A
 ||| call of a form is a `DirectCall`; a call of the form itself in tail
 ||| position jumps back to its start, so self tail recursion is a loop. The
-||| `%extern` and `%foreign` primitives (`FPrim`), the operations on strings
-||| and the double functions of the C library lower to `Unsupported`.
+||| runtime's intrinsics (`intrinsicOf`) lower to the instructions they stand
+||| for; every other `%extern` and `%foreign` primitive (`FPrim`), the
+||| operations on strings and the double functions of the C library lower to
+||| `Unsupported`.
 module Compiler.Native.LowerFlat
 
+import public Compiler.Native.Linkage
 import Compiler.Native.Words
 import Flat.Exp
 import Core.Name
@@ -63,12 +66,6 @@ public export
 paramsLayout : List FlatVar -> Layout
 paramsLayout [] = []
 paramsLayout (p :: ps) = p.layout ++ paramsLayout ps
-
-||| The name of a form's `Direct` function. A form has its function's name,
-||| which the function's ordinary code keeps.
-export
-flatName : Name -> Name
-flatName n = NS (mkNamespace "_flat") n
 
 ||| The signature of a form's `Direct` function.
 export
@@ -245,7 +242,7 @@ calls n (FLet _ _ val sc) = calls n val || calls n sc
 calls n (FConst _ _) = False
 calls n (FOp _ _ as) = any (calls n) (toList as)
 calls n (FCall _ f as) = f == n || any (calls n) as
-calls n (FPrim _ _ as) = any (calls n) as
+calls n (FPrim _ _ _ _ as) = any (calls n) as
 calls n (FCon _ _ _ _ _ as) = any (calls n) as
 calls n (FCase _ sc alts def) = calls n sc || any alt alts || maybe False (calls n) def
   where
@@ -347,6 +344,56 @@ unsignedRel LeS = LeU
 unsignedRel GtS = GtU
 unsignedRel GeS = GeU
 unsignedRel r = r
+
+------------------------------------------------------------------------------
+-- Intrinsics
+
+||| The `%extern` primitives of the runtime library that are instructions,
+||| never calls: what the runtime is written with. Each takes words and the
+||| token, which has no register, last, and returns the token with its value,
+||| so that its effect is ordered among the others by data dependence. A
+||| memory access is at a base address plus a byte offset; a narrow load
+||| extends the bits with zeros.
+public export
+data Intrinsic
+  = ||| A system call: its number and six arguments, then its result.
+    Syscall6
+  | ||| Load a word.
+    Load64
+  | ||| Load 8, 16 or 32 bits.
+    LoadNarrow SubWord
+  | ||| Store a word.
+    Store64
+  | ||| Store a word's low 8, 16 or 32 bits.
+    StoreNarrow SubWord
+
+||| The intrinsic a primitive of the runtime library is, by its name.
+export
+intrinsicOf : Name -> Maybe Intrinsic
+intrinsicOf (NS ns (UN (Basic s))) =
+  if ns == mkNamespace "Runtime.System" then
+    case s of
+      "prim__syscall6" => Just Syscall6
+      _ => Nothing
+  else if ns == mkNamespace "Runtime.Memory" then
+    case s of
+      "prim__load64" => Just Load64
+      "prim__load32" => Just (LoadNarrow Sub32)
+      "prim__load16" => Just (LoadNarrow Sub16)
+      "prim__load8" => Just (LoadNarrow Sub8)
+      "prim__store64" => Just Store64
+      "prim__store32" => Just (StoreNarrow Sub32)
+      "prim__store16" => Just (StoreNarrow Sub16)
+      "prim__store8" => Just (StoreNarrow Sub8)
+      _ => Nothing
+  else Nothing
+intrinsicOf _ = Nothing
+
+||| The words of a value whose registers are all words.
+words : Value enc v -> Maybe (List (Opnd v W64))
+words (MkValue [] []) = Just []
+words (MkValue (Word :: rs) (x :: xs)) = (x ::) <$> words (MkValue rs xs)
+words _ = Nothing
 
 ------------------------------------------------------------------------------
 -- The lowering
@@ -548,7 +595,7 @@ parameters {0 enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef)
   typeOf env (FConst _ k) = (\t => (SPrim t, primLayout t)) <$> constType k
   typeOf env (FOp _ op _) = (\t => (SPrim t, primLayout t)) <$> opResult op
   typeOf env (FCall _ n _) = (\c => (c.form.resultSkeleton, c.form.result)) <$> lookup n pr.callees
-  typeOf env (FPrim _ _ _) = Nothing
+  typeOf env (FPrim _ _ sk lay _) = Just (sk, lay)
   typeOf env (FCon _ _ _ sk lay _) = Just (sk, lay)
   typeOf env (FCase _ _ alts def) = head' (catMaybes (map alt alts ++ [def >>= typeOf env]))
     where
@@ -585,7 +632,15 @@ parameters {0 enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef)
     expr env (FCall _ n args) = do
       xs <- traverse (\a => snd <$> expr env a) args
       callForm n xs
-    expr env (FPrim _ n _) = unsupported ("the primitive " ++ show n ++ " in a flat form")
+    expr env (FPrim _ n sk lay args) = case intrinsicOf n of
+      Nothing => unsupported ("the primitive " ++ show n ++ " in a flat form")
+      Just i => do
+        xs <- traverse (\a => snd <$> expr env a) args
+        Just ws <- pure (words (concatValues xs))
+          | Nothing => unsupported ("the intrinsic " ++ show n ++ " on registers that are not words")
+        x <- intrinsic n i ws
+        maybe (unsupported ("the intrinsic " ++ show n ++ ", whose result is not its type's"))
+              (\rs => pure (sk, MkValue lay rs)) (regsAs lay x)
     expr env (FCon _ c _ sk lay args) = do
       xs <- traverse (\a => snd <$> expr env a) args
       x <- construct sk c (concatValues xs)
@@ -604,6 +659,29 @@ parameters {0 enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef)
         pure (sk, MkValue lay rs)
     expr env (FCrash _ msg) = crash msg
     expr env (FNone _) = pure (SOther, noRegs)
+
+    ||| An intrinsic's instructions, from its arguments' words.
+    intrinsic : Name -> Intrinsic -> List (Opnd v W64) -> B (Value enc v)
+    intrinsic _ Syscall6 [n, a, b, c, e, f, g] = do
+      r <- emit1 (SystemCall n [a, b, c, e, f, g])
+      pure (MkValue [Word] [r])
+    intrinsic _ Load64 [base, off] = do
+      p <- emit1 (Arith Add base off)
+      r <- emit1 (Load W64 (MkMem (AtWord p) Nothing 0))
+      pure (MkValue [Word] [r])
+    intrinsic _ (LoadNarrow sw) [base, off] = do
+      p <- emit1 (Arith Add base off)
+      r <- emit1 (LoadN sw False (MkMem (AtWord p) Nothing 0))
+      pure (MkValue [Word] [r])
+    intrinsic _ Store64 [base, off, x] = do
+      p <- emit1 (Arith Add base off)
+      emit0 (Store W64 (MkMem (AtWord p) Nothing 0) x)
+      pure noRegs
+    intrinsic _ (StoreNarrow sw) [base, off, x] = do
+      p <- emit1 (Arith Add base off)
+      emit0 (StoreN sw (MkMem (AtWord p) Nothing 0) x)
+      pure noRegs
+    intrinsic n _ _ = unsupported ("the intrinsic " ++ show n ++ " with another number of arguments")
 
     ||| A `let`: the variable bound to the value.
     bind : Env enc v -> FlatVar -> FlatExp -> B (Env enc v)

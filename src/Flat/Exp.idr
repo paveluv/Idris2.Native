@@ -210,9 +210,9 @@ mutual
     FOp : {arity : Nat} -> FC -> PrimFn arity -> Vect arity FlatExp -> FlatExp
     ||| A call of a flat form, with its run-time arguments.
     FCall : FC -> FlatName -> List FlatExp -> FlatExp
-    ||| A call of an `%extern` or `%foreign` primitive, with its run-time
-    ||| arguments.
-    FPrim : FC -> Name -> List FlatExp -> FlatExp
+    ||| A call of an `%extern` or `%foreign` primitive, with the skeleton
+    ||| and layout of its result's type, and its run-time arguments.
+    FPrim : FC -> Name -> Skeleton -> Layout -> List FlatExp -> FlatExp
     ||| A constructor, with its tag if its type has several, the skeleton
     ||| and layout of its type, and its run-time fields.
     FCon : FC -> (con : Name) -> (tag : Maybe Int) -> Skeleton -> Layout ->
@@ -256,7 +256,7 @@ formCallees fd = go fd.body
     go (FConst _ _) = []
     go (FOp _ _ as) = concatMap go (toList as)
     go (FCall _ f as) = f :: concatMap go as
-    go (FPrim _ _ as) = concatMap go as
+    go (FPrim _ _ _ _ as) = concatMap go as
     go (FCon _ _ _ _ _ as) = concatMap go as
     go (FCase _ sc alts def) = go sc ++ concatMap alt alts ++ maybe [] go def
       where
@@ -279,7 +279,7 @@ formSkeletons fd = fd.resultSkeleton :: map skeleton fd.params ++ go fd.body
     go (FConst _ _) = []
     go (FOp _ _ as) = concatMap go (toList as)
     go (FCall _ _ as) = concatMap go as
-    go (FPrim _ _ as) = concatMap go as
+    go (FPrim _ _ sk _ as) = sk :: concatMap go as
     go (FCon _ _ _ sk _ as) = sk :: concatMap go as
     go (FCase _ sc alts def) = go sc ++ concatMap alt alts ++ maybe [] go def
       where
@@ -299,7 +299,7 @@ mutual
   showExp i (FConst _ c) = show c
   showExp i (FOp _ op as) = show op ++ showArgs i (toList as)
   showExp i (FCall _ n as) = show n ++ showArgs i as
-  showExp i (FPrim _ n as) = "%prim " ++ show n ++ showArgs i as
+  showExp i (FPrim _ n _ _ as) = "%prim " ++ show n ++ showArgs i as
   showExp i (FCon _ c t s l as)
       = show c ++ maybe "" (\t => "{" ++ show t ++ "}") t ++ showArgs i as
   showExp i (FCase _ sc alts def)

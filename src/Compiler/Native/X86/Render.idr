@@ -484,13 +484,14 @@ parameters (enc : Enc)
       Just l => pure l
       Nothing => failWith ("no static " ++ show n)
 
-  ||| A runtime routine's label. The `Integer` routines are not in the runtime
-  ||| yet: until they are, each ends the program as `Unsupported` does.
+  ||| The label of a function outside the program: a routine of the runtime
+  ||| contract that the runtime does not have yet, whose call ends the
+  ||| program as `Unsupported` does.
   runtimeRoutine : Name -> R enc Label
-  runtimeRoutine (UN (Basic "idris_exit")) = pure (sym SymExit)
-  runtimeRoutine n@(UN (Basic s)) =
-    if isPrefixOf "idris_integer_" s then pure (sym SymUnsupported) else failWith ("no runtime routine " ++ show n)
-  runtimeRoutine n = failWith ("no runtime routine " ++ show n)
+  runtimeRoutine n =
+    if any (\r => not r.provided && r.name == n) (routines {enc})
+       then pure (sym SymUnsupported)
+       else failWith ("no runtime routine " ++ show n)
 
   ||| Load an operand into a floating-point register: a slot's bits, or an
   ||| immediate's word, through rax.
@@ -738,6 +739,14 @@ parameters (enc : Enc)
     address RAX m (subWordBytes sw)
     loadReg RCX x
     emit (Store (width sw) (MBase RAX (m.offset - baseTag m.base)) RCX)
+  -- The number in rax and the arguments where Linux takes them. The kernel
+  -- keeps every register but rcx and r11, and the result is in rax.
+  instr blk (Intrinsic Syscall (Just d) (n :: args)) =
+    if length args > 6 then failWith "a system call of more than six arguments" else do
+      traverse_ (\(r, x) => load r x) (zip [RDI, RSI, RDX, R10, R8, R9] args)
+      load RAX n
+      emits [Syscall]
+      store d RAX
   instr blk (Loc _) = pure ()
   instr blk (Comment s) = emit (Comment s)
   instr blk i = failWith ("the rendering does not support " ++ instrName i ++ " yet")
@@ -862,6 +871,8 @@ parameters (enc : Enc)
         blk : Nat -> Label
         blk n = fromMaybe 0 (lookup n table)
     emits [Comment (show f.name), Lbl fl]
+    -- a routine reached by symbol: the symbol is its entry too
+    whenJust (routineSymbol {enc} f.name) $ \s => emit (Lbl (sym s))
     -- a machine call pushed a word: keep the stack 16-aligned inside; and
     -- below the stack limit, end the program
     when (f.conv == Direct) $

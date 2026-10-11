@@ -1,0 +1,14 @@
+package idris2-native-runtime
+
+version = 0.1.0
+authors = "Pavel Uvarov"
+license = "BSD-3-Clause"
+brief = "The runtime of Idris 2's native code generator"
+
+depends = idris2-native
+
+modules =
+    Runtime,
+    Runtime.Heap,
+    Runtime.Memory,
+    Runtime.System

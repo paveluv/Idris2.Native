@@ -37,7 +37,7 @@ dumpFlatFile (d :: ds) = case forget (split (== '=') d) of
 -- forms: whether there are, or errors have been reported already.
 useForms : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} -> Core Bool
 useForms
-    = do Just forms <- markedForms
+    = do Just forms <- markedForms (pure ())
            | Nothing => pure False
          whenJust (dumpFlatFile !(getDirectives (Other "flat-oracle"))) $ \f => dumpFlat f forms
          useFlatForms forms

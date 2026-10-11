@@ -783,11 +783,11 @@ mutual
            checkPrivate tr fc fn gdef
            Just (bs, resTy) <- applyType (type gdef) args
              | Nothing => fail tr fc (Unhandled "A primitive of another arity")
-           Right _ <- laidOut resTy
+           Right (sk, lay) <- laidOut resTy
              | Left why => fail tr fc (CalleeNotFlat fn Nothing !(quoteClosed resTy) why)
            as <- primArgs tr fc fn (zip bs args)
            case rest of
-                [] => pure (FPrim fc fn as)
+                [] => pure (FPrim fc fn sk lay as)
                 _ => fail tr fc (Unhandled "A primitive applied to too many arguments")
 
   -- A call of a definition that is unfolded: its case tree, at the call's
@@ -1491,7 +1491,7 @@ mutual
   forgetExp (FConst fc k) = pure (CPrimVal fc k)
   forgetExp (FOp fc op as) = COp fc op <$> forgetArgs as
   forgetExp (FCall fc n as) = CApp fc (CRef fc n) <$> traverse forgetExp as
-  forgetExp (FPrim fc n as)
+  forgetExp (FPrim fc n _ _ as)
       = do defs <- get Ctxt
            Just gdef <- lookupCtxtExact n (gamma defs)
              | Nothing => undefinedName fc n
@@ -1593,7 +1593,7 @@ references (FLet _ _ v sc) = references v ++ references sc
 references (FConst _ _) = []
 references (FOp _ _ as) = concatMap references (toList as)
 references (FCall _ n as) = n :: concatMap references as
-references (FPrim _ n as) = n :: concatMap references as
+references (FPrim _ n _ _ as) = n :: concatMap references as
 references (FCon _ n _ _ _ as) = n :: concatMap references as
 references (FCase _ sc alts def)
     = references sc ++ concatMap alt alts ++ maybe [] references def

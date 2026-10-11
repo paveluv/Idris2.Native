@@ -113,12 +113,21 @@ reportedMark = "flat-errors-reported"
 ||| program after a module of it failed to build, so errors that a module's
 ||| check has reported already are not reported again: there are no forms
 ||| then, `Nothing`, and the program is not compiled.
+|||
+||| `load` brings in modules the program does not import, such as the
+||| runtime's, whose directives mark functions too. The program's marks are
+||| resolved before it, so that a name the program gives cannot become
+||| ambiguous with one of theirs.
 export
-markedForms : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} -> Core (Maybe (NameMap FlatDef))
-markedForms
-    = do marked <- flatNames !(getDirectives markingCG)
-         (forms, errs) <- flatForms (fst marked)
-         let nameErrs = snd marked
+markedForms : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} ->
+              (load : Core ()) -> Core (Maybe (NameMap FlatDef))
+markedForms load
+    = do own <- getDirectives markingCG
+         marked <- flatNames own
+         load
+         loaded <- flatNames (filter (\d => not (elem d own)) !(getDirectives markingCG))
+         (forms, errs) <- flatForms (fst marked ++ fst loaded)
+         let nameErrs = snd marked ++ snd loaded
          session <- getSession
          if not (null errs) && elem reportedMark session.directives
             then pure Nothing

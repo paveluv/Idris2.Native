@@ -8,6 +8,9 @@
 ||| which exits with the value `main` returns; the abort stub, which every
 ||| construct the backend does not lower jumps to; and the allocator's slow
 ||| path. Each program here is a hand-written `main` in x86-64 instructions.
+||| The routines that are the runtime library's now, such as `idris_crash`,
+||| which the allocator's slow path jumps to when the system has no memory,
+||| each program brings by hand, as the seed had them.
 module Gen
 
 import Compiler.Native.HeapObject
@@ -71,8 +74,16 @@ allocProg =
   , MovRM RCX (MBase RAX 8), MovRM RAX (MBase RCX 8)           -- A.0 through C
   , JmpM (MBase R12 0) ]
 
+||| `idris_crash(rdi = message, rsi = length)`: write(2, message, length),
+||| then exit_group(1).
+crashByHand : List Instr
+crashByHand =
+  [ Lbl (symLabel SymCrash)
+  , MovRR RDX RSI, MovRR RSI RDI, MovRI RDI 2, MovRI RAX 1, Syscall
+  , MovRI RDI 1, MovRI RAX 231, Syscall ]
+
 emit : String -> List Instr -> IO ()
-emit name prog = case link SeedEnc prog of
+emit name prog = case link SeedEnc (prog ++ crashByHand) of
   Left missing => putStrLn (name ++ ": unresolved labels " ++ show missing)
   Right image => do
     Right () <- writeImage name image

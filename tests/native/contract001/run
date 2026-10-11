@@ -1,0 +1,8 @@
+. ../../testutils.sh
+
+# The runtime contract, checked against the runtime's routines: what is
+# missing or has another signature stops the lowering, with the reason. It
+# uses the code generator's modules, installed as the package
+# `idris2-native`.
+idris2 -p idris2-native -p idris2 Gen.idr -o gen > /dev/null
+./build/exec/gen

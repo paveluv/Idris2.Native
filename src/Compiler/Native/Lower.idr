@@ -51,7 +51,7 @@
 ||| same static object.
 module Compiler.Native.Lower
 
-import Compiler.VMCode
+import public Compiler.VMCode
 import Core.CompileExpr
 import public Compiler.Native.TermIR
 import Compiler.Native.Words
@@ -72,11 +72,6 @@ import Data.Vect
 ------------------------------------------------------------------------------
 -- Names the lowering introduces
 
-||| The runtime routine that ends the process with a status.
-export
-idrisExit : Name
-idrisExit = UN (Basic "idris_exit")
-
 exitForeign : Name
 exitForeign = NS (mkNamespace "System") (UN (Basic "prim__exit"))
 
@@ -93,12 +88,6 @@ nullaryCon conId = NS (mkNamespace "_native") (UN (Basic ("con" ++ show conId)))
 export
 mainExpression : Name
 mainExpression = MN "__mainExpression" 0
-
-||| The runtime routine for an `Integer` operation the fast paths leave to the
-||| runtime: `idris_integer_` and the operation's name.
-export
-integerRoutine : String -> Name
-integerRoutine op = UN (Basic ("idris_integer_" ++ op))
 
 ------------------------------------------------------------------------------
 -- Integers
@@ -225,27 +214,6 @@ castConstant _ _ = Nothing
 -- writes integers, and the rendering encodes them. It only needs the value
 -- encoding to have fixnums, since its integers are `Fix`es, and the bignum
 -- encoding, to lay out the `BIGNUM`s of big constants.
-
-||| A runtime routine the lowering calls, with its results and parameters.
-||| The runtime's primitives never collect.
-routines : List (Name, List (Ty enc), List (Ty enc))
-routines =
-  [ (idrisExit, [], [W64])
-  , (integerRoutine "add", [Val], [Val, Val])
-  , (integerRoutine "sub", [Val], [Val, Val])
-  , (integerRoutine "mul", [Val], [Val, Val])
-  , (integerRoutine "and", [Val], [Val, Val])
-  , (integerRoutine "or", [Val], [Val, Val])
-  , (integerRoutine "xor", [Val], [Val, Val])
-  , (integerRoutine "div", [Val], [Val, Val])
-  , (integerRoutine "mod", [Val], [Val, Val])
-  , (integerRoutine "shl", [Val], [Val, Val])
-  , (integerRoutine "shr", [Val], [Val, Val])
-  , (integerRoutine "neg", [Val], [Val])
-  , (integerRoutine "compare", [W64], [Val, Val])
-  , (integerRoutine "to_bits64", [W64], [Val])
-  , (integerRoutine "from_int64", [Val], [W64])
-  , (integerRoutine "from_bits64", [Val], [W64]) ]
 
 ||| The key of a VMCode register in the environment; `RVal` is the result.
 key : Reg -> Maybe Int
@@ -1128,7 +1096,7 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
        then case allVals ps of
               (status :: _) => do
                 w <- wideWord d refs status
-                _ <- callRoutine d refs idrisExit {rs = []} {ps = [W64]} [w]
+                _ <- callRoutine d refs (flatName runtimeExit) {rs = []} {ps = [W64]} [w]
                 crash "exit returned"
               [] => crash "exit without a status"
        else unsupported ("the foreign function " ++ show n)
@@ -1228,21 +1196,44 @@ nullaries (DataShape cs) = concatMap con cs
 ||| that has a form becomes the boundary to it, if its arity is the form's
 ||| and the shapes of its parameters and result are known, and every form
 ||| becomes a `Direct` function.
+|||
+||| The runtime's routines are forms among them, each checked against the
+||| runtime contract (`Compiler.Native.Linkage.routines`): a routine the
+||| runtime has must have a form of the declared signature, or the program
+||| is not lowered, and the error says which. One it does not have yet is
+||| declared as outside the program.
 export
 lowerProgram : (enc : Enc) -> {auto 0 fx : HasFixnums enc.val} -> List FlatDef -> Shapes ->
-               List (Name, VMDef) -> TermProgram enc
-lowerProgram enc forms shapes vmdefs =
+               List (Name, VMDef) -> Either String (TermProgram enc)
+lowerProgram enc forms shapes vmdefs = do
+  traverse_ provided (routines {enc})
   let entryPlan = case Data.List.lookup mainExpression vmdefs of
                     Just (MkVMFun [] body) => FromVM [] body
                     _ => NoEntry
       planned = mapMaybe plan (filter ((/= mainExpression) . fst) vmdefs)
       others = planned
                  ++ [(formSig fd, Form fd) | fd <- forms]
-                 ++ [(MkSig n (InDirect rs False) ps False, Routine) | (n, rs, ps) <- routines]
+                 ++ [(MkSig r.name (InDirect r.results False) r.params False, Routine)
+                    | r <- routines {enc}, not r.provided]
       boxing = fromList [(nullaryCon c, Nullary c) | c <- concatMap (boxed . snd) planned]
       statics = Data.SortedMap.toList (foldl mergeLeft boxing (mapMaybe bodyStatics vmdefs))
-  in program forms shapes entryPlan others (mapMaybe ready statics)
+  pure (program forms shapes entryPlan others (mapMaybe ready statics))
   where
+    -- A routine the runtime has: its form, of the declared signature.
+    provided : Routine enc -> Either String ()
+    provided r =
+      if not r.provided then Right () else
+      case find (\fd => fd.name == r.name) forms of
+        Nothing => Left ("the runtime has no routine " ++ show r.name ++ ", which generated code calls")
+        Just fd =>
+          let rs = tys {enc} fd.result
+              ps = tys {enc} (paramsLayout fd.params)
+          in if rs == r.results && ps == r.params then Right ()
+             else Left ("the runtime's " ++ show r.name ++ " has the signature "
+                        ++ show ps ++ " -> " ++ show rs
+                        ++ ", but generated code calls it as "
+                        ++ show r.params ++ " -> " ++ show r.results)
+
     byName : SortedMap Name FlatDef
     byName = fromList [(fd.name, fd) | fd <- forms]
 

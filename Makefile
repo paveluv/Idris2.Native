@@ -4,8 +4,9 @@
 #   make upstream   build the pinned Idris 2, its libraries and its API
 #                   package into build/prefix, with the `idris2` in PATH
 #                   bootstrapping it (once, and after moving the pin)
-#   make            build idris2-native, and install its modules as the
-#                   package `idris2-native` into build/prefix
+#   make            build idris2-native, install its modules as the package
+#                   `idris2-native`, and build with it the runtime, the
+#                   package `idris2-native-runtime`, into build/prefix
 #   make test       run the tests; `only=native/term001` runs some
 #
 # The submodule is never edited: building it writes only files that it
@@ -30,8 +31,11 @@ upstream:
 	$(MAKE) -C Idris2 install PREFIX=$(PREFIX)
 	$(WITH_PREFIX) $(MAKE) -C Idris2 install-api PREFIX=$(PREFIX) IDRIS2_BOOT=$(UPSTREAM_IDRIS2)
 
+# The runtime is built by idris2-native itself, so that its flat functions
+# are checked as its modules are built.
 native:
 	$(WITH_PREFIX) $(UPSTREAM_IDRIS2) --install idris2-native.ipkg
+	cd runtime && $(WITH_PREFIX) $(TARGET) --install idris2-native-runtime.ipkg
 
 testbin:
 	cd tests && $(WITH_PREFIX) $(UPSTREAM_IDRIS2) --build tests.ipkg
@@ -41,6 +45,6 @@ test: native testbin
 	  --timing --failure-file failures --threads $(threads) --only "$(only)" < /dev/null
 
 clean:
-	$(RM) -r build tests/build tests/failures
+	$(RM) -r build runtime/build tests/build tests/failures
 	find tests -name build -type d -prune -exec $(RM) -r {} +
 	find tests -name output -type f -delete

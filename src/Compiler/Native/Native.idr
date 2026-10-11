@@ -8,6 +8,12 @@
 ||| a static ELF (x86-64 Linux). What the lowering does not cover yet is the
 ||| seed's abort stub, so a program always links and fails with status 70
 ||| only on the paths that reach it.
+|||
+||| The runtime is a library of flat functions, the package
+||| `idris2-native-runtime`, which a program does not import: the backend
+||| loads its modules into the context itself, and its routines, those the
+||| runtime contract names (`Compiler.Native.Linkage.routines`), are
+||| compiled into every program with the program's own forms.
 module Compiler.Native.Native
 
 import Core.Context
@@ -38,6 +44,10 @@ import Data.String
 import System
 import System.File
 import Libraries.Utils.Path
+import Core.UnifyState
+import Idris.Package.Types
+import Idris.ProcessIdr
+import Idris.SetOptions
 
 %default covering
 
@@ -91,11 +101,11 @@ parseSettings = foldlM setting (MkSettings windowBytes Nothing Nothing Nothing d
       ["val-encoding", v] => Left ("val-encoding= takes tag1, tag0 or nofixnums, not " ++ show v)
       _ => Right o
 
-||| Of the flat forms, those of the program's functions and of the forms they
+||| Of the flat forms, those of the functions named and of the forms they
 ||| call, and the shapes of the data types among their types.
-flatInputs : {auto c : Ref Ctxt Defs} -> NameMap FlatDef -> List (Name, VMDef) -> Core (List FlatDef, Shapes)
-flatInputs table vmdefs = do
-  forms <- reach empty [] (map fst vmdefs)
+flatInputs : {auto c : Ref Ctxt Defs} -> NameMap FlatDef -> List Name -> Core (List FlatDef, Shapes)
+flatInputs table roots = do
+  forms <- reach empty [] roots
   let skeletons = nub (filter isData (concatMap formSkeletons forms))
   shapes <- traverse (\sk => map (sk,) <$> shape sk) skeletons
   pure (forms, catMaybes shapes)
@@ -117,8 +127,9 @@ flatInputs table vmdefs = do
 pipeline : {auto c : Ref Ctxt Defs} -> (enc : Enc) -> {auto 0 _ : HasFixnums enc.val} ->
            Settings -> NameMap FlatDef -> List (Name, VMDef) -> Core (List Bits8)
 pipeline enc settings table defs = do
-  (forms, shapes) <- flatInputs table defs
-  let (_ ** term) = lowerProgram enc forms shapes defs
+  (forms, shapes) <- flatInputs table (map fst defs ++ [r.name | r <- routines {enc}, r.provided])
+  Right (_ ** term) <- pure (lowerProgram enc forms shapes defs)
+    | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
   let ir = allocRegs x86_64 term
   case settings.dumpIr of
     Just path => do
@@ -138,13 +149,26 @@ pipeline enc settings table defs = do
     | Left problems => throw (InternalError ("native: the image cannot be assembled: " ++ show problems))
   pure image
 
+||| Load the runtime's modules into the context: the module `Runtime`, which
+||| imports the others, from the installed package, with the backend's own
+||| package, whose `Compiler.Native.HeapObject` the runtime shares.
+loadRuntime : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} -> Core ()
+loadRuntime = do
+  addPkgDir "idris2-native-runtime" anyBounds
+  addPkgDir "idris2-native" anyBounds
+  u <- newRef UST initUState
+  addImport (MkImport EmptyFC False (nsAsModuleIdent runtimeNS) runtimeNS)
+  where
+    runtimeNS : Namespace
+    runtimeNS = mkNamespace "Runtime"
+
 compileExpr : Ref Ctxt Defs -> Ref Syn SyntaxInfo ->
               (tmpDir : String) -> (outputDir : String) ->
               ClosedTerm -> (outfile : String) -> Core (Maybe String)
 compileExpr c s _ outputDir tm outfile = do
   Right settings <- parseSettings <$> getDirectives markingCG
     | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
-  Just table <- markedForms
+  Just table <- markedForms loadRuntime
     | Nothing => pure Nothing
   whenJust settings.dumpFlat $ \f => dumpFlat f table
   cdata <- getCompileData False VMCode tm
