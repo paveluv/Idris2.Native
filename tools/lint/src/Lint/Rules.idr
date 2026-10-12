@@ -86,19 +86,15 @@ importOrder f =
             ("`" ++ moduleName b.path ++ "` comes here: the public imports first, then the private ones, each alphabetical")]
 
 ||| A façade: a module that declares nothing, only re-exports.
-isFacade : SourceFile -> Bool
-isFacade f = all directive f.mod.decls
-  where
-    directive : PDecl -> Bool
-    directive d = case d.val of
-      PDirective _ => True
-      _ => False
+export
+facade : SourceFile -> Bool
+facade f = all (\d => case d.val of PDirective _ => True; _ => False) f.mod.decls
 
 ||| `public-import`: a module imports what it uses, so a public import is for
 ||| a façade.
 publicImport : SourceFile -> List Finding
 publicImport f =
-  if isFacade f then [] else
+  if facade f then [] else
     [ finding f "public-import" i.loc (moduleName i.path)
         ("`" ++ moduleName i.path ++ "` imported publicly: a module that uses it imports it")
     | i <- f.mod.imports, i.reexport ]
@@ -119,6 +115,208 @@ declarations = foldr (\d, rest => d :: inner d ++ rest) []
       PParameters _ ds => declarations ds
       PUsing _ ds => declarations ds
       _ => []
+
+------------------------------------------------------------------------------
+-- What each declaration defines and mentions
+
+||| A declaration that is not a block of others, with the names it defines
+||| and those it mentions (as written, without their namespaces), and, for
+||| an implementation, its interface and the names its parameters mention.
+public export
+record Declared where
+  constructor MkDeclared
+  decl : PDecl
+  defines : List String
+  mentions : List String
+  implementing : Maybe (String, List String)
+
+||| The name a clause defines: the head of its left-hand side.
+clauseName : PTerm -> Maybe Name
+clauseName (PRef _ n) = Just n
+clauseName (PApp _ f _) = clauseName f
+clauseName (PAutoApp _ f _) = clauseName f
+clauseName (PNamedApp _ f _ _) = clauseName f
+clauseName (PWithApp _ f _) = clauseName f
+clauseName _ = Nothing
+
+definesOf : PDecl -> List String
+definesOf d = case d.val of
+  PClaim c => map (nameRoot . (.val) . snd) (forget c.type.val.names)
+  PDef (MkPatClause _ lhs _ _ :: _) => maybe [] (\n => [nameRoot n]) (clauseName lhs)
+  PDef (MkWithClause _ lhs _ _ _ :: _) => maybe [] (\n => [nameRoot n]) (clauseName lhs)
+  PDef (MkImpossible _ lhs :: _) => maybe [] (\n => [nameRoot n]) (clauseName lhs)
+  PData _ _ _ (MkPData _ n _ _ _) => [nameRoot n]
+  PData _ _ _ (MkPLater _ n _) => [nameRoot n]
+  PRecord _ _ _ (MkPRecord n _ _ _ _) => [nameRoot n]
+  PRecord _ _ _ (MkPRecordLater n _) => [nameRoot n]
+  PInterface _ _ n _ _ _ _ _ => [nameRoot n]
+  _ => []
+
+||| The names the terms mention, by Idris's own traversal.
+namesIn : PTerm -> Core (List String)
+namesIn t = do
+  r <- newRef Collected (MkMentions [] [])
+  ignore $ mapPTermM (\u => do note u; pure u) t
+  m <- get Collected
+  pure (map (nameRoot . snd) m.refs)
+  where
+    note : {auto r : Ref Collected Mentions} -> PTerm -> Core ()
+    note (PRef fc n) = update Collected { refs $= ((fc, n) ::) }
+    note _ = pure ()
+
+isBlock : PDecl -> Bool
+isBlock d = case d.val of
+  PMutual _ => True
+  PNamespace _ _ => True
+  PParameters _ _ => True
+  PUsing _ _ => True
+  _ => False
+
+startLine : PDecl -> Int
+startLine d = fst (position d.fc)
+
+||| The declarations of a file that are not blocks of others, in the order
+||| they are written, each with what it defines and mentions.
+export
+declared : SourceFile -> IO (List Declared)
+declared f = coreRun (traverse one leaves) (\_ => pure []) pure
+  where
+    leaves : List PDecl
+    leaves = sortBy (\a, b => compare (startLine a) (startLine b)) (filter (not . isBlock) (declarations f.mod.decls))
+
+    one : PDecl -> Core Declared
+    one d = do
+      ms <- namesIn (PQuoteDecl EmptyFC [d])
+      impl <- case d.val of
+        PImplementation _ _ _ _ _ iface params _ _ _ => do
+          ps <- traverse namesIn params
+          pure (Just (nameRoot iface, foldr (++) [] ps))
+        _ => pure Nothing
+      pure (MkDeclared d (definesOf d) ms impl)
+
+||| The types a file defines (data types and records), by name.
+typesOf : List Declared -> List String
+typesOf ds = foldr (\d, rest => case d.decl.val of
+                                   PData _ _ _ _ => d.defines ++ rest
+                                   PRecord _ _ _ _ => d.defines ++ rest
+                                   _ => rest) [] ds
+
+||| An implementation and a type of its file that its parameters name: where
+||| each is in the file's declarations, and whether nothing stands between
+||| them but the type's family, the first that does if something does. The
+||| family: what the type's definition and all its implementations name (a
+||| type defined with it in a mutual block, the helpers they use), what those
+||| name in turn, and the implementations for any of them, which the
+||| type's implementations use without naming them.
+public export
+record Adjacency where
+  constructor MkAdjacency
+  impl : Declared
+  type : String
+  intruder : Maybe Declared
+
+||| `implementation-adjacent`, strict: an implementation for a type of its
+||| file follows the type with nothing between them but the type's other
+||| implementations and what they use, which Idris puts above them.
+export
+adjacency : List Declared -> List Adjacency
+adjacency ds =
+  let indexed = zip [0 .. length ds] ds
+      types = typesOf ds
+  in foldr (\(j, d), rest => case d.implementing of
+       Nothing => rest
+       Just (_, params) =>
+         mapMaybe (\t => map (\i => MkAdjacency d t (intruder indexed i j t)) (typeAt indexed t)) (filter (`elem` params) types) ++ rest)
+     [] indexed
+  where
+    typeAt : List (Nat, Declared) -> String -> Maybe Nat
+    typeAt xs t = foldr (\(k, d), rest => if isType d && (t `elem` d.defines) then Just k else rest) Nothing xs
+      where
+        isType : Declared -> Bool
+        isType d = case d.decl.val of
+          PData _ _ _ _ => True
+          PRecord _ _ _ _ => True
+          _ => False
+
+    implementsFor : String -> Declared -> Bool
+    implementsFor t d = case d.implementing of
+      Just (_, ps) => t `elem` ps
+      Nothing => False
+
+    ignorable : Declared -> Bool
+    ignorable d = case d.decl.val of
+      PDirective _ => True
+      PFixity _ => True
+      _ => False
+
+    -- the names of the type's family: those its definition and all its
+    -- implementations mention, and in turn those the declarations they
+    -- name, or implementations for them, mention, to a fixed point
+    used : Declared -> List Declared -> List Declared -> List String
+    used ty impls others = go (foldr (\d, rest => d.mentions ++ rest) ty.mentions impls) others
+      where
+        named : List String -> Declared -> Bool
+        named names d = any (`elem` names) d.defines || maybe False (\ip => any (`elem` names) (snd ip)) d.implementing
+
+        go : List String -> List Declared -> List String
+        go names rest =
+          let more = filter (\d => named names d && not (all (`elem` names) d.mentions)) rest in
+          case more of
+            [] => names
+            -- lint: allow trust-escape: each round takes declarations out of those still unfinished, of which there are finitely many
+            _ => assert_total (go (foldr (\d, acc => d.mentions ++ acc) names more) rest)
+
+    -- the declarations strictly after position lo and before hi
+    within : Nat -> Nat -> List (Nat, Declared) -> List Declared
+    within lo hi = foldr (\(k, d), rest => if k > lo && k < hi then d :: rest else rest) []
+
+    at : List (Nat, Declared) -> Nat -> Maybe Declared
+    at xs i = foldr (\(k, d), rest => if k == i then Just d else rest) Nothing xs
+
+    intruder : List (Nat, Declared) -> Nat -> Nat -> String -> Maybe Declared
+    intruder xs i j t =
+      let between = within i j xs
+          everything = map snd xs
+          impls = filter (implementsFor t) everything
+          names = maybe [] (\ty => used ty impls everything) (at xs i)
+          family = \d => implementsFor t d || ignorable d || any (`elem` names) d.defines
+                        || maybe False (\ip => any (`elem` names) (snd ip)) d.implementing
+      in find (not . family) between
+
+implementationAdjacent : SourceFile -> List Declared -> List Finding
+implementationAdjacent f ds =
+  mapMaybe one (adjacency ds)
+  where
+    intruderName : Declared -> String
+    intruderName d = case d.defines of
+      (n :: _) => n
+      [] => case d.implementing of
+        Just (i, ps) => i ++ " " ++ fastConcat (intersperse " " (take 1 ps))
+        Nothing => "a declaration"
+
+    one : Adjacency -> Maybe Finding
+    one a = flip map a.intruder $ \d =>
+      let iface = maybe "" fst a.impl.implementing in
+      finding f "implementation-adjacent" a.impl.decl.fc (iface ++ " " ++ a.type)
+        ("`" ++ iface ++ " " ++ a.type ++ "` stands apart from `" ++ a.type ++ "`: `" ++ intruderName d
+         ++ "` is between them, neither one of its implementations nor something they use")
+
+||| `module-name`, a warning: a module is named after a key symbol it
+||| defines (a type, a function), so that a reader looking for `Enc` opens
+||| `Enc.idr`. A façade, which defines nothing, is exempt.
+export
+namedAfterSymbol : SourceFile -> List Declared -> Bool
+namedAfterSymbol f ds =
+  facade f || any (\n => toLower n == toLower (lastPart (show f.mod.moduleNS))) (foldr (\d, rest => d.defines ++ rest) [] ds)
+  where
+    lastPart : String -> String
+    lastPart m = maybe m id (last' (forget (split (== '.') m)))
+
+moduleName' : SourceFile -> List Declared -> List Finding
+moduleName' f ds =
+  if namedAfterSymbol f ds then [] else
+    [finding f "module-name" f.mod.headerLoc (show f.mod.moduleNS)
+       ("`" ++ show f.mod.moduleNS ++ "` is named after nothing it defines: a reader looks a symbol up by its module's name")]
 
 ||| `default-totality`: every module says how total its functions are by
 ||| default.
@@ -221,14 +419,22 @@ programRules f = importOrder f ++ citesPlan f ++ todo f ++ headerComment f
 
 ||| The rules over one file of the product.
 export
-fileRules : SourceFile -> Mentions -> List Finding
-fileRules f ms =
+fileRules : SourceFile -> Mentions -> List Declared -> List Finding
+fileRules f ms ds =
   importOrder f ++ publicImport f ++ defaultTotality f ++ elabReflection f ms
   ++ trustEscape f ms ++ citesPlan f ++ todo f ++ headerComment f
+  ++ implementationAdjacent f ds ++ moduleName' f ds
+
+||| How a finding of each rule counts: an error fails the gate, a warning
+||| is advice, printed when asked for.
+export
+isWarning : (rule : String) -> Bool
+isWarning rule = rule == "module-name"
 
 ||| The names of every rule, those over the graph included.
 export
 ruleNames : List String
 ruleNames =
   [ "import-order", "public-import", "default-totality", "elab-reflection"
-  , "trust-escape", "cites-plan", "todo", "header-comment", "layering", "syscall" ]
+  , "trust-escape", "cites-plan", "todo", "header-comment", "implementation-adjacent", "module-name"
+  , "layering", "syscall" ]

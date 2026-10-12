@@ -100,10 +100,12 @@ percent _ Z = 100
 percent k n = let k' = the Integer (cast k); n' = the Integer (cast n) in
               cast ((200 * k' + n') `div` (2 * n'))
 
-||| One component of the score: its name, its value, and what it counts.
+||| One component of the score: its group, its name, its value, and what it
+||| counts.
 public export
 record Component where
   constructor MkComponent
+  group : String
   name : String
   value : Nat
   counted : String
@@ -118,10 +120,13 @@ reaches g m = go empty (fromMaybe [] (lookup m g))
       if contains n seen then go seen ns
       else go (insert n seen) (fromMaybe [] (lookup n g) ++ ns)
 
-||| The components of the architectural health of the files' modules.
+||| The components of the architectural health of the files' modules, in
+||| their groups: structure (the import graph), readability (what a reader
+||| reading linearly meets).
 export
-health : List SourceFile -> List Component
-health fs =
+health : List (SourceFile, List Declared) -> List Component
+health fds =
+  let fs = map fst fds in
   let ours = ourModules fs
       notFacades = filter (\f => not (all directive f.mod.decls)) fs
       imports = foldr (\f, rest => f.mod.imports ++ rest) [] notFacades
@@ -131,20 +136,38 @@ health fs =
       g = fromList [ (moduleOf f, [ show i.path | i <- f.mod.imports, contains (show i.path) ours ]) | f <- fs ]
       n = length fs
       reached = sum [ length (Prelude.toList (reaches g (moduleOf f))) | f <- fs ]
-  in [ MkComponent "encapsulation" (percent privates (length imports))
+      adjacencies = foldr (\(_, ds), rest => adjacency ds ++ rest) (the (List Adjacency) []) fds
+      adjacent = length (filter (\a => isNothing a.intruder) adjacencies)
+      named = length (filter (\fd => namedAfterSymbol (fst fd) (snd fd)) fds)
+  in [ MkComponent "structure" "encapsulation" (percent privates (length imports))
          ("private imports, façades exempt: " ++ show privates ++ " of " ++ show (length imports))
-     , MkComponent "layering" (percent good (length checked))
+     , MkComponent "structure" "layering" (percent good (length checked))
          ("imports the layers allow: " ++ show good ++ " of " ++ show (length checked))
-     , MkComponent "coupling" (percent (n * n `minus` reached) (n * n))
-         ("module pairs a change cannot reach: " ++ show (n * n `minus` reached) ++ " of " ++ show (n * n)) ]
+     , MkComponent "structure" "coupling" (percent (n * n `minus` reached) (n * n))
+         ("module pairs a change cannot reach: " ++ show (n * n `minus` reached) ++ " of " ++ show (n * n))
+     , MkComponent "readability" "cohesion" (percent adjacent (length adjacencies))
+         ("implementations next to their types: " ++ show adjacent ++ " of " ++ show (length adjacencies))
+     , MkComponent "readability" "names" (percent named n)
+         ("modules named after a symbol they define: " ++ show named ++ " of " ++ show n) ]
   where
     directive : PDecl -> Bool
     directive d = case d.val of
       PDirective _ => True
       _ => False
 
-||| The score: the mean of the components.
+||| The groups of the components, in the order they first appear.
+export
+groups : List Component -> List String
+groups = foldl (\gs, c => if c.group `elem` gs then gs else gs ++ [c.group]) []
+
+||| A group's score: the mean of its components.
+export
+groupScore : List Component -> String -> Nat
+groupScore cs g = let mine = filter (\c => c.group == g) cs in percent (sum (map (.value) mine)) (100 * length mine)
+
+||| The score: the mean of the groups' scores.
 export
 score : List Component -> Nat
-score [] = 100
-score cs = percent (sum (map (.value) cs)) (100 * length cs)
+score cs = case groups cs of
+  [] => 100
+  gs => percent (sum (map (groupScore cs) gs)) (100 * length gs)

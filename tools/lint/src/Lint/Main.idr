@@ -1,7 +1,7 @@
 ||| `idris2-native-lint`: the rules of the product's code, checked on Idris's
 ||| own parse of each file.
 |||
-|||   idris2-native-lint [--golden | --fix] [--health [--minimum N]] PATH... [--programs PATH...]
+|||   idris2-native-lint [--golden | --fix | --warnings] [--health [--minimum N]] PATH... [--programs PATH...]
 |||
 ||| Each path is a `.idr` file or a directory, walked for `.idr` files, its
 ||| `build` directories left out. The paths after `--programs` are programs
@@ -11,8 +11,9 @@
 ||| sorted, the form the gate compares; `--health` prints the architectural
 ||| health score of the files instead, and with `--minimum` fails below it.
 ||| `--fix` puts each file's imports in order first, the one rule the linter
-||| fixes by itself. The exit status is 1 when there are findings or the
-||| score is too low.
+||| fixes by itself. A rule's findings are errors or, for advice, warnings:
+||| `--warnings` prints those too, and they fail nothing. The exit status is
+||| 1 when there are errors or the score is too low.
 |||
 ||| A finding is suppressed by a comment, `-- lint: allow <rule>: <reason>`,
 ||| on its line or in the lines above it up to a blank line: a suppression
@@ -98,6 +99,7 @@ record Request where
   constructor MkRequest
   golden : Bool
   fix : Bool
+  warnings : Bool
   health : Bool
   minimum : Maybe Nat
   paths : List String
@@ -105,12 +107,13 @@ record Request where
   inPrograms : Bool
 
 request : List String -> Request
-request = go (MkRequest False False False Nothing [] [] False)
+request = go (MkRequest False False False False Nothing [] [] False)
   where
     go : Request -> List String -> Request
     go o [] = o
     go o ("--golden" :: as) = go ({ golden := True } o) as
     go o ("--fix" :: as) = go ({ fix := True } o) as
+    go o ("--warnings" :: as) = go ({ warnings := True } o) as
     go o ("--health" :: as) = go ({ health := True } o) as
     go o ("--minimum" :: n :: as) = go ({ minimum := Just (cast n) } o) as
     go o ("--programs" :: as) = go ({ inPrograms := True } o) as
@@ -118,9 +121,10 @@ request = go (MkRequest False False False Nothing [] [] False)
 
 ||| The findings of the product's files and of the programs, suppressions
 ||| applied.
-lint : List SourceFile -> List SourceFile -> IO (List Finding)
-lint fs ps = do
-  perFile <- traverse (\f => fileRules f <$> mentions f.mod.decls) fs
+lint : List (SourceFile, List Declared) -> List SourceFile -> IO (List Finding)
+lint fds ps = do
+  let fs = map fst fds
+  perFile <- traverse (\(f, ds) => (\ms => fileRules f ms ds) <$> mentions f.mod.decls) fds
   let all = joined perFile ++ joined (map programRules ps) ++ graphRules fs
   pure (sort (foldl (\acc, f => suppress f acc) all (fs ++ ps)))
 
@@ -161,16 +165,22 @@ main = do
   when o.fix $ traverse_ fixImports (o.paths ++ o.programs)
   (fs, failed) <- parsed o.paths
   (ps, failedPrograms) <- parsed o.programs
+  fds <- traverse (\f => (f,) <$> declared f) fs
   if o.health
     then do
-      let cs = health fs
+      let cs = health fds
           overall = score cs
       putStrLn ("architectural health: " ++ show overall)
-      traverse_ (\c => putStrLn ("  " ++ padRight 14 ' ' c.name ++ padLeft 3 ' ' (show c.value) ++ "  " ++ c.counted)) cs
+      for_ (groups cs) $ \g => do
+        putStrLn ("  " ++ padRight 16 ' ' g ++ padLeft 3 ' ' (show (groupScore cs g)))
+        traverse_ (\c => putStrLn ("    " ++ padRight 14 ' ' c.name ++ padLeft 3 ' ' (show c.value) ++ "  " ++ c.counted))
+                  (filter (\c => c.group == g) cs)
       whenJust o.minimum $ \m => when (overall < m) $ do
         putStrLn ("below the minimum, " ++ show m)
         exitWith (ExitFailure 1)
     else do
-      findings <- ((failed ++ failedPrograms) ++) <$> lint fs ps
-      traverse_ (putStrLn . if o.golden then withoutPosition else withPosition) findings
-      when (not (null findings) && not o.golden) $ exitWith (ExitFailure 1)
+      findings <- ((failed ++ failedPrograms) ++) <$> lint fds ps
+      let errors = filter (not . isWarning . (.rule)) findings
+          shown = if o.warnings && not o.golden then findings else errors
+      traverse_ (putStrLn . if o.golden then withoutPosition else withPosition) shown
+      when (not (null errors) && not o.golden) $ exitWith (ExitFailure 1)

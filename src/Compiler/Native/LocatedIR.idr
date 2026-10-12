@@ -69,6 +69,10 @@ data Reg : Enc -> Type where
   Slot : (n : Nat) -> Ty enc -> Reg enc
 
 public export
+Show (Reg enc) where
+  show (Slot n t) = "slot" ++ show n ++ ":" ++ show t
+
+public export
 regTy : Reg enc -> Ty enc
 regTy (Slot _ t) = t
 
@@ -76,10 +80,6 @@ regTy (Slot _ t) = t
 public export
 slotOf : Reg enc -> Nat
 slotOf (Slot n _) = n
-
-public export
-Show (Reg enc) where
-  show (Slot n t) = "slot" ++ show n ++ ":" ++ show t
 
 ------------------------------------------------------------------------------
 -- Operands
@@ -495,7 +495,6 @@ record Static (enc : Enc) where
   kind : Kind
   header : Header enc kind
   fields : List StaticField
-
 
 ||| A whole program: its target, functions, statics, entry function and
 ||| constructor numbering.

@@ -20,6 +20,14 @@ record Finding where
   subject : String
   message : String
 
+export
+Eq Finding where
+  a == b = (a.path, a.line, a.col, a.rule, a.subject) == (b.path, b.line, b.col, b.rule, b.subject)
+
+export
+Ord Finding where
+  compare a b = compare (a.path, a.line, a.col, a.rule, a.subject) (b.path, b.line, b.col, b.rule, b.subject)
+
 ||| `path:line:col rule: message`, lines and columns from 1.
 export
 withPosition : Finding -> String
@@ -30,14 +38,6 @@ withPosition f =
 export
 withoutPosition : Finding -> String
 withoutPosition f = f.rule ++ " " ++ f.path ++ " " ++ f.subject
-
-export
-Eq Finding where
-  a == b = (a.path, a.line, a.col, a.rule, a.subject) == (b.path, b.line, b.col, b.rule, b.subject)
-
-export
-Ord Finding where
-  compare a b = compare (a.path, a.line, a.col, a.rule, a.subject) (b.path, b.line, b.col, b.rule, b.subject)
 
 ||| Lists joined from the right, each copied once: `concat` on lists joins
 ||| from the left and copies what it has joined at every step.

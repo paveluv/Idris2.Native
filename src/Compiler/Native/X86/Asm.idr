@@ -43,28 +43,6 @@ regNum R13 = 13
 regNum R14 = 14
 regNum R15 = 15
 
-||| The register of an encoding number: the inverse of `regNum`, by which
-||| `Compiler.Native.Target` numbers x86-64's registers. A number beyond 15
-||| is r15's.
-public export
-regOfNum : Nat -> Reg64
-regOfNum 0 = RAX
-regOfNum 1 = RCX
-regOfNum 2 = RDX
-regOfNum 3 = RBX
-regOfNum 4 = RSP
-regOfNum 5 = RBP
-regOfNum 6 = RSI
-regOfNum 7 = RDI
-regOfNum 8 = R8
-regOfNum 9 = R9
-regOfNum 10 = R10
-regOfNum 11 = R11
-regOfNum 12 = R12
-regOfNum 13 = R13
-regOfNum 14 = R14
-regOfNum _ = R15
-
 public export
 Eq Reg64 where
   a == b = regNum a == regNum b
@@ -87,6 +65,28 @@ Show Reg64 where
   show R13 = "r13"
   show R14 = "r14"
   show R15 = "r15"
+
+||| The register of an encoding number: the inverse of `regNum`, by which
+||| `Compiler.Native.Target` numbers x86-64's registers. A number beyond 15
+||| is r15's.
+public export
+regOfNum : Nat -> Reg64
+regOfNum 0 = RAX
+regOfNum 1 = RCX
+regOfNum 2 = RDX
+regOfNum 3 = RBX
+regOfNum 4 = RSP
+regOfNum 5 = RBP
+regOfNum 6 = RSI
+regOfNum 7 = RDI
+regOfNum 8 = R8
+regOfNum 9 = R9
+regOfNum 10 = R10
+regOfNum 11 = R11
+regOfNum 12 = R12
+regOfNum 13 = R13
+regOfNum 14 = R14
+regOfNum _ = R15
 
 ||| The low byte of a register, for `setcc` and byte stores.
 export
@@ -148,6 +148,10 @@ xmmNum XMM13 = 13
 xmmNum XMM14 = 14
 xmmNum XMM15 = 15
 
+public export
+Show Xmm where
+  show x = "xmm" ++ show (cast {to = Nat} (xmmNum x))
+
 ||| The xmm register of a number: the inverse of `xmmNum`, by which
 ||| `Compiler.Native.Target` numbers floating-point registers. A number
 ||| beyond 15 is xmm15's.
@@ -170,35 +174,12 @@ xmmOfNum 13 = XMM13
 xmmOfNum 14 = XMM14
 xmmOfNum _ = XMM15
 
-public export
-Show Xmm where
-  show x = "xmm" ++ show (cast {to = Nat} (xmmNum x))
-
 ------------------------------------------------------------------------------
 -- Conditions and operation groups
 
 ||| Condition codes in hardware order (the low nibble of `jcc`/`setcc`/`cmovcc`).
 public export
 data Cond = O | NO | B | AE | E | NE | BE | A | S | NS | P | NP | L | GE | LE | G
-
-public export
-condCode : Cond -> Bits8
-condCode O = 0
-condCode NO = 1
-condCode B = 2
-condCode AE = 3
-condCode E = 4
-condCode NE = 5
-condCode BE = 6
-condCode A = 7
-condCode S = 8
-condCode NS = 9
-condCode P = 10
-condCode NP = 11
-condCode L = 12
-condCode GE = 13
-condCode LE = 14
-condCode G = 15
 
 public export
 Show Cond where
@@ -219,18 +200,28 @@ Show Cond where
   show LE = "le"
   show G = "g"
 
+public export
+condCode : Cond -> Bits8
+condCode O = 0
+condCode NO = 1
+condCode B = 2
+condCode AE = 3
+condCode E = 4
+condCode NE = 5
+condCode BE = 6
+condCode A = 7
+condCode S = 8
+condCode NS = 9
+condCode P = 10
+condCode NP = 11
+condCode L = 12
+condCode GE = 13
+condCode LE = 14
+condCode G = 15
+
 ||| The classic two-operand ALU group; `/digit` and opcodes share one table.
 public export
 data AluOp = ADD | OR | AND | SUB | XOR | CMP
-
-public export
-aluDigit : AluOp -> Bits8
-aluDigit ADD = 0
-aluDigit OR = 1
-aluDigit AND = 4
-aluDigit SUB = 5
-aluDigit XOR = 6
-aluDigit CMP = 7
 
 public export
 Show AluOp where
@@ -242,13 +233,16 @@ Show AluOp where
   show CMP = "cmp"
 
 public export
-data ShiftOp = SHL | SHR | SAR
+aluDigit : AluOp -> Bits8
+aluDigit ADD = 0
+aluDigit OR = 1
+aluDigit AND = 4
+aluDigit SUB = 5
+aluDigit XOR = 6
+aluDigit CMP = 7
 
 public export
-shiftDigit : ShiftOp -> Bits8
-shiftDigit SHL = 4
-shiftDigit SHR = 5
-shiftDigit SAR = 7
+data ShiftOp = SHL | SHR | SAR
 
 public export
 Show ShiftOp where
@@ -257,14 +251,13 @@ Show ShiftOp where
   show SAR = "sar"
 
 public export
-data SseOp = ADDSD | SUBSD | MULSD | DIVSD
+shiftDigit : ShiftOp -> Bits8
+shiftDigit SHL = 4
+shiftDigit SHR = 5
+shiftDigit SAR = 7
 
 public export
-sseOpcode : SseOp -> Bits8
-sseOpcode ADDSD = 0x58
-sseOpcode SUBSD = 0x5C
-sseOpcode MULSD = 0x59
-sseOpcode DIVSD = 0x5E
+data SseOp = ADDSD | SUBSD | MULSD | DIVSD
 
 public export
 Show SseOp where
@@ -272,6 +265,13 @@ Show SseOp where
   show SUBSD = "subsd"
   show MULSD = "mulsd"
   show DIVSD = "divsd"
+
+public export
+sseOpcode : SseOp -> Bits8
+sseOpcode ADDSD = 0x58
+sseOpcode SUBSD = 0x5C
+sseOpcode MULSD = 0x59
+sseOpcode DIVSD = 0x5E
 
 ||| Memory access width for the narrow loads and stores (64-bit is `Mov*`).
 public export

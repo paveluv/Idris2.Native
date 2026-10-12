@@ -24,22 +24,21 @@ import Data.List
 public export
 data Arch = X86_64 | AArch64
 
-||| An operating system.
-public export
-data OS = Linux | FreeBSD | OpenBSD | MacOS | Windows
-
-||| What a program is compiled for.
-public export
-record Platform where
-  constructor MkPlatform
-  arch : Arch
-  os : OS
-
 public export
 Eq Arch where
   X86_64 == X86_64 = True
   AArch64 == AArch64 = True
   _ == _ = False
+
+||| As the directive `target=` writes it.
+export
+Show Arch where
+  show X86_64 = "x86_64"
+  show AArch64 = "aarch64"
+
+||| An operating system.
+public export
+data OS = Linux | FreeBSD | OpenBSD | MacOS | Windows
 
 public export
 Eq OS where
@@ -50,16 +49,7 @@ Eq OS where
   Windows == Windows = True
   _ == _ = False
 
-public export
-Eq Platform where
-  MkPlatform a o == MkPlatform a' o' = a == a' && o == o'
-
-||| As the directive `target=` writes them.
-export
-Show Arch where
-  show X86_64 = "x86_64"
-  show AArch64 = "aarch64"
-
+||| As the directive `target=` writes it.
 export
 Show OS where
   show Linux = "linux"
@@ -68,6 +58,18 @@ Show OS where
   show MacOS = "macos"
   show Windows = "windows"
 
+||| What a program is compiled for.
+public export
+record Platform where
+  constructor MkPlatform
+  arch : Arch
+  os : OS
+
+public export
+Eq Platform where
+  MkPlatform a o == MkPlatform a' o' = a == a' && o == o'
+
+||| As the directive `target=` writes it: `<arch>-<os>`.
 export
 Show Platform where
   show (MkPlatform a o) = show a ++ "-" ++ show o

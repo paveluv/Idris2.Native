@@ -63,6 +63,12 @@ Uninhabited (HasFixnums NoFixnums) where
   uninhabited Tag1 impossible
   uninhabited Tag0 impossible
 
+||| An encoding has at most one proof that it has fixnums.
+public export
+0 fixnumsUnique : (p, q : HasFixnums v) -> p = q
+fixnumsUnique Tag1 Tag1 = Refl
+fixnumsUnique Tag0 Tag0 = Refl
+
 ||| How many bits a limb holds. A `BIGNUM`'s limbs are its digits in base 2
 ||| to that power, least significant first, packed into its words from the
 ||| low end: one to a word, or two, the lower limb in the word's low half.
@@ -294,12 +300,6 @@ DecEq Kind where
     Yes p => Yes (justInjective (trans (sym (kindRoundTrip a)) (trans (cong kindOfId p) (kindRoundTrip b))))
     No c => No (\q => c (cong kindId q))
 
-||| An encoding has at most one proof that it has fixnums.
-public export
-0 fixnumsUnique : (p, q : HasFixnums v) -> p = q
-fixnumsUnique Tag1 Tag1 = Refl
-fixnumsUnique Tag0 Tag0 = Refl
-
 public export
 Show Kind where
   show CON = "CON"
@@ -349,14 +349,6 @@ Uninhabited (Header enc CONT) where
   uninhabited (BufferH _) impossible
   uninhabited PtrH impossible
 
-||| Two to the power, as an `Integer`. Public so that `partUnit` and `fits`,
-||| which are, reduce outside this module: a header's fit can then be
-||| decided where the header is written.
-public export
-pow2 : Nat -> Integer
-pow2 Z = 1
-pow2 (S n) = 2 * pow2 n
-
 ||| A part of a header, by kind: what `LoadPart` reads.
 public export
 data HeaderPart : Kind -> Type where
@@ -371,31 +363,6 @@ data HeaderPart : Kind -> Type where
   BignumWords    : HeaderPart BIGNUM
   ArrayElems     : HeaderPart ARRAY
   BufferBytes    : HeaderPart BUFFER
-
-||| Where a part lives in the header word: its first bit and its width, as
-||| the words the runtime's code shifts and masks by. This
-||| is the only place the bit layout is written down; encoding, decoding,
-||| the rendering of `LoadPart` and the seed's `idris_apply` all read it here. A kind's parts lie in bits
-||| 8..63 and do not overlap.
-public export
-place : {0 k : Kind} -> HeaderPart k -> (Bits64, Bits64)
-place ConId = (8, 28)
-place ConArity = (36, 28)
-place ClosureArity = (8, 28)
-place ClosureFilled = (36, 28)
-place StringAscii = (8, 1)
-place StringBytes = (9, 55)
-place StringChars = (8, 56)
-place BignumNegative = (8, 1)
-place BignumWords = (9, 55)
-place ArrayElems = (8, 56)
-place BufferBytes = (8, 56)
-
-||| What adding one to a part adds to the header word: a closure with one
-||| more argument filled is its header plus `partUnit ClosureFilled`.
-public export
-partUnit : {0 k : Kind} -> HeaderPart k -> Integer
-partUnit p = pow2 (cast (fst (place p)))
 
 public export
 Show (HeaderPart kn) where
@@ -429,6 +396,39 @@ parts PtrH = []
 public export
 {kn : Kind} -> Show (Header enc kn) where
   show h = show kn ++ concatMap (\pv => " " ++ show (fst pv) ++ "=" ++ show (snd pv)) (parts h)
+
+||| Two to the power, as an `Integer`. Public so that `partUnit` and `fits`,
+||| which are, reduce outside this module: a header's fit can then be
+||| decided where the header is written.
+public export
+pow2 : Nat -> Integer
+pow2 Z = 1
+pow2 (S n) = 2 * pow2 n
+
+||| Where a part lives in the header word: its first bit and its width, as
+||| the words the runtime's code shifts and masks by. This
+||| is the only place the bit layout is written down; encoding, decoding,
+||| the rendering of `LoadPart` and the seed's `idris_apply` all read it here. A kind's parts lie in bits
+||| 8..63 and do not overlap.
+public export
+place : {0 k : Kind} -> HeaderPart k -> (Bits64, Bits64)
+place ConId = (8, 28)
+place ConArity = (36, 28)
+place ClosureArity = (8, 28)
+place ClosureFilled = (36, 28)
+place StringAscii = (8, 1)
+place StringBytes = (9, 55)
+place StringChars = (8, 56)
+place BignumNegative = (8, 1)
+place BignumWords = (9, 55)
+place ArrayElems = (8, 56)
+place BufferBytes = (8, 56)
+
+||| What adding one to a part adds to the header word: a closure with one
+||| more argument filled is its header plus `partUnit ClosureFilled`.
+public export
+partUnit : {0 k : Kind} -> HeaderPart k -> Integer
+partUnit p = pow2 (cast (fst (place p)))
 
 ||| Whether two headers, of any kinds, are the same header.
 public export
