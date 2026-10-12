@@ -137,6 +137,9 @@ record Declared where
   ||| The names mentioned as written without a namespace: where a reader
   ||| must know which of several definitions a name means.
   bare : List String
+  ||| The namespace block the declaration is in, by the last part of its
+  ||| name, if it is in one.
+  namespaced : Maybe String
 
 ||| The name a clause defines: the head of its left-hand side.
 clauseName : PTerm -> Maybe Name
@@ -217,17 +220,35 @@ isBlock d = case d.val of
 startLine : PDecl -> Int
 startLine d = fst (position d.fc)
 
+||| The last part of a dotted name.
+export
+lastPart : String -> String
+lastPart m = maybe m id (last' (forget (split (== '.') m)))
+
 ||| The declarations of a file that are not blocks of others, in the order
 ||| they are written, each with what it defines and mentions.
 export
 declared : SourceFile -> IO (List Declared)
 declared f = coreRun (traverse one leaves) (\_ => pure []) pure
   where
-    leaves : List PDecl
-    leaves = sortBy (\a, b => compare (startLine a) (startLine b)) (filter (not . isBlock) (declarations f.mod.decls))
+    -- each declaration that is not a block of others, with the namespace
+    -- block it is in
+    leavesIn : Maybe String -> List PDecl -> List (Maybe String, PDecl)
+    leavesIn ns = foldr (\d, rest => here d ++ rest) []
+      where
+        here : PDecl -> List (Maybe String, PDecl)
+        here d = case d.val of
+          PNamespace n ds => leavesIn (Just (lastPart (show n))) ds
+          PMutual ds => leavesIn ns ds
+          PParameters _ ds => leavesIn ns ds
+          PUsing _ ds => leavesIn ns ds
+          _ => [(ns, d)]
 
-    one : PDecl -> Core Declared
-    one d = do
+    leaves : List (Maybe String, PDecl)
+    leaves = sortBy (\a, b => compare (startLine (snd a)) (startLine (snd b))) (leavesIn Nothing f.mod.decls)
+
+    one : (Maybe String, PDecl) -> Core Declared
+    one (ns, d) = do
       written <- namesWritten (PQuoteDecl EmptyFC [d])
       let ms = map nameRoot written
           bareNames = map nameRoot (filter unqualified written)
@@ -236,7 +257,7 @@ declared f = coreRun (traverse one leaves) (\_ => pure []) pure
           ps <- traverse namesIn params
           pure (Just (nameRoot iface, foldr (++) [] ps))
         _ => pure Nothing
-      pure (MkDeclared d (definesOf d) ms impl (visibleOf d) bareNames)
+      pure (MkDeclared d (definesOf d) ms impl (visibleOf d) bareNames ns)
 
 ||| The types a file defines (data types and records), by name.
 typesOf : List Declared -> List String
@@ -352,9 +373,59 @@ export
 namedAfterSymbol : SourceFile -> List Declared -> Bool
 namedAfterSymbol f ds =
   facade f || any (\n => toLower n == toLower (lastPart (show f.mod.moduleNS))) (foldr (\d, rest => d.defines ++ rest) [] ds)
+
+||| An overload of its type: a declaration in a namespace block named after a
+||| type its own signature or body names, as `area` in `namespace Circle`.
+||| Overloads of one concept across types are how Idris writes it, and are
+||| not two meanings of a name.
+export
+typedOverload : Declared -> Bool
+typedOverload d = maybe False (\ns => ns `elem` d.mentions) d.namespaced
+
+||| Whether a declaration is a private function at the top of its module,
+||| not in a namespace block.
+privateAtTop : Declared -> Bool
+privateAtTop d = isNothing d.namespaced && case d.decl.val of
+  PClaim c => not (exported c.vis)
+  _ => False
+
+||| How many functions a declaration keeps local: those declared in the
+||| `where` blocks of its clauses, at any depth.
+localFunctions : PDecl -> Nat
+localFunctions d = case d.val of
+  PDef cls => sum (map clause cls)
+  _ => 0
   where
-    lastPart : String -> String
-    lastPart m = maybe m id (last' (forget (split (== '.') m)))
+    inWhere : PDecl -> Nat
+    inWhere w = (case w.val of PClaim _ => 1; _ => 0) + localFunctions w
+
+    clause : PClause -> Nat
+    clause (MkPatClause _ _ _ wh) = sum (map inWhere wh)
+    clause (MkWithClause _ _ _ _ cs) = sum (map clause cs)
+    clause (MkImpossible _ _) = 0
+
+||| The private functions of a module, for the score: those at its top used
+||| by exactly one other declaration, with that one, which a reader carries
+||| to the end of the module; and how many are scoped, which a reader can
+||| forget when their block ends: local to a function (`where`), or private
+||| to a namespace block.
+export
+helpers : List Declared -> (List (Declared, Declared), Nat)
+helpers ds =
+  let atTop = filter privateAtTop ds
+      single = mapMaybe (\h => case users h of [u] => Just (h, u); _ => Nothing) atTop
+      scoped = length (filter (\d => isJust d.namespaced && isPrivateClaim d) ds)
+               + sum (map (localFunctions . (.decl)) ds)
+  in (single, scoped)
+  where
+    isPrivateClaim : Declared -> Bool
+    isPrivateClaim d = case d.decl.val of
+      PClaim c => not (exported c.vis)
+      _ => False
+
+    -- the declarations that mention a function, those defining it aside
+    users : Declared -> List Declared
+    users h = filter (\d => not (any (`elem` h.defines) d.defines) && any (`elem` h.defines) d.mentions) ds
 
 moduleName' : SourceFile -> List Declared -> List Finding
 moduleName' f ds =

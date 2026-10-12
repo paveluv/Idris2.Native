@@ -118,7 +118,9 @@ seen imports reexports m = go empty (fromMaybe [] (lookup m imports))
 ||| imports, and what they re-export publicly, make visible. Once imported a
 ||| name is unqualified, so two definitions of one name meet there whatever
 ||| their modules; they confuse a reader where the module writes the name
-||| without a namespace, so only there do they count.
+||| without a namespace, so only there do they count. Overloads of one
+||| concept across types, each in a namespace named after its type, are not
+||| two meanings, and do not count.
 export
 meetings : List (SourceFile, List Declared) -> List Meeting
 meetings fds =
@@ -128,8 +130,13 @@ meetings fds =
       reexports = fromList [ (moduleOf f, oursOnly (map (show . (.path)) (filter (.reexport) f.mod.imports))) | (f, _) <- fds ]
       visibleIn = the (SortedMap String (List String)) (fromList [ (moduleOf f, joined (map (.visible) ds)) | (f, ds) <- fds ])
       found = foldl (\acc, fd => meet acc imports reexports visibleIn fd) empty fds
-  in map (\(n, (ds, m)) => MkMeeting n ds m) (SortedMap.toList found)
+      overloads = the (SortedSet (String, String))
+                    (fromList (joined [ map (moduleOf f,) (d.defines ++ d.visible) | (f, ds) <- fds, d <- ds, typedOverload d ]))
+  in filter (\mt => not (exempt overloads mt.name mt.definers)) (map (\(n, (ds, m)) => MkMeeting n ds m) (SortedMap.toList found))
   where
+    exempt : SortedSet (String, String) -> String -> List String -> Bool
+    exempt overloads n defs = all (\d => contains (d, n) overloads) defs
+
     tag : String -> List String -> List (String, String)
     tag m = map (\n => (n, m))
 
@@ -204,6 +211,34 @@ reaches g m = go empty (fromMaybe [] (lookup m g))
       if contains n seen then go seen ns
       else go (insert n seen) (fromMaybe [] (lookup n g) ++ ns)
 
+||| Of what our modules import from each other, how much they use: the
+||| names each import makes visible (its own and its public re-exports'),
+||| and of those the ones the importer mentions. Weighted by size, so that a
+||| large bundle imported for a few names costs more than a small module.
+precision : List (SourceFile, List Declared) -> (Nat, Nat)
+precision fds =
+  let ours = ourModules (map fst fds)
+      visibleIn = the (SortedMap String (List String)) (fromList [ (moduleOf f, joined (map (.visible) ds)) | (f, ds) <- fds ])
+      reexports = the (SortedMap String (List String))
+                    (fromList [ (moduleOf f, filter (\i => contains i ours) (map (show . (.path)) (filter (.reexport) f.mod.imports))) | (f, _) <- fds ])
+      edges = joined [ map (f, ds,) (filter (\i => contains i ours) (map (show . (.path)) f.mod.imports)) | (f, ds) <- fds ]
+  in foldl (\(u, o), e => let (u', o') = edge visibleIn reexports e in (u + u', o + o')) (Z, Z) edges
+  where
+    exposed : SortedMap String (List String) -> String -> SortedSet String
+    exposed reexports b = go (singleton b) (fromMaybe [] (lookup b reexports))
+      where
+        go : SortedSet String -> List String -> SortedSet String
+        go acc [] = acc
+        go acc (i :: is) = if contains i acc then go acc is else go (insert i acc) (fromMaybe [] (lookup i reexports) ++ is)
+
+    edge : SortedMap String (List String) -> SortedMap String (List String) ->
+           (SourceFile, List Declared, String) -> (Nat, Nat)
+    edge visibleIn reexports (f, ds, b) =
+      let names = the (SortedSet String) (fromList (joined (map (\m => fromMaybe [] (lookup m visibleIn)) (Prelude.toList (exposed reexports b)))))
+          mentioned = the (SortedSet String) (fromList (joined (map (.mentions) ds)))
+          used = length (filter (\n => contains n mentioned) (Prelude.toList names))
+      in (used, length (Prelude.toList names))
+
 ||| The components of the architectural health of the files' modules, in
 ||| their groups: structure (the import graph), readability (what a reader
 ||| reading linearly meets).
@@ -226,18 +261,25 @@ health fds =
       exportedNames = foldr (\(f, ds), rest => map (\n => (n, moduleOf f)) (joined (map (.visible) ds)) ++ rest) (the (List (String, String)) []) fds
       meetingNames = map (.name) (meetings fds)
       unique = length (filter (\nm => not (fst nm `elem` meetingNames)) exportedNames)
+      (usedNames, offered) = precision fds
+      (single, scopedHelpers) = foldr (\(_, ds), (s, c) => let (s', c') = helpers ds in (length s' + s, c' + c)) (Z, Z) fds
   in [ MkComponent "structure" "encapsulation" (percent privates (length imports))
          ("private imports, façades exempt: " ++ show privates ++ " of " ++ show (length imports))
      , MkComponent "structure" "layering" (percent good (length checked))
          ("imports the layers allow: " ++ show good ++ " of " ++ show (length checked))
      , MkComponent "structure" "coupling" (percent (n * n `minus` reached) (n * n))
          ("module pairs a change cannot reach: " ++ show (n * n `minus` reached) ++ " of " ++ show (n * n))
+     , MkComponent "structure" "precision" (percent usedNames offered)
+         ("imported names a module uses: " ++ show usedNames ++ " of " ++ show offered)
      , MkComponent "readability" "cohesion" (percent adjacent (length adjacencies))
          ("implementations next to their types: " ++ show adjacent ++ " of " ++ show (length adjacencies))
      , MkComponent "readability" "names" (percent named n)
          ("modules named after a symbol they define: " ++ show named ++ " of " ++ show n)
      , MkComponent "readability" "uniqueness" (percent unique (length exportedNames))
-         ("exported names that meet no other definition: " ++ show unique ++ " of " ++ show (length exportedNames)) ]
+         ("exported names that meet no other definition: " ++ show unique ++ " of " ++ show (length exportedNames))
+     , MkComponent "readability" "scoping" (percent scopedHelpers (scopedHelpers + single))
+         ("helpers local to a function or a namespace block, of those and the ones a single user leaves module-wide: "
+          ++ show scopedHelpers ++ " of " ++ show (scopedHelpers + single)) ]
   where
     directive : PDecl -> Bool
     directive d = case d.val of

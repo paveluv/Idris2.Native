@@ -1,0 +1,6 @@
+. ../../testutils.sh
+
+# The architectural health of a small set of modules, the warnings' fixtures
+# (rules002): each component's value and what it counts, so that a change in
+# how the score is computed shows here.
+../../../tools/lint/build/exec/idris2-native-lint --health ../rules002
