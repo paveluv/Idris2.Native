@@ -1,7 +1,7 @@
 ||| `idris2-native-lint`: the rules of the product's code, checked on Idris's
 ||| own parse of each file.
 |||
-|||   idris2-native-lint [--golden | --fix | --warnings] [--health [--minimum N]] [--resolved] PATH... [--programs PATH...]
+|||   idris2-native-lint [--golden | --fix | --warnings] [--health [--minimum N] [--offenders N]] [--resolved] PATH... [--programs PATH...]
 |||
 ||| Each path is a `.idr` file or a directory, walked for `.idr` files, its
 ||| `build` directories left out. The paths after `--programs` are programs
@@ -9,7 +9,10 @@
 ||| and the order of its imports, not by those of the product's code.
 ||| The findings print with their positions, or with `--golden` without them,
 ||| sorted, the form the gate compares; `--health` prints the architectural
-||| health score of the files instead, and with `--minimum` fails below it.
+||| health score of the files instead, and with `--minimum` fails below it;
+||| `--offenders N` lists under each component short of 100 the `N` that
+||| cost it most: what each is about, its cost in the units the component
+||| counts, and what the cost is made of.
 ||| `--fix` puts each file's imports in order first, the one rule the linter
 ||| fixes by itself. A rule's findings are errors or, for advice, warnings:
 ||| `--warnings` prints those too, and they fail nothing. The exit status is
@@ -110,13 +113,14 @@ record Request where
   warnings : Bool
   health : Bool
   minimum : Maybe Nat
+  offenders : Nat
   resolved : Bool
   paths : List String
   programs : List String
   inPrograms : Bool
 
 request : List String -> Request
-request = go (MkRequest False False False False Nothing False [] [] False)
+request = go (MkRequest False False False False Nothing 0 False [] [] False)
   where
     go : Request -> List String -> Request
     go o [] = o
@@ -126,6 +130,7 @@ request = go (MkRequest False False False False Nothing False [] [] False)
     go o ("--health" :: as) = go ({ health := True } o) as
     go o ("--minimum" :: n :: as) = go ({ minimum := Just (cast n) } o) as
     go o ("--resolved" :: as) = go ({ resolved := True } o) as
+    go o ("--offenders" :: k :: as) = go ({ offenders := cast k } o) as
     go o ("--programs" :: as) = go ({ inPrograms := True } o) as
     go o (p :: as) = go (if o.inPrograms then { programs $= (++ [p]) } o else { paths $= (++ [p]) } o) as
 
@@ -170,13 +175,31 @@ fixImports root = do
         | Left err => putStrLn (p ++ ": " ++ show err)
       putStrLn ("imports put in order: " ++ p)
 
+||| A component's offenders that cost it most, the first `n`, the costliest
+||| first, and among equal costs in the order of their subjects.
+worst : Nat -> List Offender -> List Offender
+worst n os = take n (sortBy (\a, b => compare (negate (cast {to = Integer} a.cost), a.subject) (negate (cast b.cost), b.subject)) os)
+
+offender : Offender -> IO ()
+offender x = putStrLn ("      " ++ padLeft 5 ' ' (show x.cost) ++ "  " ++ x.subject ++ ": " ++ x.detail)
+
+||| The components of a group.
+inGroup : String -> List Component -> List Component
+inGroup g = filter (\c => c.group == g)
+
+||| A component's line, and under it, short of 100, its worst `n` offenders.
+component : (n : Nat) -> Component -> IO ()
+component n c = do
+  putStrLn ("    " ++ padRight 14 ' ' c.name ++ padLeft 3 ' ' (show c.value) ++ "  " ++ c.counted)
+  when (c.value /= 100) $ traverse_ offender (worst n c.offenders)
+
 main : IO ()
 main = do
   (_ :: args) <- getArgs
     | [] => exitWith (ExitFailure 2)
   let o = request args
   when (null o.paths && null o.programs) $ do
-    putStrLn "usage: idris2-native-lint [--golden | --fix | --warnings] [--health [--minimum N]] [--resolved] PATH... [--programs PATH...]"
+    putStrLn "usage: idris2-native-lint [--golden | --fix | --warnings] [--health [--minimum N] [--offenders N]] [--resolved] PATH... [--programs PATH...]"
     exitWith (ExitFailure 2)
   when o.fix $ traverse_ fixImports (o.paths ++ o.programs)
   (fs, failed) <- parsed o.paths
@@ -198,8 +221,7 @@ main = do
       putStrLn ("architectural health: " ++ show overall)
       for_ (groups cs) $ \g => do
         putStrLn ("  " ++ padRight 16 ' ' g ++ padLeft 3 ' ' (show (groupScore cs g)))
-        traverse_ (\c => putStrLn ("    " ++ padRight 14 ' ' c.name ++ padLeft 3 ' ' (show c.value) ++ "  " ++ c.counted))
-                  (filter (\c => c.group == g) cs)
+        traverse_ (component o.offenders) (inGroup g cs)
       whenJust o.minimum $ \m => when (overall < m) $ do
         putStrLn ("below the minimum, " ++ show m)
         exitWith (ExitFailure 1)

@@ -9,3 +9,20 @@ architectural health: 94
     names          91  modules named after a symbol they define: 10 of 11
     uniqueness     91  exported names that meet no other definition: 21 of 23
     scoping       100  helpers local to a function or a namespace block, of those and the ones a single user leaves module-wide: 0 of 0
+architectural health: 94
+  structure        91
+    encapsulation 100  private imports, façades exempt: 6 of 6
+    layering      100  imports the layers allow: 0 of 0
+    coupling       95  module pairs a change cannot reach: 115 of 121
+          2  Canvas: its imports reach 2 of our 11 modules
+          2  Night: its imports reach 2 of our 11 modules
+    precision      67  imported names a module uses: 12 of 18
+          1  Bat: 1 importer of its 3 names; fewest used: Night 2
+          1  Cat: 1 importer of its 3 names; fewest used: Zoo 2
+  readability      96
+    cohesion      100  implementations next to their types: 0 of 0
+    names          91  modules named after a symbol they define: 10 of 11
+          1  Elsewhere: defines `found`
+    uniqueness     91  exported names that meet no other definition: 21 of 23
+          2  speak: defined in `Cat`, `Dog`; they meet in `Zoo`
+    scoping       100  helpers local to a function or a namespace block, of those and the ones a single user leaves module-wide: 0 of 0

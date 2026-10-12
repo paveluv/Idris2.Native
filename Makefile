@@ -10,6 +10,8 @@
 #   make test       run the tests; `only=native/term001` runs some
 #   make lint       the product's code against the linter's rules
 #                   (tools/lint), and its architectural health
+#   make health     the architectural health with what costs it most,
+#                   under each component; `offenders=20` lists more
 #   make scaling    the backend's phases against the size of the program;
 #                   `sizes="64 128"` chooses the sizes
 #
@@ -26,7 +28,7 @@ threads ?= $(shell nproc 2>/dev/null || echo 1)
 # after uses the pinned Idris 2's, in the prefix.
 WITH_PREFIX := IDRIS2_PREFIX=$(PREFIX)
 
-.PHONY: all upstream native linter testbin test lint scaling clean
+.PHONY: all upstream native linter testbin test lint health scaling clean
 
 all: native
 
@@ -59,7 +61,13 @@ test: native linter testbin
 # read the TTCs of their build, so the product is built first.
 lint: native linter
 	$(WITH_PREFIX) $(LINTER) --resolved src runtime tools/lint/src --programs tests/native tests/flat tests/Main.idr
-	$(WITH_PREFIX) $(LINTER) --resolved --health --minimum 65 src runtime
+	$(WITH_PREFIX) $(LINTER) --resolved --health --minimum 80 src runtime
+
+# The architectural health, each component with the offenders that cost it
+# most: what to change to raise it.
+offenders ?= 10
+health: native linter
+	$(WITH_PREFIX) $(LINTER) --resolved --health --offenders $(offenders) src runtime
 
 # The backend's phases against the size of the program: fails when one
 # grows faster than the program (tests/scaling/scaling.sh). On demand, not

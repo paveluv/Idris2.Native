@@ -150,14 +150,19 @@ resolvedHealth : List (SourceFile, Mentions) -> Resolution -> List Component
 resolvedHealth fms r =
   let ms = modulesOf fms r
       pairs = joined [ map (m,) (keys m.writtenUses) | m <- ms ]
-      direct = length (filter (\(m, u) => contains u m.reached) pairs)
-      imports = joined [ m.privateImports | m <- ms, not (facade m.file) ]
-      used = length (filter (\(_, isUsed) => isUsed) imports)
+      indirect = [ (m, u) | (m, u) <- pairs, not (contains u m.reached) ]
+      imports = joined [ map (m,) m.privateImports | m <- ms, not (facade m.file) ]
+      unused = [ (m, i) | (m, (i, isUsed)) <- imports, not isUsed ]
       unstructured = sum [ a.atEnd + a.leftFolds | m <- ms, a <- m.resolved.accumulations ]
       structured = sum [ a.structured | m <- ms, a <- m.resolved.accumulations ]
-  in [ MkComponent "structure" "directness" (percent direct (length pairs))
-         ("modules used that are imported directly: " ++ show direct ++ " of " ++ show (length pairs))
-     , MkComponent "structure" "leanness" (percent used (length imports))
-         ("private imports used: " ++ show used ++ " of " ++ show (length imports))
+  in [ MkComponent "structure" "directness" (percent (minus (length pairs) (length indirect)) (length pairs))
+         ("modules used that are imported directly: " ++ show (minus (length pairs) (length indirect)) ++ " of " ++ show (length pairs))
+         [ MkOffender m.resolved.name 1 ("uses `" ++ u ++ "` through another's re-export") | (m, u) <- indirect ]
+     , MkComponent "structure" "leanness" (percent (minus (length imports) (length unused)) (length imports))
+         ("private imports used: " ++ show (minus (length imports) (length unused)) ++ " of " ++ show (length imports))
+         [ MkOffender m.resolved.name 1 ("imports `" ++ show i.path ++ "` and uses nothing it makes visible") | (m, i) <- unused ]
      , MkComponent "efficiency" "accumulation" (percent structured (structured + unstructured))
-         ("accumulations in a snoc-list or a builder: " ++ show structured ++ " of " ++ show (structured + unstructured)) ]
+         ("accumulations in a snoc-list or a builder: " ++ show structured ++ " of " ++ show (structured + unstructured))
+         [ MkOffender (m.resolved.name ++ "." ++ a.subject) (a.atEnd + a.leftFolds)
+             (show a.atEnd ++ " grown at an end with `++`, " ++ show a.leftFolds ++ " joined by a left fold")
+         | m <- ms, a <- m.resolved.accumulations, a.atEnd + a.leftFolds > 0 ] ]

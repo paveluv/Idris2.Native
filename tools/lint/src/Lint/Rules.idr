@@ -400,11 +400,17 @@ typedOverload : Declared -> Bool
 typedOverload d = maybe False (\ns => ns `elem` d.mentions) d.namespaced
 
 ||| Whether a declaration is a private function at the top of its module,
-||| not in a namespace block.
+||| not in a namespace block, that could be anywhere else: a function
+||| declared `%extern` or `%foreign` can only be at the top.
 privateAtTop : Declared -> Bool
 privateAtTop d = isNothing d.namespaced && case d.decl.val of
-  PClaim c => not (exported c.vis)
+  PClaim c => not (exported c.vis) && not (any foreignOpt c.opts)
   _ => False
+  where
+    foreignOpt : PFnOpt -> Bool
+    foreignOpt (PForeign _) = True
+    foreignOpt (IFnOpt ExternFn) = True
+    foreignOpt _ = False
 
 ||| How many functions a declaration keeps local: those declared in the
 ||| `where` blocks of its clauses, at any depth.

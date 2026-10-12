@@ -2,5 +2,9 @@
 
 # The architectural health of a small set of modules, the warnings' fixtures
 # (rules002): each component's value and what it counts, so that a change in
-# how the score is computed shows here.
+# how the score is computed shows here. Then the same with the offenders:
+# under each component short of 100, the two that cost it most, each with
+# its cost in the component's units and what the cost is made of (the
+# modules named after nothing they define, the names that meet).
 ../../../tools/lint/build/exec/idris2-native-lint --health ../rules002
+../../../tools/lint/build/exec/idris2-native-lint --health --offenders 2 ../rules002
