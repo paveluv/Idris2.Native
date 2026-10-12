@@ -283,9 +283,12 @@ assembleWith env base is =
   let labels = foldl (\m, (l, a) => insert l a m) env (SortedMap.toList (layout base is))
   in go labels base [] [] is
   where
-    go : SortedMap Label Int -> Int -> List (List Bits8) -> List AsmProblem -> List Instr
+    -- `acc` is the bytes so far, last first. Appending each instruction's
+    -- bytes after them, as `concat` on lists does, copies them all again
+    -- for every instruction.
+    go : SortedMap Label Int -> Int -> List Bits8 -> List AsmProblem -> List Instr
       -> (List Bits8, SortedMap Label Int, List AsmProblem)
-    go labels _ acc problems [] = (concat (reverse acc), labels, reverse problems)
+    go labels _ acc problems [] = (reverse acc, labels, reverse problems)
     go labels pc acc problems (i :: rest) =
       let size = instrSize pc i
           (rel, missing) = case labelOf i of
@@ -294,7 +297,7 @@ assembleWith env base is =
               Just target => (target + d - (pc + size), [])
               Nothing => (0, [MissingLabel l])
           misfit = if fieldsFit i && fitsInt32 (cast rel) then [] else [DoesNotFit i]
-      in go labels (pc + size) (encodeRaw pc rel i :: acc) (misfit ++ missing ++ problems) rest
+      in go labels (pc + size) (reverseOnto acc (encodeRaw pc rel i)) (misfit ++ missing ++ problems) rest
 
 ||| Pass two with no external labels.
 export

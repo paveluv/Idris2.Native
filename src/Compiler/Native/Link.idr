@@ -37,7 +37,8 @@ linkProgram enc window areas program items =
       tl = layout textBase text
       ts = codeSize textBase text
       (seedData, rsyms) = seedRodata tl
-      (rodata, offsets) = foldl place (seedData, []) items
+      rodata = seedData ++ foldr (\(_, item), rest => pad8 item ++ rest) [] items
+      offsets = offsetsFrom (cast (length seedData)) items
       as = maxAreas seedAreas areas
       lay = planLayout ts (cast (length rodata)) (seedBssSize as)
       env = fromList (map (\(s, off) => (symLabel s, rodataBase lay + off)) rsyms
@@ -48,8 +49,10 @@ linkProgram enc window areas program items =
   in if null problems then Right (elfImage X86_64 lay bytes rodata (seedBssSize as) entry)
                       else Left problems
   where
-    place : (List Bits8, List (Label, Int)) -> (Label, List Bits8) -> (List Bits8, List (Label, Int))
-    place (bs, offs) (l, item) = (bs ++ pad8 item, offs ++ [(l, cast (length bs))])
+    -- each item's label at its offset, the items laid end to end from `at`
+    offsetsFrom : Int -> List (Label, List Bits8) -> List (Label, Int)
+    offsetsFrom _ [] = []
+    offsetsFrom at ((l, item) :: rest) = (l, at) :: offsetsFrom (at + cast (length (pad8 item))) rest
 
 ||| `linkProgram` for a program that uses no per-thread area beyond the
 ||| seed's, with no read-only data of its own.

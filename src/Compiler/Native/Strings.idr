@@ -32,6 +32,12 @@ utf32 : Char -> List Bits8
 utf32 c = let n = the Integer (cast (ord c)) in
           [cast n, cast (n `div` 0x100), cast (n `div` 0x10000), cast (n `div` 0x1000000)]
 
+||| The bytes of each character, end to end. Appended from the right:
+||| `concatMap` on lists appends from the left, copying the bytes so far
+||| again for every character.
+encodeAll : (Char -> List Bits8) -> List Char -> List Bits8
+encodeAll f = foldr (\c, rest => f c ++ rest) []
+
 ||| Bytes as words, eight to a word, least significant first, the last
 ||| padded with zeros.
 words : List Bits8 -> List Int64
@@ -48,10 +54,10 @@ words bs = let (w, rest) = splitAt 8 bs in
 export
 literal : (enc : Enc) -> String -> Maybe (h : Header enc STRING ** Vect (fieldWords h) Int64)
 literal (MkEnc _ _ Utf8) s =
-  let bs = concatMap utf8 (unpack s)
+  let bs = encodeAll utf8 (unpack s)
       h = StringH (all (< 0x80) bs) (length bs)
   in map (\ws => (h ** ws)) (toVect _ (words bs))
 literal (MkEnc _ _ Utf32) s =
   let cs = unpack s
       h = StringCharsH (length cs)
-  in map (\ws => (h ** ws)) (toVect _ (words (concatMap utf32 cs)))
+  in map (\ws => (h ** ws)) (toVect _ (words (encodeAll utf32 cs)))
