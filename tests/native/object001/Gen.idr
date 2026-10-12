@@ -10,7 +10,7 @@ import Compiler.Native.HeapObject
 import Runtime.Object
 
 TestEnc : Enc
-TestEnc = MkEnc FixnumTag1 (MkBignumEnc Limb64 SignMagnitude)
+TestEnc = MkEnc FixnumTag1 (MkBignumEnc Limb64 SignMagnitude) Utf8
 
 largest : Nat -> Nat
 largest w = cast (pow2 w - 1)
@@ -24,7 +24,7 @@ headers =
   [ (_ ** ConH 0 0), (_ ** ConH 1 1), (_ ** ConH 3 7), (_ ** ConH (largest 28) (largest 28))
   , (_ ** ClosureH 1 0), (_ ** ClosureH 4 2), (_ ** ClosureH (largest 28) (largest 28))
   , (_ ** Int64H), (_ ** DoubleH), (_ ** IORefH), (_ ** PtrH)
-  , (_ ** StringH 0), (_ ** StringH 1), (_ ** StringH 9), (_ ** StringH (largest 56))
+  , (_ ** StringH True 0), (_ ** StringH False 1), (_ ** StringH True 9), (_ ** StringH False (largest 55))
   , (_ ** BufferH 0), (_ ** BufferH 17), (_ ** BufferH (largest 56))
   , (_ ** BignumH False 0), (_ ** BignumH True 3), (_ ** BignumH True (largest 55))
   , (_ ** ArrayH 0), (_ ** ArrayH 5), (_ ** ArrayH (largest 56)) ]

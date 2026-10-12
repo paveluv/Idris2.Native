@@ -32,7 +32,7 @@ import System.File
 %default total
 
 TestEnc : Enc
-TestEnc = MkEnc FixnumTag1 (MkBignumEnc Limb64 SignMagnitude)
+TestEnc = MkEnc FixnumTag1 (MkBignumEnc Limb64 SignMagnitude) Utf8
 
 nm : String -> Name
 nm s = NS (mkNamespace "Main") (UN (Basic s))

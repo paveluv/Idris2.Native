@@ -79,6 +79,9 @@ import Idris.SetOptions
 |||   (`ValEnc` in `Compiler.Native.HeapObject`): fixnum tag 1, the
 |||   default; fixnum tag 0; or no fixnums, every integer boxed, which is not
 |||   implemented yet and so is refused.
+||| * `string-encoding=utf8` or `utf32`: how a `String` is laid out
+|||   (`StringEncoding`): UTF-8 with the ASCII bit, the default, or UTF-32,
+|||   which is not implemented yet and so is refused.
 ||| * `target=<arch>-<os>`: the platform the program is compiled for
 |||   (`Compiler.Native.Platform`), `x86_64-linux` by default; one not built
 |||   yet is refused by name.
@@ -113,6 +116,9 @@ parseSettings = foldlM setting (MkSettings windowBytes Nothing Nothing Nothing N
       ["val-encoding", "tag0"] => Right ({ encodings.val := FixnumTag0 } o)
       ["val-encoding", "nofixnums"] => Left "the encoding nofixnums, every integer boxed, is not implemented"
       ["val-encoding", v] => Left ("val-encoding= takes tag1, tag0 or nofixnums, not " ++ show v)
+      ["string-encoding", "utf8"] => Right ({ encodings.strings := Utf8 } o)
+      ["string-encoding", "utf32"] => Left "the string encoding utf32 is not implemented"
+      ["string-encoding", v] => Left ("string-encoding= takes utf8 or utf32, not " ++ show v)
       ["target", v] => case parsePlatform v of
         Just p => if built p then Right ({ platform := p } o)
                   else Left ("the target " ++ show p ++ " is not implemented; only x86_64-linux is")
@@ -282,9 +288,9 @@ compileExpr c s _ outputDir tm outfile = do
   whenJust settings.dumpForeign $ \f => dumpForeign settings.encodings f
   cdata <- getCompileData False VMCode tm
   image <- case settings.encodings of
-    MkEnc FixnumTag1 b => pipeline (MkEnc FixnumTag1 b) settings table (vmcode cdata)
-    MkEnc FixnumTag0 b => pipeline (MkEnc FixnumTag0 b) settings table (vmcode cdata)
-    MkEnc NoFixnums _ => throw (GenericMsg EmptyFC "native: the encoding nofixnums is not implemented")
+    MkEnc FixnumTag1 b s => pipeline (MkEnc FixnumTag1 b s) settings table (vmcode cdata)
+    MkEnc FixnumTag0 b s => pipeline (MkEnc FixnumTag0 b s) settings table (vmcode cdata)
+    MkEnc NoFixnums _ _ => throw (GenericMsg EmptyFC "native: the encoding nofixnums is not implemented")
   coreLift_ $ mkdirAll outputDir
   let outexec = outputDir </> outfile
   Right () <- coreLift (writeImage outexec image)

@@ -111,6 +111,32 @@ magnitudeWords m =
     word : Integer -> Int64
     word u = cast (if u >= 9223372036854775808 then u - 18446744073709551616 else u)
 
+||| How a `String` is laid out: its payload, and the parts of its header.
+||| Every `STRING` holds a well-formed encoding of a sequence of Unicode
+||| scalar values (no surrogates, nothing above U+10FFFF, and for UTF-8 the
+||| shortest form), which every operation that makes a string keeps and every
+||| one that reads it relies on. Code that branches on the encoding matches
+||| every constructor, with no catch-all, so that another encoding is a
+||| constructor the typechecker finds every place for.
+public export
+data StringEncoding
+  = ||| The UTF-8 bytes, and a header bit set exactly when every byte is
+    ||| below 0x80, which turns the code-point operations of an ASCII string
+    ||| into byte operations.
+    Utf8
+  | ||| One 32-bit code point per character, Chez's layout.
+    Utf32
+
+||| The string encodings under which a `StringH` exists, with the proof.
+public export
+data Utf8Strings : StringEncoding -> Type where
+  IsUtf8 : Utf8Strings Utf8
+
+||| The string encodings under which a `StringCharsH` exists.
+public export
+data Utf32Strings : StringEncoding -> Type where
+  IsUtf32 : Utf32Strings Utf32
+
 ||| The encodings a program is compiled with. Only encodings belong here; a
 ||| choice that does not change how data is laid out, such as an
 ||| optimisation, is a setting of the compilation instead.
@@ -126,13 +152,15 @@ record Enc where
   val : ValEnc
   ||| How an integer outside the small range is a `BIGNUM`.
   bignum : BignumEnc
+  ||| How a `String` is laid out.
+  strings : StringEncoding
 
 ||| The encodings a program is compiled with unless directed otherwise:
-||| fixnum tag 1, and bignums of 64-bit limbs holding the magnitude, with the
-||| sign in the header.
+||| fixnum tag 1, bignums of 64-bit limbs holding the magnitude, with the
+||| sign in the header, and UTF-8 strings.
 public export
 defaultEnc : Enc
-defaultEnc = MkEnc FixnumTag1 (MkBignumEnc Limb64 SignMagnitude)
+defaultEnc = MkEnc FixnumTag1 (MkBignumEnc Limb64 SignMagnitude) Utf8
 
 ------------------------------------------------------------------------------
 -- Heap objects
@@ -296,7 +324,8 @@ data Header : Enc -> Kind -> Type where
   ClosureH : (arity : Nat) -> (filled : Nat) -> Header enc CLOSURE
   Int64H   : Header enc INT64
   DoubleH  : Header enc DOUBLE
-  StringH  : (bytes : Nat) -> Header enc STRING
+  StringH  : {auto 0 u : Utf8Strings enc.strings} -> (ascii : Bool) -> (bytes : Nat) -> Header enc STRING
+  StringCharsH : {auto 0 u : Utf32Strings enc.strings} -> (chars : Nat) -> Header enc STRING
   BignumH  : {auto 0 sh : SignInHeader enc.bignum} -> (negative : Bool) -> (words : Nat) ->
              Header enc BIGNUM
   IORefH   : Header enc IOREF
@@ -311,7 +340,8 @@ Uninhabited (Header enc CONT) where
   uninhabited (ClosureH _ _) impossible
   uninhabited Int64H impossible
   uninhabited DoubleH impossible
-  uninhabited (StringH _) impossible
+  uninhabited (StringH _ _) impossible
+  uninhabited (StringCharsH _) impossible
   uninhabited (BignumH _ _) impossible
   uninhabited IORefH impossible
   uninhabited (ArrayH _) impossible
@@ -333,7 +363,9 @@ data HeaderPart : Kind -> Type where
   ConArity       : HeaderPart CON
   ClosureArity   : HeaderPart CLOSURE
   ClosureFilled  : HeaderPart CLOSURE
+  StringAscii    : HeaderPart STRING
   StringBytes    : HeaderPart STRING
+  StringChars    : HeaderPart STRING
   BignumNegative : HeaderPart BIGNUM
   BignumWords    : HeaderPart BIGNUM
   ArrayElems     : HeaderPart ARRAY
@@ -350,7 +382,9 @@ place ConId = (8, 28)
 place ConArity = (36, 28)
 place ClosureArity = (8, 28)
 place ClosureFilled = (36, 28)
-place StringBytes = (8, 56)
+place StringAscii = (8, 1)
+place StringBytes = (9, 55)
+place StringChars = (8, 56)
 place BignumNegative = (8, 1)
 place BignumWords = (9, 55)
 place ArrayElems = (8, 56)
@@ -368,7 +402,9 @@ Show (HeaderPart kn) where
   show ConArity = "ConArity"
   show ClosureArity = "ClosureArity"
   show ClosureFilled = "ClosureFilled"
+  show StringAscii = "StringAscii"
   show StringBytes = "StringBytes"
+  show StringChars = "StringChars"
   show BignumNegative = "BignumNegative"
   show BignumWords = "BignumWords"
   show ArrayElems = "ArrayElems"
@@ -379,7 +415,8 @@ public export
 parts : {0 k : Kind} -> Header enc k -> List (HeaderPart k, Nat)
 parts (ConH c a) = [(ConId, c), (ConArity, a)]
 parts (ClosureH a f) = [(ClosureArity, a), (ClosureFilled, f)]
-parts (StringH n) = [(StringBytes, n)]
+parts (StringH a n) = [(StringAscii, if a then 1 else 0), (StringBytes, n)]
+parts (StringCharsH n) = [(StringChars, n)]
 parts (BignumH neg n) = [(BignumNegative, if neg then 1 else 0), (BignumWords, n)]
 parts (ArrayH n) = [(ArrayElems, n)]
 parts (BufferH n) = [(BufferBytes, n)]
@@ -439,16 +476,22 @@ decodeHeader enc w = do
     -- A sign-magnitude program's BIGNUM header, matched on the record so
     -- that the match proves the sign is in the header.
     bignum : (enc' : Enc) -> Maybe (k : Kind ** Header enc' k)
-    bignum (MkEnc _ (MkBignumEnc _ SignMagnitude)) =
+    bignum (MkEnc _ (MkBignumEnc _ SignMagnitude) _) =
       Just (BIGNUM ** BignumH (get BignumNegative == 1) (get BignumWords))
     bignum _ = Nothing
+
+    -- A string's header, matched on the record so that the match proves the
+    -- encoding the constructor needs.
+    string : (enc' : Enc) -> Maybe (k : Kind ** Header enc' k)
+    string (MkEnc _ _ Utf8) = Just (STRING ** StringH (get StringAscii == 1) (get StringBytes))
+    string (MkEnc _ _ Utf32) = Just (STRING ** StringCharsH (get StringChars))
 
     parse : Maybe Kind -> Maybe (k : Kind ** Header enc k)
     parse (Just CON) = Just (CON ** ConH (get ConId) (get ConArity))
     parse (Just CLOSURE) = Just (CLOSURE ** ClosureH (get ClosureArity) (get ClosureFilled))
     parse (Just INT64) = Just (INT64 ** Int64H)
     parse (Just DOUBLE) = Just (DOUBLE ** DoubleH)
-    parse (Just STRING) = Just (STRING ** StringH (get StringBytes))
+    parse (Just STRING) = string enc
     parse (Just BIGNUM) = bignum enc
     parse (Just IOREF) = Just (IOREF ** IORefH)
     parse (Just ARRAY) = Just (ARRAY ** ArrayH (get ArrayElems))
@@ -469,7 +512,8 @@ fieldWords (ConH _ a) = a
 fieldWords (ClosureH _ f) = 1 + f
 fieldWords Int64H = 1
 fieldWords DoubleH = 1
-fieldWords (StringH n) = byteWords n
+fieldWords (StringH _ n) = byteWords n
+fieldWords (StringCharsH n) = byteWords (4 * n)
 fieldWords (BignumH _ n) = n
 fieldWords IORefH = 1
 fieldWords (ArrayH n) = n

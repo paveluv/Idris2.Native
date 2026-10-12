@@ -234,7 +234,8 @@ fieldTys (ConH _ a) = replicate a Val
 fieldTys (ClosureH _ f) = W64 :: replicate f Val
 fieldTys Int64H = [W64]
 fieldTys DoubleH = [F64]
-fieldTys (StringH n) = replicate (byteWords n) W64
+fieldTys (StringH _ n) = replicate (byteWords n) W64
+fieldTys (StringCharsH n) = replicate (byteWords (4 * n)) W64
 fieldTys (BignumH _ n) = replicate n W64
 fieldTys IORefH = [Val]
 fieldTys (ArrayH n) = replicate n Val
@@ -253,6 +254,7 @@ public export
 data Sizes : HeaderPart k -> Type where
   SizesArray : Sizes ArrayElems
   SizesString : Sizes StringBytes
+  SizesStringChars : Sizes StringChars
   SizesBuffer : Sizes BufferBytes
 
 ||| Whether the keys of a switch on the type are its values: a `Fix`'s are
@@ -287,7 +289,9 @@ data Opnd : (var : Ty enc -> Type) -> Ty enc -> Type where
 public export
 Fill : (Ty enc -> Type) -> HeaderPart k -> Type
 Fill var ArrayElems = Opnd var Val
+Fill var StringAscii = ()
 Fill var StringBytes = ()
+Fill var StringChars = ()
 Fill var BufferBytes = ()
 Fill var ConId = ()
 Fill var ConArity = ()
@@ -424,7 +428,9 @@ traverseInstr g (LoadHeader x) = LoadHeader <$> g x
 traverseInstr g (LoadPart p x) = LoadPart p <$> g x
 traverseInstr g (AllocObj h {ok} fs) = (\fs' => AllocObj h {ok} fs') <$> traverseAll g fs
 traverseInstr g (AllocSized ArrayElems {sizes} c f) = [| (\c', f' => AllocSized ArrayElems {sizes} c' f') (g c) (g f) |]
+traverseInstr g (AllocSized StringAscii {sizes} c f) = (\c' => AllocSized StringAscii {sizes} c' f) <$> g c
 traverseInstr g (AllocSized StringBytes {sizes} c f) = (\c' => AllocSized StringBytes {sizes} c' f) <$> g c
+traverseInstr g (AllocSized StringChars {sizes} c f) = (\c' => AllocSized StringChars {sizes} c' f) <$> g c
 traverseInstr g (AllocSized BufferBytes {sizes} c f) = (\c' => AllocSized BufferBytes {sizes} c' f) <$> g c
 traverseInstr g (AllocSized ConId {sizes} c f) = (\c' => AllocSized ConId {sizes} c' f) <$> g c
 traverseInstr g (AllocSized ConArity {sizes} c f) = (\c' => AllocSized ConArity {sizes} c' f) <$> g c

@@ -673,7 +673,10 @@ parameters (enc : Enc)
       -- elements as words, or the bytes rounded up to words.
       sizeOf : HeaderPart k' -> R enc (Reg64 -> List Instr)
       sizeOf ArrayElems = pure (\r => [ShiftI SHL r 3, AluI ADD r 8])
+      -- a string made by its count is not known to be ASCII: its bit is 0,
+      -- which only costs the fast paths
       sizeOf StringBytes = pure bytesSize
+      sizeOf StringChars = pure (\r => ShiftI SHL r 2 :: bytesSize r)
       sizeOf BufferBytes = pure bytesSize
       sizeOf q = failWith ("AllocSized cannot size an object by " ++ show q)
   instr blk (DirectCall f args ds collects live) = do
