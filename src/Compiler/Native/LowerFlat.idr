@@ -30,13 +30,16 @@
 ||| `Unsupported`.
 module Compiler.Native.LowerFlat
 
-import public Compiler.Native.Linkage
-
+import Compiler.Native.HeapObject
+import Compiler.Native.IRCommon
+import Compiler.Native.Linkage
+import Compiler.Native.TermIR
+import Compiler.Native.TermIR.Build
 import Compiler.Native.Words
 import Core.Name
 import Core.TT
 import Data.List
-import Data.Maybe
+import Data.List.Quantifiers
 import Data.SortedMap
 import Data.Vect
 import Decidable.Equality

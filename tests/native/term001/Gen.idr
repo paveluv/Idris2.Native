@@ -18,15 +18,26 @@
 module Main
 
 import Compiler.Native.ELF
+import Compiler.Native.HeapObject
+import Compiler.Native.IRCommon
 import Compiler.Native.Link
 import Compiler.Native.Linkage
 import Compiler.Native.LocatedIR
 import Compiler.Native.LocatedIR.Dump
 import Compiler.Native.RegAlloc
+import Compiler.Native.TermIR
 import Compiler.Native.TermIR.Build
+import Compiler.Native.X86.Encode
 import Compiler.Native.X86.Render
 import Compiler.Native.X86.Target
+import Core.FC
+import Core.Name
 import Core.Name.Namespace
+import Data.Builder
+import Data.List
+import Data.List.Quantifiers
+import Data.So
+import Data.Vect
 import System.File
 
 %default total

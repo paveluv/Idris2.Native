@@ -7,15 +7,16 @@
 ||| the token, so that accesses happen in the order the code gives them.
 module Runtime.Memory
 
--- public, so that a module importing this one has the definitions the flat
--- translation reaches through it, as it checks that module's flat functions
-import public Compiler.Native.HeapObject
-import public Flat.Uniform
-import public Runtime.Heap
+-- lint: allow public-import: the flat translation reaches through this module
+-- (checking an importer's flat functions, it reaches this module's bodies,
+-- which use it, so it is loaded wherever this module is)
 import public Runtime.OS
 
+import Compiler.Native.HeapObject
+import Flat.Uniform
 -- the runtime's own, never re-exported: each module that uses it imports it
 import Runtime.Bits
+import Runtime.Heap
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)

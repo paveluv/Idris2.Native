@@ -2,8 +2,6 @@
 ||| writers. Every target in scope is little-endian.
 module Compiler.Native.Bytes
 
-import public Data.Builder
-
 import Data.List
 
 %default total

@@ -29,9 +29,6 @@
 ||| layouts in turn, sharing no register between constructors.
 module Flat.Judgement
 
-import public Flat.Exp
-import public Flat.Problem
-
 import Core.CompileExpr
 import Core.Context
 import Core.Core
@@ -39,6 +36,8 @@ import Core.Env
 import Core.Normalise
 import Core.TT
 import Core.Value
+import Flat.Exp
+import Flat.Problem
 import Libraries.Data.NameMap
 
 %default covering

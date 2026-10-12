@@ -1,7 +1,7 @@
 ||| `idris2-native-lint`: the rules of the product's code, checked on Idris's
 ||| own parse of each file.
 |||
-|||   idris2-native-lint [--golden | --fix | --warnings] [--health [--minimum N]] PATH... [--programs PATH...]
+|||   idris2-native-lint [--golden | --fix | --warnings] [--health [--minimum N]] [--resolved] PATH... [--programs PATH...]
 |||
 ||| Each path is a `.idr` file or a directory, walked for `.idr` files, its
 ||| `build` directories left out. The paths after `--programs` are programs
@@ -14,6 +14,12 @@
 ||| fixes by itself. A rule's findings are errors or, for advice, warnings:
 ||| `--warnings` prints those too, and they fail nothing. The exit status is
 ||| 1 when there are errors or the score is too low.
+|||
+||| `--resolved` adds the rules over what the modules use, resolved from the
+||| TTCs their build wrote (`Lint.Resolution`), and the components of the
+||| score they measure: the modules must be built first, and a module whose
+||| TTC is missing or older than its source is a finding, the rules over the
+||| resolution then not run. The programs are not resolved.
 |||
 ||| A finding is suppressed by a comment, `-- lint: allow <rule>: <reason>`,
 ||| on its line or in the lines above it up to a blank line: a suppression
@@ -28,6 +34,8 @@ import Idris.Syntax
 import Lint.Finding
 import Lint.Fix
 import Lint.Graph
+import Lint.Resolution
+import Lint.ResolvedRules
 import Lint.Rules
 import Lint.Source
 import System
@@ -102,12 +110,13 @@ record Request where
   warnings : Bool
   health : Bool
   minimum : Maybe Nat
+  resolved : Bool
   paths : List String
   programs : List String
   inPrograms : Bool
 
 request : List String -> Request
-request = go (MkRequest False False False False Nothing [] [] False)
+request = go (MkRequest False False False False Nothing False [] [] False)
   where
     go : Request -> List String -> Request
     go o [] = o
@@ -116,17 +125,24 @@ request = go (MkRequest False False False False Nothing [] [] False)
     go o ("--warnings" :: as) = go ({ warnings := True } o) as
     go o ("--health" :: as) = go ({ health := True } o) as
     go o ("--minimum" :: n :: as) = go ({ minimum := Just (cast n) } o) as
+    go o ("--resolved" :: as) = go ({ resolved := True } o) as
     go o ("--programs" :: as) = go ({ inPrograms := True } o) as
     go o (p :: as) = go (if o.inPrograms then { programs $= (++ [p]) } o else { paths $= (++ [p]) } o) as
 
 ||| The findings of the product's files and of the programs, suppressions
-||| applied.
-lint : List (SourceFile, List Declared) -> List SourceFile -> IO (List Finding)
-lint fds ps = do
-  let fs = map fst fds
-  perFile <- traverse (\(f, ds) => (\ms => fileRules f ms ds) <$> mentions f.mod.decls) fds
-  let all = joined perFile ++ joined (map programRules ps) ++ graphRules fs ++ sameName fds
-  pure (sort (foldl (\acc, f => suppress f acc) all (fs ++ ps)))
+||| applied: those of the resolved rules too, given the resolution, or the
+||| findings that kept it from being made.
+lint : List (SourceFile, List Declared, Mentions) -> List SourceFile -> Maybe (Either (List Finding) Resolution) -> List Finding
+lint fdms ps res =
+  let fs = map (\(f, _, _) => f) fdms
+      fds = map (\(f, ds, _) => (f, ds)) fdms
+      fms = map (\(f, _, ms) => (f, ms)) fdms
+      resolved = case res of
+        Nothing => []
+        Just (Left problems) => problems
+        Just (Right r) => resolvedRules fms r
+      all = joined (map (\(f, ds, ms) => fileRules f ms ds) fdms) ++ joined (map programRules ps) ++ graphRules fs ++ sameName fds ++ resolved
+  in sort (foldl (\acc, f => suppress f acc) all (fs ++ ps))
 
 ||| The files under the paths, parsed, and a finding for each that does not
 ||| parse.
@@ -160,15 +176,24 @@ main = do
     | [] => exitWith (ExitFailure 2)
   let o = request args
   when (null o.paths && null o.programs) $ do
-    putStrLn "usage: idris2-native-lint [--golden] [--health [--minimum N]] PATH... [--programs PATH...]"
+    putStrLn "usage: idris2-native-lint [--golden | --fix | --warnings] [--health [--minimum N]] [--resolved] PATH... [--programs PATH...]"
     exitWith (ExitFailure 2)
   when o.fix $ traverse_ fixImports (o.paths ++ o.programs)
   (fs, failed) <- parsed o.paths
   (ps, failedPrograms) <- parsed o.programs
-  fds <- traverse (\f => (f,) <$> declared f) fs
+  fdms <- traverse (\f => do ds <- declared f; ms <- mentions f.mod.decls; pure (f, ds, ms)) fs
+  let fds = map (\(f, ds, _) => (f, ds)) fdms
+      fms = map (\(f, _, ms) => (f, ms)) fdms
+  res <- if o.resolved then Just <$> resolve fs else pure Nothing
   if o.health
     then do
-      let cs = health fds
+      r <- case res of
+        Just (Left problems) => do
+          traverse_ (putStrLn . withPosition) problems
+          exitWith (ExitFailure 2)
+        Just (Right r) => pure (Just r)
+        Nothing => pure Nothing
+      let cs = health fds ++ maybe [] (resolvedHealth fms) r
           overall = score cs
       putStrLn ("architectural health: " ++ show overall)
       for_ (groups cs) $ \g => do
@@ -179,7 +204,7 @@ main = do
         putStrLn ("below the minimum, " ++ show m)
         exitWith (ExitFailure 1)
     else do
-      findings <- ((failed ++ failedPrograms) ++) <$> lint fds ps
+      let findings = (failed ++ failedPrograms) ++ lint fdms ps res
       let errors = filter (not . isWarning . (.rule)) findings
           shown = if o.warnings && not o.golden then findings else errors
       traverse_ (putStrLn . if o.golden then withoutPosition else withPosition) shown

@@ -6,9 +6,9 @@
 ||| `Compiler.Native.Link` makes the image.
 module Compiler.Native.Linkage
 
-import public Compiler.Native.IRCommon
-import public Compiler.Native.Platform
-
+import Compiler.Native.HeapObject
+import Compiler.Native.IRCommon
+import Compiler.Native.Platform
 import Compiler.Native.X86.Asm
 import Core.Name
 import Data.List

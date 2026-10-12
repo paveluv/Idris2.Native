@@ -15,6 +15,7 @@ module Gen
 import Compiler.Native.X86.Asm
 import Compiler.Native.X86.Encode
 import Data.Buffer
+import Data.Builder
 import Data.List
 import Data.SortedMap
 import System.File

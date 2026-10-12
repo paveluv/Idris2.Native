@@ -7,7 +7,7 @@
 ||| and 0 for failure, and the caller decides what a failure means.
 module Runtime.OS
 
-import public Runtime.Heap
+import Runtime.Heap
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)

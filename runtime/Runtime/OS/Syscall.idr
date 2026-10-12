@@ -5,7 +5,7 @@
 ||| (`Runtime.OS`), which on other operating systems are not system calls.
 module Runtime.OS.Syscall
 
-import public Runtime.Heap
+import Runtime.Heap
 
 %default total
 

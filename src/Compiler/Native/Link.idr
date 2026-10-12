@@ -4,15 +4,15 @@
 ||| (`Compiler.Native.Linkage`).
 module Compiler.Native.Link
 
-import public Compiler.Native.HeapObject
-import public Compiler.Native.X86.Encode   -- linkProgram reports AsmProblem
-
 import Compiler.Native.Bytes
 import Compiler.Native.ELF
+import Compiler.Native.HeapObject
 import Compiler.Native.Linkage
+import Compiler.Native.Platform
 import Compiler.Native.Seed
 import Compiler.Native.X86.Asm
-import Data.List
+import Compiler.Native.X86.Encode
+import Data.Builder
 import Data.Maybe
 import Data.SortedMap
 

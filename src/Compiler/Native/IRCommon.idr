@@ -1,15 +1,15 @@
 ||| The vocabulary the native backend's two IRs share: the types of values,
 ||| the operators, the per-thread areas, the intrinsics, and the link-time
 ||| numbering of constructors. The located IR (`Compiler.Native.LocatedIR`)
-||| re-exports it, and the term IR (`Compiler.Native.TermIR`) builds on it
+||| and the term IR (`Compiler.Native.TermIR`) both build on it, the term IR
 ||| without importing the located IR, whose instructions and terminators
 ||| share their names with the term IR's.
 module Compiler.Native.IRCommon
 
-import public Compiler.Native.HeapObject
-
+import Compiler.Native.HeapObject
 import Compiler.Native.Target
 import Core.Name
+import Decidable.Equality.Core
 
 %default total
 

@@ -4,8 +4,6 @@
 ||| moving code does not change the gate's expected output.
 module Lint.Finding
 
-import Data.String
-
 %default total
 
 public export

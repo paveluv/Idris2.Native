@@ -32,7 +32,7 @@
 |||
 ||| The objects the IR allocates and reads, and how a uniform value is a word,
 ||| are the heap-object model (`Compiler.Native.HeapObject`), which this
-||| module re-exports: the IR names kinds, headers and header parts, and
+||| module builds on: the IR names kinds, headers and header parts, and
 ||| never a bit position or a size rule.
 |||
 ||| Some names are chosen to differ from names in modules that a renderer
@@ -41,12 +41,11 @@
 ||| `Negate` and `Complement` from the Prelude's `Ptr`, `Neg` and `Not`.
 module Compiler.Native.LocatedIR
 
-import public Compiler.Native.IRCommon
-
+import Compiler.Native.HeapObject
+import Compiler.Native.IRCommon
 import Compiler.Native.Target
 import Core.FC
 import Core.Name
-import Data.List
 
 %default total
 

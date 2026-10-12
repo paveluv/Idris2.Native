@@ -6,8 +6,7 @@
 ||| hold a `Header`; the test `object001` keeps the two in step.
 module Runtime.Object
 
-import public Runtime.Memory
-
+import Compiler.Native.HeapObject
 import Runtime.Bits
 
 %default total

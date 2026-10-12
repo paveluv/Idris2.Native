@@ -51,22 +51,28 @@
 ||| same static object.
 module Compiler.Native.Lower
 
-import public Compiler.Native.TermIR
-import public Compiler.VMCode
-
+import Compiler.Native.HeapObject
+import Compiler.Native.IRCommon
+import Compiler.Native.Linkage
 import Compiler.Native.LowerFlat
+import Compiler.Native.Platform
 import Compiler.Native.Strings
+import Compiler.Native.TermIR
+import Compiler.Native.TermIR.Build
 import Compiler.Native.Words
+import Compiler.VMCode
 import Core.CompileExpr
-import Core.FC
 import Core.Name
 import Core.TT
 import Data.Builder
 import Data.List
+import Data.List.Quantifiers
 import Data.Maybe
 import Data.SortedMap
 import Data.SortedSet
 import Data.Vect
+import Decidable.Equality
+import Decidable.Equality.Core
 import Flat.Exp
 
 %default covering

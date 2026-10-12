@@ -2,7 +2,9 @@
 
 # The product's own code against the linter's rules: the code generator, the
 # runtime and the linter itself as the product, the tests as programs. The
+# rules over what the modules use read the TTCs the gate's build wrote. The
 # findings print without their positions, so that moving code changes
-# nothing here, while a new finding, or one fixed, does.
+# nothing here, while a new finding, or one fixed, does: the product has
+# none.
 cd ../../..
-tools/lint/build/exec/idris2-native-lint --golden src runtime tools/lint/src --programs tests/native tests/flat tests/Main.idr
+tools/lint/build/exec/idris2-native-lint --golden --resolved src runtime tools/lint/src --programs tests/native tests/flat tests/Main.idr

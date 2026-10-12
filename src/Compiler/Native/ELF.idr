@@ -7,11 +7,10 @@
 ||| executables and shared objects are later work.
 module Compiler.Native.ELF
 
-import public Compiler.Native.Platform
-
 import Compiler.Native.Bytes
+import Compiler.Native.Platform
 import Data.Buffer
-import Data.List
+import Data.Builder
 import System.File
 import System.File.Permissions
 

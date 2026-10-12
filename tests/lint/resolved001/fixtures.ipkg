@@ -1,0 +1,13 @@
+package fixtures
+
+depends = idris2-native
+
+modules =
+    Canvas,
+    Gallery,
+    JoinAll,
+    Report,
+    Shape,
+    Shapes,
+    Spare,
+    Viewer

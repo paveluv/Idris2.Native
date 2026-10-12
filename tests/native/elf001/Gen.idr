@@ -10,8 +10,11 @@
 module Gen
 
 import Compiler.Native.ELF
+import Compiler.Native.Platform
 import Compiler.Native.X86.Asm
 import Compiler.Native.X86.Encode
+import Data.Builder
+import Data.SortedMap
 import System.File
 
 main : IO ()

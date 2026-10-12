@@ -4,8 +4,11 @@
 ||| convention, so that ordinary code and flat code compute the same.
 module Compiler.Native.Words
 
-import public Compiler.Native.TermIR.Build
-
+import Compiler.Native.HeapObject
+import Compiler.Native.IRCommon
+import Compiler.Native.TermIR
+import Compiler.Native.TermIR.Build
+import Data.List.Quantifiers
 %default total
 
 parameters {0 enc : Enc} {0 d : Decls enc} {0 c : Conv enc} {0 m : Bool}

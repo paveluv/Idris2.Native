@@ -27,6 +27,8 @@ position (MkFC _ s _) = s
 position (MkVirtualFC _ s _) = s
 position EmptyFC = (0, 0)
 
+||| A rule's finding in a file, where a source position starts.
+export
 finding : SourceFile -> (rule : String) -> FC -> (subject, message : String) -> Finding
 finding f rule fc subject message =
   let (l, c) = position fc in MkFinding rule f.path l c subject message
@@ -37,8 +39,25 @@ finding f rule fc subject message =
 ||| The label of the references being collected.
 data Collected : Type where
 
-||| What the terms of a file mention: every name it refers to, with where,
-||| and every `%runElab` in a term.
+||| An operator where it is written, as symbols or between backticks.
+operator : WithFC (OpStr' Name) -> (FC, Name)
+operator o = (o.fc, either id id (opNameToEither o.val))
+
+||| The names a term writes where it stands: a reference, an operator, a
+||| field projected. Idris's parse holds an operator, and a projection's
+||| field, apart from its references; to a reader they are names written.
+writes : PTerm -> List (FC, Name)
+writes (PRef fc n) = [(fc, n)]
+writes (POp _ _ op _) = [operator op]
+writes (PPrefixOp _ op _) = [operator op]
+writes (PSectionL _ op _) = [operator op]
+writes (PSectionR _ _ op) = [operator op]
+writes (PPostfixApp _ _ fields) = fields
+writes (PPostfixAppPartial _ fields) = fields
+writes _ = []
+
+||| What the terms of a file mention: every name it writes, with where, and
+||| every `%runElab` in a term.
 public export
 record Mentions where
   constructor MkMentions
@@ -59,9 +78,8 @@ mentions ds = coreRun walk (\_ => pure (MkMentions [] [])) pure
       pure ({ refs $= reverse, runElabs $= reverse } m)
       where
         note : Ref Collected Mentions -> PTerm -> Core ()
-        note r (PRef fc n) = update Collected { refs $= ((fc, n) ::) }
         note r (PRunElab fc _) = update Collected { runElabs $= (fc ::) }
-        note r _ = pure ()
+        note r t = update Collected { refs $= (reverse (writes t) ++) }
 
 ------------------------------------------------------------------------------
 -- Imports
@@ -172,8 +190,7 @@ namesWritten t = do
   pure (map snd m.refs)
   where
     note : {auto r : Ref Collected Mentions} -> PTerm -> Core ()
-    note (PRef fc n) = update Collected { refs $= ((fc, n) ::) }
-    note _ = pure ()
+    note t = update Collected { refs $= (reverse (writes t) ++) }
 
 ||| The names the terms mention, without their namespaces.
 namesIn : PTerm -> Core (List String)
@@ -544,12 +561,13 @@ fileRules f ms ds =
 ||| is advice, printed when asked for.
 export
 isWarning : (rule : String) -> Bool
-isWarning rule = rule == "module-name" || rule == "same-name"
+isWarning rule = rule == "module-name" || rule == "same-name" || rule == "list-append"
 
-||| The names of every rule, those over the graph included.
+||| The names of every rule, those over the graph and over the resolution
+||| included.
 export
 ruleNames : List String
 ruleNames =
   [ "import-order", "public-import", "default-totality", "elab-reflection"
   , "trust-escape", "cites-plan", "todo", "header-comment", "implementation-adjacent", "module-name"
-  , "layering", "syscall", "same-name" ]
+  , "layering", "syscall", "same-name", "import-unused", "import-indirect", "list-append" ]

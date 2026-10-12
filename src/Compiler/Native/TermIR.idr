@@ -39,13 +39,15 @@
 ||| `Compiler.Native.TermIR.Build`.
 module Compiler.Native.TermIR
 
-import public Compiler.Native.IRCommon
-import public Core.FC
-import public Core.Name
-import public Data.List
-import public Data.List.Quantifiers
-import public Data.So
-import public Data.Vect
+import Compiler.Native.HeapObject
+import Compiler.Native.IRCommon
+import Core.FC
+import Core.Name
+import Data.List
+import Data.List.Quantifiers
+import Data.So
+import Data.Vect
+import Decidable.Equality.Core
 
 %default total
 

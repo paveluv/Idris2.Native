@@ -76,6 +76,7 @@ import Data.String
 import Data.Vect
 import Flat.Exp
 import Flat.Judgement
+import Flat.Problem
 import Libraries.Data.List.SizeOf
 import Libraries.Data.NameMap
 import Libraries.Data.WithDefault

@@ -4,9 +4,12 @@
 ||| lowering of continuations enters code.
 module Runtime.Start
 
-import public Runtime.Space
-
+import Compiler.Native.HeapObject
 import Runtime.Bits
+import Runtime.Heap
+import Runtime.Memory
+import Runtime.OS
+import Runtime.State
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)

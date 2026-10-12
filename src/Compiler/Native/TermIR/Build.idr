@@ -15,7 +15,15 @@
 ||| has to say what it does then, which is to return `Nothing`.
 module Compiler.Native.TermIR.Build
 
-import public Compiler.Native.TermIR
+import Compiler.Native.HeapObject
+import Compiler.Native.IRCommon
+import Compiler.Native.TermIR
+import Core.Name
+import Data.List
+import Data.List.Quantifiers
+import Data.So
+import Data.Vect
+import Decidable.Equality
 
 %default total
 

@@ -7,8 +7,7 @@
 ||| well-formed under either.
 module Compiler.Native.Strings
 
-import public Compiler.Native.HeapObject
-
+import Compiler.Native.HeapObject
 import Data.List
 import Data.Vect
 

@@ -9,10 +9,11 @@
 ||| allocation window, r12 the current continuation.
 module Compiler.Native.Seed
 
-import public Compiler.Native.HeapObject
-import public Compiler.Native.Linkage
-
 import Compiler.Native.Bytes
+import Compiler.Native.HeapObject
+import Compiler.Native.IRCommon
+import Compiler.Native.Linkage
+import Compiler.Native.Target
 import Compiler.Native.X86.Asm
 import Compiler.Native.X86.Target
 import Data.List

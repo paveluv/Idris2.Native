@@ -15,12 +15,17 @@
 ||| runtime's own allocation never collects.
 module Runtime.Space
 
-import public Runtime.Collect
-import public Runtime.Object
+-- lint: allow public-import: the flat translation reaches through this module
+-- (checking an importer's flat functions, it reaches this module's bodies,
+-- which use it, so it is loaded wherever this module is)
 import public Runtime.State
 
+import Compiler.Native.HeapObject
 import Runtime.Bits
-
+import Runtime.Collect
+import Runtime.Heap
+import Runtime.Memory
+import Runtime.Object
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
 %hide Prelude.Interfaces.pure

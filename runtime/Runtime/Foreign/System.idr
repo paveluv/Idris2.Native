@@ -5,6 +5,7 @@
 ||| result as their types say.
 module Runtime.Foreign.System
 
+import Runtime.Heap
 import Runtime.System
 
 %default total

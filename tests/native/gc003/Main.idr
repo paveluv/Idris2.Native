@@ -8,6 +8,7 @@ module Main
 
 import Data.List
 import Data.So
+import Flat.Uniform
 import Probe
 import Runtime.Space
 import System

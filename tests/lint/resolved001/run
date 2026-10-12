@@ -1,0 +1,18 @@
+. ../../testutils.sh
+
+# The rules over what modules use, resolved from the TTCs their build
+# writes, so the fixtures are built first. `Gallery` and `Report` use
+# `Shape` (a name written, an implementation found by search) reached only
+# through `Canvas`'s re-export; `Viewer` reaches it through a façade, and a
+# package's module through a package's re-export, as meant; `Spare` imports
+# a module it does not use; `JoinAll` joins lists, a warning. Then the
+# score's components that the resolution measures.
+idris2 --build fixtures.ipkg > /dev/null
+../../../tools/lint/build/exec/idris2-native-lint --resolved --warnings .
+../../../tools/lint/build/exec/idris2-native-lint --resolved --health . | grep "directness\|leanness\|builders"
+
+# A source changed after its build: its TTC no longer says what it uses, so
+# nothing is resolved, and the finding says so.
+touch Spare.idr
+../../../tools/lint/build/exec/idris2-native-lint --resolved .
+rm -rf build

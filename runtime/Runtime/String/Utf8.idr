@@ -24,9 +24,13 @@
 ||| string.
 module Runtime.String.Utf8
 
-import public Runtime.Space
-
+import Compiler.Native.HeapObject
+import Flat.Uniform
 import Runtime.Bits
+import Runtime.Heap
+import Runtime.Memory
+import Runtime.Object
+import Runtime.Space
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)

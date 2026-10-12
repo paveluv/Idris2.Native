@@ -9,6 +9,8 @@
 -- and its inverse, each wrong in one place, and every check must report it.
 module Main
 
+import Compiler.Native.HeapObject
+import Compiler.Native.IRCommon
 import Compiler.Native.Linkage
 import Compiler.Native.LocatedIR
 import Compiler.Native.Platform

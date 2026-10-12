@@ -14,9 +14,6 @@
 ||| reports what no module's check did.
 module Flat.Marked
 
-import public Flat.Exp
-import public Libraries.Data.NameMap
-
 import Compiler.Common
 import Core.Context
 import Core.Core
@@ -25,12 +22,15 @@ import Core.FC
 import Core.Name
 import Data.List
 import Data.Maybe
+import Flat.Exp
+import Flat.Problem
 import Flat.Report
 import Flat.Translate
 import Idris.Error
 import Idris.Pretty
 import Idris.REPL.Opts
 import Idris.Syntax
+import Libraries.Data.NameMap
 import Libraries.Text.PrettyPrint.Prettyprinter
 import Libraries.Text.PrettyPrint.Prettyprinter.Render.String
 

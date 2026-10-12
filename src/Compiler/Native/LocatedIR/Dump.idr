@@ -3,10 +3,11 @@
 ||| its parameters.
 module Compiler.Native.LocatedIR.Dump
 
+import Compiler.Native.HeapObject
+import Compiler.Native.IRCommon
 import Compiler.Native.LocatedIR
 import Core.Name
 import Data.Builder
-import Data.List
 import Data.String
 
 %default covering

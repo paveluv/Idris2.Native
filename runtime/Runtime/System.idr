@@ -1,7 +1,12 @@
 ||| The routines that end the program.
 module Runtime.System
 
+-- lint: allow public-import: the flat translation reaches through this module
+-- (checking an importer's flat functions, it reaches this module's bodies,
+-- which use it, so it is loaded wherever this module is)
 import public Runtime.OS
+
+import Runtime.Heap
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)

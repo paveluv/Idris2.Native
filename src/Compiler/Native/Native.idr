@@ -18,14 +18,19 @@ module Compiler.Native.Native
 
 import Compiler.Common
 import Compiler.Native.ELF
+import Compiler.Native.HeapObject
+import Compiler.Native.IRCommon
 import Compiler.Native.Link
 import Compiler.Native.Linkage
 import Compiler.Native.LocatedIR
 import Compiler.Native.LocatedIR.Dump
 import Compiler.Native.Lower
 import Compiler.Native.LowerFlat
+import Compiler.Native.Platform
 import Compiler.Native.RegAlloc
+import Compiler.Native.TermIR
 import Compiler.Native.X86.Asm
+import Compiler.Native.X86.Encode
 import Compiler.Native.X86.Render
 import Compiler.Native.X86.Target
 import Compiler.VMCode

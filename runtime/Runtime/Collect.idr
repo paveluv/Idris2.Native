@@ -19,7 +19,7 @@
 ||| not yet scanned, which every step lowers.
 module Runtime.Collect
 
-import public Runtime.Heap
+import Runtime.Heap
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)

@@ -9,7 +9,9 @@
 ||| program sets decides how far the heap may grow.
 module Runtime.State
 
-import public Runtime.Memory
+import Compiler.Native.HeapObject
+import Runtime.Heap
+import Runtime.Memory
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)

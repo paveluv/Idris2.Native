@@ -18,6 +18,8 @@ import Compiler.Native.HeapObject
 import Compiler.Native.Link
 import Compiler.Native.Linkage
 import Compiler.Native.X86.Asm
+import Compiler.Native.X86.Encode
+import Data.Builder
 import System.File
 
 ||| The word of fixnum n, under fixnum tag 1.

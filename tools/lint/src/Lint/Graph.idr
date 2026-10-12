@@ -186,6 +186,7 @@ sameName fds = joined (map report (meetings fds))
 -- Health
 
 ||| A share as a whole percentage; 100 when there is nothing to count.
+export
 percent : Nat -> Nat -> Nat
 percent _ Z = 100
 percent k n = let k' = the Integer (cast k); n' = the Integer (cast n) in

@@ -17,8 +17,14 @@ module Probe
 
 -- the runtime's functions use its own bit operations, which it does not
 -- re-export; flat code that reaches into them imports those too
+import Compiler.Native.HeapObject
+import Flat.Uniform
 import Runtime.Bits
+import Runtime.Heap
+import Runtime.Memory
+import Runtime.Object
 import Runtime.Space
+import Runtime.State
 import Runtime.String.Utf8
 
 -- this module's `do` is the runtime's, over the token

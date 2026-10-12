@@ -1,10 +1,12 @@
 . ../../testutils.sh
 
 # The architectural health of the product's code (the code generator and the
-# runtime) stays at 65 or more. The score is the mean of its groups: the
+# runtime) stays at 60 or more. The score is the mean of its groups: the
 # structure of the imports (private imports, imports the layers allow,
-# module pairs a change cannot reach, imported names used) and readability
-# (implementations next to their types, modules named after a symbol they
-# define, names with one meaning, helpers scoped to their users).
+# module pairs a change cannot reach, imported names used, modules used
+# imported directly, imports used), readability (implementations next to
+# their types, modules named after a symbol they define, names with one
+# meaning, helpers scoped to their users) and efficiency (appends that join
+# builders).
 cd ../../..
-tools/lint/build/exec/idris2-native-lint --health --minimum 65 src runtime > /dev/null && echo "architectural health: 65 or more"
+tools/lint/build/exec/idris2-native-lint --resolved --health --minimum 60 src runtime > /dev/null && echo "architectural health: 60 or more"
