@@ -125,7 +125,7 @@ lint : List (SourceFile, List Declared) -> List SourceFile -> IO (List Finding)
 lint fds ps = do
   let fs = map fst fds
   perFile <- traverse (\(f, ds) => (\ms => fileRules f ms ds) <$> mentions f.mod.decls) fds
-  let all = joined perFile ++ joined (map programRules ps) ++ graphRules fs
+  let all = joined perFile ++ joined (map programRules ps) ++ graphRules fs ++ sameName fds
   pure (sort (foldl (\acc, f => suppress f acc) all (fs ++ ps)))
 
 ||| The files under the paths, parsed, and a finding for each that does not

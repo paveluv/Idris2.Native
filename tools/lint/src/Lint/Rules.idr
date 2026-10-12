@@ -129,6 +129,14 @@ record Declared where
   defines : List String
   mentions : List String
   implementing : Maybe (String, List String)
+  ||| The names an importing module sees: an exported function or type, the
+  ||| constructors of a public type, the methods of an exported interface.
+  ||| A record's fields are not among them: they are reached through the
+  ||| record's namespace.
+  visible : List String
+  ||| The names mentioned as written without a namespace: where a reader
+  ||| must know which of several definitions a name means.
+  bare : List String
 
 ||| The name a clause defines: the head of its left-hand side.
 clauseName : PTerm -> Maybe Name
@@ -152,17 +160,51 @@ definesOf d = case d.val of
   PInterface _ _ n _ _ _ _ _ => [nameRoot n]
   _ => []
 
-||| The names the terms mention, by Idris's own traversal.
-namesIn : PTerm -> Core (List String)
-namesIn t = do
+||| The names the terms mention, as written, by Idris's own traversal.
+namesWritten : PTerm -> Core (List Name)
+namesWritten t = do
   r <- newRef Collected (MkMentions [] [])
   ignore $ mapPTermM (\u => do note u; pure u) t
   m <- get Collected
-  pure (map (nameRoot . snd) m.refs)
+  pure (map snd m.refs)
   where
     note : {auto r : Ref Collected Mentions} -> PTerm -> Core ()
     note (PRef fc n) = update Collected { refs $= ((fc, n) ::) }
     note _ = pure ()
+
+||| The names the terms mention, without their namespaces.
+namesIn : PTerm -> Core (List String)
+namesIn t = map nameRoot <$> namesWritten t
+
+||| Whether a name is written without a namespace.
+unqualified : Name -> Bool
+unqualified (NS _ _) = False
+unqualified _ = True
+
+exported : Visibility -> Bool
+exported Private = False
+exported _ = True
+
+visibleOf : PDecl -> List String
+visibleOf d = case d.val of
+  PClaim c => if exported c.vis then map (nameRoot . (.val) . snd) (forget c.type.val.names) else []
+  PData _ v _ (MkPData _ n _ _ cons) =>
+    if exported (collapseDefault v)
+       then nameRoot n :: (if collapseDefault v == Public then foldr (\c, rest => map (nameRoot . (.val) . snd) (forget c.val.names) ++ rest) [] cons else [])
+       else []
+  PData _ v _ (MkPLater _ n _) => if exported (collapseDefault v) then [nameRoot n] else []
+  PRecord _ v _ (MkPRecord n _ _ con _) =>
+    if exported (collapseDefault v)
+       then nameRoot n :: (if collapseDefault v == Public then maybe [] (\c => [nameRoot c.val]) con else [])
+       else []
+  PRecord _ v _ (MkPRecordLater n _) => if exported (collapseDefault v) then [nameRoot n] else []
+  PInterface v _ n _ _ _ _ body =>
+    if exported (collapseDefault v)
+       then nameRoot n :: foldr (\m, rest => case m.val of
+                                                PClaim c => map (nameRoot . (.val) . snd) (forget c.type.val.names) ++ rest
+                                                _ => rest) [] body
+       else []
+  _ => []
 
 isBlock : PDecl -> Bool
 isBlock d = case d.val of
@@ -186,13 +228,15 @@ declared f = coreRun (traverse one leaves) (\_ => pure []) pure
 
     one : PDecl -> Core Declared
     one d = do
-      ms <- namesIn (PQuoteDecl EmptyFC [d])
+      written <- namesWritten (PQuoteDecl EmptyFC [d])
+      let ms = map nameRoot written
+          bareNames = map nameRoot (filter unqualified written)
       impl <- case d.val of
         PImplementation _ _ _ _ _ iface params _ _ _ => do
           ps <- traverse namesIn params
           pure (Just (nameRoot iface, foldr (++) [] ps))
         _ => pure Nothing
-      pure (MkDeclared d (definesOf d) ms impl)
+      pure (MkDeclared d (definesOf d) ms impl (visibleOf d) bareNames)
 
 ||| The types a file defines (data types and records), by name.
 typesOf : List Declared -> List String
@@ -429,7 +473,7 @@ fileRules f ms ds =
 ||| is advice, printed when asked for.
 export
 isWarning : (rule : String) -> Bool
-isWarning rule = rule == "module-name"
+isWarning rule = rule == "module-name" || rule == "same-name"
 
 ||| The names of every rule, those over the graph included.
 export
@@ -437,4 +481,4 @@ ruleNames : List String
 ruleNames =
   [ "import-order", "public-import", "default-totality", "elab-reflection"
   , "trust-escape", "cites-plan", "todo", "header-comment", "implementation-adjacent", "module-name"
-  , "layering", "syscall" ]
+  , "layering", "syscall", "same-name" ]

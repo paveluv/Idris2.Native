@@ -92,6 +92,90 @@ graphRules fs =
         start EmptyFC = (0, 0)
 
 ------------------------------------------------------------------------------
+-- Names that meet
+
+||| A name defined in several of our modules and seen together in one: the
+||| modules that define it, and one where they meet.
+public export
+record Meeting where
+  constructor MkMeeting
+  name : String
+  definers : List String
+  inModule : String
+
+||| The modules whose names a module sees: those it imports, and those they
+||| re-export publicly, in turn.
+seen : SortedMap String (List String) -> SortedMap String (List String) -> String -> SortedSet String
+seen imports reexports m = go empty (fromMaybe [] (lookup m imports))
+  where
+    go : SortedSet String -> List String -> SortedSet String
+    go acc [] = acc
+    go acc (i :: is) =
+      if contains i acc then go acc is
+      else go (insert i acc) (fromMaybe [] (lookup i reexports) ++ is)
+
+||| The names that meet: a module's pool is its own names and those its
+||| imports, and what they re-export publicly, make visible. Once imported a
+||| name is unqualified, so two definitions of one name meet there whatever
+||| their modules; they confuse a reader where the module writes the name
+||| without a namespace, so only there do they count.
+export
+meetings : List (SourceFile, List Declared) -> List Meeting
+meetings fds =
+  let ours = ourModules (map fst fds)
+      oursOnly = \is => filter (\i => contains i ours) is
+      imports = fromList [ (moduleOf f, oursOnly (map (show . (.path)) f.mod.imports)) | (f, _) <- fds ]
+      reexports = fromList [ (moduleOf f, oursOnly (map (show . (.path)) (filter (.reexport) f.mod.imports))) | (f, _) <- fds ]
+      visibleIn = the (SortedMap String (List String)) (fromList [ (moduleOf f, joined (map (.visible) ds)) | (f, ds) <- fds ])
+      found = foldl (\acc, fd => meet acc imports reexports visibleIn fd) empty fds
+  in map (\(n, (ds, m)) => MkMeeting n ds m) (SortedMap.toList found)
+  where
+    tag : String -> List String -> List (String, String)
+    tag m = map (\n => (n, m))
+
+    meet : SortedMap String (List String, String) -> SortedMap String (List String) -> SortedMap String (List String) ->
+           SortedMap String (List String) -> (SourceFile, List Declared) -> SortedMap String (List String, String)
+    meet acc imports reexports visibleIn (f, ds) =
+      let m = moduleOf f
+          own = tag m (joined (map (.defines) ds))
+          others = joined [ tag i (fromMaybe [] (lookup i visibleIn)) | i <- Prelude.toList (seen imports reexports m) ]
+          written = the (SortedSet String) (fromList (joined (map (.bare) ds)))
+          byName = foldl (\mp, (n, d) => if contains n written then insert n (insert d (fromMaybe empty (lookup n mp))) mp else mp)
+                         (the (SortedMap String (SortedSet String)) empty) (own ++ others)
+      in foldl (\a, (n, defs) => let ds' = Prelude.toList defs in
+                                   if length ds' < 2 || isJust (lookup n a) then a else insert n (ds', m) a)
+               acc (SortedMap.toList byName)
+
+||| `same-name`, a warning: one name, two meanings, meeting in a module: each
+||| definition is reported, with the others and where they meet.
+export
+sameName : List (SourceFile, List Declared) -> List Finding
+sameName fds = joined (map report (meetings fds))
+  where
+    at : String -> String -> Maybe (SourceFile, Declared)
+    at m n = case find (\fd => moduleOf (fst fd) == m) fds of
+      Nothing => Nothing
+      Just (f, ds) => map (f,) (find (\d => (n `elem` d.defines) || (n `elem` d.visible)) ds)
+
+    start : FC -> (Int, Int)
+    start (MkFC _ s _) = s
+    start (MkVirtualFC _ s _) = s
+    start EmptyFC = (0, 0)
+
+    report : Meeting -> List Finding
+    report mt = mapMaybe one mt.definers
+      where
+        one : String -> Maybe Finding
+        one d = case at d mt.name of
+          Nothing => Nothing
+          Just (f, decl) =>
+            let (l, c) = start decl.decl.fc
+                others = filter (/= d) mt.definers
+            in Just (MkFinding "same-name" f.path l c mt.name
+                      ("`" ++ mt.name ++ "` is also defined in " ++ fastConcat (intersperse ", " (map (\o => "`" ++ o ++ "`") others))
+                       ++ "; they meet in `" ++ mt.inModule ++ "`"))
+
+------------------------------------------------------------------------------
 -- Health
 
 ||| A share as a whole percentage; 100 when there is nothing to count.
@@ -139,6 +223,9 @@ health fds =
       adjacencies = foldr (\(_, ds), rest => adjacency ds ++ rest) (the (List Adjacency) []) fds
       adjacent = length (filter (\a => isNothing a.intruder) adjacencies)
       named = length (filter (\fd => namedAfterSymbol (fst fd) (snd fd)) fds)
+      exportedNames = foldr (\(f, ds), rest => map (\n => (n, moduleOf f)) (joined (map (.visible) ds)) ++ rest) (the (List (String, String)) []) fds
+      meetingNames = map (.name) (meetings fds)
+      unique = length (filter (\nm => not (fst nm `elem` meetingNames)) exportedNames)
   in [ MkComponent "structure" "encapsulation" (percent privates (length imports))
          ("private imports, façades exempt: " ++ show privates ++ " of " ++ show (length imports))
      , MkComponent "structure" "layering" (percent good (length checked))
@@ -148,7 +235,9 @@ health fds =
      , MkComponent "readability" "cohesion" (percent adjacent (length adjacencies))
          ("implementations next to their types: " ++ show adjacent ++ " of " ++ show (length adjacencies))
      , MkComponent "readability" "names" (percent named n)
-         ("modules named after a symbol they define: " ++ show named ++ " of " ++ show n) ]
+         ("modules named after a symbol they define: " ++ show named ++ " of " ++ show n)
+     , MkComponent "readability" "uniqueness" (percent unique (length exportedNames))
+         ("exported names that meet no other definition: " ++ show unique ++ " of " ++ show (length exportedNames)) ]
   where
     directive : PDecl -> Bool
     directive d = case d.val of

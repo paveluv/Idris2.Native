@@ -1,1 +1,3 @@
+./Cat.idr:12:1 same-name: `speak` is also defined in `Dog`; they meet in `Zoo`
+./Dog.idr:10:1 same-name: `speak` is also defined in `Cat`; they meet in `Zoo`
 ./Elsewhere.idr:1:1 module-name: `Elsewhere` is named after nothing it defines: a reader looks a symbol up by its module's name
