@@ -54,12 +54,12 @@
 ||| collection can see a partial one.
 module Compiler.Native.X86.Render
 
-import Compiler.Native.HeapObject
-import Compiler.Native.LocatedIR
-import Compiler.Native.Linkage
-import Compiler.Native.X86.Target
-import Compiler.Native.X86.Asm
 import Compiler.Native.Bytes
+import Compiler.Native.HeapObject
+import Compiler.Native.Linkage
+import Compiler.Native.LocatedIR
+import Compiler.Native.X86.Asm
+import Compiler.Native.X86.Target
 import Control.Monad.State
 import Core.Name
 import Data.List

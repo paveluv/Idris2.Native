@@ -42,4 +42,5 @@ pure v m = m # v
 ||| End the program with the message, whatever operation was expected.
 export
 crashOp : String -> Op h a
+-- lint: allow trust-escape: a crash returns nothing, so it is an operation of any result
 crashOp msg = assert_total (idris_crash msg)

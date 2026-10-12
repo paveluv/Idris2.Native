@@ -3,12 +3,9 @@
 module Flat.Check
 
 import Compiler.Common
-
 import Core.Context
 import Core.Core
-
 import Flat.Marked
-
 import Idris.Syntax
 
 %default covering

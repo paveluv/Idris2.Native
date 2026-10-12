@@ -59,31 +59,26 @@
 ||| that asked for them.
 module Flat.Translate
 
-import Data.Builder
 import Compiler.Opts.Constructor
-
 import Core.Case.CaseTree
 import Core.CompileExpr
 import Core.Context
 import Core.Core
 import Core.Env
-import Flat.Exp
 import Core.Normalise
 import Core.Primitives
 import Core.TT
 import Core.Value
-
-import Flat.Judgement
-
+import Data.Builder
 import Data.List
 import Data.List1
 import Data.String
 import Data.Vect
-
+import Flat.Exp
+import Flat.Judgement
 import Libraries.Data.List.SizeOf
 import Libraries.Data.NameMap
 import Libraries.Data.WithDefault
-
 import System.File
 
 %default covering
@@ -274,6 +269,7 @@ boundRefs tm = nub (contents (go tm))
   where
     go : Term vs -> Builder Name
     go (Ref _ Bound x) = single x
+    -- lint: allow trust-escape: a binder's terms are parts of it, which `binderTerms` hides
     go (Bind _ _ b sc) = concatMap go (assert_total (binderTerms b)) <+> go sc
     go (App _ f a) = go f <+> go a
     go (As _ _ a p) = go a <+> go p

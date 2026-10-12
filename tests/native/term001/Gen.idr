@@ -18,12 +18,12 @@
 module Main
 
 import Compiler.Native.ELF
+import Compiler.Native.Link
+import Compiler.Native.Linkage
 import Compiler.Native.LocatedIR
 import Compiler.Native.LocatedIR.Dump
-import Compiler.Native.Linkage
-import Compiler.Native.Link
-import Compiler.Native.TermIR.Build
 import Compiler.Native.RegAlloc
+import Compiler.Native.TermIR.Build
 import Compiler.Native.X86.Render
 import Compiler.Native.X86.Target
 import Core.Name.Namespace

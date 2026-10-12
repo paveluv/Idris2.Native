@@ -8,6 +8,8 @@
 #                   `idris2-native`, and build with it the runtime, the
 #                   package `idris2-native-runtime`, into build/prefix
 #   make test       run the tests; `only=native/term001` runs some
+#   make lint       the product's code against the linter's rules
+#                   (tools/lint), and its architectural health
 #   make scaling    the backend's phases against the size of the program;
 #                   `sizes="64 128"` chooses the sizes
 #
@@ -24,7 +26,7 @@ threads ?= $(shell nproc 2>/dev/null || echo 1)
 # after uses the pinned Idris 2's, in the prefix.
 WITH_PREFIX := IDRIS2_PREFIX=$(PREFIX)
 
-.PHONY: all upstream native testbin test scaling clean
+.PHONY: all upstream native linter testbin test lint scaling clean
 
 all: native
 
@@ -39,12 +41,24 @@ native:
 	$(WITH_PREFIX) $(UPSTREAM_IDRIS2) --install idris2-native.ipkg
 	cd runtime && $(WITH_PREFIX) $(TARGET) --install idris2-native-runtime.ipkg
 
+# The linter is an Idris program of its own, on the API of the pinned Idris.
+LINTER := $(CURDIR)/tools/lint/build/exec/idris2-native-lint
+
+linter:
+	cd tools/lint && $(WITH_PREFIX) $(UPSTREAM_IDRIS2) --build idris2-native-lint.ipkg
+
 testbin:
 	cd tests && $(WITH_PREFIX) $(UPSTREAM_IDRIS2) --build tests.ipkg
 
-test: native testbin
+test: native linter testbin
 	cd tests && $(WITH_PREFIX) NAME_VERSION=$(NAME_VERSION) ./build/exec/runtests $(TARGET) \
 	  --timing --failure-file failures --threads $(threads) --only "$(only)" < /dev/null
+
+# Findings with their positions, then the health score; fails on a finding
+# or a score under the gate's minimum.
+lint: linter
+	$(LINTER) src runtime tools/lint/src --programs tests/native tests/flat tests/Main.idr
+	$(LINTER) --health --minimum 85 src runtime
 
 # The backend's phases against the size of the program: fails when one
 # grows faster than the program (tests/scaling/scaling.sh). On demand, not
@@ -54,6 +68,6 @@ scaling: native
 	cd tests/scaling && $(WITH_PREFIX) sh ./scaling.sh $(TARGET) $(sizes)
 
 clean:
-	$(RM) -r build runtime/build tests/build tests/failures
+	$(RM) -r build runtime/build tools/lint/build tests/build tests/failures
 	find tests -name build -type d -prune -exec $(RM) -r {} +
 	find tests -name output -type f -delete

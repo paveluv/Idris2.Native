@@ -17,11 +17,10 @@
 ||| recognises it by. The judgement of a type (`Flat.Judgement`) computes both.
 module Flat.Exp
 
-import Data.Builder
 import Core.FC
 import Core.Name
 import Core.TT
-
+import Data.Builder
 import Data.List
 import Data.Vect
 
@@ -84,6 +83,7 @@ Show Skeleton where
 export
 Eq Skeleton where
   SPrim a == SPrim b = a == b
+  -- lint: allow trust-escape: the arguments are parts of the skeletons, which list equality hides
   SCon m as == SCon n bs = m == n && assert_total (as == bs)
   SOther == SOther = True
   _ == _ = False

@@ -1,0 +1,8 @@
+. ../../testutils.sh
+
+# The architectural health of the product's code (the code generator and the
+# runtime) stays at 85 or more. The score is the mean of its components:
+# private imports, imports the layers allow, and module pairs a change
+# cannot reach.
+cd ../../..
+tools/lint/build/exec/idris2-native-lint --health --minimum 85 src runtime > /dev/null && echo "architectural health: 85 or more"

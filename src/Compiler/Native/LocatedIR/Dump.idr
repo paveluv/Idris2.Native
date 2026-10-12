@@ -3,9 +3,9 @@
 ||| its parameters.
 module Compiler.Native.LocatedIR.Dump
 
-import Data.Builder
 import Compiler.Native.LocatedIR
 import Core.Name
+import Data.Builder
 import Data.List
 import Data.String
 

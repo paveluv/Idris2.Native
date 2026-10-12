@@ -31,8 +31,8 @@
 module Compiler.Native.LowerFlat
 
 import public Compiler.Native.Linkage
+
 import Compiler.Native.Words
-import Flat.Exp
 import Core.Name
 import Core.TT
 import Data.List
@@ -40,6 +40,7 @@ import Data.Maybe
 import Data.SortedMap
 import Data.Vect
 import Decidable.Equality
+import Flat.Exp
 
 %default covering
 

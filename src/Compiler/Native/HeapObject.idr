@@ -9,8 +9,9 @@
 ||| that the runtime's own Idris can import it too.
 module Compiler.Native.HeapObject
 
-import Data.List
 import public Decidable.Equality
+
+import Data.List
 
 %default total
 

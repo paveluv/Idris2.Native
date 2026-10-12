@@ -15,12 +15,11 @@
 -- be the one that collects, before the second look.
 module Probe
 
-import Runtime.Space
-import Runtime.String.Utf8
-
 -- the runtime's functions use its own bit operations, which it does not
 -- re-export; flat code that reaches into them imports those too
 import Runtime.Bits
+import Runtime.Space
+import Runtime.String.Utf8
 
 -- this module's `do` is the runtime's, over the token
 %hide Prelude.Interfaces.(>>=)

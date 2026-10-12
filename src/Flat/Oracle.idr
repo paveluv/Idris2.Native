@@ -10,18 +10,14 @@ module Flat.Oracle
 
 import Compiler.Common
 import Compiler.Scheme.Chez
-
 import Core.Context
 import Core.Core
-
-import Flat.Marked
-import Flat.Translate
-
-import Idris.Syntax
-
 import Data.List
 import Data.List1
 import Data.String
+import Flat.Marked
+import Flat.Translate
+import Idris.Syntax
 
 %default covering
 

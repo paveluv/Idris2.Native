@@ -12,5 +12,8 @@ nativeTests = testsInDir "native" "The native code generator"
 flatTests : IO TestPool
 flatTests = testsInDir "flat" "Flat functions"
 
+lintTests : IO TestPool
+lintTests = testsInDir "lint" "The linter"
+
 main : IO ()
-main = runner !(sequence [nativeTests, flatTests])
+main = runner !(sequence [nativeTests, flatTests, lintTests])

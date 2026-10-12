@@ -39,9 +39,9 @@
 ||| `Compiler.Native.TermIR.Build`.
 module Compiler.Native.TermIR
 
+import public Compiler.Native.IRCommon
 import public Core.FC
 import public Core.Name
-import public Compiler.Native.IRCommon
 import public Data.List
 import public Data.List.Quantifiers
 import public Data.So
@@ -141,6 +141,7 @@ public export
 sorted : Ord a => List a -> List a
 sorted [] = []
 sorted [x] = [x]
+-- lint: allow trust-escape: each half of a list of two or more is shorter than the list
 sorted xs = let (as, bs) = halves xs in assert_total (mergeSorted (sorted as) (sorted bs))
 
 ||| Whether no element repeats: a switch's keys, a program's names. It sorts,

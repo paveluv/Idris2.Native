@@ -6,9 +6,10 @@
 ||| share their names with the term IR's.
 module Compiler.Native.IRCommon
 
-import Core.Name
 import public Compiler.Native.HeapObject
+
 import Compiler.Native.Target
+import Core.Name
 
 %default total
 

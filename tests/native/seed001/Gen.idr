@@ -13,11 +13,11 @@
 ||| `idris_crash`, each program brings by hand.
 module Gen
 
-import Compiler.Native.HeapObject
-import Compiler.Native.X86.Asm
-import Compiler.Native.Linkage
-import Compiler.Native.Link
 import Compiler.Native.ELF
+import Compiler.Native.HeapObject
+import Compiler.Native.Link
+import Compiler.Native.Linkage
+import Compiler.Native.X86.Asm
 import System.File
 
 ||| The word of fixnum n, under fixnum tag 1.

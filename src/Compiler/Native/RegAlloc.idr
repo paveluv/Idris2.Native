@@ -22,13 +22,13 @@
 ||| least fixed point.
 module Compiler.Native.RegAlloc
 
-import Compiler.Native.TermIR
 import Compiler.Native.LocatedIR
 import Compiler.Native.Target
+import Compiler.Native.TermIR
 import Control.Monad.State
+import Data.Builder
 import Data.SortedMap
 import Data.SortedSet
-import Data.Builder
 
 %default total
 

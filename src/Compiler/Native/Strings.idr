@@ -42,6 +42,7 @@ encodeAll f = foldr (\c, rest => f c ++ rest) []
 ||| padded with zeros.
 words : List Bits8 -> List Int64
 words [] = []
+-- lint: allow trust-escape: `rest` is eight bytes shorter than `bs`
 words bs = let (w, rest) = splitAt 8 bs in
            word (w ++ replicate (minus 8 (length w)) 0) :: assert_total (words rest)
   where

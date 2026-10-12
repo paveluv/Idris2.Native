@@ -5,12 +5,13 @@
 module Compiler.Native.Link
 
 import public Compiler.Native.HeapObject
+import public Compiler.Native.X86.Encode   -- linkProgram reports AsmProblem
+
+import Compiler.Native.Bytes
+import Compiler.Native.ELF
 import Compiler.Native.Linkage
 import Compiler.Native.Seed
-import Compiler.Native.ELF
-import public Compiler.Native.X86.Encode   -- linkProgram reports AsmProblem
 import Compiler.Native.X86.Asm
-import Compiler.Native.Bytes
 import Data.List
 import Data.Maybe
 import Data.SortedMap

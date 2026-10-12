@@ -9,9 +9,9 @@
 ||| ends the process with the status in rdi.
 module Gen
 
+import Compiler.Native.ELF
 import Compiler.Native.X86.Asm
 import Compiler.Native.X86.Encode
-import Compiler.Native.ELF
 import System.File
 
 main : IO ()

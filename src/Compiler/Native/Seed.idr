@@ -11,9 +11,10 @@ module Compiler.Native.Seed
 
 import public Compiler.Native.HeapObject
 import public Compiler.Native.Linkage
-import Compiler.Native.X86.Target
-import Compiler.Native.X86.Asm
+
 import Compiler.Native.Bytes
+import Compiler.Native.X86.Asm
+import Compiler.Native.X86.Target
 import Data.List
 import Data.Maybe
 import Data.SortedMap

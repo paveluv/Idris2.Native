@@ -9,9 +9,9 @@
 -- and its inverse, each wrong in one place, and every check must report it.
 module Main
 
+import Compiler.Native.Linkage
 import Compiler.Native.LocatedIR
 import Compiler.Native.Platform
-import Compiler.Native.Linkage
 import Compiler.Native.Target
 import Compiler.Native.X86.Asm
 import Data.List

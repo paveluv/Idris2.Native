@@ -8,8 +8,8 @@ module Compiler.Native.Linkage
 
 import public Compiler.Native.IRCommon
 import public Compiler.Native.Platform
-import Compiler.Native.X86.Asm
 
+import Compiler.Native.X86.Asm
 import Core.Name
 import Data.List
 

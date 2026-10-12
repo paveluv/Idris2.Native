@@ -15,3 +15,5 @@ import public Runtime.Space
 import public Runtime.Start
 import public Runtime.State
 import public Runtime.System
+
+%default total

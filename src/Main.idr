@@ -14,15 +14,14 @@ module Main
 import Compiler.Common
 import Compiler.Native.Native
 import Compiler.Scheme.Chez
-import Flat.Check
-import Flat.Oracle
-
 import Data.List1
 import Data.String
-
+import Flat.Check
+import Flat.Oracle
 import Idris.Driver
-
 import System
+
+%default covering
 
 ||| The incremental code generators the environment names, and `flat-check`.
 incremental : Maybe String -> String

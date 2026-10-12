@@ -5,6 +5,7 @@
 module Compiler.Native.X86.Target
 
 import public Compiler.Native.Target
+
 import Compiler.Native.X86.Asm
 
 %default total

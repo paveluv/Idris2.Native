@@ -10,8 +10,8 @@
 module Main
 
 import Data.Buffer
-import Data.IORef
 import Data.IOArray
+import Data.IORef
 import System
 import System.Clock
 import System.Concurrency

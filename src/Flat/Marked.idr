@@ -14,31 +14,25 @@
 ||| reports what no module's check did.
 module Flat.Marked
 
-import Core.Context
-import Core.Core
-import Core.Name
+import public Flat.Exp
+import public Libraries.Data.NameMap
 
 import Compiler.Common
-
+import Core.Context
+import Core.Core
 import Core.Directory
 import Core.FC
-
-import public Flat.Exp
+import Core.Name
+import Data.List
+import Data.Maybe
 import Flat.Report
 import Flat.Translate
-
 import Idris.Error
 import Idris.Pretty
 import Idris.REPL.Opts
 import Idris.Syntax
-
-import Data.List
-import Data.Maybe
-
 import Libraries.Text.PrettyPrint.Prettyprinter
 import Libraries.Text.PrettyPrint.Prettyprinter.Render.String
-
-import public Libraries.Data.NameMap
 
 %default covering
 

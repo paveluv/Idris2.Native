@@ -1,0 +1,21 @@
+package idris2-native-lint
+
+version = 0.1.0
+authors = "Pavel Uvarov"
+license = "BSD-3-Clause"
+brief = "The linter of idris2-native: rules over Idris's own parse trees"
+
+depends = idris2, contrib
+
+sourcedir = "src"
+
+modules =
+    Lint.Finding,
+    Lint.Fix,
+    Lint.Graph,
+    Lint.Main,
+    Lint.Rules,
+    Lint.Source
+
+main = Lint.Main
+executable = idris2-native-lint

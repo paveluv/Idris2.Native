@@ -12,11 +12,10 @@
 -- flat lowering it is the one instruction it stands for, never a call.
 module Probe
 
-import Runtime.Memory
-
 -- the runtime's functions use its own bit operations, which it does not
 -- re-export; flat code that reaches into them imports those too
 import Runtime.Bits
+import Runtime.Memory
 
 -- this module's `do` is the runtime's, over the token
 %hide Prelude.Interfaces.(>>=)

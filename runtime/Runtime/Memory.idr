@@ -262,6 +262,7 @@ export
 commitMemory : (addr, bytes : Bits64) -> Op Heap ()
 commitMemory addr bytes = do
   ok <- osCommit addr bytes
+  -- lint: allow trust-escape: memory the system refuses ends the program, which returns nothing
   if ok == 1 then pure () else assert_total (idris_crash "idris: cannot map memory")
 
 ||| Memory given back from `bytes` of a committed range from `addr`, both
@@ -278,6 +279,7 @@ mapMemory bytes = do
   whole <- roundToPage bytes
   a <- osReserve whole
   ok <- if a == 0 then pure 0 else osCommit a whole
+  -- lint: allow trust-escape: memory the system refuses ends the program, which returns nothing
   if ok == 0
      then assert_total (idris_crash "idris: cannot map memory")
      else pure (MkAddr a)

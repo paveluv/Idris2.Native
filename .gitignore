@@ -5,3 +5,4 @@
 /tests/**/prefix
 /tests/**/output*
 /runtime/build
+/tools/**/build

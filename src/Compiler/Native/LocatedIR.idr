@@ -41,10 +41,11 @@
 ||| `Negate` and `Complement` from the Prelude's `Ptr`, `Neg` and `Not`.
 module Compiler.Native.LocatedIR
 
+import public Compiler.Native.IRCommon
+
+import Compiler.Native.Target
 import Core.FC
 import Core.Name
-import public Compiler.Native.IRCommon
-import Compiler.Native.Target
 import Data.List
 
 %default total

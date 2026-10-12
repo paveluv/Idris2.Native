@@ -2,19 +2,16 @@
 ||| its own: the message, rendered as the REPL renders one.
 module Flat.Report
 
+import public Flat.Problem
+
 import Core.Context
 import Core.Core
 import Core.Env
 import Core.TT
-
-import public Flat.Problem
-
+import Data.String
 import Idris.Pretty
 import Idris.Resugar
 import Idris.Syntax
-
-import Data.String
-
 import Libraries.Text.PrettyPrint.Prettyprinter
 import Libraries.Text.PrettyPrint.Prettyprinter.Render.String
 

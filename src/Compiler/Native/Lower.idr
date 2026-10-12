@@ -51,22 +51,23 @@
 ||| same static object.
 module Compiler.Native.Lower
 
-import Data.Builder
-import public Compiler.VMCode
-import Core.CompileExpr
 import public Compiler.Native.TermIR
-import Compiler.Native.Words
+import public Compiler.VMCode
+
 import Compiler.Native.LowerFlat
 import Compiler.Native.Strings
+import Compiler.Native.Words
+import Core.CompileExpr
 import Core.FC
-import Flat.Exp
 import Core.Name
 import Core.TT
+import Data.Builder
 import Data.List
 import Data.Maybe
 import Data.SortedMap
 import Data.SortedSet
 import Data.Vect
+import Flat.Exp
 
 %default covering
 
@@ -279,6 +280,7 @@ staticsOf body = snd (go body (empty, empty))
         in case key r of
              Just i => foldl (\a, f => add i f a) acc folded
              Nothing => (known, foldl (flip note) ss folded)
+      -- lint: allow trust-escape: VMCode nests its instruction lists in tuples, which totality checking does not see through
       one (CASE _ alts d) acc = assert_total (maybe id go d (foldl (\a, alt => go (snd alt) a) acc alts))
       one (CONSTCASE _ alts d) acc = assert_total (maybe id go d (foldl (\a, alt => go (snd alt) a) acc alts))
       one _ acc = acc
@@ -311,8 +313,7 @@ mutual
   writes (i :: is) = union (writes is) (writes1 i)
 
   writes1 : VMInst -> SortedSet Int
-  -- VMCode nests lists of instructions in tuples, which the termination
-  -- checker does not see through.
+  -- lint: allow trust-escape: VMCode nests its instruction lists in tuples, which totality checking does not see through
   writes1 (CASE _ alts d) = assert_total (union (altsWrite alts) (maybe empty writes d))
   writes1 (CONSTCASE _ alts d) = assert_total (union (altsWrite alts) (maybe empty writes d))
   writes1 i = maybe empty singleton (target i >>= key)
@@ -347,6 +348,7 @@ mutual
   reads1 (CALL _ _ _ as) = regs as
   reads1 (OP _ _ as) = regs (toList as)
   reads1 (EXTPRIM _ _ as) = regs as
+  -- lint: allow trust-escape: VMCode nests its instruction lists in tuples, which totality checking does not see through
   reads1 (CASE s alts d) = assert_total (union (union (altsRead alts) (maybe empty reads d)) (regs [s]))
   reads1 (CONSTCASE s alts d) = assert_total (union (union (altsRead alts) (maybe empty reads d)) (regs [s]))
   reads1 (PROJECT _ v _) = regs [v]
