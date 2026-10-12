@@ -10,4 +10,5 @@ StatusWide: agree
 StatusIntegerSmall: agree
 StatusArray: agree
 StatusFlatData: agree
-12 programs: 10 agree, 2 unsupported, 0 mismatch, 0 error, 0 timeout
+StatusStrings: agree
+13 programs: 11 agree, 2 unsupported, 0 mismatch, 0 error, 0 timeout

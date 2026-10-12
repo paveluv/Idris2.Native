@@ -10,6 +10,8 @@ module Runtime.Memory
 -- public, so that a module importing this one has the definitions the flat
 -- translation reaches through it, as it checks that module's flat functions
 import public Compiler.Native.HeapObject
+import public Data.Bits
+import public Flat.Uniform
 import public Runtime.Heap
 import public Runtime.OS
 
@@ -61,8 +63,8 @@ store8 a = prim__store8 a.word
 ------------------------------------------------------------------------------
 -- Words as addresses, for the module that manages the spaces
 
-||| The address a word is. `Runtime.Space`, which manages the heap's spaces
-||| and so sees addresses as words, is the one client meant.
+||| The address a word is: for the modules that lay out the heap's spaces
+||| and its objects, which compute addresses as words.
 export %inline
 fromWord : Bits64 -> Addr k
 fromWord = MkAddr
@@ -168,6 +170,73 @@ runtimeArea : Op Heap Bits64
 runtimeArea = prim__runtimeArea
 
 ------------------------------------------------------------------------------
+-- Values as ordinary code holds them, and the objects they point to
+
+%extern prim__stringWord : Uniform String -> (1 m : Heap) -> Ret Heap Bits64
+%extern prim__wordString : Bits64 -> (1 m : Heap) -> Ret Heap (Uniform String)
+%extern prim__conWord : {0 a : Type} -> Uniform a -> (1 m : Heap) -> Ret Heap Bits64
+%extern prim__wordCon : {0 a : Type} -> Bits64 -> (1 m : Heap) -> Ret Heap (Uniform a)
+
+||| The object a string is, and the string an object is. A string is always
+||| an object, so these never test the word. The conversions between a value
+||| and its object's address are this module's, so these are not inlined.
+export
+stringObject : Uniform String -> Op Heap (Addr STRING)
+stringObject s = do
+  w <- prim__stringWord s
+  tag <- pointerTag
+  pure (MkAddr (w - tag))
+
+export
+stringValue : Addr STRING -> Op Heap (Uniform String)
+stringValue a = do
+  tag <- pointerTag
+  prim__wordString (a.word + tag)
+
+||| The object a value of a data type is, and the value an object is: for a
+||| type whose values ordinary code holds as objects always, such as a list,
+||| whose `[]` is a static object.
+export
+conObject : Uniform a -> Op Heap (Addr CON)
+conObject v = do
+  w <- prim__conWord v
+  tag <- pointerTag
+  pure (MkAddr (w - tag))
+
+export
+conValue : Addr CON -> Op Heap (Uniform a)
+conValue a = do
+  tag <- pointerTag
+  prim__wordCon (a.word + tag)
+
+||| The address of the object a pointer word in a field points to, and the
+||| pointer word of an address, to store in a field.
+export
+fieldObject : (word : Bits64) -> Op Heap (Addr k)
+fieldObject w = do
+  tag <- pointerTag
+  pure (MkAddr (w - tag))
+
+export
+fieldPointer : Addr k -> Op Heap Bits64
+fieldPointer a = do
+  tag <- pointerTag
+  pure (a.word + tag)
+
+||| A fixnum's integer, and the fixnum of a small integer, as a field holds
+||| them: under both encodings with fixnums the integer is the word shifted
+||| left by one, with the fixnum tag, the pointer tag's complement, below.
+export
+fixnumOf : (word : Bits64) -> Bits64
+fixnumOf w = prim__shr_Bits64 w 1
+
+export
+fixnumWord : Bits64 -> Op Heap Bits64
+fixnumWord n = do
+  tag <- pointerTag
+  pure (prim__shl_Bits64 n 1 + (1 - tag))
+
+------------------------------------------------------------------------------
 -- The system's memory
 
 ||| `x` rounded up to a whole number of the system's pages, what it commits
@@ -176,7 +245,7 @@ export
 roundToPage : Bits64 -> Op Heap Bits64
 roundToPage x = do
   page <- osPageBytes
-  pure (prim__and_Bits64 (x + (page - 1)) (0 - page))
+  pure ((x + (page - 1)) .&. (0 - page))
 
 ||| `bytes` of address space reserved, not yet usable; 0 if the system has
 ||| no such range.
@@ -206,7 +275,7 @@ mapMemory : (bytes : Bits64) -> Op Heap (Addr k)
 mapMemory bytes = do
   whole <- roundToPage bytes
   a <- osReserve whole
-  ok <- if a == 0 then pure 0 else osCommit a whole
+  ok <- if a == 0 then pure (the Bits64 0) else osCommit a whole
   if ok == 0
      then assert_total (idris_crash "idris: cannot map memory")
      else pure (MkAddr a)

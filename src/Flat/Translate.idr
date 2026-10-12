@@ -1488,7 +1488,8 @@ shape sk
                  | _ => pure Nothing
                pure (Just (PrimShape t))
       shapeOf ty@(NTCon _ n _ args)
-          = do LaidOut _ <- layout [] ty
+          = if !(toFullNames n) == uniformType then pure (Just UniformShape) else
+            do LaidOut _ <- layout [] ty
                  | _ => pure Nothing
                defs <- get Ctxt
                Just gdef <- lookupCtxtExact n (gamma defs)

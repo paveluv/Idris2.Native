@@ -26,6 +26,7 @@ modules =
     Compiler.Native.Native,
     Compiler.Native.RegAlloc,
     Compiler.Native.Seed,
+    Compiler.Native.Strings,
     Compiler.Native.Target,
     Compiler.Native.TermIR,
     Compiler.Native.TermIR.Build,
@@ -41,7 +42,8 @@ modules =
     Flat.Oracle,
     Flat.Problem,
     Flat.Report,
-    Flat.Translate
+    Flat.Translate,
+    Flat.Uniform
 
 main = Main
 executable = idris2-native

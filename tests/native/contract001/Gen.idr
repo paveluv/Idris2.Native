@@ -10,9 +10,10 @@
 --   crash : (message, length : Bits64) -> Op Heap ()
 --
 -- and `allocSlow` as taking the bytes and returning the object's address.
--- Here the runtime's forms are stood in for by forms of the same names and
--- the signatures each case gives, with bodies that are never run: only the
--- check is shown.
+-- Here the runtime's forms are stood in for by forms of the same names,
+-- with bodies that are never run: only the check is shown. The stand-ins
+-- are made from the contract itself, one for each routine the runtime has,
+-- with the declared signature, and each case changes or leaves out one.
 --
 -- The OS services are checked the same way, against the functions that
 -- implement them on the platform: x86-64 Linux's `write` takes a handle,
@@ -46,19 +47,31 @@ unit = SCon (NS (mkNamespace "Builtin") (UN (Basic "Unit"))) []
 form : Name -> List FlatVar -> Skeleton -> Layout -> FlatDef
 form n ps sk lay = MkFlatDef n ps sk lay (FNone EmptyFC) EmptyFC
 
-||| `crash (message, length : Bits64) : ()`, as the contract has it.
-crash : FlatDef
-crash = form runtimeCrash [word "message", word "length"] unit []
+||| A register of the term IR as a stand-in's parameter or result: a word, or
+||| a value as ordinary code holds it.
+standIn : Ty TestEnc -> (Skeleton, Layout)
+standIn Val = (SCon uniformType [SOther], [Uniform])
+standIn _ = (SPrim Bits64Type, [Word])
 
-||| `start (entry, window : Bits64) : ()`, as the contract has it.
-start : FlatDef
-start = form runtimeStart [word "entry", word "window"] unit []
+||| A stand-in for every routine the runtime has, of its declared signature.
+standIns : List FlatDef
+standIns = [ form r.name (zipWith param [0 .. length r.params] r.params) (result r.results) (concatMap (snd . standIn) r.results)
+           | r <- routines {enc = TestEnc}, r.provided ]
+  where
+    param : Nat -> Ty TestEnc -> FlatVar
+    param i t = MkFlatVar (UN (Basic ("p" ++ show i))) (fst (standIn t)) (snd (standIn t))
 
-||| `allocSlow (bytes : Bits64) : Addr k` and `allocMutable`, as the
-||| contract has them: a word in, the object's address out.
-allocSlow, allocMutable : FlatDef
-allocSlow = form runtimeAllocSlow [word "bytes"] (SPrim Bits64Type) [Word]
-allocMutable = form runtimeAllocMutable [word "bytes"] (SPrim Bits64Type) [Word]
+    result : List (Ty TestEnc) -> Skeleton
+    result [t] = fst (standIn t)
+    result _ = unit
+
+||| The stand-ins with one replaced.
+replacing : FlatDef -> List FlatDef
+replacing f = f :: filter (\g => g.name /= f.name) standIns
+
+||| The stand-ins with one left out.
+without : Name -> List FlatDef
+without n = filter (\g => g.name /= n) standIns
 
 checkWith : String -> List FlatDef -> List (Name, VMDef) -> IO ()
 checkWith what forms vmdefs = putStrLn $ what ++ ": " ++
@@ -82,20 +95,20 @@ exitImplementation arg =
 
 main : IO ()
 main = do
-  check "as declared" [start, allocSlow, allocMutable, crash]
-  check "no crash" [start, allocSlow, allocMutable]
+  check "as declared" standIns
+  check "no crash" (without runtimeCrash)
   -- allocSlow (bytes, kind : Bits64) : Bits64
-  check "allocSlow of two words" [start, form runtimeAllocSlow [word "bytes", word "kind"] (SPrim Bits64Type) [Word], allocMutable, crash]
+  check "allocSlow of two words" (replacing (form runtimeAllocSlow [word "bytes", word "kind"] (SPrim Bits64Type) [Word]))
   -- crash (message, length : Bits64) : Bits64
-  check "crash with a result" [start, allocSlow, allocMutable, form runtimeCrash [word "message", word "length"] (SPrim Bits64Type) [Word]]
+  check "crash with a result" (replacing (form runtimeCrash [word "message", word "length"] (SPrim Bits64Type) [Word]))
   -- write (handle, address, bytes : Bits64) : Bits64, on x86-64 Linux
-  check "write as declared" [start, allocSlow, allocMutable, crash, form linuxWrite [word "handle", word "address", word "bytes"] (SPrim Bits64Type) [Word]]
+  check "write as declared" (form linuxWrite [word "handle", word "address", word "bytes"] (SPrim Bits64Type) [Word] :: standIns)
   -- write (handle, address : Bits64) : Bits64
-  check "write of two words" [start, allocSlow, allocMutable, crash, form linuxWrite [word "handle", word "address"] (SPrim Bits64Type) [Word]]
+  check "write of two words" (form linuxWrite [word "handle", word "address"] (SPrim Bits64Type) [Word] :: standIns)
   -- prim__exit (status : Int) : PrimIO (), as base declares it
-  checkWith "prim__exit as declared" [start, allocSlow, allocMutable, crash, exitImplementation (SPrim IntType)] [exitForeign]
+  checkWith "prim__exit as declared" (exitImplementation (SPrim IntType) :: standIns) [exitForeign]
   -- prim__exit (status : Bits64) : PrimIO ()
-  checkWith "prim__exit of a Bits64" [start, allocSlow, allocMutable, crash, exitImplementation (SPrim Bits64Type)] [exitForeign]
+  checkWith "prim__exit of a Bits64" (exitImplementation (SPrim Bits64Type) :: standIns) [exitForeign]
   where
     linuxWrite : Name
     linuxWrite = NS (mkNamespace "Runtime.OS.LinuxX86_64") (UN (Basic "write"))

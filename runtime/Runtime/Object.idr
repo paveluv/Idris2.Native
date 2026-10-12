@@ -8,23 +8,21 @@ module Runtime.Object
 
 import public Runtime.Memory
 
+-- The shifts are the primitives: `Data.Bits`' take their count as a
+-- `Fin 64`, a `Nat` at run time, which flat code cannot hold, and the
+-- counts here are words besides, from `place`.
+
 %default total
 
 ||| The low four bits of a header word: the kind's id, or 0 for a
 ||| continuation, whose first word is a 16-aligned code address.
 export
 kindOfHeader : Bits64 -> Bits64
-kindOfHeader h = prim__and_Bits64 h 15
+kindOfHeader h = h .&. 15
 
 export
 isContinuation : (header : Bits64) -> Bool
 isContinuation h = kindOfHeader h == 0
-
-||| The id of a kind. Inline, so that at a kind written in the code the id
-||| is a constant.
-export %inline
-idOf : Kind -> Bits64
-idOf = kindId
 
 ||| The forwarding header, which a collector writes over the first word of
 ||| an object it has moved: kind 15, and the new address, 8-aligned, in the
@@ -35,7 +33,7 @@ forwardingId = 15
 
 export
 forwardingHeader : (to : Bits64) -> Bits64
-forwardingHeader to = prim__or_Bits64 (prim__shl_Bits64 to 4) forwardingId
+forwardingHeader to = prim__shl_Bits64 to 4 .|. forwardingId
 
 export
 forwardedTo : (header : Bits64) -> Bits64
@@ -45,8 +43,7 @@ forwardedTo h = prim__shr_Bits64 h 4
 ||| part written in the code the shift and the mask are constants.
 export %inline
 part : HeaderPart k -> (header : Bits64) -> Bits64
-part p h = prim__and_Bits64 (prim__shr_Bits64 h (fst (place p)))
-                            (prim__shl_Bits64 1 (snd (place p)) - 1)
+part p h = prim__shr_Bits64 h (fst (place p)) .&. (prim__shl_Bits64 1 (snd (place p)) - 1)
 
 ||| The words `bytes` take, rounded up.
 export %inline
@@ -58,16 +55,16 @@ byteWords b = prim__shr_Bits64 (b + 7) 3
 export
 objectWords : (id, header : Bits64) -> Bits64
 objectWords id h =
-  if id == idOf CON then 1 + part ConArity h
-  else if id == idOf CLOSURE then 2 + part ClosureFilled h
-  else if id == idOf INT64 then 2
-  else if id == idOf DOUBLE then 2
-  else if id == idOf STRING then 1 + byteWords (part StringBytes h)
-  else if id == idOf BIGNUM then 1 + part BignumWords h
-  else if id == idOf IOREF then 2
-  else if id == idOf ARRAY then 1 + part ArrayElems h
-  else if id == idOf BUFFER then 1 + byteWords (part BufferBytes h)
-  else if id == idOf PTR then 2
+  if id == kindId CON then 1 + part ConArity h
+  else if id == kindId CLOSURE then 2 + part ClosureFilled h
+  else if id == kindId INT64 then 2
+  else if id == kindId DOUBLE then 2
+  else if id == kindId STRING then 1 + byteWords (part StringBytes h)
+  else if id == kindId BIGNUM then 1 + part BignumWords h
+  else if id == kindId IOREF then 2
+  else if id == kindId ARRAY then 1 + part ArrayElems h
+  else if id == kindId BUFFER then 1 + byteWords (part BufferBytes h)
+  else if id == kindId PTR then 2
   else 0
 
 ||| The words of an object with a header that hold values: the first, and
@@ -75,10 +72,10 @@ objectWords id h =
 export
 scannedWords : (id, header : Bits64) -> (Bits64, Bits64)
 scannedWords id h =
-  if id == idOf CON then (1, part ConArity h)
-  else if id == idOf CLOSURE then (2, part ClosureFilled h)
-  else if id == idOf IOREF then (1, 1)
-  else if id == idOf ARRAY then (1, part ArrayElems h)
+  if id == kindId CON then (1, part ConArity h)
+  else if id == kindId CLOSURE then (2, part ClosureFilled h)
+  else if id == kindId IOREF then (1, 1)
+  else if id == kindId ARRAY then (1, part ArrayElems h)
   else (1, 0)
 
 ||| A continuation's layout word, the word before the code that resumes
@@ -87,11 +84,11 @@ scannedWords id h =
 ||| then the raw words.
 export
 layoutValues : (layout : Bits64) -> Bits64
-layoutValues l = prim__and_Bits64 l 0xFFFFFF
+layoutValues l = l .&. 0xFFFFFF
 
 export
 layoutRaws : (layout : Bits64) -> Bits64
-layoutRaws l = prim__and_Bits64 (prim__shr_Bits64 l 24) 0xFFFFFF
+layoutRaws l = prim__shr_Bits64 l 24 .&. 0xFFFFFF
 
 export
 continuationWords : (layout : Bits64) -> Bits64

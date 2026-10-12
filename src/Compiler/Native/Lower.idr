@@ -56,6 +56,7 @@ import Core.CompileExpr
 import public Compiler.Native.TermIR
 import Compiler.Native.Words
 import Compiler.Native.LowerFlat
+import Compiler.Native.Strings
 import Core.FC
 import Flat.Exp
 import Core.Name
@@ -185,6 +186,10 @@ int64Static p = NS (mkNamespace "_native") (UN (Basic ("int64_" ++ show p)))
 bignumStatic : Integer -> Name
 bignumStatic v = NS (mkNamespace "_native") (UN (Basic ("integer_" ++ show v)))
 
+||| The static object of a string literal: one per distinct literal.
+stringStatic : String -> Name
+stringStatic s = NS (mkNamespace "_native") (UN (Basic ("string_" ++ show s)))
+
 ||| A cast of an integer constant to an integer type or to `Char`, done while
 ||| compiling, wrapping as the cast does at run time: Idris writes a literal
 ||| of a fixed-width type as an `Integer` constant and a cast.
@@ -226,6 +231,8 @@ data StaticPlan
     Boxed Integer
   | ||| An `Integer` outside the fixnum range, and its magnitude's words.
     Big Integer
+  | ||| A string literal.
+    Text String
 
 ||| The constants a function's locals may hold, and the static objects its
 ||| constants need. A cast of a local holding a constant is folded while
@@ -240,7 +247,9 @@ staticsOf body = snd (go body (empty, empty))
       Just (Wide _, v) => let p = patternValue v in
                           if inFixnumRange p then Nothing else Just (int64Static p, Boxed p)
       Just (Unbounded, v) => if inFixnumRange v then Nothing else Just (bignumStatic v, Big v)
-      _ => Nothing
+      _ => case k of
+        Str s => Just (stringStatic s, Text s)
+        _ => Nothing
 
     note : Constant -> SortedMap Name StaticPlan -> SortedMap Name StaticPlan
     note k ss = case plan k of
@@ -417,6 +426,22 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
   callRoutine name xs = case routine name rs ps of
     Just (_ ** r) => directCall r xs
     Nothing => crash ("no runtime routine " ++ show name)
+
+  ||| A call of a string routine of the program's encoding.
+  strings : String -> {rs : List (Ty enc)} -> {ps : List (Ty enc)} -> All (Opnd v) ps -> B (All (Opnd v) rs)
+  strings op xs = callRoutine (stringRoutine enc op) xs
+
+  ||| A word known to be in the fixnum range, as a value: a count or a code
+  ||| point.
+  wordFix : Opnd v W64 -> B (Opnd v Val)
+  wordFix w = do f <- emit1 (Tag w); emit1 (WidenFix f)
+
+  ||| A comparison of strings: the runtime's order, -1, 0 or 1, against 0.
+  stringOrder : Rel -> Opnd v Val -> Opnd v Val -> B (Opnd v Val)
+  stringOrder rel x y = do
+    [o] <- strings "compare" {rs = [W64]} {ps = [Val, Val]} [x, y]
+    b <- emit1 (Cmp rel o (W 0))
+    wordFix b
 
   ||| An `Integer` routine that makes an `Integer`.
   integerCall : String -> (xs : List (Opnd v Val)) -> B (Opnd v Val)
@@ -708,7 +733,7 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
   constant : Constant -> B (Opnd v Val)
   constant WorldVal = pure Erased
   constant (PrT _) = pure Erased
-  constant (Str _) = unsupported "a string constant"
+  constant (Str s) = staticVal (stringStatic s)
   constant (Db _) = unsupported "a double constant"
   constant k = case intConst k of
     Just (Wide _, n) => let p = patternValue n in maybe (staticVal (int64Static p)) pure (fixnum p)
@@ -749,6 +774,30 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
       value (BAnd ty) [x, y] = withWidth ty "bitwise and" (\w => arithmetic w And "and" (get env x) (get env y))
       value (BOr ty) [x, y] = withWidth ty "bitwise or" (\w => arithmetic w Or "or" (get env x) (get env y))
       value (BXOr ty) [x, y] = withWidth ty "bitwise xor" (\w => arithmetic w Xor "xor" (get env x) (get env y))
+      -- the string primitives: the runtime's routines under the encoding
+      value StrLength [s] = do [n] <- strings "length" {rs = [W64]} {ps = [Val]} [get env s]; wordFix n
+      value StrHead [s] = do [c] <- strings "head" {rs = [W64]} {ps = [Val]} [get env s]; wordFix c
+      value StrTail [s] = do [r] <- strings "tail" {rs = [Val]} {ps = [Val]} [get env s]; pure r
+      value StrIndex [s, i] = do
+        w <- wideWord (get env i)
+        [c] <- strings "index" {rs = [W64]} {ps = [Val, W64]} [get env s, w]
+        wordFix c
+      value StrCons [c, s] = do
+        w <- fixValue (get env c)
+        [r] <- strings "cons" {rs = [Val]} {ps = [W64, Val]} [w, get env s]
+        pure r
+      value StrAppend [a, b] = do [r] <- strings "append" {rs = [Val]} {ps = [Val, Val]} [get env a, get env b]; pure r
+      value StrReverse [s] = do [r] <- strings "reverse" {rs = [Val]} {ps = [Val]} [get env s]; pure r
+      value StrSubstr [o, l, s] = do
+        wo <- wideWord (get env o)
+        wl <- wideWord (get env l)
+        [r] <- strings "substr" {rs = [Val]} {ps = [W64, W64, Val]} [wo, wl, get env s]
+        pure r
+      value (LT StringType) [x, y] = stringOrder LtS (get env x) (get env y)
+      value (LTE StringType) [x, y] = stringOrder LeS (get env x) (get env y)
+      value (EQ StringType) [x, y] = stringOrder EqR (get env x) (get env y)
+      value (GTE StringType) [x, y] = stringOrder GeS (get env x) (get env y)
+      value (GT StringType) [x, y] = stringOrder GtS (get env x) (get env y)
       value (LT ty) [x, y] = withWidth ty "<" (\w => comparison w LtS (get env x) (get env y))
       value (LTE ty) [x, y] = withWidth ty "<=" (\w => comparison w LeS (get env x) (get env y))
       value (EQ ty) [x, y] = withWidth ty "==" (\w => comparison w EqR (get env x) (get env y))
@@ -836,6 +885,7 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
       Just (Narrow _ _) => do w <- fixValue x; pure (MkValue [Word] [w])
       Just (Wide _) => do w <- wideWord x; pure (MkValue [Word] [w])
       _ => unsupported ("a value of " ++ show t ++ " passed to flat code")
+    unbox UniformShape x = pure (MkValue [Uniform] [x])
     unbox (DataShape []) _ = pure noRegs
     unbox (DataShape [c]) x = concatValues <$> fieldsFrom c x
     unbox s@(DataShape cs) x =
@@ -882,6 +932,9 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
       (Just (Narrow _ _), Just w) => do f <- emit1 (Tag w); widen f
       (Just (Wide _), Just w) => wideVal w
       _ => unsupported ("a value of " ++ show t ++ " returned by flat code")
+    box UniformShape x = case x of
+      MkValue [Uniform] [u] => pure u
+      _ => unsupported "a uniform value of another layout from flat code"
     box (DataShape []) _ = pure Erased
     box (DataShape [c]) x = boxCon c x
     box (DataShape cs) x = case tagOf x of
@@ -1135,6 +1188,11 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
   ready (n, Big v) = case signInHeader enc.bignum of
     Just sh => bigStatic n v sh (magnitudeWords (abs v))
     Nothing => Nothing
+  ready (n, Text s) = do
+    (h ** ws) <- literal enc s
+    case choose (wellFormed h) of
+      Left ok => Just (MkStaticSig n STRING ** MkStaticDef h (map SWord ws))
+      Right _ => Nothing
 
   staticDefs : (d : Decls enc) -> (rs : List (s ** ({0 d' : Decls enc} -> StaticDef d' s))) ->
                All (StaticDef d) (map DPair.fst rs)
@@ -1167,6 +1225,7 @@ program forms shapes services entry es rs =
 ||| as objects, in a shape: the statics boxing a value of it may need.
 nullaries : Shape -> List Int
 nullaries (PrimShape _) = []
+nullaries UniformShape = []
 nullaries (DataShape cs) = concatMap con cs
   where
     con : ConShape -> List Int
@@ -1193,7 +1252,8 @@ cfAgrees CFDouble (SPrim DoubleType) = True
 cfAgrees CFWorld (SPrim WorldType) = True
 cfAgrees CFUnit (SCon n []) = n == NS (mkNamespace "Builtin") (UN (Basic "Unit"))
 cfAgrees (CFIORes t) (SCon n [s]) = n == NS (mkNamespace "PrimIO") (UN (Basic "IORes")) && cfAgrees t s
-cfAgrees CFString (SCon n [SPrim StringType]) = n == NS (mkNamespace "Flat.Uniform") (UN (Basic "Uniform"))
+cfAgrees CFString (SCon n [SPrim StringType]) = n == uniformType
+cfAgrees (CFUser t _) (SCon n [SCon t' _]) = n == uniformType && t == t'
 cfAgrees _ _ = False
 
 ||| A whole program, as a term: every function and foreign function, the
@@ -1270,19 +1330,19 @@ lowerProgram enc platform forms shapes vmdefs = do
     byName = fromList [(fd.name, fd) | fd <- forms]
 
     boundForeign : (Name, VMDef) -> Maybe (Name, List CFType, CFType)
-    boundForeign (n, MkVMForeign _ fargs ret) = if elem n (foreignFunctions enc) then Just (n, fargs, ret) else Nothing
+    boundForeign (n, MkVMForeign _ fargs ret) = if elem n (map fst (foreignFunctions enc)) then Just (n, fargs, ret) else Nothing
     boundForeign _ = Nothing
 
     -- A foreign function and its implementation, position by position.
     agrees : (Name, List CFType, CFType) -> Either String ()
-    agrees (n, fargs, ret) = case lookup (foreignImplementation n) byName of
-      Nothing => Left ("the runtime has no " ++ show (foreignImplementation n) ++ ", which implements " ++ show n)
+    agrees (n, fargs, ret) = case Data.List.lookup n (foreignFunctions enc) >>= \f => lookup f byName of
+      Nothing => Left ("the runtime has no function that implements " ++ show n)
       Just fd =>
         if length fd.params == length fargs
            && all (\(c, p) => cfAgrees c p.skeleton) (zip fargs fd.params)
            && cfAgrees ret fd.resultSkeleton
            then Right ()
-           else Left (show (foreignImplementation n) ++ " takes " ++ show (map skeleton fd.params)
+           else Left (show fd.name ++ " takes " ++ show (map skeleton fd.params)
                       ++ " and returns " ++ show fd.resultSkeleton ++ ", but " ++ show n
                       ++ " is declared with " ++ show fargs ++ " -> " ++ show ret)
 
@@ -1291,7 +1351,7 @@ lowerProgram enc platform forms shapes vmdefs = do
     -- A foreign function's is its implementation's.
     boundaryOf : Name -> Nat -> Maybe Plan
     boundaryOf n arity = do
-      fd <- lookup n byName <|> (if elem n (foreignFunctions enc) then lookup (foreignImplementation n) byName else Nothing)
+      fd <- lookup n byName <|> (Data.List.lookup n (foreignFunctions enc) >>= \f => lookup f byName)
       guard (length fd.params == arity)
       ss <- traverse (shapeOf shapes . skeleton) fd.params
       r <- shapeOf shapes fd.resultSkeleton

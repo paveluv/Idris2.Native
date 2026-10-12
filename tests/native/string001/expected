@@ -1,0 +1,10 @@
+idris: the head of an empty string
+status: 1
+idris: the tail of an empty string
+status: 1
+idris: an index outside a string
+status: 1
+idris: an index outside a string
+status: 1
+idris: an index outside a string
+status: 1

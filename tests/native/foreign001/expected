@@ -41,9 +41,6 @@ missing  Prelude.IO.prim__onCollectAny
 missing  Prelude.IO.prim__putChar
 missing  Prelude.IO.prim__putStr
 missing  Prelude.IO.prim__threadWait
-missing  Prelude.Types.fastConcat
-missing  Prelude.Types.fastPack
-missing  Prelude.Types.fastUnpack
 missing  PrimIO.prim__getNullAnyPtr
 missing  PrimIO.prim__nullAnyPtr
 missing  System.Clock.prim__clockTimeGcCpu
@@ -161,5 +158,8 @@ missing  System.prim__system
 missing  System.prim__time
 missing  System.prim__unsetEnv
 missing  System.prim__usleep
+runtime  Prelude.Types.fastConcat
+runtime  Prelude.Types.fastPack
+runtime  Prelude.Types.fastUnpack
 runtime  System.prim__exit
-1 by the runtime, 3 lowered inline, 160 missing
+4 by the runtime, 3 lowered inline, 157 missing

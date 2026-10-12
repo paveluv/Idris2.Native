@@ -38,3 +38,8 @@ public export %inline
 public export %inline
 pure : a -> Op h a
 pure v m = m # v
+
+||| End the program with the message, whatever operation was expected.
+export
+crashOp : String -> Op h a
+crashOp msg = assert_total (idris_crash msg)

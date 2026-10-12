@@ -37,9 +37,6 @@ reserveSpace bytes =
   if bytes < 67108864 then crashOp "idris: cannot reserve memory" else do
     a <- reserveMemory bytes
     if a == 0 then reserveSpace (prim__shr_Bits64 bytes 1) else pure (a, bytes)
-  where
-    crashOp : String -> Op Heap a
-    crashOp msg = assert_total (idris_crash msg)
 
 %cg native flat Runtime.Start.start
 ||| `idris_start`: the two spaces reserved and the first window committed,

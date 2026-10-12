@@ -187,11 +187,45 @@ public export
 integerRoutine : String -> Name
 integerRoutine op = UN (Basic ("idris_integer_" ++ op))
 
-||| The routines, with their signatures.
+||| The runtime's module that lays strings out under the encoding: the one
+||| module of the runtime that reads a string's header or bytes. Every other
+||| part of the runtime asks it. None yet for UTF-32.
+export
+stringModule : StringEncoding -> Maybe Namespace
+stringModule Utf8 = Just (mkNamespace "Runtime.String.Utf8")
+stringModule Utf32 = Nothing
+
+||| A string routine under the encoding: the string module's function of the
+||| operation's name, and whether the runtime has it.
+stringFunction : StringEncoding -> String -> (Name, Bool)
+stringFunction e op = case stringModule e of
+  Just ns => (NS ns (UN (Basic op)), True)
+  Nothing => (UN (Basic ("idris_string_" ++ op)), False)
+
+||| The name generated code calls a string routine by.
+export
+stringRoutine : Enc -> String -> Name
+stringRoutine enc op = case stringFunction enc.strings op of
+  (n, True) => flatName n
+  (n, False) => n
+
+||| The routines, with their signatures. The string routines are the eight
+||| primitive operations on strings and their comparison (-1, 0 or 1), over
+||| strings as ordinary code holds them; a character is its code point, a
+||| count or an index a word.
 export
 routines : {enc : Enc} -> List (Routine enc)
 routines =
-  [ MkRoutine runtimeStart True (Just SymRuntimeStart) [] [W64, W64]
+  [ string "length" [W64] [Val]
+  , string "head" [W64] [Val]
+  , string "tail" [Val] [Val]
+  , string "index" [W64] [Val, W64]
+  , string "cons" [Val] [W64, Val]
+  , string "append" [Val] [Val, Val]
+  , string "reverse" [Val] [Val]
+  , string "substr" [Val] [W64, W64, Val]
+  , string "compare" [W64] [Val, Val]
+  , MkRoutine runtimeStart True (Just SymRuntimeStart) [] [W64, W64]
   , MkRoutine runtimeAllocSlow True (Just SymAllocSlow) [W64] [W64]
   , MkRoutine runtimeAllocMutable True (Just SymAllocMutable) [W64] [W64]
   , MkRoutine runtimeCrash True (Just SymCrash) [] [W64, W64]
@@ -213,6 +247,9 @@ routines =
   where
     integer : String -> List (Ty enc) -> List (Ty enc) -> Routine enc
     integer op rs ps = MkRoutine (integerRoutine op) False Nothing rs ps
+
+    string : String -> List (Ty enc) -> List (Ty enc) -> Routine enc
+    string op rs ps = let (n, p) = stringFunction enc.strings op in MkRoutine n p Nothing rs ps
 
 ||| The symbol the routine whose function has the name is reached by.
 export
@@ -256,6 +293,10 @@ data Intrinsic
     PointerTag
   | ||| The address of a per-thread area.
     AreaAddress Area
+  | ||| The pointer word of a uniform value known to be an object of the kind.
+    ObjectWord Kind
+  | ||| The uniform value of a pointer word to an object of the kind.
+    WordObject Kind
 
 ||| An intrinsic as the runtime library declares it: the registers of its
 ||| arguments, the token among them taking none, and of its result.
@@ -291,7 +332,11 @@ intrinsics =
   , memory "prim__argvArea" (AreaAddress ARGV) [] [W64]
   , memory "prim__rootsArea" (AreaAddress ROOTS) [] [W64]
   , memory "prim__nrootsArea" (AreaAddress NROOTS) [] [W64]
-  , memory "prim__runtimeArea" (AreaAddress RUNTIME) [] [W64] ]
+  , memory "prim__runtimeArea" (AreaAddress RUNTIME) [] [W64]
+  , memory "prim__stringWord" (ObjectWord STRING) [Val] [W64]
+  , memory "prim__wordString" (WordObject STRING) [W64] [Val]
+  , memory "prim__conWord" (ObjectWord CON) [Val] [W64]
+  , memory "prim__wordCon" (WordObject CON) [W64] [Val] ]
   where
     memory : String -> Intrinsic -> List (Ty enc) -> List (Ty enc) -> IntrinsicSig enc
     memory n = MkIntrinsicSig (NS (mkNamespace "Runtime.Memory") (UN (Basic n)))
@@ -302,23 +347,26 @@ intrinsicOf : {0 enc : Enc} -> Name -> Maybe Intrinsic
 intrinsicOf n = (.intrinsic) <$> find (\i => i.name == n) (intrinsics {enc})
 
 ||| The foreign functions of the libraries a program uses, `prelude` and
-||| `base`, that the runtime implements: each by a flat function of
-||| `Runtime.Foreign` with the module path and the name of the foreign one
-||| (`System.prim__exit` by `Runtime.Foreign.System.prim__exit`), of the same
-||| type position by position, so that the lowering gives the foreign function
-||| the boundary to it, which converts each argument and the result as their
-||| types say. A foreign function is bound by its Idris name, whatever names
-||| the library gives it for C or Scheme; one not listed stays `Unsupported`.
+||| `base`, that the runtime implements, each with the flat function that
+||| does: of the same type position by position, so that the lowering gives
+||| the foreign function the boundary to it, which converts each argument and
+||| the result as their types say. Most are `Runtime.Foreign`'s, by the
+||| foreign one's module path and name (`System.prim__exit` by
+||| `Runtime.Foreign.System.prim__exit`); those that lay strings out are the
+||| string module's, under the program's encoding. A foreign function is
+||| bound by its Idris name, whatever names the library gives it for C or
+||| Scheme; one not listed stays `Unsupported`.
 export
-foreignFunctions : Enc -> List Name
-foreignFunctions _ =
-  [ NS (mkNamespace "System") (UN (Basic "prim__exit")) ]
-
-||| The runtime's function that implements a foreign function.
-export
-foreignImplementation : Name -> Name
-foreignImplementation (NS ns n) = NS (mkNamespace ("Runtime.Foreign." ++ show ns)) n
-foreignImplementation n = NS (mkNamespace "Runtime.Foreign") n
+foreignFunctions : Enc -> List (Name, Name)
+foreignFunctions enc =
+  [ mirrored (NS (mkNamespace "System") (UN (Basic "prim__exit"))) ]
+  ++ maybe [] (\ns => map (\f => (NS (mkNamespace "Prelude.Types") (UN (Basic f)), NS ns (UN (Basic f))))
+                          ["fastPack", "fastUnpack", "fastConcat"])
+           (stringModule enc.strings)
+  where
+    mirrored : Name -> (Name, Name)
+    mirrored n@(NS ns f) = (n, NS (mkNamespace ("Runtime.Foreign." ++ show ns)) f)
+    mirrored n = (n, NS (mkNamespace "Runtime.Foreign") n)
 
 ||| An OS service: what the runtime asks of the operating system, by the
 ||| name of the generic runtime's `%extern` for it, `Runtime.OS.prim__os_`

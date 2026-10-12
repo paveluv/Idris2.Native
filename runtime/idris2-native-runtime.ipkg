@@ -20,4 +20,5 @@ modules =
     Runtime.Space,
     Runtime.Start,
     Runtime.State,
+    Runtime.String.Utf8,
     Runtime.System

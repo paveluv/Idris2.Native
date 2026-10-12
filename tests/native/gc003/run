@@ -1,0 +1,8 @@
+. ../../testutils.sh
+
+# The runtime's own allocation hands a due collection to generated code: a
+# primitive's allocation never collects, and the next allocation of
+# generated code does. It imports the runtime as a package for the count.
+idris2 --cg native -p idris2-native-runtime -p idris2-native --directive nursery=4096 -o handoff Main.idr > /dev/null
+./build/exec/handoff
+echo "status: $?"

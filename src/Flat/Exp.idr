@@ -34,17 +34,27 @@ data Rep
     Word
   | ||| An IEEE 754 double.
     Dbl
+  | ||| A value as the ordinary regime holds it (`Flat.Uniform`), opaque to
+    ||| flat code.
+    Uniform
 
 export
 Eq Rep where
   Word == Word = True
   Dbl == Dbl = True
+  Uniform == Uniform = True
   _ == _ = False
 
 export
 Show Rep where
   show Word = "Word"
   show Dbl = "Dbl"
+  show Uniform = "Uniform"
+
+||| The flat regime's type of values held as the ordinary regime holds them.
+public export
+uniformType : Name
+uniformType = NS (mkNamespace "Flat.Uniform") (UN (Basic "Uniform"))
 
 ||| The registers a value of a flat type takes, in order. A token, `%World`
 ||| and anything erased take none; a type with several constructors takes a
@@ -105,6 +115,8 @@ mutual
       PrimShape PrimType
     | ||| A data type, by its constructors in order.
       DataShape (List ConShape)
+    | ||| `Uniform a`: the value as ordinary code holds it, unchanged.
+      UniformShape
 
   ||| A constructor of a flat data type: its tag, how ordinary code represents
   ||| it, and the shapes of its run-time fields.
@@ -129,6 +141,7 @@ mutual
   shapeLayout (DataShape []) = []
   shapeLayout (DataShape [c]) = fieldsLayout c.fields
   shapeLayout (DataShape cs@(_ :: _ :: _)) = Word :: consLayout cs
+  shapeLayout UniformShape = [Uniform]
 
   ||| The registers of a constructor's fields, in turn.
   public export
@@ -170,6 +183,7 @@ mutual
   Show Shape where
     show (PrimShape t) = show t
     show (DataShape cs) = "{" ++ concat (intersperse " | " (map showCon cs)) ++ "}"
+    show UniformShape = "uniform"
 
   covering
   showCon : ConShape -> String

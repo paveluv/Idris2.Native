@@ -11,4 +11,4 @@ sh ../oracle/oracle.sh "$idris2" --val-encoding tag0 $P/*.idr
 sh ../oracle/oracle.sh "$idris2" --val-encoding tag0 --nursery 64 $P/Strings.idr $P/Bignum.idr \
   $P/StatusCount.idr $P/StatusClosure.idr $P/StatusCase.idr $P/StatusInterface.idr \
   $P/StatusFixnum.idr $P/StatusNarrow.idr $P/StatusWide.idr $P/StatusIntegerSmall.idr \
-  $P/StatusArray.idr $P/StatusFlatData.idr
+  $P/StatusArray.idr $P/StatusFlatData.idr $P/StatusStrings.idr

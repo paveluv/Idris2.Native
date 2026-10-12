@@ -210,7 +210,8 @@ mutual
   judge j (NPrimVal _ (PrT DoubleType)) = pure (LaidOut [Dbl])
   judge j (NPrimVal _ (PrT WorldType)) = pure (LaidOut [])
   judge j (NPrimVal _ (PrT _)) = pure (LaidOut [Word])
-  judge j (NTCon _ n _ args) = judgeTyCon j n args
+  judge j (NTCon _ n _ args)
+      = if !(toFullNames n) == uniformType then pure (LaidOut [Uniform]) else judgeTyCon j n args
   judge j (NType {}) = pure (Rejected RuntimeType)
   judge j (NBind _ _ (Pi {}) _) = pure (Rejected FunctionType)
   judge j (NDelayed {}) = pure (Rejected LazyType)

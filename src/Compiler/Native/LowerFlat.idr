@@ -50,14 +50,20 @@ export
 DecEq Rep where
   decEq Word Word = Yes Refl
   decEq Dbl Dbl = Yes Refl
+  decEq Uniform Uniform = Yes Refl
   decEq Word Dbl = No (\case Refl impossible)
+  decEq Word Uniform = No (\case Refl impossible)
   decEq Dbl Word = No (\case Refl impossible)
+  decEq Dbl Uniform = No (\case Refl impossible)
+  decEq Uniform Word = No (\case Refl impossible)
+  decEq Uniform Dbl = No (\case Refl impossible)
 
 ||| The type of a register of the representation.
 public export
 repTy : Rep -> Ty enc
 repTy Word = W64
 repTy Dbl = F64
+repTy Uniform = Val
 
 ||| The types of a layout's registers.
 public export
@@ -156,6 +162,7 @@ zeros : (a : Layout) -> Build d c m v l (All (Opnd v) (tys a))
 zeros [] = pure []
 zeros (Word :: rs) = (W 0 ::) <$> zeros rs
 zeros (Dbl :: rs) = do z <- emit1 (FConst 0.0); (z ::) <$> zeros rs
+zeros (Uniform :: rs) = (Erased ::) <$> zeros rs
 
 ------------------------------------------------------------------------------
 -- Shapes
@@ -550,9 +557,7 @@ parameters {enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef) (m 
         Nothing => unsupported ("the primitive " ++ show n ++ " in a flat form")
       Just i => do
         xs <- traverse (\a => snd <$> expr env a) args
-        Just ws <- pure (words (concatValues xs))
-          | Nothing => unsupported ("the intrinsic " ++ show n ++ " on registers that are not words")
-        x <- intrinsic n i ws
+        x <- intrinsic n i (concatValues xs)
         maybe (unsupported ("the intrinsic " ++ show n ++ ", whose result is not its type's"))
               (\rs => pure (sk, MkValue lay rs)) (regsAs lay x)
     expr env (FCon _ c _ sk lay args) = do
@@ -574,57 +579,77 @@ parameters {enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef) (m 
     expr env (FCrash _ msg) = crash msg
     expr env (FNone _) = pure (SOther, noRegs)
 
-    ||| An intrinsic's instructions, from its arguments' words.
-    intrinsic : Name -> Intrinsic -> List (Opnd v W64) -> B (Value enc v)
-    intrinsic _ Syscall6 [n, a, b, c, e, f, g] = do
+    ||| An intrinsic's instructions, from its arguments' registers.
+    intrinsic : Name -> Intrinsic -> Value enc v -> B (Value enc v)
+    -- a uniform value and a pointer word: the conversions, so this module's
+    -- functions alone
+    intrinsic n (ObjectWord k) (MkValue [Uniform] [u]) = case m of
+      True => do
+        p <- emit1 (NarrowPtr k u)
+        w <- emit1 (AddrToWord p)
+        pure (MkValue [Word] [w])
+      False => unsupported ("the intrinsic " ++ show n ++ " outside the memory module")
+    intrinsic n (WordObject k) (MkValue [Word] [w]) = case m of
+      True => do
+        p <- emit1 (WordToAddr k w)
+        u <- emit1 (WidenPtr p)
+        pure (MkValue [Uniform] [u])
+      False => unsupported ("the intrinsic " ++ show n ++ " outside the memory module")
+    intrinsic n i x = case words x of
+      Just ws => wordIntrinsic n i ws
+      Nothing => unsupported ("the intrinsic " ++ show n ++ " on registers of another kind")
+
+    ||| An intrinsic on words.
+    wordIntrinsic : Name -> Intrinsic -> List (Opnd v W64) -> B (Value enc v)
+    wordIntrinsic _ Syscall6 [n, a, b, c, e, f, g] = do
       r <- emit1 (SystemCall n [a, b, c, e, f, g])
       pure (MkValue [Word] [r])
-    intrinsic _ Load64 [base, off] = do
+    wordIntrinsic _ Load64 [base, off] = do
       p <- emit1 (Arith Add base off)
       r <- emit1 (Load W64 (MkMem (AtWord p) Nothing 0))
       pure (MkValue [Word] [r])
-    intrinsic _ (LoadNarrow sw) [base, off] = do
+    wordIntrinsic _ (LoadNarrow sw) [base, off] = do
       p <- emit1 (Arith Add base off)
       r <- emit1 (LoadN sw False (MkMem (AtWord p) Nothing 0))
       pure (MkValue [Word] [r])
-    intrinsic _ Store64 [base, off, x] = do
+    wordIntrinsic _ Store64 [base, off, x] = do
       p <- emit1 (Arith Add base off)
       emit0 (Store W64 (MkMem (AtWord p) Nothing 0) x)
       pure noRegs
-    intrinsic _ (StoreNarrow sw) [base, off, x] = do
+    wordIntrinsic _ (StoreNarrow sw) [base, off, x] = do
       p <- emit1 (Arith Add base off)
       emit0 (StoreN sw (MkMem (AtWord p) Nothing 0) x)
       pure noRegs
-    intrinsic _ GetHp [] = do
+    wordIntrinsic _ GetHp [] = do
       w <- emit1 ReadHp
       pure (MkValue [Word] [w])
-    intrinsic _ SetHp [w] = do
+    wordIntrinsic _ SetHp [w] = do
       emit0 (WriteHp w)
       pure noRegs
-    intrinsic _ GetHpLim [] = do
+    wordIntrinsic _ GetHpLim [] = do
       w <- emit1 ReadHpLim
       pure (MkValue [Word] [w])
-    intrinsic _ SetHpLim [w] = do
+    wordIntrinsic _ SetHpLim [w] = do
       emit0 (WriteHpLim w)
       pure noRegs
     -- the continuation is a pointer: its word needs the conversions
-    intrinsic n GetK [] = case m of
+    wordIntrinsic n GetK [] = case m of
       True => do
         k <- emit1 ReadK
         w <- emit1 (AddrToWord k)
         pure (MkValue [Word] [w])
       False => unsupported ("the intrinsic " ++ show n ++ " outside the memory module")
-    intrinsic n SetK [w] = case m of
+    wordIntrinsic n SetK [w] = case m of
       True => do
         k <- emit1 (WordToAddr CONT w)
         emit0 (WriteK k)
         pure noRegs
       False => unsupported ("the intrinsic " ++ show n ++ " outside the memory module")
-    intrinsic _ PointerTag [] = pure (MkValue [Word] [W (cast (pointerTag enc.val))])
-    intrinsic _ (AreaAddress a) [] = do
+    wordIntrinsic _ PointerTag [] = pure (MkValue [Word] [W (cast (pointerTag enc.val))])
+    wordIntrinsic _ (AreaAddress a) [] = do
       p <- emit1 (AreaAddr a)
       pure (MkValue [Word] [p])
-    intrinsic n _ _ = unsupported ("the intrinsic " ++ show n ++ " with another number of arguments")
+    wordIntrinsic n _ _ = unsupported ("the intrinsic " ++ show n ++ " with another number of arguments")
 
     ||| A `let`: the variable bound to the value.
     bind : Env enc v -> FlatVar -> FlatExp -> B (Env enc v)

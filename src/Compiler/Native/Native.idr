@@ -152,7 +152,7 @@ flatInputs table services roots = do
 ||| The runtime's function for a foreign function of the program it
 ||| implements.
 foreignRoot : {enc : Enc} -> (Name, VMDef) -> Maybe Name
-foreignRoot (n, MkVMForeign {}) = if elem n (foreignFunctions enc) then Just (foreignImplementation n) else Nothing
+foreignRoot (n, MkVMForeign {}) = lookup n (foreignFunctions enc)
 foreignRoot _ = Nothing
 
 ||| From VMCode to the image, under encodings whose value encoding has
@@ -197,8 +197,10 @@ checkIntrinsics enc
   where
     -- the registers of the arguments, then of the result
     walk : ClosedNF -> Core (Either String (List (Ty enc), List (Ty enc)))
-    walk (NBind bfc x (Pi _ _ _ aty) sc) = do
+    walk (NBind bfc x (Pi _ rig _ aty) sc) = do
       defs <- get Ctxt
+      let False = isErased rig
+        | True => walk !(sc defs (toClosure defaultOpts Env.empty (Ref bfc Bound x)))
       Right (_, lay) <- laidOut !(evalClosure defs aty)
         | Left _ => pure (Left ("its argument " ++ show x ++ " is not flat"))
       Right (ps, rs) <- walk !(sc defs (toClosure defaultOpts Env.empty (Ref bfc Bound x)))
@@ -224,17 +226,18 @@ checkIntrinsics enc
                         ++ show params ++ " -> " ++ show results)
 
 ||| Load the runtime's modules into the context: the module `Runtime`, which
-||| imports the generic ones, and the platform's module, which implements
-||| the OS services and which nothing generic imports, from the installed
+||| imports the generic ones, the platform's module, which implements the OS
+||| services, and the string encoding's, which nothing generic imports
+||| either, from the installed
 ||| package, with the backend's own package, whose
 ||| `Compiler.Native.HeapObject` the runtime shares.
-loadRuntime : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} -> Platform -> Core ()
-loadRuntime platform = do
+loadRuntime : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} -> Platform -> Enc -> Core ()
+loadRuntime platform enc = do
   addPkgDir "idris2-native-runtime" anyBounds
   addPkgDir "idris2-native" anyBounds
   u <- newRef UST initUState
   traverse_ (\ns => addImport (MkImport EmptyFC False (nsAsModuleIdent ns) ns))
-            (mkNamespace "Runtime" :: toList (platformModule platform))
+            (mkNamespace "Runtime" :: toList (platformModule platform) ++ toList (stringModule enc.strings))
 
 ||| The foreign functions and externs of the libraries in the context, each
 ||| with how this backend implements it: by the runtime (`runtime`), by the
@@ -270,7 +273,7 @@ dumpForeign enc path = do
     entry : (Name, GlobalDef) -> Core String
     entry (n, _) = do
       n' <- toFullNames n
-      pure $ (if elem n' (foreignFunctions enc) then "runtime  "
+      pure $ (if elem n' (map fst (foreignFunctions enc)) then "runtime  "
               else if elem (nameRoot n') lowered then "lowered  "
               else "missing  ") ++ show n'
 
@@ -280,7 +283,7 @@ compileExpr : Ref Ctxt Defs -> Ref Syn SyntaxInfo ->
 compileExpr c s _ outputDir tm outfile = do
   Right settings <- parseSettings <$> getDirectives markingCG
     | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
-  Just table <- markedForms (loadRuntime settings.platform)
+  Just table <- markedForms (loadRuntime settings.platform settings.encodings)
     | Nothing => pure Nothing
   [] <- checkIntrinsics settings.encodings
     | errs => throw (GenericMsg EmptyFC ("native: " ++ fastConcat (intersperse "\n" errs)))

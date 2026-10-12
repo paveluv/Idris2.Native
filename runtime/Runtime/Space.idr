@@ -25,10 +25,6 @@ import public Runtime.State
 
 %default total
 
-||| End the program with the message, whatever operation was expected.
-crashOp : String -> Op Heap a
-crashOp msg = assert_total (idris_crash msg)
-
 ||| Memory committed to a space up to `need` and a window beyond, in whole
 ||| pages: `committed` and `end` are the state words of the space.
 commitSpace : (committed, end : State) -> (need : Bits64) -> Op Heap ()
@@ -70,7 +66,7 @@ Memory Heap where
     base <- getState fromBase
     hp <- allocationPointer
     let a = v - tag
-    pure (prim__and_Bits64 v 1 == tag && base <= a && a < hp)
+    pure (v .&. 1 == tag && base <= a && a < hp)
   addressOf v = do
     tag <- pointerTag
     pure (v - tag)
@@ -133,6 +129,17 @@ Memory Heap where
     -- the program allocates after the copies
     setAllocation tt tc
 
+||| Whether a collection is due before `bytes` more: the from-space has grown
+||| past twice what the last collection left live, and four windows at least.
+collectionDue : (bytes : Bits64) -> Op Heap Bool
+collectionDue bytes = do
+  hp <- allocationPointer
+  base <- getState fromBase
+  live <- getState liveBytes
+  win <- getState windowBytes
+  let threshold = if 2 * live > 4 * win then 2 * live else 4 * win
+  pure (hp - base + bytes > threshold)
+
 ||| Room for `bytes` at the allocation pointer: the from-space committed to
 ||| a window beyond them, under the limit; the window moved past them; the
 ||| object's address.
@@ -157,15 +164,33 @@ grow bytes = do
 export covering
 allocSlow : (bytes : Bits64) -> Op Heap (Addr k)
 allocSlow bytes = do
-  hp <- allocationPointer
-  base <- getState fromBase
-  live <- getState liveBytes
-  win <- getState windowBytes
-  let used = hp - base
-  let threshold = if 2 * live > 4 * win then 2 * live else 4 * win
-  if used + bytes > threshold then collect else pure ()
+  due <- collectionDue bytes
+  if due then collect else pure ()
   a <- grow bytes
   pure (fromWord a)
+
+||| Room for `bytes` for the runtime's own objects, which the primitives
+||| make: never a collection, since the primitives' callers hold values a
+||| collection would move under them. When the window is out, the space
+||| grows instead; if a collection was due, the window is left empty, so
+||| that generated code's next allocation takes the slow path, which
+||| collects. The space allocated past the window that way is bounded by one
+||| primitive's objects. The object's address.
+export
+allocate : (bytes : Bits64) -> Op Heap Bits64
+allocate bytes = do
+  hp <- allocationPointer
+  lim <- allocationLimit
+  if hp + bytes <= lim
+     then do
+       setAllocation (hp + bytes) lim
+       pure hp
+     else do
+       due <- collectionDue bytes
+       a <- grow bytes
+       hp' <- allocationPointer
+       if due then setAllocation hp' hp' else pure ()
+       pure a
 
 %cg native flat Runtime.Space.allocMutable
 ||| `idris_alloc_mutable`: an object that will be written after it is made,

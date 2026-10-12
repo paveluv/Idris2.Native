@@ -1,0 +1,18 @@
+. ../../testutils.sh
+
+# The string primitives outside a string end the program: the head and the
+# tail of "", and indices 3 and -1 of "abc" and 5 of "héllo", which is five
+# characters in six bytes. Each line replaces `probe`'s body.
+n=0
+for body in 'prim__strHead (str "") == '"'z'" \
+            'prim__strTail (str "") == "z"' \
+            'prim__strIndex (str "abc") 3 == '"'z'" \
+            'prim__strIndex (str "abc") (-1) == '"'z'" \
+            'prim__strIndex (str "héllo") 5 == '"'z'"; do
+  n=$((n + 1))
+  sed -e "s/^probe = .*   -- each program replaces this line\$/probe = $body/" Main.idr > Case$n.idr
+  idris2 --cg native -o case$n Case$n.idr > /dev/null
+  ./build/exec/case$n 2>&1
+  echo "status: $?"
+  rm -f Case$n.idr
+done
