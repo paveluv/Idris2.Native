@@ -59,6 +59,7 @@
 ||| that asked for them.
 module Flat.Translate
 
+import Data.Builder
 import Compiler.Opts.Constructor
 
 import Core.Case.CaseTree
@@ -269,18 +270,18 @@ binderTerms (PVTy _ _ ty) = [ty]
 
 -- The `Bound` names a term refers to, in the order it first refers to them.
 boundRefs : Term vars -> List Name
-boundRefs tm = nub (go tm)
+boundRefs tm = nub (contents (go tm))
   where
-    go : Term vs -> List Name
-    go (Ref _ Bound x) = [x]
-    go (Bind _ _ b sc) = concatMap go (assert_total (binderTerms b)) ++ go sc
-    go (App _ f a) = go f ++ go a
-    go (As _ _ a p) = go a ++ go p
+    go : Term vs -> Builder Name
+    go (Ref _ Bound x) = single x
+    go (Bind _ _ b sc) = concatMap go (assert_total (binderTerms b)) <+> go sc
+    go (App _ f a) = go f <+> go a
+    go (As _ _ a p) = go a <+> go p
     go (TDelayed _ _ t) = go t
-    go (TDelay _ _ t v) = go t ++ go v
+    go (TDelay _ _ t v) = go t <+> go v
     go (TForce _ _ t) = go t
     go (Meta _ _ _ args) = concatMap go args
-    go _ = []
+    go _ = neutral
 
 -- A term with `Bound` names renamed.
 renameRefs : NameMap Name -> Term vars -> Term vars
@@ -1629,21 +1630,23 @@ forget d
 
 -- The definitions a flat form refers to at run time.
 references : FlatExp -> List Name
-references (FVar _ _) = []
-references (FLet _ _ v sc) = references v ++ references sc
-references (FConst _ _) = []
-references (FOp _ _ as) = concatMap references (toList as)
-references (FCall _ n as) = n :: concatMap references as
-references (FPrim _ n _ _ as) = n :: concatMap references as
-references (FCon _ n _ _ _ as) = n :: concatMap references as
-references (FCase _ sc alts def)
-    = references sc ++ concatMap alt alts ++ maybe [] references def
+references e = contents (go e)
   where
-    alt : FlatAlt -> List Name
-    alt (FConAlt n _ _ sc) = n :: references sc
-    alt (FConstAlt _ sc) = references sc
-references (FCrash _ _) = []
-references (FNone _) = []
+    go : FlatExp -> Builder Name
+    go (FVar _ _) = neutral
+    go (FLet _ _ v sc) = go v <+> go sc
+    go (FConst _ _) = neutral
+    go (FOp _ _ as) = concatMap go (toList as)
+    go (FCall _ n as) = single n <+> concatMap go as
+    go (FPrim _ n _ _ as) = single n <+> concatMap go as
+    go (FCon _ n _ _ _ as) = single n <+> concatMap go as
+    go (FCase _ sc alts def) = go sc <+> concatMap alt alts <+> maybe neutral go def
+      where
+        alt : FlatAlt -> Builder Name
+        alt (FConAlt n _ _ sc) = single n <+> go sc
+        alt (FConstAlt _ sc) = go sc
+    go (FCrash _ _) = neutral
+    go (FNone _) = neutral
 
 ||| Compile each function that has one of the flat forms from that form,
 ||| made ordinary again: the flat oracle. A copy at static arguments, which

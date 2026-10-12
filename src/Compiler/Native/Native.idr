@@ -43,9 +43,11 @@ import Compiler.Native.Linkage
 import Compiler.Native.Link
 import Compiler.Native.ELF
 import Idris.Syntax
+import Data.Builder
 import Data.List
 import Data.List1
 import Data.SortedMap
+import System.Clock
 import Data.String
 import System
 import System.File
@@ -131,8 +133,8 @@ parseSettings = foldlM setting (MkSettings windowBytes Nothing Nothing Nothing N
 flatInputs : {auto c : Ref Ctxt Defs} -> NameMap FlatDef -> List (Name, Name) -> List Name ->
              Core (List FlatDef, Shapes)
 flatInputs table services roots = do
-  forms <- reach empty [] roots
-  let skeletons = nub (filter isData (concatMap formSkeletons forms))
+  forms <- reach empty neutral roots
+  let skeletons = nub (filter isData (contents (concatMap (piece . formSkeletons) forms)))
   shapes <- traverse (\sk => map (sk,) <$> shape sk) skeletons
   pure (forms, catMaybes shapes)
   where
@@ -140,13 +142,13 @@ flatInputs table services roots = do
     isData (SCon _ _) = True
     isData _ = False
 
-    reach : SortedMap Name () -> List FlatDef -> List Name -> Core (List FlatDef)
-    reach seen acc [] = pure (reverse acc)
+    reach : SortedMap Name () -> Builder FlatDef -> List Name -> Core (List FlatDef)
+    reach seen acc [] = pure (contents acc)
     reach seen acc (n :: ns) =
       if isJust (Data.SortedMap.lookup n seen) then reach seen acc ns else do
         Just fd <- pure (lookup n table)
           | Nothing => reach (insert n () seen) acc ns
-        reach (insert n () seen) (fd :: acc)
+        reach (insert n () seen) (acc <+> single fd)
               (formCallees fd ++ mapMaybe (\p => Data.List.lookup p services) (formPrims fd) ++ ns)
 
 ||| The runtime's function for a foreign function of the program it
@@ -156,29 +158,53 @@ foreignRoot (n, MkVMForeign {}) = lookup n (foreignFunctions enc)
 foreignRoot _ = Nothing
 
 ||| A pure computation as an action, so that it runs where the action runs:
-||| under `logTime`, which reports each phase of the compile with `--timing 2`.
+||| inside `phase`.
 later : Lazy a -> Core a
 later x = coreLift (primIO (\w => MkIORes (force x) w))
+
+||| A phase of the compile, reported under `--timing 2` with its time and
+||| the part of it the collector took: that part follows where collections
+||| fall more than the phase's own work, so the rest is what the phase's
+||| algorithms cost.
+phase : {auto c : Ref Ctxt Defs} -> String -> Core a -> Core a
+phase name act = do
+  opts <- getSession
+  if not (maybe False (2 <=) (logTimings opts)) then act else do
+    t0 <- coreLift (clockTime Process)
+    g0 <- coreLift (clockTime GCCPU)
+    res <- act
+    t1 <- coreLift (clockTime Process)
+    g1 <- coreLift (clockTime GCCPU)
+    let collecting = case (g0, g1) of
+                       (Just a, Just b) => " (collecting " ++ seconds (timeDifference b a) ++ "s)"
+                       _ => ""
+    coreLift_ (putStrLn ("TIMING ++ native: " ++ name ++ ": " ++ seconds (timeDifference t1 t0) ++ "s" ++ collecting))
+    pure res
+  where
+    seconds : Clock Duration -> String
+    seconds d = let ms = toNano d `div` 1000000
+                    frac = show (ms `mod` 1000)
+                in show (ms `div` 1000) ++ "." ++ pack (replicate (minus 3 (length frac)) '0') ++ frac
 
 ||| From VMCode to the image, under encodings whose value encoding has
 ||| fixnums: produce the term, allocate its registers, render, link.
 pipeline : {auto c : Ref Ctxt Defs} -> (enc : Enc) -> {auto 0 _ : HasFixnums enc.val} ->
-           Settings -> NameMap FlatDef -> List (Name, VMDef) -> Core Builder
+           Settings -> NameMap FlatDef -> List (Name, VMDef) -> Core (Builder Bits8)
 pipeline enc settings table defs = do
-  (forms, shapes) <- logTime 2 "native: flat inputs" $
+  (forms, shapes) <- phase "flat inputs" $
                        flatInputs table (serviceBindings {enc} settings.platform)
                                   (map fst defs ++ [r.name | r <- routines {enc}, r.provided]
                                    ++ mapMaybe (foreignRoot {enc}) defs)
-  Right (_ ** term) <- logTime 2 "native: lowering" (later (lowerProgram enc settings.platform forms shapes defs))
+  Right (_ ** term) <- phase "lowering" (later (lowerProgram enc settings.platform forms shapes defs))
     | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
-  ir <- logTime 2 "native: register allocation" (later (allocRegs x86_64 term))
+  ir <- phase "register allocation" (later (allocRegs x86_64 term))
   case settings.dumpIr of
     Just path => do
       Right () <- coreLift (writeFile path (dumpProgram ir))
         | Left err => throw (FileErr path err)
       pure ()
     Nothing => pure ()
-  Right rendered <- logTime 2 "native: rendering" (later (render enc ir))
+  Right rendered <- phase "rendering" (later (render enc ir))
     | Left err => throw (InternalError ("native: " ++ err))
   case settings.dumpAsm of
     Just path => do
@@ -186,7 +212,7 @@ pipeline enc settings table defs = do
         | Left err => throw (FileErr path err)
       pure ()
     Nothing => pure ()
-  Right image <- logTime 2 "native: linking" (later (linkProgram enc settings.window rendered.areas rendered.text rendered.rodata))
+  Right image <- phase "linking" (later (linkProgram enc settings.window rendered.areas rendered.text rendered.rodata))
     | Left problems => throw (InternalError ("native: the image cannot be assembled: " ++ show problems))
   pure image
 
@@ -289,20 +315,20 @@ compileExpr : Ref Ctxt Defs -> Ref Syn SyntaxInfo ->
 compileExpr c s _ outputDir tm outfile = do
   Right settings <- parseSettings <$> getDirectives markingCG
     | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
-  Just table <- logTime 2 "native: the runtime loaded" (markedForms (loadRuntime settings.platform settings.encodings))
+  Just table <- phase "the runtime loaded" (markedForms (loadRuntime settings.platform settings.encodings))
     | Nothing => pure Nothing
-  [] <- logTime 2 "native: the contract checked" (checkIntrinsics settings.encodings)
+  [] <- phase "the contract checked" (checkIntrinsics settings.encodings)
     | errs => throw (GenericMsg EmptyFC ("native: " ++ fastConcat (intersperse "\n" errs)))
   whenJust settings.dumpFlat $ \f => dumpFlat f table
   whenJust settings.dumpForeign $ \f => dumpForeign settings.encodings f
-  cdata <- logTime 2 "native: Idris's passes" (getCompileData False VMCode tm)
+  cdata <- phase "Idris's passes" (getCompileData False VMCode tm)
   image <- case settings.encodings of
     MkEnc FixnumTag1 b s => pipeline (MkEnc FixnumTag1 b s) settings table (vmcode cdata)
     MkEnc FixnumTag0 b s => pipeline (MkEnc FixnumTag0 b s) settings table (vmcode cdata)
     MkEnc NoFixnums _ _ => throw (GenericMsg EmptyFC "native: the encoding nofixnums is not implemented")
   coreLift_ $ mkdirAll outputDir
   let outexec = outputDir </> outfile
-  Right () <- logTime 2 "native: the image written" (coreLift (writeImage outexec image))
+  Right () <- phase "the image written" (coreLift (writeImage outexec image))
     | Left err => throw (FileErr outexec err)
   pure (Just outexec)
 

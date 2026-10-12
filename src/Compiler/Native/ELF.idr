@@ -129,7 +129,7 @@ nameShstrtab = 20
 ||| label). Section headers are not needed to run but let `readelf`/`objdump`
 ||| and debuggers see the regions.
 export
-elfImage : Arch -> Layout -> (text : Builder) -> (rodata : Builder) -> (bssSize : Int) -> (entry : Int) -> Builder
+elfImage : Arch -> Layout -> (text : Builder Bits8) -> (rodata : Builder Bits8) -> (bssSize : Int) -> (entry : Int) -> Builder Bits8
 elfImage m lay text rodata bssSize entry =
   let ts = cast (size text)
       rs = cast (size rodata)
@@ -145,21 +145,21 @@ elfImage m lay text rodata bssSize entry =
               ++ sectionHeader nameRodata shtProgbits shfAlloc (rodataBase lay) (rodataOff lay) rs 16
               ++ sectionHeader nameBss shtNobits (shfAlloc + shfWrite) (bssBase lay) (bssOff lay) bssSize 16
               ++ sectionHeader nameShstrtab shtStrtab 0 0 strOff strSize 1
-  in fromBytes headers
-  <+> fromBytes (zeros (cast (textOff lay - cast (length headers))))
+  in piece headers
+  <+> piece (zeros (cast (textOff lay - cast (length headers))))
   <+> text
-  <+> fromBytes (zeros (cast (rodataOff lay - (textOff lay + ts))))
+  <+> piece (zeros (cast (rodataOff lay - (textOff lay + ts))))
   <+> rodata
-  <+> fromBytes shstrtab
-  <+> fromBytes (zeros (cast (shoff - (strOff + strSize))))
-  <+> fromBytes sections
+  <+> piece shstrtab
+  <+> piece (zeros (cast (shoff - (strOff + strSize))))
+  <+> piece sections
 
 ||| Write an image to a file and make it executable (owner rwx, others rx).
 export
-writeImage : (path : String) -> Builder -> IO (Either FileError ())
+writeImage : (path : String) -> Builder Bits8 -> IO (Either FileError ())
 writeImage path image = do
   let n = size image
-      bytes = toBytes image
+      bytes = contents image
   Just buf <- newBuffer (cast n)
     | Nothing => pure (Left FileWriteError)
   fill buf 0 bytes

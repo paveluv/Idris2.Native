@@ -58,7 +58,7 @@ public export
 Closed d c m ps = {0 v : Ty enc -> Type} -> {0 l : List (Ty enc) -> Type} -> All v ps -> PBody d c m v l
 
 ------------------------------------------------------------------------------
--- The builder
+-- `Build`
 
 ||| Code that, given the rest of the body, makes the body.
 public export
@@ -93,7 +93,7 @@ vars : All v qs -> All (Opnd v) qs
 vars [] = []
 vars (x :: xs) = V x :: vars xs
 
-||| A body from builder code over the parameters.
+||| A body from `Build` code over the parameters.
 export
 build : ({0 v : Ty enc -> Type} -> {0 l : List (Ty enc) -> Type} -> All (Opnd v) ps -> End d c m v l) ->
         Closed d c m ps

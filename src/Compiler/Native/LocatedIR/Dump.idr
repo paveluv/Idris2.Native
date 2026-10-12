@@ -3,6 +3,7 @@
 ||| its parameters.
 module Compiler.Native.LocatedIR.Dump
 
+import Data.Builder
 import Compiler.Native.LocatedIR
 import Core.Name
 import Data.List
@@ -97,23 +98,28 @@ term (Ret vs) = "Ret" ++ (if null vs then "" else " " ++ ops vs)
 term (Crash s) = "Crash " ++ show s
 term (Unsupported s) = "Unsupported " ++ show s
 
-block : Block enc -> String
-block b =
-  "  " ++ show b.label ++ (if null b.params then "" else " " ++ regs b.params) ++ ":\n"
-  ++ fastConcat (map (\i => "    " ++ instr i ++ "\n") b.body)
-  ++ "    " ++ term b.term ++ "\n"
+-- A block's text, a line a piece.
+blockPieces : Block enc -> Builder String
+blockPieces b =
+  single ("  " ++ show b.label ++ (if null b.params then "" else " " ++ regs b.params) ++ ":\n")
+  <+> concatMap (\i => single ("    " ++ instr i ++ "\n")) b.body
+  <+> single ("    " ++ term b.term ++ "\n")
+
+functionPieces : Function enc -> Builder String
+functionPieces f =
+  single ("function " ++ show f.name ++ " " ++ show f.conv ++ " " ++ regs f.params
+          ++ (if null f.results then "" else " -> " ++ show f.results)
+          ++ " entry " ++ show f.entry ++ "\n")
+  <+> concatMap blockPieces f.blocks
 
 ||| One function: its name, convention, parameters and blocks.
 export
 dumpFunction : Function enc -> String
-dumpFunction f =
-  "function " ++ show f.name ++ " " ++ show f.conv ++ " " ++ regs f.params
-  ++ (if null f.results then "" else " -> " ++ show f.results)
-  ++ " entry " ++ show f.entry ++ "\n" ++ fastConcat (map block f.blocks)
+dumpFunction f = fastConcat (contents (functionPieces f))
 
 ||| A whole program: the statics, then every function.
 export
 dumpProgram : Program enc -> String
 dumpProgram p =
-  fastConcat (map (\s => "static " ++ show s.sym ++ " " ++ show s.header ++ "\n") p.statics)
-  ++ fastConcat (map (\f => dumpFunction f ++ "\n") p.functions)
+  fastConcat (contents (concatMap (\s => single ("static " ++ show s.sym ++ " " ++ show s.header ++ "\n")) p.statics
+                        <+> concatMap (\f => functionPieces f <+> single "\n") p.functions))

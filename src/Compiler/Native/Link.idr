@@ -31,13 +31,13 @@ import Data.SortedMap
 export
 linkProgram : (enc : Enc) -> {auto 0 _ : HasFixnums enc.val} ->
               (window : Int) -> (areas : Areas) -> (program : List Instr) ->
-              (rodata : List (Label, List Bits8)) -> Either (List AsmProblem) Builder
+              (rodata : List (Label, List Bits8)) -> Either (List AsmProblem) (Builder Bits8)
 linkProgram enc window areas program items =
   let text = seedText enc window ++ program
       tl = layout textBase text
       ts = codeSize textBase text
       (seedData, rsyms) = seedRodata tl
-      rodata = foldl (\b, (_, item) => b <+> fromBytes (pad8 item)) (fromBytes seedData) items
+      rodata = foldl (\b, (_, item) => b <+> piece (pad8 item)) (piece seedData) items
       offsets = offsetsFrom (cast (length seedData)) items
       as = maxAreas seedAreas areas
       lay = planLayout ts (cast (size rodata)) (seedBssSize as)
@@ -58,11 +58,11 @@ linkProgram enc window areas program items =
 ||| seed's, with no read-only data of its own.
 export
 linkWith : (enc : Enc) -> {auto 0 _ : HasFixnums enc.val} ->
-           (window : Int) -> (program : List Instr) -> Either (List AsmProblem) Builder
+           (window : Int) -> (program : List Instr) -> Either (List AsmProblem) (Builder Bits8)
 linkWith enc window program = linkProgram enc window seedAreas program []
 
 ||| `linkWith` the default window.
 export
 link : (enc : Enc) -> {auto 0 _ : HasFixnums enc.val} ->
-       (program : List Instr) -> Either (List AsmProblem) Builder
+       (program : List Instr) -> Either (List AsmProblem) (Builder Bits8)
 link enc = linkWith enc windowBytes

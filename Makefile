@@ -8,6 +8,8 @@
 #                   `idris2-native`, and build with it the runtime, the
 #                   package `idris2-native-runtime`, into build/prefix
 #   make test       run the tests; `only=native/term001` runs some
+#   make scaling    the backend's phases against the size of the program;
+#                   `sizes="64 128"` chooses the sizes
 #
 # The submodule is never edited: building it writes only files that it
 # ignores.
@@ -22,7 +24,7 @@ threads ?= $(shell nproc 2>/dev/null || echo 1)
 # after uses the pinned Idris 2's, in the prefix.
 WITH_PREFIX := IDRIS2_PREFIX=$(PREFIX)
 
-.PHONY: all upstream native testbin test clean
+.PHONY: all upstream native testbin test scaling clean
 
 all: native
 
@@ -43,6 +45,13 @@ testbin:
 test: native testbin
 	cd tests && $(WITH_PREFIX) NAME_VERSION=$(NAME_VERSION) ./build/exec/runtests $(TARGET) \
 	  --timing --failure-file failures --threads $(threads) --only "$(only)" < /dev/null
+
+# The backend's phases against the size of the program: fails when one
+# grows faster than the program (tests/scaling/scaling.sh). On demand, not
+# part of `test`, since it measures time; `make scaling sizes="64 128"`
+# chooses the sizes.
+scaling: native
+	cd tests/scaling && $(WITH_PREFIX) sh ./scaling.sh $(TARGET) $(sizes)
 
 clean:
 	$(RM) -r build runtime/build tests/build tests/failures

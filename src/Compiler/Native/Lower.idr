@@ -3,7 +3,7 @@
 ||| (`Compiler.Native.RegAlloc`) makes the located IR.
 |||
 ||| Every VMCode function becomes a `CPS` function of `Val` parameters,
-||| written through the builder (`Compiler.Native.TermIR.Build`), so Idris
+||| written in `Build` (`Compiler.Native.TermIR.Build`), so Idris
 ||| checks its scoping and types when this module is compiled. VMCode's
 ||| locals are mutable; the term's values are not. The locals are therefore
 ||| an environment, from each local to the operand it holds, threaded through
@@ -51,6 +51,7 @@
 ||| same static object.
 module Compiler.Native.Lower
 
+import Data.Builder
 import public Compiler.VMCode
 import Core.CompileExpr
 import public Compiler.Native.TermIR
@@ -301,11 +302,13 @@ Env : (Ty enc -> Type) -> Type
 Env v = SortedMap Int (Opnd v Val, Maybe Constant)
 
 -- The registers a list of instructions writes, and those it reads, nested
--- alternatives included.
+-- alternatives included. `union x y` inserts the elements of `y` into `x`,
+-- so each union here takes the smaller set second: the other way, a list's
+-- set is built again at every instruction, the square of its length.
 mutual
   writes : List VMInst -> SortedSet Int
   writes [] = empty
-  writes (i :: is) = union (writes1 i) (writes is)
+  writes (i :: is) = union (writes is) (writes1 i)
 
   writes1 : VMInst -> SortedSet Int
   -- VMCode nests lists of instructions in tuples, which the termination
@@ -316,7 +319,7 @@ mutual
 
   altsWrite : List (a, List VMInst) -> SortedSet Int
   altsWrite [] = empty
-  altsWrite ((_, is) :: as) = union (writes is) (altsWrite as)
+  altsWrite ((_, is) :: as) = union (altsWrite as) (writes is)
 
   target : VMInst -> Maybe Reg
   target (ASSIGN d _) = Just d
@@ -334,7 +337,7 @@ mutual
 mutual
   reads : List VMInst -> SortedSet Int
   reads [] = empty
-  reads (i :: is) = union (reads1 i) (reads is)
+  reads (i :: is) = union (reads is) (reads1 i)
 
   reads1 : VMInst -> SortedSet Int
   reads1 (ASSIGN _ s) = regs [s]
@@ -344,17 +347,28 @@ mutual
   reads1 (CALL _ _ _ as) = regs as
   reads1 (OP _ _ as) = regs (toList as)
   reads1 (EXTPRIM _ _ as) = regs as
-  reads1 (CASE s alts d) = assert_total (union (regs [s]) (union (altsRead alts) (maybe empty reads d)))
-  reads1 (CONSTCASE s alts d) = assert_total (union (regs [s]) (union (altsRead alts) (maybe empty reads d)))
+  reads1 (CASE s alts d) = assert_total (union (union (altsRead alts) (maybe empty reads d)) (regs [s]))
+  reads1 (CONSTCASE s alts d) = assert_total (union (union (altsRead alts) (maybe empty reads d)) (regs [s]))
   reads1 (PROJECT _ v _) = regs [v]
   reads1 _ = empty
 
   altsRead : List (a, List VMInst) -> SortedSet Int
   altsRead [] = empty
-  altsRead ((_, is) :: as) = union (reads is) (altsRead as)
+  altsRead ((_, is) :: as) = union (altsRead as) (reads is)
 
   regs : List Reg -> SortedSet Int
   regs rs = fromList (mapMaybe key rs)
+
+||| Each instruction with what is read after it, given what is read after
+||| the list: one pass, from the end, so that a case does not compute what
+||| the code after it reads again, which made a function of n cases cost the
+||| cube of n.
+annotate : SortedSet Int -> List VMInst -> List (VMInst, SortedSet Int)
+annotate later is = snd (go is)
+  where
+    go : List VMInst -> (SortedSet Int, List (VMInst, SortedSet Int))
+    go [] = (later, [])
+    go (i :: is) = let (r, ais) = go is in (union r (reads1 i), (i, r) :: ais)
 
 isRVal : Reg -> Bool
 isRVal RVal = True
@@ -984,19 +998,24 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
     ||| itself; otherwise they meet at a join whose parameters are the locals
     ||| they assign that the rest reads, and the rest is lowered once.
     ||| `dispatch` branches to the alternatives and the default.
-    cases : Env v -> SortedSet Int -> (tail : Bool) -> List VMInst -> (Env v -> E) ->
+    ||| `after` is what the code after the case reads.
+    cases : Env v -> (after : SortedSet Int) -> (tail : Bool) -> List (VMInst, SortedSet Int) -> (Env v -> E) ->
             (alts : List (List VMInst)) -> (dflt : List VMInst) -> (List E -> E -> E) -> E
-    cases env later True [] k alts dflt dispatch =
-      dispatch (map (\alt => lower env later True alt k) alts) (lower env later True dflt k)
-    cases env later t is k alts dflt dispatch = do
-      let after = union (reads is) later
-          ks = Prelude.toList (intersection (foldr (union . writes) (writes dflt) alts) after)
+    cases env after True [] k alts dflt dispatch =
+      dispatch (map (\alt => lower env True (annotate after alt) k) alts) (lower env True (annotate after dflt) k)
+    cases env after t is k alts dflt dispatch = do
+      -- the locals the alternatives assign that the rest reads: each of the
+      -- few assigned looked up in what is read after, which is as long as the
+      -- rest of the function (`intersection` walks its second set)
+      let ks = filter (\r => contains r after)
+                      (Prelude.toList (foldr (\alt, w => union w (writes alt)) (writes dflt) alts))
           kset = fromList ks
           exitWith : Jumper d InCPS False v l (replicate (length ks) Val) -> Env v -> E
           exitWith exit e = exit (passed e ks)
       vals <- joinPoint (replicate (length ks) Val) $ \exit =>
-        dispatch (map (\alt => lower env kset False alt (exitWith exit)) alts) (lower env kset False dflt (exitWith exit))
-      lower (foldl (\e, (k', x) => insert k' (x, Nothing) e) env (zip ks (allVals vals))) later t is k
+        dispatch (map (\alt => lower env False (annotate kset alt) (exitWith exit)) alts)
+                 (lower env False (annotate kset dflt) (exitWith exit))
+      lower (foldl (\e, (k', x) => insert k' (x, Nothing) e) env (zip ks (allVals vals))) t is k
       where
         -- A local an alternative leaves as it was passes on as it was; one it
         -- never had passes on as the erased value, which no path reads.
@@ -1004,39 +1023,39 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
         passed e [] = []
         passed e (k' :: ks') = maybe Erased fst (lookup k' e) :: passed e ks'
 
-    ||| The instructions, then the rest, `k`, on the environment they leave.
-    ||| `later` is what the rest reads; in `tail` position the rest returns
-    ||| the result.
-    lower : Env v -> SortedSet Int -> (tail : Bool) -> List VMInst -> (Env v -> E) -> E
-    lower env later t [] k = k env
-    lower env later t (DECLARE _ :: is) k = lower env later t is k
-    lower env later t (START :: is) k = lower env later t is k
-    lower env later t (ASSIGN Discard _ :: is) k = lower env later t is k
-    lower env later t (ASSIGN r x :: is) k = lower (set env r (get env x)) later t is k
-    lower env later t (NULL r :: is) k = lower (set env r Erased) later t is k
-    lower env later t (MKCONSTANT r c :: is) k = do
+    ||| The instructions, each with what is read after it (`annotate`), then
+    ||| the rest, `k`, on the environment they leave; in `tail` position the
+    ||| rest returns the result.
+    lower : Env v -> (tail : Bool) -> List (VMInst, SortedSet Int) -> (Env v -> E) -> E
+    lower env t [] k = k env
+    lower env t ((DECLARE _, _) :: is) k = lower env t is k
+    lower env t ((START, _) :: is) k = lower env t is k
+    lower env t ((ASSIGN Discard _, _) :: is) k = lower env t is k
+    lower env t ((ASSIGN r x, _) :: is) k = lower (set env r (get env x)) t is k
+    lower env t ((NULL r, _) :: is) k = lower (set env r Erased) t is k
+    lower env t ((MKCONSTANT r c, _) :: is) k = do
       x <- constant c
-      lower (setKnown env r x c) later t is k
-    lower env later t (MKCON r (Left conId) [] :: is) k = do
+      lower (setKnown env r x c) t is k
+    lower env t ((MKCON r (Left conId) [], _) :: is) k = do
       x <- staticVal (nullaryCon conId)
-      lower (set env r x) later t is k
-    lower env later t (MKCON r (Left conId) args :: is) k = do
+      lower (set env r x) t is k
+    lower env t ((MKCON r (Left conId) args, _) :: is) k = do
       x <- constructor conId (map (get env) args)
-      lower (set env r x) later t is k
-    lower env later t (MKCON r (Right n) _ :: is) k = unsupported ("the type constructor " ++ show n ++ " as a value")
-    lower env later t (MKCLOSURE r f missing args :: is) k =
+      lower (set env r x) t is k
+    lower env t ((MKCON r (Right n) _, _) :: is) k = unsupported ("the type constructor " ++ show n ++ " as a value")
+    lower env t ((MKCLOSURE r f missing args, _) :: is) k =
       case lookup f refs.funs of
         Just (MkSig _ InCPS _ _ ** code) => do
           x <- closure f code missing (map (get env) args)
-          lower (set env r x) later t is k
+          lower (set env r x) t is k
         _ => unsupported ("a closure of " ++ show f ++ ", which is not a function of the program")
-    lower env later t (APPLY r f a :: is) k =
+    lower env t ((APPLY r f a, _) :: is) k =
       if t && isNil is && isRVal r
          then tailApply (get env f) (get env a)
          else do
            x <- apply (get env f) (get env a)
-           lower (set env r x) later t is k
-    lower env later t (CALL r tl f args :: is) k =
+           lower (set env r x) t is k
+    lower env t ((CALL r tl f args, _) :: is) k =
       case cpsFunction f (length (map (get env) args)) of
         Nothing => unsupported ("a call to " ++ show f ++ ", which is not a function of the program")
         Just (_ ** _ ** callee) =>
@@ -1044,32 +1063,32 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
              then tailCall callee (vals (map (get env) args))
              else do
                x <- call callee (vals (map (get env) args))
-               lower (set env r x) later t is k
-    lower env later t (OP r fn args :: is) k = do
+               lower (set env r x) t is k
+    lower env t ((OP r fn args, _) :: is) k = do
       env' <- op env r fn args
-      lower env' later t is k
-    lower env later t (EXTPRIM r p args :: is) k = do
+      lower env' t is k
+    lower env t ((EXTPRIM r p args, _) :: is) k = do
       env' <- extPrim env r p args
-      lower env' later t is k
-    lower env later t (CASE s alts dflt :: is) k =
+      lower env' t is k
+    lower env t ((CASE s alts dflt, after) :: is) k =
       case traverse (either Just (const Nothing) . fst) alts of
         Nothing => unsupported "a case on type constructors"
         Just ids => do
           q <- emit1 (NarrowPtr CON (get env s))
           i <- emit1 (LoadPart ConId q)
-          cases env later t is k (map snd alts) (fromMaybe [ERROR "no case alternative matched"] dflt) $
+          cases env after t is k (map snd alts) (fromMaybe [ERROR "no case alternative matched"] dflt) $
             \codes, other => onKeys i (zip (map cast ids) codes) other
-    lower env later t (CONSTCASE s alts dflt :: is) k =
+    lower env t ((CONSTCASE s alts dflt, after) :: is) k =
       case traverse (intConst . fst) alts of
         Nothing => unsupported "a case on strings or doubles"
         Just ks =>
-          cases env later t is k (map snd alts) (fromMaybe [ERROR "no case alternative matched"] dflt) $
+          cases env after t is k (map snd alts) (fromMaybe [ERROR "no case alternative matched"] dflt) $
             \codes, other => constCase (get env s) (zip (map snd ks) codes) (map fst (head' ks)) other
-    lower env later t (PROJECT r x i :: is) k = do
+    lower env t ((PROJECT r x i, _) :: is) k = do
       q <- emit1 (NarrowPtr CON (get env x))
       f <- emit1 (Load Val (MkMem (AtPtr q) Nothing (8 + 8 * i)))
-      lower (set env r f) later t is k
-    lower env later t (ERROR msg :: _) k = crash msg
+      lower (set env r f) t is k
+    lower env t ((ERROR msg, _) :: _) k = crash msg
 
     ||| A switch on a word, its keys' distinctness decided here.
     onKeys : Opnd v W64 -> List (Int64, E) -> E -> E
@@ -1134,7 +1153,7 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
   lowerFunction : (d : Decls enc) -> Refs enc d -> (args : List Int) -> List VMInst ->
                   Closed d InCPS False (replicate (length args) Val)
   lowerFunction d refs args body = build $ \ps =>
-    lower d refs (fromList (zip args (map (\x => (x, Nothing)) (allVals ps)))) (singleton (-1)) True body
+    lower d refs (fromList (zip args (map (\x => (x, Nothing)) (allVals ps)))) True (annotate (singleton (-1)) body)
           (\env => return (get env RVal))
 
   ||| A foreign function the runtime does not implement: the abort stub.
@@ -1293,7 +1312,7 @@ lowerProgram enc platform forms shapes vmdefs = do
                  ++ [(formSig fd, Form fd) | fd <- forms]
                  ++ [(MkSig r.name (InDirect r.results False) r.params False, Routine)
                     | r <- routines {enc}, not r.provided]
-      boxing = fromList [(nullaryCon c, Nullary c) | c <- concatMap (boxed . snd) planned]
+      boxing = fromList [(nullaryCon c, Nullary c) | c <- contents (concatMap (piece . boxed . snd) planned)]
       statics = Data.SortedMap.toList (foldl mergeLeft boxing (mapMaybe bodyStatics vmdefs))
   pure (program forms shapes (fromList (serviceBindings {enc} platform)) entryPlan others (mapMaybe ready statics))
   where

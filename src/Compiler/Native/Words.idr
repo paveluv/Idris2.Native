@@ -1,6 +1,6 @@
 ||| Idris's operations on machine words, as every producer of the term IR
 ||| (`Compiler.Native.TermIR`) writes them: what `div`, `mod` and the shifts
-||| of a 64-bit word mean. Each is builder code, in a function of either
+||| of a 64-bit word mean. Each is `Build` code, in a function of either
 ||| convention, so that ordinary code and flat code compute the same.
 module Compiler.Native.Words
 

@@ -17,6 +17,7 @@
 ||| recognises it by. The judgement of a type (`Flat.Judgement`) computes both.
 module Flat.Exp
 
+import Data.Builder
 import Core.FC
 import Core.Name
 import Core.TT
@@ -344,102 +345,110 @@ expType var form (FNone _) = Just (SOther, [])
 ||| The forms a form calls.
 export
 formCallees : FlatDef -> List Name
-formCallees fd = go fd.body
+formCallees fd = contents (go fd.body)
   where
-    go : FlatExp -> List Name
-    go (FVar _ _) = []
-    go (FLet _ _ val sc) = go val ++ go sc
-    go (FConst _ _) = []
+    go : FlatExp -> Builder Name
+    go (FVar _ _) = neutral
+    go (FLet _ _ val sc) = go val <+> go sc
+    go (FConst _ _) = neutral
     go (FOp _ _ as) = concatMap go (toList as)
-    go (FCall _ f as) = f :: concatMap go as
+    go (FCall _ f as) = single f <+> concatMap go as
     go (FPrim _ _ _ _ as) = concatMap go as
     go (FCon _ _ _ _ _ as) = concatMap go as
-    go (FCase _ sc alts def) = go sc ++ concatMap alt alts ++ maybe [] go def
+    go (FCase _ sc alts def) = go sc <+> concatMap alt alts <+> maybe neutral go def
       where
-        alt : FlatAlt -> List Name
+        alt : FlatAlt -> Builder Name
         alt (FConAlt _ _ _ b) = go b
         alt (FConstAlt _ b) = go b
-    go (FCrash _ _) = []
-    go (FNone _) = []
+    go (FCrash _ _) = neutral
+    go (FNone _) = neutral
 
 ||| The primitives a form calls.
 export
 formPrims : FlatDef -> List Name
-formPrims fd = go fd.body
+formPrims fd = contents (go fd.body)
   where
-    go : FlatExp -> List Name
-    go (FVar _ _) = []
-    go (FLet _ _ val sc) = go val ++ go sc
-    go (FConst _ _) = []
+    go : FlatExp -> Builder Name
+    go (FVar _ _) = neutral
+    go (FLet _ _ val sc) = go val <+> go sc
+    go (FConst _ _) = neutral
     go (FOp _ _ as) = concatMap go (toList as)
     go (FCall _ _ as) = concatMap go as
-    go (FPrim _ p _ _ as) = p :: concatMap go as
+    go (FPrim _ p _ _ as) = single p <+> concatMap go as
     go (FCon _ _ _ _ _ as) = concatMap go as
-    go (FCase _ sc alts def) = go sc ++ concatMap alt alts ++ maybe [] go def
+    go (FCase _ sc alts def) = go sc <+> concatMap alt alts <+> maybe neutral go def
       where
-        alt : FlatAlt -> List Name
+        alt : FlatAlt -> Builder Name
         alt (FConAlt _ _ _ b) = go b
         alt (FConstAlt _ b) = go b
-    go (FCrash _ _) = []
-    go (FNone _) = []
+    go (FCrash _ _) = neutral
+    go (FNone _) = neutral
 
 ||| The skeletons of the types a form handles: its parameters', its
 ||| result's, its variables' and its constructors'. The lowering needs the
 ||| shapes of the data types among them.
 export
 formSkeletons : FlatDef -> List Skeleton
-formSkeletons fd = fd.resultSkeleton :: map skeleton fd.params ++ go fd.body
+formSkeletons fd = contents (single fd.resultSkeleton <+> piece (map skeleton fd.params) <+> go fd.body)
   where
-    go : FlatExp -> List Skeleton
-    go (FVar _ _) = []
-    go (FLet _ fv val sc) = fv.skeleton :: go val ++ go sc
-    go (FConst _ _) = []
+    go : FlatExp -> Builder Skeleton
+    go (FVar _ _) = neutral
+    go (FLet _ fv val sc) = single fv.skeleton <+> go val <+> go sc
+    go (FConst _ _) = neutral
     go (FOp _ _ as) = concatMap go (toList as)
     go (FCall _ _ as) = concatMap go as
-    go (FPrim _ _ sk _ as) = sk :: concatMap go as
-    go (FCon _ _ _ sk _ as) = sk :: concatMap go as
-    go (FCase _ sc alts def) = go sc ++ concatMap alt alts ++ maybe [] go def
+    go (FPrim _ _ sk _ as) = single sk <+> concatMap go as
+    go (FCon _ _ _ sk _ as) = single sk <+> concatMap go as
+    go (FCase _ sc alts def) = go sc <+> concatMap alt alts <+> maybe neutral go def
       where
-        alt : FlatAlt -> List Skeleton
-        alt (FConAlt _ _ vs b) = map skeleton vs ++ go b
+        alt : FlatAlt -> Builder Skeleton
+        alt (FConAlt _ _ vs b) = piece (map skeleton vs) <+> go b
         alt (FConstAlt _ b) = go b
-    go (FCrash _ _) = []
-    go (FNone _) = []
+    go (FCrash _ _) = neutral
+    go (FNone _) = neutral
 
 mutual
+  -- The text of an expression in pieces, joined once by `showExp`:
+  -- appending strings level by level copies the text below at each level.
   covering
-  showExp : Nat -> FlatExp -> String
-  showExp i (FVar _ n) = show n
-  showExp i (FLet _ v val sc)
-      = "let " ++ show v ++ " = " ++ showExp (i + 2) val ++ "\n"
-        ++ showIndent i ++ showExp i sc
-  showExp i (FConst _ c) = show c
-  showExp i (FOp _ op as) = show op ++ showArgs i (toList as)
-  showExp i (FCall _ n as) = show n ++ showArgs i as
-  showExp i (FPrim _ n _ _ as) = "%prim " ++ show n ++ showArgs i as
-  showExp i (FCon _ c t s l as)
-      = show c ++ maybe "" (\t => "{" ++ show t ++ "}") t ++ showArgs i as
-  showExp i (FCase _ sc alts def)
-      = "case " ++ showExp i sc ++ " of"
-        ++ fastConcat (map (\a => "\n" ++ showIndent (i + 2) ++ showAlt (i + 4) a) alts)
-        ++ maybe "" (\d => "\n" ++ showIndent (i + 2) ++ "_ => " ++ showExp (i + 4) d) def
-  showExp i (FCrash _ msg) = "crash " ++ show msg
-  showExp i (FNone _) = "()"
+  expPieces : Nat -> FlatExp -> Builder String
+  expPieces i (FVar _ n) = single (show n)
+  expPieces i (FLet _ v val sc)
+      = single ("let " ++ show v ++ " = ") <+> expPieces (i + 2) val <+> single "\n"
+        <+> single (showIndent i) <+> expPieces i sc
+  expPieces i (FConst _ c) = single (show c)
+  expPieces i (FOp _ op as) = single (show op) <+> argPieces i (toList as)
+  expPieces i (FCall _ n as) = single (show n) <+> argPieces i as
+  expPieces i (FPrim _ n _ _ as) = single ("%prim " ++ show n) <+> argPieces i as
+  expPieces i (FCon _ c t s l as)
+      = single (show c ++ maybe "" (\t => "{" ++ show t ++ "}") t) <+> argPieces i as
+  expPieces i (FCase _ sc alts def)
+      = single "case " <+> expPieces i sc <+> single " of"
+        <+> concatMap (\a => single ("\n" ++ showIndent (i + 2)) <+> altPieces (i + 4) a) alts
+        <+> maybe neutral (\d => single ("\n" ++ showIndent (i + 2) ++ "_ => ") <+> expPieces (i + 4) d) def
+  expPieces i (FCrash _ msg) = single ("crash " ++ show msg)
+  expPieces i (FNone _) = single "()"
 
   covering
-  showAlt : Nat -> FlatAlt -> String
-  showAlt i (FConAlt c t vs sc)
-      = show c ++ maybe "" (\t => "{" ++ show t ++ "}") t
-        ++ fastConcat (map (\v => " (" ++ show v ++ ")") vs) ++ " => " ++ showExp i sc
-  showAlt i (FConstAlt c sc) = show c ++ " => " ++ showExp i sc
+  altPieces : Nat -> FlatAlt -> Builder String
+  altPieces i (FConAlt c t vs sc)
+      = single (show c ++ maybe "" (\t => "{" ++ show t ++ "}") t
+                ++ fastConcat (map (\v => " (" ++ show v ++ ")") vs) ++ " => ")
+        <+> expPieces i sc
+  altPieces i (FConstAlt c sc) = single (show c ++ " => ") <+> expPieces i sc
 
   covering
-  showArgs : Nat -> List FlatExp -> String
-  showArgs i [] = ""
-  showArgs i as = "(" ++ concat (intersperse ", " (map (showExp i) as)) ++ ")"
+  argPieces : Nat -> List FlatExp -> Builder String
+  argPieces i [] = neutral
+  argPieces i as = single "(" <+> concat (intersperse (single ", ") (map (expPieces i) as)) <+> single ")"
 
   showIndent : Nat -> String
   showIndent i = pack (replicate i ' ')
+
+||| An expression as text, each line after the first indented by `i`.
+covering
+showExp : Nat -> FlatExp -> String
+showExp i e = fastConcat (contents (expPieces i e))
 
 export covering
 Show FlatExp where

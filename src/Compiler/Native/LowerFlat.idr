@@ -1,5 +1,5 @@
 ||| The flat lowering: a flat form (`Flat.Exp`) to a `Direct` function of
-||| the term IR (`Compiler.Native.TermIR`), written through the builder.
+||| the term IR (`Compiler.Native.TermIR`), written in `Build`.
 |||
 ||| A flat value is its layout's registers: a `W64` for each `Word` and an
 ||| `F64` for each `Dbl`. An integer narrower than 64 bits is held extended

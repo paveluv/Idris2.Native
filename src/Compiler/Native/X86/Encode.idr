@@ -278,14 +278,14 @@ codeSize base is = foldl (\pc, i => pc + instrSize pc i) base is - base
 ||| can fail loudly.
 export
 assembleWith : (env : SortedMap Label Int) -> (base : Int) -> List Instr
-            -> (Builder, SortedMap Label Int, List AsmProblem)
+            -> (Builder Bits8, SortedMap Label Int, List AsmProblem)
 assembleWith env base is =
   let labels = foldl (\m, (l, a) => insert l a m) env (SortedMap.toList (layout base is))
-  in go labels base neutral [] is
+  in go labels base neutral neutral is
   where
-    go : SortedMap Label Int -> Int -> Builder -> List AsmProblem -> List Instr
-      -> (Builder, SortedMap Label Int, List AsmProblem)
-    go labels _ acc problems [] = (acc, labels, reverse problems)
+    go : SortedMap Label Int -> Int -> Builder Bits8 -> Builder AsmProblem -> List Instr
+      -> (Builder Bits8, SortedMap Label Int, List AsmProblem)
+    go labels _ acc problems [] = (acc, labels, contents problems)
     go labels pc acc problems (i :: rest) =
       let size = instrSize pc i
           (rel, missing) = case labelOf i of
@@ -294,9 +294,9 @@ assembleWith env base is =
               Just target => (target + d - (pc + size), [])
               Nothing => (0, [MissingLabel l])
           misfit = if fieldsFit i && fitsInt32 (cast rel) then [] else [DoesNotFit i]
-      in go labels (pc + size) (acc <+> fromBytes (encodeRaw pc rel i)) (misfit ++ missing ++ problems) rest
+      in go labels (pc + size) (acc <+> piece (encodeRaw pc rel i)) (problems <+> piece (missing ++ misfit)) rest
 
 ||| Pass two with no external labels.
 export
-assemble : (base : Int) -> List Instr -> (Builder, SortedMap Label Int, List AsmProblem)
+assemble : (base : Int) -> List Instr -> (Builder Bits8, SortedMap Label Int, List AsmProblem)
 assemble = assembleWith empty

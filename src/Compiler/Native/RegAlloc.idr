@@ -28,6 +28,7 @@ import Compiler.Native.Target
 import Control.Monad.State
 import Data.SortedMap
 import Data.SortedSet
+import Data.Builder
 
 %default total
 
@@ -266,12 +267,13 @@ registersAt env depth lvs = foldl add empty (Prelude.toList lvs)
       Just (InReg r) => insert (slotOf r) r m
       _ => m
 
-||| A block's code: its instructions and its terminator.
+||| A block's code: its instructions, as the lowering produces them, and
+||| its terminator.
 Code : Enc -> Type
-Code enc = (List (Instr enc), BlockTerminator enc)
+Code enc = (Builder (Instr enc), BlockTerminator enc)
 
 addBlock : BlockLabel -> List (R enc) -> Code enc -> M enc ()
-addBlock l ps (is, t) = modify { blocks $= insert l (MkBlock l ps is t) }
+addBlock l ps (is, t) = modify { blocks $= insert l (MkBlock l ps (contents is) t) }
 
 ||| Code, with the registers of its environment it reads.
 Lowered : Enc -> Type
@@ -426,8 +428,8 @@ parameters (d : Decls enc)
     if any (\r => isJust (lookup (slotOf r) (usesAll env xs))) info.params
        then do
          (loads, temps) <- moves info.params xs
-         pure (loads ++ zipWith Move info.params temps, LocatedIR.Jump info.label)
-       else pure (direct info.params xs, LocatedIR.Jump info.label)
+         pure (piece (loads ++ zipWith Move info.params temps), LocatedIR.Jump info.label)
+       else pure (piece (direct info.params xs), LocatedIR.Jump info.label)
     where
       direct : List (R enc) -> All (Op ctx) qs -> List (Instr enc)
       direct (p :: ps) (x :: xs) = moveInto env p x :: direct ps xs
@@ -487,35 +489,35 @@ parameters (d : Decls enc)
       (fa, la) <- branchTo a env li
       (fb, lb) <- branchTo b env li
       pure (mergeLeft (mergeLeft (uses env x) (uses env y)) (mergeLeft fa fb),
-            ([], LocatedIR.Branch rel (operand env x) (operand env y) la lb))
+            (neutral, LocatedIR.Branch rel (operand env x) (operand env y) la lb))
     body (IfFixnums {fx} vs y no) env li = do
       ly <- freshLabel
       loaded <- traverse (asReg env) vs
       let rs = map snd loaded
       (narrows, fs) <- narrowAll rs
       (fy, (isY, tY)) <- body y (append (held fs) env) li
-      addBlock ly [] (narrows ++ isY, tY)
+      addBlock ly [] (piece narrows <+> isY, tY)
       (fn, ln) <- branchTo no env li
       pure (mergeLeft (usesVect env vs) (mergeLeft (without (regs fs) fy) fn),
-            (concatMap fst (toList loaded), IsFixnum (toList rs) ly ln))
+            (piece (concatMap fst (toList loaded)), IsFixnum (toList rs) ly ln))
     body (ArithOv {t} o x y ok ovf) env li = do
       f <- fresh t
       (fok, (isOk, tOk)) <- body ok (InReg f :: env) li
       (fov, lo) <- branchTo ovf env li
       pure (mergeLeft (mergeLeft (uses env x) (uses env y)) (mergeLeft (without [f] fok) fov),
-            (LocatedIR.ArithOv (ovArith o) f (operand env x) (operand env y) lo :: isOk, tOk))
+            (single (LocatedIR.ArithOv (ovArith o) f (operand env x) (operand env y) lo) <+> isOk, tOk))
     body (TagOv {fx} x ok ovf) env li = do
       (px, rx) <- asReg env x
       f <- fresh Fix
       (fok, (isOk, tOk)) <- body ok (InReg f :: env) li
       (fov, lo) <- branchTo ovf env li
       pure (mergeLeft (uses env x) (mergeLeft (without [f] fok) fov),
-            (px ++ LocatedIR.TagOv f rx lo :: isOk, tOk))
+            (piece (px ++ [LocatedIR.TagOv f rx lo]) <+> isOk, tOk))
     body (Switch x keys bs dflt) env li = do
       (px, rx) <- asReg env x
       (fcs, labels) <- cases bs env li
       (fd, ld) <- branchTo dflt env li
-      pure (mergeLeft (uses env x) (mergeLeft fcs fd), (px, LocatedIR.Switch rx (zip keys labels) ld))
+      pure (mergeLeft (uses env x) (mergeLeft fcs fd), (piece px, LocatedIR.Switch rx (zip keys labels) ld))
     body (TermIR.Call f xs k) env li = do
       lr <- freshLabel
       r <- fresh Val
@@ -524,9 +526,9 @@ parameters (d : Decls enc)
           live = values outer
       addBlock lr (live ++ [r]) codeK
       pure (mergeLeft (usesAll env xs) outer,
-            ([], LocatedIR.Call (nameOf f) (operands env xs) (MkCont lr live)))
+            (neutral, LocatedIR.Call (nameOf f) (operands env xs) (MkCont lr live)))
     body (TermIR.TailCall f xs) env li =
-      pure (usesAll env xs, ([], LocatedIR.TailCall (nameOf f) (operands env xs)))
+      pure (usesAll env xs, (neutral, LocatedIR.TailCall (nameOf f) (operands env xs)))
     body (TermIR.Apply f x k) env li = do
       (pf, rf) <- asReg env f
       (px, rx) <- asReg env x
@@ -537,18 +539,18 @@ parameters (d : Decls enc)
           live = values outer
       addBlock lr (live ++ [r]) codeK
       pure (mergeLeft (mergeLeft (uses env f) (uses env x)) outer,
-            (pf ++ px, LocatedIR.Apply rf rx (MkCont lr live)))
+            (piece (pf ++ px), LocatedIR.Apply rf rx (MkCont lr live)))
     body (TermIR.TailApply f x) env li = do
       (pf, rf) <- asReg env f
       (px, rx) <- asReg env x
-      pure (mergeLeft (uses env f) (uses env x), (pf ++ px, LocatedIR.TailApply rf rx))
-    body (TermIR.Return x) env li = pure (uses env x, ([], LocatedIR.Return (operand env x)))
+      pure (mergeLeft (uses env f) (uses env x), (piece (pf ++ px), LocatedIR.TailApply rf rx))
+    body (TermIR.Return x) env li = pure (uses env x, (neutral, LocatedIR.Return (operand env x)))
     body (TermIR.Enter f xs) env li = do
       (pf, rf) <- asReg env f
-      pure (mergeLeft (uses env f) (usesList env xs), (pf, LocatedIR.Enter rf (map (operand env) xs)))
-    body (TermIR.Ret xs) env li = pure (usesAll env xs, ([], LocatedIR.Ret (operands env xs)))
-    body (TermIR.Crash s) env li = pure (empty, ([], LocatedIR.Crash s))
-    body (TermIR.Unsupported s) env li = pure (empty, ([], LocatedIR.Unsupported s))
+      pure (mergeLeft (uses env f) (usesList env xs), (piece pf, LocatedIR.Enter rf (map (operand env) xs)))
+    body (TermIR.Ret xs) env li = pure (usesAll env xs, (neutral, LocatedIR.Ret (operands env xs)))
+    body (TermIR.Crash s) env li = pure (empty, (neutral, LocatedIR.Crash s))
+    body (TermIR.Unsupported s) env li = pure (empty, (neutral, LocatedIR.Unsupported s))
 
     ||| An instruction's registers, bound in the environment of the rest.
     bind : (ts : List (Ty enc)) -> Instr d m (Var ctx) ts -> Body d c m ls (ts ++ ctx) ->
@@ -558,7 +560,7 @@ parameters (d : Decls enc)
       (after, (is, t)) <- body k (append (held ds) env) li
       let outer = without (regs ds) after
       pre <- instr env ds outer i
-      pure (mergeLeft (instrUses env i) outer, (pre ++ is, t))
+      pure (mergeLeft (instrUses env i) outer, (piece pre <+> is, t))
 
     ||| A switch's cases, each a block of its own, in order.
     cases : All (\_ => Body d c m ls ctx) ks -> All (HV enc) ctx -> All (LI enc) ls ->

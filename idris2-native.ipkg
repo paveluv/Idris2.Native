@@ -13,6 +13,7 @@ sourcedir = "src"
 -- with the code generator's own modules.
 modules =
     Compiler.Native.Bytes,
+    Data.Builder,
     Compiler.Native.ELF,
     Compiler.Native.HeapObject,
     Compiler.Native.IRCommon,

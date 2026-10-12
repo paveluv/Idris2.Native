@@ -87,10 +87,10 @@ record RS (enc : Enc) where
   ||| `Fix` parameter is an integer, whose word the value encoding gives.
   params : SortedMap Name (List (Ty enc))
   statics : SortedMap Name Label
-  text : SnocList Instr
+  text : Builder Instr
   ||| Slow paths, placed after the function being rendered.
-  cold : SnocList Instr
-  rodata : SnocList (Label, List Bits8)
+  cold : Builder Instr
+  rodata : Builder (Label, List Bits8)
   ||| The most of each per-thread area the code so far uses.
   areas : Areas
 
@@ -101,13 +101,13 @@ failWith : String -> R enc a
 failWith = lift . Left
 
 emit : Instr -> R enc ()
-emit i = modify { text $= (:< i) }
+emit i = modify { text $= (<+> single i) }
 
 emits : List Instr -> R enc ()
 emits = traverse_ emit
 
 coldEmit : Instr -> R enc ()
-coldEmit i = modify { cold $= (:< i) }
+coldEmit i = modify { cold $= (<+> single i) }
 
 ||| Record that the code uses at least these areas.
 uses : Areas -> R enc ()
@@ -642,7 +642,7 @@ parameters (enc : Enc)
     big <- fresh
     msg <- fresh
     let bytes = map (cast . ord) (unpack "object size out of range\n")
-    modify { rodata $= (:< (msg, bytes)) }
+    modify { rodata $= (<+> single (msg, bytes)) }
     traverse_ coldEmit [ Lbl big, Lea RDI (MRip msg 0), MovRI RSI (cast (length bytes))
                        , Jmp (sym SymCrash) ]
     loadReg RCX count
@@ -848,7 +848,7 @@ parameters (enc : Enc)
   term blk res (Crash msg) = do
     l <- fresh
     let bytes = map (cast . ord) (unpack (msg ++ "\n"))
-    modify { rodata $= (:< (l, bytes)) }
+    modify { rodata $= (<+> single (l, bytes)) }
     emits [Lea RDI (MRip l 0), MovRI RSI (cast (length bytes)), Jmp (sym SymCrash)]
   term blk res (Unsupported _) = emit (Jmp (sym SymUnsupported))
   term blk res (Ret xs) = do
@@ -913,12 +913,12 @@ parameters (enc : Enc)
     let rs = resumes f
     traverse_ (block blk f.results rs) f.blocks
     s <- get
-    put ({ text := s.text <>< (s.cold <>> []), cold := [<] } s)
+    put ({ text := s.text <+> s.cold, cold := neutral } s)
 
   staticBytes : Static enc -> R enc (List Bits8)
   staticBytes s = do
     fields <- traverse field s.fields
-    pure (le64 (cast (encodeHeader s.header)) ++ concat fields)
+    pure (contents (piece (le64 (cast (encodeHeader s.header))) <+> concatMap piece fields))
     where
       field : StaticField -> R enc (List Bits8)
       field (SWord w) = pure (le64 (cast w))
@@ -941,12 +941,12 @@ parameters (enc : Enc)
         -- its function's number of parameters, and its function is CPS.
         arity = foldl max 0 [length f.params | f <- p.functions, f.conv == CPS]
         applyAreas = MkAreas (argsWords abi (replicate arity WordClass)) 0 arity
-    (s, _) <- runStateT (MkRS next2 funs params statics [<] [<] [<] applyAreas) $ do
+    (s, _) <- runStateT (MkRS next2 funs params statics neutral neutral neutral applyAreas) $ do
       entry <- funLabel p.entry
       emits [Lbl (sym SymMain), Jmp entry]
       traverse_ function p.functions
       traverse_ (\st => do l <- staticLabel st.sym
                            bytes <- staticBytes st
-                           modify { rodata $= (:< (l, bytes)) })
+                           modify { rodata $= (<+> single (l, bytes)) })
                 p.statics
-    pure (MkRendered (s.text <>> []) (s.rodata <>> []) s.areas)
+    pure (MkRendered (contents s.text) (contents s.rodata) s.areas)
