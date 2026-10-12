@@ -80,3 +80,14 @@ doubleBits x =
 export
 pad8 : List Bits8 -> List Bits8
 pad8 bs = bs ++ zeros (cast (alignUp (cast (length bs)) 8 - cast (length bs)))
+
+||| The number of bytes accumulated in a snoc-list, in one walk from its end:
+||| the Prelude's `length` on snoc-lists counts in a `Nat`, and its recursion
+||| is no tail call, as deep as the list is long.
+export
+byteCount : SnocList Bits8 -> Int
+byteCount = go 0
+  where
+    go : Int -> SnocList Bits8 -> Int
+    go k [<] = k
+    go k (sx :< _) = go (k + 1) sx

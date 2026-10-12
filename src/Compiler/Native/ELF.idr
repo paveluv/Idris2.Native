@@ -10,7 +10,6 @@ module Compiler.Native.ELF
 import Compiler.Native.Bytes
 import Compiler.Native.Platform
 import Data.Buffer
-import Data.Builder
 import System.File
 import System.File.Permissions
 
@@ -123,15 +122,39 @@ nameRodata = 7
 nameBss = 15
 nameShstrtab = 20
 
+||| A stretch of an image's bytes: bytes in order; bytes accumulated at the
+||| end of a snoc-list, the text the encoder made and the read-only data,
+||| which the writer lays from their last byte, never read out into a list;
+||| or a run of zero bytes.
+public export
+data Stretch = Bytes (List Bits8) | SnocBytes (SnocList Bits8) | Zeros Nat
+
+||| An image: its stretches, in file order.
+public export
+Image : Type
+Image = List Stretch
+
+||| The bytes a stretch takes.
+export
+stretchSize : Stretch -> Int
+stretchSize (Bytes bs) = cast (length bs)
+stretchSize (SnocBytes sx) = byteCount sx
+stretchSize (Zeros k) = cast k
+
+||| The bytes an image takes.
+export
+imageSize : Image -> Int
+imageSize image = sum (map stretchSize image)
+
 ||| The complete file image. `entry` is the virtual address of the first
 ||| instruction to run (normally `textBase` plus the offset of the startup
 ||| label). Section headers are not needed to run but let `readelf`/`objdump`
 ||| and debuggers see the regions.
 export
-elfImage : Arch -> Layout -> (text : Builder Bits8) -> (rodata : Builder Bits8) -> (bssSize : Int) -> (entry : Int) -> Builder Bits8
+elfImage : Arch -> Layout -> (text : SnocList Bits8) -> (rodata : SnocList Bits8) -> (bssSize : Int) -> (entry : Int) -> Image
 elfImage m lay text rodata bssSize entry =
-  let ts = cast (size text)
-      rs = cast (size rodata)
+  let ts = byteCount text
+      rs = byteCount rodata
       strOff = rodataOff lay + rs
       strSize = cast (length shstrtab)
       shoff = alignUp (strOff + strSize) 8
@@ -144,28 +167,47 @@ elfImage m lay text rodata bssSize entry =
               ++ sectionHeader nameRodata shtProgbits shfAlloc (rodataBase lay) (rodataOff lay) rs 16
               ++ sectionHeader nameBss shtNobits (shfAlloc + shfWrite) (bssBase lay) (bssOff lay) bssSize 16
               ++ sectionHeader nameShstrtab shtStrtab 0 0 strOff strSize 1
-  in piece headers
-  <+> piece (zeros (cast (textOff lay - cast (length headers))))
-  <+> text
-  <+> piece (zeros (cast (rodataOff lay - (textOff lay + ts))))
-  <+> rodata
-  <+> piece shstrtab
-  <+> piece (zeros (cast (shoff - (strOff + strSize))))
-  <+> piece sections
+  in [ Bytes headers
+     , Zeros (cast (textOff lay - cast (length headers)))
+     , SnocBytes text
+     , Zeros (cast (rodataOff lay - (textOff lay + ts)))
+     , SnocBytes rodata
+     , Bytes shstrtab
+     , Zeros (cast (shoff - (strOff + strSize)))
+     , Bytes sections ]
 
-||| Write an image to a file and make it executable (owner rwx, others rx).
+||| Write an image to a file and make it executable (owner rwx, others rx):
+||| each stretch laid into one buffer where it falls.
 export
-writeImage : (path : String) -> Builder Bits8 -> IO (Either FileError ())
+writeImage : (path : String) -> Image -> IO (Either FileError ())
 writeImage path image = do
-  let n = size image
-      bytes = contents image
-  Just buf <- newBuffer (cast n)
+  let sized = map (\s => (s, stretchSize s)) image
+      n = sum (map (\(_, k) => k) sized)
+  Just buf <- newBuffer n
     | Nothing => pure (Left FileWriteError)
-  fill buf 0 bytes
-  Right () <- writeBufferToFile path buf (cast n)
+  write buf 0 sized
+  Right () <- writeBufferToFile path buf n
     | Left (err, _) => pure (Left err)
   chmod path (MkPermissions [Read, Write, Execute] [Read, Execute] [Read, Execute])
   where
-    fill : Buffer -> Int -> List Bits8 -> IO ()
-    fill buf i [] = pure ()
-    fill buf i (b :: bs) = do setBits8 buf i b; fill buf (i + 1) bs
+    front : Buffer -> Int -> List Bits8 -> IO ()
+    front buf i [] = pure ()
+    front buf i (b :: bs) = do setBits8 buf i b; front buf (i + 1) bs
+
+    -- a snoc-list's bytes, its last at `i`, laid towards the front
+    back : Buffer -> Int -> SnocList Bits8 -> IO ()
+    back buf i [<] = pure ()
+    back buf i (sx :< b) = do setBits8 buf i b; back buf (i - 1) sx
+
+    blank : Buffer -> Int -> Nat -> IO ()
+    blank buf i Z = pure ()
+    blank buf i (S k) = do setBits8 buf i 0; blank buf (i + 1) k
+
+    write : Buffer -> Int -> List (Stretch, Int) -> IO ()
+    write buf at [] = pure ()
+    write buf at ((s, k) :: rest) = do
+      case s of
+        Bytes bs => front buf at bs
+        SnocBytes sx => back buf (at + k - 1) sx
+        Zeros z => blank buf at z
+      write buf (at + k) rest

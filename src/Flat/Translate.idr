@@ -72,6 +72,7 @@ import Core.Value
 import Data.Builder
 import Data.List
 import Data.List1
+import Data.SnocList
 import Data.String
 import Data.Vect
 import Flat.Exp
@@ -125,8 +126,9 @@ record Tr where
   constructor MkTr
   ||| the flat function whose form is being made
   root : Name
-  ||| the callees from the root to the definition being translated
-  chain : List Name
+  ||| the callees from the root to the definition being translated, the
+  ||| latest last
+  chain : SnocList Name
   ||| the location in the root's own code that the translation left it from
   site : FC
   ||| the definitions the term being translated was written inside
@@ -152,7 +154,7 @@ blockName _ = False
 
 -- Whether the term being translated was written in the root's own code.
 inRoot : Tr -> Bool
-inRoot tr = null tr.chain && all (\n => n == tr.root || blockName n) tr.unfolding
+inRoot tr = isLin tr.chain && all (\n => n == tr.root || blockName n) tr.unfolding
 
 -- Stop the translation at the problem, which is recorded in the state for
 -- `flatForms` to report. It is at the term's location if the root's own code
@@ -160,7 +162,7 @@ inRoot tr = null tr.chain && all (\n => n == tr.root || blockName n) tr.unfoldin
 fail : {auto s : Ref FlatSt FlatState} -> Tr -> FC -> FlatProblem -> Core a
 fail tr fc p
     = do update FlatSt { failure := Just (NotFlatBody (if inRoot tr then nonEmpty fc else tr.site)
-                                                       tr.root tr.chain p) }
+                                                       tr.root (tr.chain <>> []) p) }
          throw (InternalError "the flat translation stopped")
   where
     nonEmpty : FC -> FC
@@ -310,7 +312,7 @@ relocate : {auto s : Ref FlatSt FlatState} ->
            (caps : NameMap Name) -> List ClosedTerm -> Core (List ClosedTerm)
 relocate caps ts
     = do sts <- statics <$> get FlatSt
-         let moved = filter (captures sts []) (nub (concatMap (reachable sts []) ts))
+         let moved = filter (captures sts []) (nub (contents (concatMap (reachable sts []) ts)))
          renames <- traverse (\x => pure (x, !(fresh x))) moved
          let m = foldl (\acc, (x, x') => insert x x' acc) caps renames
          traverse_ (\(x, x') => case lookup x sts of
@@ -323,12 +325,12 @@ relocate caps ts
     -- Through lets, as a key looks: a let is a substitution, and one that
     -- Idris binds around a case alternative's right-hand side names the
     -- alternative's variables without the static term capturing them.
-    reachable : NameMap Static -> List Name -> Term vs -> List Name
+    reachable : NameMap Static -> List Name -> Term vs -> Builder Name
     reachable sts seen tm
-        = concatMap (\x => if elem x seen then [] else
+        = concatMap (\x => if elem x seen then neutral else
                              case lookup x sts of
-                                  Just st => x :: reachable sts (x :: seen) (staticTerm st)
-                                  Nothing => [])
+                                  Just st => single x <+> reachable sts (x :: seen) (staticTerm st)
+                                  Nothing => neutral)
                     (boundRefs (substLets tm))
 
     captures : NameMap Static -> List Name -> Name -> Bool
@@ -900,14 +902,14 @@ mutual
   copy tr fc fn gdef ps
       = do defs <- get Ctxt
            (parts, params, actuals, res) <- walk [] 0 (mapMaybe pendingArg ps)
-                                                !(nf defs Env.empty (type gdef)) [] [] []
+                                                !(nf defs Env.empty (type gdef)) [<] [<] [<]
            Right res' <- laidOut res
              | Left why => fail tr fc (CalleeNotFlat fn Nothing !(quoteClosed res) why)
            -- the flat variables the static arguments capture
            sts <- statics <$> get FlatSt
            let staticTerms = mapMaybe staticOf parts
            let caps = filter (\x => isJust (lookup x tr.vars))
-                             (nub (concatMap (boundRefs . substLets . resolve sts) staticTerms))
+                             (nub (joinMap (boundRefs . substLets . resolve sts) staticTerms))
            let canon = zip caps (map (MN "flat captured" . cast) [0 .. length caps])
            parts' <- relocateParts (fromList canon) parts
            key <- traverse keyOf parts'
@@ -917,7 +919,7 @@ mutual
            case find (\cp => cp.function == fn && sameKey cp.key key) st.copies of
                 Just cp => pure (FCall fc cp.form (as ++ capArgs))
                 Nothing =>
-                  do when (count (== fn) tr.chain >= copyDepth) $ fail tr fc (CopiesDoNotEnd fn)
+                  do when (count (== fn) (tr.chain <>> []) >= copyDepth) $ fail tr fc (CopiesDoNotEnd fn)
                      name <- pure (copyName fn st.nextName)
                      update FlatSt { nextName $= (+ 1), copies $= (MkCopy fn key name ::) }
                      capParams <- traverse (capParam canon) caps
@@ -928,9 +930,11 @@ mutual
       closed t = all (\x => isNothing (lookup x tr.vars)) (boundRefs t)
 
       -- Each part: what the case tree is applied to, and whether it is
-      -- static (`True`, an argument the key holds) or not.
+      -- static (`True`, an argument the key holds) or not. The parts, the
+      -- parameters and the actual arguments accumulate at their ends, an
+      -- argument at a time.
       walk : (unfolded : List Name) -> (explicit : Nat) -> List ClosedTerm -> ClosedNF ->
-             List (Bool, Pending) -> List (FlatVar, ClosedTerm) -> List ClosedTerm ->
+             SnocList (Bool, Pending) -> SnocList (FlatVar, ClosedTerm) -> SnocList ClosedTerm ->
              Core (List (Bool, Pending), List (FlatVar, ClosedTerm), List ClosedTerm, ClosedNF)
       walk ns i (a :: as) (NBind bfc x (Pi _ rig pinfo aty) sc) parts params actuals
           = do defs <- get Ctxt
@@ -940,30 +944,30 @@ mutual
                let next : ClosedTerm -> Core ClosedNF
                          = \t => sc defs (toClosure defaultOpts Env.empty t)
                if isErased rig
-                  then walk ns i' as !(next a') (parts ++ [(True, PArg a)]) params actuals
+                  then walk ns i' as !(next a') (parts :< (True, PArg a)) params actuals
                   else if isAutoImplicit pinfo
                     then do sa <- static tr a
-                            walk ns i' as !(next a') (parts ++ [(True, PArg sa)]) params actuals
+                            walk ns i' as !(next a') (parts :< (True, PArg sa)) params actuals
                     else case !(layout [] tyNF) of
                       LaidOut l =>
                         do v <- fresh x
                            fv <- pure (MkFlatVar v !(skeleton tyNF) l)
-                           walk ns i' as !(next (Ref bfc Bound v)) (parts ++ [(False, PArg (Ref bfc Bound v))])
-                                (params ++ [(fv, !(quoteClosed tyNF))]) (actuals ++ [a])
+                           walk ns i' as !(next (Ref bfc Bound v)) (parts :< (False, PArg (Ref bfc Bound v)))
+                                (params :< (fv, !(quoteClosed tyNF))) (actuals :< a)
                       Rejected why =>
                         if staticOnly why || closed a'
                            then do sa <- static tr a
-                                   walk ns i' as !(next a') (parts ++ [(True, PArg sa)]) params actuals
+                                   walk ns i' as !(next a') (parts :< (True, PArg sa)) params actuals
                            else fail tr fc (CalleeNotFlat fn (Just (i', x)) !(quoteClosed tyNF) why)
                       Deferred => fail tr fc (Unhandled "A type made of erased arguments at a call")
       walk ns i as res parts params actuals
           = do Just (n, fnTy) <- newtypeOverFunction res
                  | Nothing => done
                if elem n ns || isNil as then done
-                  else walk (n :: ns) i as fnTy (parts ++ [(False, PUnwrap)]) params actuals
+                  else walk (n :: ns) i as fnTy (parts :< (False, PUnwrap)) params actuals
         where
           done : Core (List (Bool, Pending), List (FlatVar, ClosedTerm), List ClosedTerm, ClosedNF)
-          done = if isNil as then pure (parts, params, actuals, res) else fail tr fc NotStatic
+          done = if isNil as then pure (parts <>> [], params <>> [], actuals <>> [], res) else fail tr fc NotStatic
 
       staticOf : (Bool, Pending) -> Maybe ClosedTerm
       staticOf (True, PArg t) = Just t
@@ -1009,7 +1013,7 @@ mutual
              | Just _ => pure ()
            st <- get FlatSt
            when (not (form `elem` st.making)) $
-             do let tr' = { chain := if fn == tr.root then [] else tr.chain ++ [fn]
+             do let tr' = { chain := if fn == tr.root then [<] else tr.chain :< fn
                           , unfolding := [fn]
                           , vars := fromList (map (\p => ((fst p).name, p)) params)
                           } (if fn == tr.root then tr else leave tr fc)
@@ -1326,7 +1330,7 @@ root n
          sig <- signature (type gdef)
          Just (params, res) <- groundSignature sig
            | Nothing => pure ()
-         let tr = MkTr fn [] (location gdef) [] empty
+         let tr = MkTr fn [<] (location gdef) [] empty
          makeForm tr (location gdef) fn fn gdef (sigPending sig.parts) params res
 
 ||| The flat functions a code generator's directives name: each directive
@@ -1337,7 +1341,7 @@ export
 flatNames : {auto c : Ref Ctxt Defs} -> (directives : List String) -> Core (List Name, List FlatError)
 flatNames directives
     = do -- Idris gives a module's directives last first
-         found <- traverse one (nub (concatMap names (reverse directives)))
+         found <- traverse one (nub (joinMap names (reverse directives)))
          pure (nub (mapMaybe ok found), mapMaybe bad found)
   where
     names : String -> List String

@@ -108,32 +108,43 @@ importIndirect r m = mapMaybe report (SortedMap.toList m.writtenUses)
         in Just (finding m.file "import-indirect" (maybe EmptyFC (.loc) via) u
                    ("`" ++ u ++ "` is used (" ++ names ++ ") " ++ how ++ ": import it"))
 
-||| `list-append`, a warning: a definition that joins lists, by `++` or by a
-||| list's semigroup or monoid; a `Builder` joins in constant time.
-listAppend : Linted -> List Finding
-listAppend m =
-  [ MkFinding "list-append" m.file.path a.line a.col a.subject
-      ("`" ++ a.subject ++ "` joins lists " ++ times a.lists ++ ": a `Builder` joins in constant time")
-  | a <- m.resolved.appends, a.lists > 0 ]
+||| `list-accumulation`, a warning: a definition that grows a list at its
+||| end with `++`, copying what it has grown at every step, where a
+||| `SnocList` grows in constant time; or joins lists by a left fold, which
+||| copies what it has joined at every step, where `joinMap` (a `Builder`)
+||| joins in linear time.
+listAccumulation : Linted -> List Finding
+listAccumulation m =
+  [ MkFinding "list-accumulation" m.file.path a.line a.col a.subject (message a)
+  | a <- m.resolved.accumulations, a.atEnd + a.leftFolds > 0 ]
   where
     times : Nat -> String
     times 1 = "once"
     times 2 = "twice"
     times k = show k ++ " times"
 
+    message : Accumulations -> String
+    message a =
+      let atEnd = if a.atEnd == 0 then [] else
+                    ["grows a list at its end with `++` " ++ times a.atEnd ++ ": a `SnocList` grows there in constant time (`:<`, `<><`)"]
+          folds = if a.leftFolds == 0 then [] else
+                    ["joins lists by a left fold " ++ times a.leftFolds ++ ": `joinMap` joins them in linear time"]
+      in "`" ++ a.subject ++ "` " ++ fastConcat (intersperse "; " (atEnd ++ folds))
+
 ||| The rules over the program resolved.
 export
 resolvedRules : List (SourceFile, Mentions) -> Resolution -> List Finding
 resolvedRules fms r =
-  joined [ importUnused m ++ importIndirect r m ++ listAppend m | m <- modulesOf fms r ]
+  joined [ importUnused m ++ importIndirect r m ++ listAccumulation m | m <- modulesOf fms r ]
 
 ------------------------------------------------------------------------------
 -- Health
 
 ||| The components the resolution measures: of the other modules whose names
 ||| our modules write, the share imported directly (or through a façade or a
-||| package); of the private imports, the share used; and of the appends,
-||| the share that join builders.
+||| package); of the private imports, the share used; and of the
+||| accumulations, the share written with the structure their shape asks
+||| for, a snoc-list or a builder, rather than lists.
 export
 resolvedHealth : List (SourceFile, Mentions) -> Resolution -> List Component
 resolvedHealth fms r =
@@ -142,11 +153,11 @@ resolvedHealth fms r =
       direct = length (filter (\(m, u) => contains u m.reached) pairs)
       imports = joined [ m.privateImports | m <- ms, not (facade m.file) ]
       used = length (filter (\(_, isUsed) => isUsed) imports)
-      lists = sum [ a.lists | m <- ms, a <- m.resolved.appends ]
-      builders = sum [ a.builders | m <- ms, a <- m.resolved.appends ]
+      unstructured = sum [ a.atEnd + a.leftFolds | m <- ms, a <- m.resolved.accumulations ]
+      structured = sum [ a.structured | m <- ms, a <- m.resolved.accumulations ]
   in [ MkComponent "structure" "directness" (percent direct (length pairs))
          ("modules used that are imported directly: " ++ show direct ++ " of " ++ show (length pairs))
      , MkComponent "structure" "leanness" (percent used (length imports))
          ("private imports used: " ++ show used ++ " of " ++ show (length imports))
-     , MkComponent "efficiency" "builders" (percent builders (lists + builders))
-         ("appends that join builders: " ++ show builders ++ " of " ++ show (lists + builders)) ]
+     , MkComponent "efficiency" "accumulation" (percent structured (structured + unstructured))
+         ("accumulations in a snoc-list or a builder: " ++ show structured ++ " of " ++ show (structured + unstructured)) ]

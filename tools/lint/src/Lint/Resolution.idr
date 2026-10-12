@@ -13,6 +13,7 @@
 module Lint.Resolution
 
 import Core.Binary
+import Core.Case.CaseTree
 import Core.Context
 import Core.Core
 import Core.Directory
@@ -45,19 +46,24 @@ import System.File
 ------------------------------------------------------------------------------
 -- What is resolved
 
-||| A definition's appends: how many join lists (list or snoc-list `++`, and
-||| `<+>`, `concat`, `concatMap` or `foldMap` at a list's semigroup or
-||| monoid), and how many join builders (the same at a `Builder`'s).
+||| A definition's accumulations, in all its clauses' terms, erased parts
+||| included: how many grow a list at its end with `++` (a recursive call,
+||| or a left fold's step, given a variable the clause matched with more
+||| appended), how many join lists by a left fold (`concat`, `concatMap` or
+||| `foldMap` at a list's monoid), and how many are written with the
+||| structure their shape asks for (a snoc-list's `:<` or `<><`, a join at a
+||| `Builder`'s monoid).
 public export
-record Appends where
-  constructor MkAppends
+record Accumulations where
+  constructor MkAccumulations
   ||| The definition, by its name as written: a `where` function's own, a
   ||| `case` block's that of the definition it is in.
   subject : String
   line : Int
   col : Int
-  lists : Nat
-  builders : Nat
+  atEnd : Nat
+  leftFolds : Nat
+  structured : Nat
 
 ||| A name a module's definitions refer to: the module that defines it, the
 ||| name without its namespace (an implementation by what it implements,
@@ -72,7 +78,7 @@ record Use where
 
 ||| One of our modules, resolved: its imports, each with whether it is
 ||| public; the names its definitions refer to, the module's own left out;
-||| and its definitions' appends.
+||| and its definitions' accumulations.
 public export
 record ResolvedModule where
   constructor MkResolvedModule
@@ -80,7 +86,7 @@ record ResolvedModule where
   path : String
   imports : List (String, Bool)
   uses : List Use
-  appends : List Appends
+  accumulations : List Accumulations
 
 ||| The program resolved: our modules, and the imports of every module
 ||| loaded, ours and those of the packages, to follow their re-exports.
@@ -189,6 +195,18 @@ moduleOfName mods (NS ns _) = longest (reverse (unsafeUnfoldNamespace ns))
       if contains m mods then Just m else longest (take (minus (length parts) 1) parts)
 moduleOfName _ _ = Nothing
 
+||| A name as shown, without its namespace, and, for a `case` or `with`
+||| block, without the words before the name of the definition it is in,
+||| perhaps a block itself: the definition whose clauses the block is part of.
+outermost : String -> String
+outermost s =
+  let p = case last' (forget (Data.String.split (== '.') s)) of
+            Just p => p
+            Nothing => s
+  in if isPrefixOf "case block in " p then outermost (substr 14 (length p) p)
+     else if isPrefixOf "with block in " p then outermost (substr 14 (length p) p)
+     else p
+
 ||| A definition's name as written: a `where` function's own, a `case` or
 ||| `with` block's that of the definition it is in; none for a name the
 ||| elaborator made.
@@ -196,18 +214,7 @@ writtenName : Name -> Maybe String
 writtenName (NS _ n) = writtenName n
 writtenName (UN n) = Just (displayUserName n)
 writtenName (Nested _ n) = writtenName n
-writtenName (CaseBlock outer _) = Just (written outer)
-  where
-    -- the outer name as shown: its namespace, and a block's own words
-    -- before the name of the definition it is in, perhaps a block itself
-    written : String -> String
-    written s =
-      let p = case last' (forget (Data.String.split (== '.') s)) of
-                Just p => p
-                Nothing => s
-      in if isPrefixOf "case block in " p then written (substr 14 (length p) p)
-         else if isPrefixOf "with block in " p then written (substr 14 (length p) p)
-         else p
+writtenName (CaseBlock outer _) = Just (outermost outer)
 writtenName (WithBlock outer _) = writtenName (CaseBlock outer 0)
 writtenName (DN _ n) = writtenName n
 writtenName _ = Nothing
@@ -216,7 +223,7 @@ inModule : String -> String -> Name
 inModule m n = NS (mkNamespace m) (UN (Basic n))
 
 ------------------------------------------------------------------------------
--- Appends
+-- Accumulations
 
 ||| What a semigroup or monoid joins: lists, builders, or other things.
 data Joins = JoinsLists | JoinsBuilders | JoinsOther
@@ -227,14 +234,15 @@ Eq Joins where
   JoinsOther == JoinsOther = True
   _ == _ = False
 
-||| The label of the appends being counted, and of what is known of the
-||| implementations met.
+||| The label of the accumulations being counted, and of what is known of
+||| the implementations met.
 data Counting : Type where
 
 record Count where
   constructor MkCount
-  lists : Nat
-  builders : Nat
+  atEnd : Nat
+  leftFolds : Nat
+  structured : Nat
   joins : SortedMap String Joins
 
 ||| The methods that join by a semigroup or monoid, each with the positions
@@ -296,7 +304,9 @@ joinsOf impl = do
       _ => pure JoinsOther
 
 ||| What the implementation an argument passes joins: the implementation
-||| itself, or one it is made from (a monoid's semigroup).
+||| itself, or one it is made from (a monoid's semigroup), the solution of
+||| a hole the elaborator left for it, which the TTC keeps as a definition
+||| of its own, or one under binders the elaborator put around it.
 dictionary : {auto c : Ref Ctxt Defs} -> {auto n : Ref Counting Count} -> Nat -> Term vs -> Core Joins
 dictionary Z _ = pure JoinsOther
 dictionary (S k) t = case getFnArgs t of
@@ -304,6 +314,18 @@ dictionary (S k) t = case getFnArgs t of
     defs <- get Ctxt
     j <- joinsOf !(full (gamma defs) d)
     if j /= JoinsOther then pure j else firstOf args
+  (Meta _ hole _ _, _) => do
+    defs <- get Ctxt
+    Just g <- lookupCtxtExact hole (gamma defs)
+      | Nothing => pure JoinsOther
+    case g.definition of
+      PMDef _ _ (STerm _ solution) _ _ => dictionary k solution
+      _ => pure JoinsOther
+  (Bind _ _ b sc, _) => do
+    j <- dictionary k sc
+    if j /= JoinsOther then pure j else case b of
+      Let _ _ v _ => dictionary k v
+      _ => pure JoinsOther
   _ => pure JoinsOther
   where
     firstOf : List (Term vs) -> Core Joins
@@ -312,60 +334,156 @@ dictionary (S k) t = case getFnArgs t of
       j <- dictionary k a
       if j /= JoinsOther then pure j else firstOf as
 
-||| Count the appends in a term.
-countIn : {auto c : Ref Ctxt Defs} -> {auto n : Ref Counting Count} -> List (Name, List Nat) -> Term vs -> Core ()
-countIn js tm = case getFnArgs tm of
+||| Whether a name is one of the list appends, `++` on lists or snoc-lists.
+listAppend : Name -> Bool
+listAppend f = f == NS (mkNamespace "Prelude.Types.List") (UN (Basic "++"))
+               || f == NS (mkNamespace "Prelude.Types.SnocList") (UN (Basic "++"))
+
+||| How a definition calls itself, for telling an accumulation: by its own
+||| name, with each argument's pattern in the clause when it is a variable
+||| (its index in the clause's environment), so that an argument is compared
+||| with the pattern in its place; or, from a `case` or `with` block, by the
+||| name of the definition the block is part of, whose arguments the
+||| block's do not line up with.
+data Recursion = Own Name (List (Maybe Nat)) | FromBlock (Name -> Bool)
+
+||| Count the accumulations in a term, `depth` binders inside a clause's
+||| right-hand side.
+countIn : {auto c : Ref Ctxt Defs} -> {auto n : Ref Counting Count} ->
+          List (Name, List Nat) -> Recursion -> (depth : Nat) -> Term vs -> Core ()
+countIn js self d tm = case getFnArgs tm of
   (Ref _ _ f, args) => do
     defs <- get Ctxt
     f' <- full (gamma defs) f
-    noteAppend f' args
-    traverse_ (countIn js) args
+    note f' args
+    traverse_ (countIn js self d) args
   (f, args) => do
     inner f
-    traverse_ (countIn js) args
+    traverse_ (countIn js self d) args
   where
-    noteAppend : Name -> List (Term vs) -> Core ()
-    noteAppend f args =
-      if f == NS (mkNamespace "Prelude.Types.List") (UN (Basic "++"))
-         || f == NS (mkNamespace "Prelude.Types.SnocList") (UN (Basic "++"))
-        then update Counting { lists $= S }
-        else case lookup f js of
-          Nothing => pure ()
-          Just ps => do
-            j <- firstJoin (mapMaybe (\p => getAt p args) ps)
-            case j of
-              JoinsLists => update Counting { lists $= S }
-              JoinsBuilders => update Counting { builders $= S }
-              JoinsOther => pure ()
-      where
-        firstJoin : List (Term vs) -> Core Joins
-        firstJoin [] = pure JoinsOther
-        firstJoin (d :: ds) = do
-          j <- dictionary 4 d
-          if j /= JoinsOther then pure j else firstJoin ds
+    -- a variable the clause matched: bound outside the right-hand side's
+    -- own binders, its index in the clause's environment
+    matched : Term vs' -> Maybe Nat
+    matched (Local _ _ idx _) = if idx >= d then Just (minus idx d) else Nothing
+    matched _ = Nothing
+
+    -- `x ++ e`: the variable `x` is, if the clause matched it, and whether
+    -- `e` is a variable the clause matched too
+    appendTo : Term vs' -> Core (Maybe (Nat, Bool))
+    appendTo t = case getFnArgs t of
+      (Ref _ _ g, [_, x, e]) => do
+        defs <- get Ctxt
+        g' <- full (gamma defs) g
+        pure (if listAppend g' then map (\i => (i, isJust (matched e))) (matched x) else Nothing)
+      _ => pure Nothing
+
+    -- an argument of a recursive call that grows the pattern in its place
+    -- at its end; from a block, one that grows a matched variable with
+    -- something that is not one
+    grows : List (Maybe Nat) -> (Nat, Term vs) -> Core Bool
+    grows pats (i, a) = do
+      r <- appendTo a
+      pure (case (r, getAt i pats) of
+              (Just (x, _), Just (Just p)) => x == p
+              _ => False)
+
+    growsFromBlock : Term vs -> Core Bool
+    growsFromBlock a = do
+      r <- appendTo a
+      pure (case r of
+              Just (_, eMatched) => not eMatched
+              Nothing => False)
+
+    -- a left fold's step `\acc, x => acc ++ e`
+    stepAppends : Term vs' -> Core Bool
+    stepAppends (Bind _ _ (Lam _ _ _ _) (Bind _ _ (Lam _ _ _ _) body)) = case getFnArgs body of
+      (Ref _ _ g, [_, Local _ _ 1 _, _]) => do
+        defs <- get Ctxt
+        g' <- full (gamma defs) g
+        pure (listAppend g')
+      _ => pure False
+    stepAppends _ = pure False
+
+    count : (Count -> Count) -> Core ()
+    count f = update Counting f
+
+    firstJoin : List (Term vs) -> Core Joins
+    firstJoin [] = pure JoinsOther
+    firstJoin (x :: xs) = do
+      j <- dictionary 4 x
+      if j /= JoinsOther then pure j else firstJoin xs
+
+    note : Name -> List (Term vs) -> Core ()
+    note f args = do
+      grown <- the (Core (List Bool)) $ case self of
+        Own me pats => if f == me then traverse (grows pats) (zip [0 .. length args] args) else pure Nil
+        FromBlock outer => if outer f then traverse growsFromBlock args else pure Nil
+      count { atEnd $= (+ length (filter id grown)) }
+      when (f == inModule "Prelude.Interfaces" "foldl") $ do
+        steps <- traverse stepAppends args
+        count { atEnd $= (+ length (filter id steps)) }
+      when (f == NS (mkNamespace "Prelude.Basics") (UN (Basic ":<"))
+            || f == NS (mkNamespace "Prelude.Types.SnocList") (UN (Basic "<><"))) $
+        count { structured $= S }
+      case lookup f js of
+        Nothing => pure ()
+        Just ps => do
+          j <- firstJoin (mapMaybe (\p => getAt p args) ps)
+          case j of
+            JoinsLists => when (f /= inModule "Prelude.Interfaces" "<+>") $ count { leftFolds $= S }
+            JoinsBuilders => count { structured $= S }
+            JoinsOther => pure ()
 
     binder : Binder (Term vs) -> Core ()
-    binder (Let _ _ v ty) = countIn js v
-    binder (PLet _ _ v ty) = countIn js v
+    binder (Let _ _ v ty) = countIn js self d v
+    binder (PLet _ _ v ty) = countIn js self d v
     binder _ = pure ()
 
     inner : Term vs -> Core ()
-    inner (Bind _ _ b sc) = do binder b; countIn js sc
-    inner (As _ _ a p) = countIn js p
-    inner (TDelayed _ _ t) = countIn js t
-    inner (TDelay _ _ _ a) = countIn js a
-    inner (TForce _ _ t) = countIn js t
+    inner (Bind _ _ b sc) = do binder b; countIn js self (S d) sc
+    inner (As _ _ a p) = countIn js self d p
+    inner (TDelayed _ _ t) = countIn js self d t
+    inner (TDelay _ _ _ a) = countIn js self d a
+    inner (TForce _ _ t) = countIn js self d t
     inner _ = pure ()
 
-||| A definition's appends, counted in the right-hand sides of its clauses.
-appendsOf : {auto c : Ref Ctxt Defs} -> {auto n : Ref Counting Count} -> List (Name, List Nat) -> GlobalDef -> Core (Nat, Nat)
-appendsOf js g = do
-  update Counting { lists := 0, builders := 0 }
+||| A definition's accumulations, counted in the right-hand sides of its
+||| clauses: at its end, by left folds, and structured.
+accumulationsOf : {auto c : Ref Ctxt Defs} -> {auto n : Ref Counting Count} ->
+                  List (Name, List Nat) -> GlobalDef -> Core (Nat, Nat, Nat)
+accumulationsOf js g = do
+  update Counting { atEnd := 0, leftFolds := 0, structured := 0 }
+  defs <- get Ctxt
+  me <- full (gamma defs) g.fullname
   case g.definition of
-    PMDef _ _ _ _ pats => traverse_ (\(_ ** (_, _, rhs)) => countIn js rhs) pats
+    PMDef _ _ _ _ pats => traverse_ (\(_ ** (_, lhs, rhs)) => countIn js (recursion me lhs) 0 rhs) pats
     _ => pure ()
   k <- get Counting
-  pure (k.lists, k.builders)
+  pure (k.atEnd, k.leftFolds, k.structured)
+  where
+    block : Name -> Bool
+    block (NS _ n) = block n
+    block (CaseBlock _ _) = True
+    block (WithBlock _ _) = True
+    block _ = False
+
+    variable : Term vs -> Maybe Nat
+    variable (Local _ _ idx _) = Just idx
+    variable _ = Nothing
+
+    -- a name's last part as written: a `where` function's is shown as
+    -- `outer,inner` where a block names it, and `i:j:inner` as its own
+    lastWritten : Name -> String
+    lastWritten n = case last' (forget (Data.String.split (\c => c == ',' || c == ':') (outermost (show n)))) of
+      Just p => p
+      Nothing => show n
+
+    -- a call of the definition itself, or, from a block, of the definition
+    -- whose clauses the block is part of
+    recursion : Name -> Term vs -> Recursion
+    recursion me lhs =
+      if block me then FromBlock (\f => f == me || lastWritten f == lastWritten me)
+      else Own me (map variable (snd (getFnArgs lhs)))
 
 ------------------------------------------------------------------------------
 -- Resolving
@@ -428,16 +546,16 @@ resolveModule mods implementations js (f, names) = do
       pure (map (\u => (u, shown, searched)) (moduleOfName mods r'))
 
 
-    definition : Defs -> Name -> Core (List (String, String, Bool), Maybe Appends)
+    definition : Defs -> Name -> Core (List (String, String, Bool), Maybe Accumulations)
     definition defs nm = do
       Just g <- lookupCtxtExact nm (gamma defs)
         | Nothing => pure ([], Nothing)
       let refs = keys (fromMaybe empty g.refersToM) ++ keys (getRefs (UN Underscore) g.type) ++ clauseRefs g.definition
       us <- mapMaybe id <$> traverse (used defs) refs
-      (ls, bs) <- appendsOf js g
+      (atEnd, folds, structured) <- accumulationsOf js g
       let (line, col) = startOf g.location
       pure (us, case writtenName nm of
-                  Just s => if ls + bs > 0 then Just (MkAppends s line col ls bs) else Nothing
+                  Just s => if atEnd + folds + structured > 0 then Just (MkAccumulations s line col atEnd folds structured) else Nothing
                   Nothing => Nothing)
       where
         -- what a definition's clauses name, the constructors its patterns
@@ -451,6 +569,15 @@ resolveModule mods implementations js (f, names) = do
         startOf (MkFC _ s _) = s
         startOf (MkVirtualFC _ s _) = s
         startOf EmptyFC = (0, 0)
+
+||| Whether a name is not a data constructor.
+notConstructor : {auto c : Ref Ctxt Defs} -> Defs -> Name -> Core Bool
+notConstructor defs n = do
+  Just g <- lookupCtxtExact n (gamma defs)
+    | Nothing => pure True
+  pure (case g.definition of
+          DCon _ _ _ => False
+          _ => True)
 
 ||| Our modules resolved from their TTCs, or the findings of those whose TTCs
 ||| are missing or older than their sources, or why the TTCs did not load.
@@ -481,12 +608,14 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
                                  Nothing => acc)
                              (the (SortedMap String (List Name)) empty) names
         -- the implementations, as Idris keeps them for search: by interface,
-        -- and the hints of no interface
+        -- and the hints of no interface; a data type's constructors are
+        -- hints for it too, and are left out
         let hinted = joined (map (map (\(h, _) => h)) (values (typeHints defs))) ++ keys (autoHints defs)
         hintedNames <- traverse (full (gamma defs)) hinted
-        let implementations = the (SortedSet String) (fromList (map show hintedNames))
+        found <- filterM (notConstructor defs) hintedNames
+        let implementations = the (SortedSet String) (fromList (map show found))
         js <- joiners
-        n <- newRef Counting (MkCount 0 0 empty)
+        n <- newRef Counting (MkCount 0 0 0 empty)
         rs <- traverse (resolveModule mods implementations js)
                        [ (f, fromMaybe [] (lookup (show f.mod.moduleNS) byModule)) | (f, _) <- located ]
         imports <- traverse (\m => (m,) <$> importsOf m) (Prelude.toList mods)

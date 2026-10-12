@@ -508,7 +508,7 @@ parameters (d : Decls enc)
       addBlock ly [] (piece narrows <+> isY, tY)
       (fn, ln) <- branchTo no env li
       pure (mergeLeft (usesVect env vs) (mergeLeft (without (regs fs) fy) fn),
-            (piece (concatMap fst (toList loaded)), IsFixnum (toList rs) ly ln))
+            (concatMap (piece . fst) (toList loaded), IsFixnum (toList rs) ly ln))
     body (ArithOv {t} o x y ok ovf) env li = do
       f <- fresh t
       (fok, (isOk, tOk)) <- body ok (InReg f :: env) li

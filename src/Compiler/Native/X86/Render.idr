@@ -90,10 +90,11 @@ record RS (enc : Enc) where
   ||| `Fix` parameter is an integer, whose word the value encoding gives.
   params : SortedMap Name (List (Ty enc))
   statics : SortedMap Name Label
-  text : Builder Instr
+  ||| The code so far, accumulating at its end.
+  text : SnocList Instr
   ||| Slow paths, placed after the function being rendered.
-  cold : Builder Instr
-  rodata : Builder (Label, List Bits8)
+  cold : SnocList Instr
+  rodata : SnocList (Label, List Bits8)
   ||| The most of each per-thread area the code so far uses.
   areas : Areas
 
@@ -104,13 +105,13 @@ failWith : String -> R enc a
 failWith = lift . Left
 
 emit : Instr -> R enc ()
-emit i = modify { text $= (<+> single i) }
+emit i = modify { text $= (:< i) }
 
 emits : List Instr -> R enc ()
 emits = traverse_ emit
 
 coldEmit : Instr -> R enc ()
-coldEmit i = modify { cold $= (<+> single i) }
+coldEmit i = modify { cold $= (:< i) }
 
 ||| Record that the code uses at least these areas.
 uses : Areas -> R enc ()
@@ -645,7 +646,7 @@ parameters (enc : Enc)
     big <- fresh
     msg <- fresh
     let bytes = map (cast . ord) (unpack "object size out of range\n")
-    modify { rodata $= (<+> single (msg, bytes)) }
+    modify { rodata $= (:< (msg, bytes)) }
     traverse_ coldEmit [ Lbl big, Lea RDI (MRip msg 0), MovRI RSI (cast (length bytes))
                        , Jmp (sym SymCrash) ]
     loadReg RCX count
@@ -804,7 +805,7 @@ parameters (enc : Enc)
     emits (tagPointer R12 RAX)
 
   argRegsOf : List (Operand enc) -> List (Reg enc)
-  argRegsOf = concatMap opRegs
+  argRegsOf = joinMap opRegs
 
   term : (Nat -> Label) -> (results : List (Ty enc)) -> BlockTerminator enc -> R enc ()
   term blk res (Jump l) = emit (Jmp (blk l))
@@ -851,7 +852,7 @@ parameters (enc : Enc)
   term blk res (Crash msg) = do
     l <- fresh
     let bytes = map (cast . ord) (unpack (msg ++ "\n"))
-    modify { rodata $= (<+> single (l, bytes)) }
+    modify { rodata $= (:< (l, bytes)) }
     emits [Lea RDI (MRip l 0), MovRI RSI (cast (length bytes)), Jmp (sym SymCrash)]
   term blk res (Unsupported _) = emit (Jmp (sym SymUnsupported))
   term blk res (Ret xs) = do
@@ -916,7 +917,7 @@ parameters (enc : Enc)
     let rs = resumes f
     traverse_ (block blk f.results rs) f.blocks
     s <- get
-    put ({ text := s.text <+> s.cold, cold := neutral } s)
+    put ({ text := s.text ++ s.cold, cold := [<] } s)
 
   staticBytes : Static enc -> R enc (List Bits8)
   staticBytes s = do
@@ -944,12 +945,12 @@ parameters (enc : Enc)
         -- its function's number of parameters, and its function is CPS.
         arity = foldl max 0 [length f.params | f <- p.functions, f.conv == CPS]
         applyAreas = MkAreas (argsWords abi (replicate arity WordClass)) 0 arity
-    (s, _) <- runStateT (MkRS next2 funs params statics neutral neutral neutral applyAreas) $ do
+    (s, _) <- runStateT (MkRS next2 funs params statics [<] [<] [<] applyAreas) $ do
       entry <- funLabel p.entry
       emits [Lbl (sym SymMain), Jmp entry]
       traverse_ function p.functions
       traverse_ (\st => do l <- staticLabel st.sym
                            bytes <- staticBytes st
-                           modify { rodata $= (<+> single (l, bytes)) })
+                           modify { rodata $= (:< (l, bytes)) })
                 p.statics
-    pure (MkRendered (contents s.text) (contents s.rodata) s.areas)
+    pure (MkRendered (s.text <>> []) (s.rodata <>> []) s.areas)

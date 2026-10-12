@@ -15,7 +15,6 @@ module Gen
 import Compiler.Native.X86.Asm
 import Compiler.Native.X86.Encode
 import Data.Buffer
-import Data.Builder
 import Data.List
 import Data.SortedMap
 import System.File
@@ -124,7 +123,7 @@ writeBytes path bs = do
 emit : String -> List Instr -> IO ()
 emit name is = do
   let (code, _, missing) = assemble 0 is
-      bytes = contents code
+      bytes = code <>> []
   writeBytes (name ++ ".bin") bytes
   ignore $ writeFile (name ++ ".s") (".intel_syntax noprefix\n.text\n" ++ concat (map (\i => show i ++ "\n") is))
   putStrLn (name ++ ": " ++ show (length is) ++ " instructions, " ++ show (length bytes) ++ " bytes, missing labels: " ++ show (length missing))

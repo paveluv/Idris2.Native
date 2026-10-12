@@ -1250,15 +1250,15 @@ program forms shapes services entry es rs =
 
 ||| The ids of the constructors of no fields that ordinary code represents
 ||| as objects, in a shape: the statics boxing a value of it may need.
-nullaries : Shape -> List Int
-nullaries (PrimShape _) = []
-nullaries UniformShape = []
+nullaries : Shape -> Builder Int
+nullaries (PrimShape _) = neutral
+nullaries UniformShape = neutral
 nullaries (DataShape cs) = concatMap con cs
   where
-    con : ConShape -> List Int
+    con : ConShape -> Builder Int
     con c = (case (c.ordinary, c.fields) of
-               (AsObject cid, []) => [cid]
-               _ => []) ++ concatMap nullaries c.fields
+               (AsObject cid, []) => single cid
+               _ => neutral) <+> concatMap nullaries c.fields
 
 ||| Whether a value of the C type is held as a flat value of the skeleton:
 ||| an integer as its machine type, a `Char`, a `Double`, the world, `()`, a
@@ -1320,7 +1320,7 @@ lowerProgram enc platform forms shapes vmdefs = do
                  ++ [(formSig fd, Form fd) | fd <- forms]
                  ++ [(MkSig r.name (InDirect r.results False) r.params False, Routine)
                     | r <- routines {enc}, not r.provided]
-      boxing = fromList [(nullaryCon c, Nullary c) | c <- contents (concatMap (piece . boxed . snd) planned)]
+      boxing = fromList [(nullaryCon c, Nullary c) | c <- contents (concatMap (boxed . snd) planned)]
       statics = Data.SortedMap.toList (foldl mergeLeft boxing (mapMaybe bodyStatics vmdefs))
   pure (program forms shapes (fromList (serviceBindings {enc} platform)) entryPlan others (mapMaybe ready statics))
   where
@@ -1386,9 +1386,9 @@ lowerProgram enc platform forms shapes vmdefs = do
       pure (Boundary arity fd ss r)
 
     -- The nullary constructors a boundary may box.
-    boxed : Plan -> List Int
+    boxed : Plan -> Builder Int
     boxed (Boundary _ _ ss r) = concatMap nullaries (r :: ss)
-    boxed _ = []
+    boxed _ = neutral
 
     plan : (Name, VMDef) -> Maybe (Sig enc, Plan)
     plan (n, MkVMFun args body) =

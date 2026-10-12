@@ -36,6 +36,7 @@ import Core.Env
 import Core.Normalise
 import Core.TT
 import Core.Value
+import Data.Builder
 import Flat.Exp
 import Flat.Problem
 import Libraries.Data.NameMap
@@ -166,8 +167,8 @@ recursive tn = reaches [] [tn]
              let TCon _ _ _ _ _ (Just cons) _ = definition gdef
                | _ => pure []
              cdefs <- catMaybes <$> traverse (\cn => lookupCtxtExact cn (gamma defs)) cons
-             tys <- concat <$> traverse (fieldTypes []) cdefs
-             let refs = concatMap (\t => keys (getRefs (UN Underscore) t)) tys
+             tys <- joinMap id <$> traverse (fieldTypes []) cdefs
+             let refs = joinMap (\t => keys (getRefs (UN Underscore) t)) tys
              traverse toFullNames !(filterM isTyCon refs)
 
     reaches : (visited : List Name) -> (todo : List Name) -> Core Bool
@@ -192,13 +193,14 @@ data Judgement
 -- The judgements of a value's parts in turn: the first rejection, else
 -- deferred if any part is, else the parts' layouts concatenated.
 concatJudgements : List Judgement -> Judgement
-concatJudgements = go [] False
+concatJudgements = go [<] False
   where
-    go : Layout -> (deferred : Bool) -> List Judgement -> Judgement
-    go acc d [] = if d then Deferred else LaidOut acc
+    -- the layouts accumulate at their end, a part at a time
+    go : SnocList Rep -> (deferred : Bool) -> List Judgement -> Judgement
+    go acc d [] = if d then Deferred else LaidOut (acc <>> [])
     go acc d (Rejected why :: _) = Rejected why
     go acc d (Deferred :: js) = go acc True js
-    go acc d (LaidOut l :: js) = go (acc ++ l) d js
+    go acc d (LaidOut l :: js) = go (acc <>< l) d js
 
 mutual
   ||| Judge a type: its layout if it is flat, or why it is not.

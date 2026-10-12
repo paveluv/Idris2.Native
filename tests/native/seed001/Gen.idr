@@ -19,7 +19,6 @@ import Compiler.Native.Link
 import Compiler.Native.Linkage
 import Compiler.Native.X86.Asm
 import Compiler.Native.X86.Encode
-import Data.Builder
 import System.File
 
 ||| The word of fixnum n, under fixnum tag 1.
@@ -116,7 +115,7 @@ emit name prog = case link SeedEnc (prog ++ startByHand ++ allocSlowByHand ++ cr
   Right image => do
     Right () <- writeImage name image
       | Left err => putStrLn (name ++ ": write failed: " ++ show err)
-    putStrLn (name ++ ": " ++ show (size image) ++ " bytes")
+    putStrLn (name ++ ": " ++ show (imageSize image) ++ " bytes")
 
 main : IO ()
 main = do

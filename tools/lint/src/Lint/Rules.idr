@@ -561,7 +561,7 @@ fileRules f ms ds =
 ||| is advice, printed when asked for.
 export
 isWarning : (rule : String) -> Bool
-isWarning rule = rule == "module-name" || rule == "same-name" || rule == "list-append"
+isWarning rule = rule == "module-name" || rule == "same-name" || rule == "list-accumulation"
 
 ||| The names of every rule, those over the graph and over the resolution
 ||| included.
@@ -570,4 +570,4 @@ ruleNames : List String
 ruleNames =
   [ "import-order", "public-import", "default-totality", "elab-reflection"
   , "trust-escape", "cites-plan", "todo", "header-comment", "implementation-adjacent", "module-name"
-  , "layering", "syscall", "same-name", "import-unused", "import-indirect", "list-append" ]
+  , "layering", "syscall", "same-name", "import-unused", "import-indirect", "list-accumulation" ]

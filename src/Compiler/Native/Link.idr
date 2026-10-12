@@ -12,7 +12,6 @@ import Compiler.Native.Platform
 import Compiler.Native.Seed
 import Compiler.Native.X86.Asm
 import Compiler.Native.X86.Encode
-import Data.Builder
 import Data.Maybe
 import Data.SortedMap
 
@@ -32,16 +31,16 @@ import Data.SortedMap
 export
 linkProgram : (enc : Enc) -> {auto 0 _ : HasFixnums enc.val} ->
               (window : Int) -> (areas : Areas) -> (program : List Instr) ->
-              (rodata : List (Label, List Bits8)) -> Either (List AsmProblem) (Builder Bits8)
+              (rodata : List (Label, List Bits8)) -> Either (List AsmProblem) Image
 linkProgram enc window areas program items =
   let text = seedText enc window ++ program
       tl = layout textBase text
       ts = codeSize textBase text
       (seedData, rsyms) = seedRodata tl
-      rodata = foldl (\b, (_, item) => b <+> piece (pad8 item)) (piece seedData) items
+      rodata = foldl (\b, (_, item) => b <>< pad8 item) ([<] <>< seedData) items
       offsets = offsetsFrom (cast (length seedData)) items
       as = maxAreas seedAreas areas
-      lay = planLayout ts (cast (size rodata)) (seedBssSize as)
+      lay = planLayout ts (byteCount rodata) (seedBssSize as)
       env = fromList (map (\(s, off) => (symLabel s, rodataBase lay + off)) rsyms
                    ++ map (\(s, off) => (symLabel s, bssBase lay + off)) (seedBss as)
                    ++ map (\(l, off) => (l, rodataBase lay + off)) offsets)
@@ -59,11 +58,11 @@ linkProgram enc window areas program items =
 ||| seed's, with no read-only data of its own.
 export
 linkWith : (enc : Enc) -> {auto 0 _ : HasFixnums enc.val} ->
-           (window : Int) -> (program : List Instr) -> Either (List AsmProblem) (Builder Bits8)
+           (window : Int) -> (program : List Instr) -> Either (List AsmProblem) Image
 linkWith enc window program = linkProgram enc window seedAreas program []
 
 ||| `linkWith` the default window.
 export
 link : (enc : Enc) -> {auto 0 _ : HasFixnums enc.val} ->
-       (program : List Instr) -> Either (List AsmProblem) (Builder Bits8)
+       (program : List Instr) -> Either (List AsmProblem) Image
 link enc = linkWith enc windowBytes

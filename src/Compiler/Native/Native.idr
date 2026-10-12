@@ -138,7 +138,7 @@ parseSettings = foldlM setting (MkSettings windowBytes Nothing Nothing Nothing N
 flatInputs : {auto c : Ref Ctxt Defs} -> NameMap FlatDef -> List (Name, Name) -> List Name ->
              Core (List FlatDef, Shapes)
 flatInputs table services roots = do
-  forms <- reach empty neutral roots
+  forms <- reach empty [<] roots
   let skeletons = nub (filter isData (contents (concatMap (piece . formSkeletons) forms)))
   shapes <- traverse (\sk => map (sk,) <$> shape sk) skeletons
   pure (forms, catMaybes shapes)
@@ -147,13 +147,14 @@ flatInputs table services roots = do
     isData (SCon _ _) = True
     isData _ = False
 
-    reach : SortedMap Name () -> Builder FlatDef -> List Name -> Core (List FlatDef)
-    reach seen acc [] = pure (contents acc)
+    -- the forms reached so far accumulate at their end, in the order reached
+    reach : SortedMap Name () -> SnocList FlatDef -> List Name -> Core (List FlatDef)
+    reach seen acc [] = pure (acc <>> [])
     reach seen acc (n :: ns) =
       if isJust (Data.SortedMap.lookup n seen) then reach seen acc ns else do
         Just fd <- pure (lookup n table)
           | Nothing => reach (insert n () seen) acc ns
-        reach (insert n () seen) (acc <+> single fd)
+        reach (insert n () seen) (acc :< fd)
               (formCallees fd ++ mapMaybe (\p => Data.List.lookup p services) (formPrims fd) ++ ns)
 
 ||| The runtime's function for a foreign function of the program it
@@ -194,7 +195,7 @@ phase name act = do
 ||| From VMCode to the image, under encodings whose value encoding has
 ||| fixnums: produce the term, allocate its registers, render, link.
 pipeline : {auto c : Ref Ctxt Defs} -> (enc : Enc) -> {auto 0 _ : HasFixnums enc.val} ->
-           Settings -> NameMap FlatDef -> List (Name, VMDef) -> Core (Builder Bits8)
+           Settings -> NameMap FlatDef -> List (Name, VMDef) -> Core Image
 pipeline enc settings table defs = do
   (forms, shapes) <- phase "flat inputs" $
                        flatInputs table (serviceBindings {enc} settings.platform)

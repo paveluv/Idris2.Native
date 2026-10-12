@@ -9,11 +9,11 @@
 ||| ends the process with the status in rdi.
 module Gen
 
+import Compiler.Native.Bytes
 import Compiler.Native.ELF
 import Compiler.Native.Platform
 import Compiler.Native.X86.Asm
 import Compiler.Native.X86.Encode
-import Data.Builder
 import Data.SortedMap
 import System.File
 
@@ -21,7 +21,7 @@ main : IO ()
 main = do
   let prog = [Lbl 0, MovRI RDI 42, MovRI RAX 231, Syscall]
   let (text, _, missing) = assemble textBase prog
-  let lay = planLayout (cast (size text)) 0 0
-  Right () <- writeImage "exit42" (elfImage X86_64 lay text neutral 0 textBase)
+  let lay = planLayout (byteCount text) 0 0
+  Right () <- writeImage "exit42" (elfImage X86_64 lay text [<] 0 textBase)
     | Left err => putStrLn ("write failed: " ++ show err)
-  putStrLn ("text bytes: " ++ show (size text) ++ ", missing labels: " ++ show (length missing))
+  putStrLn ("text bytes: " ++ show (byteCount text) ++ ", missing labels: " ++ show (length missing))

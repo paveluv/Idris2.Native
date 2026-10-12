@@ -10,7 +10,6 @@ module Gen
 
 import Compiler.Native.X86.Asm
 import Compiler.Native.X86.Encode
-import Data.Builder
 import Data.SortedMap
 
 check : String -> SortedMap Label Int -> List Instr -> IO ()

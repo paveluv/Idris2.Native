@@ -33,7 +33,6 @@ import Compiler.Native.X86.Target
 import Core.FC
 import Core.Name
 import Core.Name.Namespace
-import Data.Builder
 import Data.List
 import Data.List.Quantifiers
 import Data.So

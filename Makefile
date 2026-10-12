@@ -59,7 +59,7 @@ test: native linter testbin
 # read the TTCs of their build, so the product is built first.
 lint: native linter
 	$(WITH_PREFIX) $(LINTER) --resolved src runtime tools/lint/src --programs tests/native tests/flat tests/Main.idr
-	$(WITH_PREFIX) $(LINTER) --resolved --health --minimum 60 src runtime
+	$(WITH_PREFIX) $(LINTER) --resolved --health --minimum 65 src runtime
 
 # The backend's phases against the size of the program: fails when one
 # grows faster than the program (tests/scaling/scaling.sh). On demand, not

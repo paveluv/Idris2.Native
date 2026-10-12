@@ -1,31 +1,62 @@
-||| Appends, which `list-append` reports, a warning, per definition: each
-||| `++` on lists, and `concat` at a list's monoid, copies its left list,
-||| where a `Builder` (`Data.Builder`) joins in constant time and copies
-||| once, when its contents are read.
+||| Accumulations, which `list-accumulation` reports, a warning, per
+||| definition: a list grown at its end with `++`, and lists joined by a
+||| left fold. Those written with the structure their shape asks for, a
+||| snoc-list or a builder, count towards the score's `accumulation`.
 module JoinAll
 
 import Data.Builder
 
 %default total
 
-||| The lists joined, by `++` from the right: one append, though it runs
-||| once for each list.
+||| Each element appended at the end of the list built so far: `acc ++ [x]`
+||| copies `acc` at every step, so `n` elements cost about `n * n / 2`
+||| copies. Reported.
 export
-joinAll : List (List Nat) -> List Nat
-joinAll = foldr (++) []
+joinAll : List Nat -> List Nat
+joinAll = go []
+  where
+    go : List Nat -> List Nat -> List Nat
+    go acc [] = acc
+    go acc (x :: xs) = go (acc ++ [x]) xs
 
-||| Three lists joined, by `++` twice.
+||| The same as a left fold's step, `\acc, x => acc ++ [x]`. Reported.
 export
-joinThree : List Nat -> List Nat -> List Nat -> List Nat
-joinThree xs ys zs = xs ++ ys ++ zs
+foldAll : List Nat -> List Nat
+foldAll = foldl (\acc, x => acc ++ [x]) []
 
-||| The lists joined by `concat`, whose monoid is the list's: one append.
+||| The same at a snoc-list's end, where adding costs what is added:
+||| `acc :< x`, read out once by `<>>`. Counted as structured.
+export
+snocAll : List Nat -> List Nat
+snocAll = go [<]
+  where
+    go : SnocList Nat -> List Nat -> List Nat
+    go acc [] = acc <>> []
+    go acc (x :: xs) = go (acc :< x) xs
+
+||| A piece put in front of what is built so far, `x ++ acc`: only the
+||| piece is copied, which is what a list does well. Not reported.
+export
+prependAll : List (List Nat) -> List Nat
+prependAll = go []
+  where
+    go : List Nat -> List (List Nat) -> List Nat
+    go acc [] = acc
+    go acc (x :: xs) = go (x ++ acc) xs
+
+||| `concat` on lists folds from the left, copying what it has joined at
+||| every step. Reported.
 export
 flatten : List (List Nat) -> List Nat
 flatten = concat
 
-||| Two builders joined, in constant time: a builder's append, not
-||| reported, and counted in the score's `builders`.
+||| One join of two lists copies the first once, as the result must. Not
+||| reported.
+export
+joinTwo : List Nat -> List Nat -> List Nat
+joinTwo xs ys = xs ++ ys
+
+||| Two builders joined, in constant time: counted as structured.
 export
 joinBuilt : Builder Nat -> Builder Nat -> Builder Nat
 joinBuilt a b = a <+> b

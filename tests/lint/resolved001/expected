@@ -1,10 +1,10 @@
-./Gallery.idr:5:1 import-indirect: `Shape` is used (`Shape`) only through `Canvas`: import it
-./JoinAll.idr:11:1 list-append: `joinAll` joins lists once: a `Builder` joins in constant time
-./JoinAll.idr:17:1 list-append: `joinThree` joins lists twice: a `Builder` joins in constant time
-./JoinAll.idr:22:1 list-append: `flatten` joins lists once: a `Builder` joins in constant time
+./Gallery.idr:5:1 import-indirect: `Shape` is used (`Shape`, `Circle`) only through `Canvas`: import it
+./JoinAll.idr:18:5 list-accumulation: `go` grows a list at its end with `++` once: a `SnocList` grows there in constant time (`:<`, `<><`)
+./JoinAll.idr:22:1 list-accumulation: `foldAll` grows a list at its end with `++` once: a `SnocList` grows there in constant time (`:<`, `<><`)
+./JoinAll.idr:47:1 list-accumulation: `flatten` joins lists by a left fold once: `joinMap` joins them in linear time
 ./Report.idr:6:1 import-indirect: `Shape` is used (`Show Shape`) only through `Canvas`: import it
 ./Spare.idr:5:1 import-unused: `Data.List` is imported, and nothing it makes visible is used
-    directness     90  modules used that are imported directly: 19 of 21
+    directness     89  modules used that are imported directly: 16 of 18
     leanness       83  private imports used: 5 of 6
-    builders       20  appends that join builders: 1 of 5
+    accumulation   40  accumulations in a snoc-list or a builder: 2 of 5
 ./Spare.idr:1:1 resolution: the TTC of `Spare` is older than its source: build it first
