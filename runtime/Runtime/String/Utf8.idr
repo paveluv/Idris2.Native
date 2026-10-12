@@ -26,6 +26,8 @@ module Runtime.String.Utf8
 
 import public Runtime.Space
 
+import Runtime.Bits
+
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
 %hide Prelude.Interfaces.pure
@@ -45,7 +47,7 @@ asciiOf h = part StringAscii h == 1
 ||| The header of a string of `bytes`.
 headerFor : (ascii : Bool) -> (bytes : Bits64) -> Bits64
 headerFor ascii bytes =
-  kindId STRING + prim__shl_Bits64 (if ascii then 1 else 0) (fst (place StringAscii)) + prim__shl_Bits64 bytes (fst (place StringBytes))
+  kindId STRING + shiftL (if ascii then 1 else 0) (fst (place StringAscii)) + shiftL bytes (fst (place StringBytes))
 
 ||| A string's header.
 headerOf : Addr STRING -> Op Heap Bits64
@@ -94,33 +96,33 @@ decodeAt s i = do
   if b0 < 0x80 then pure b0 else
     if b0 < 0xE0 then do
       b1 <- byteAt s (i + 1)
-      pure (prim__shl_Bits64 (b0 .&. 0x1F) 6 .|. b1 .&. 0x3F)
+      pure (shiftL (b0 .&. 0x1F) 6 .|. b1 .&. 0x3F)
     else if b0 < 0xF0 then do
       b1 <- byteAt s (i + 1)
       b2 <- byteAt s (i + 2)
-      pure (prim__shl_Bits64 (b0 .&. 0x0F) 12 .|. prim__shl_Bits64 (b1 .&. 0x3F) 6 .|. b2 .&. 0x3F)
+      pure (shiftL (b0 .&. 0x0F) 12 .|. shiftL (b1 .&. 0x3F) 6 .|. b2 .&. 0x3F)
     else do
       b1 <- byteAt s (i + 1)
       b2 <- byteAt s (i + 2)
       b3 <- byteAt s (i + 3)
-      pure (prim__shl_Bits64 (b0 .&. 0x07) 18 .|. prim__shl_Bits64 (b1 .&. 0x3F) 12
-            .|. prim__shl_Bits64 (b2 .&. 0x3F) 6 .|. b3 .&. 0x3F)
+      pure (shiftL (b0 .&. 0x07) 18 .|. shiftL (b1 .&. 0x3F) 12
+            .|. shiftL (b2 .&. 0x3F) 6 .|. b3 .&. 0x3F)
 
 ||| The character `c` written at `j`, its `charBytes c` bytes.
 encodeAt : Addr STRING -> (j, c : Bits64) -> Op Heap ()
 encodeAt s j c =
   if c < 0x80 then setByte s j c
   else if c < 0x800 then do
-    setByte s j (0xC0 .|. prim__shr_Bits64 c 6)
+    setByte s j (0xC0 .|. shiftR c 6)
     setByte s (j + 1) (0x80 .|. c .&. 0x3F)
   else if c < 0x10000 then do
-    setByte s j (0xE0 .|. prim__shr_Bits64 c 12)
-    setByte s (j + 1) (0x80 .|. prim__shr_Bits64 c 6 .&. 0x3F)
+    setByte s j (0xE0 .|. shiftR c 12)
+    setByte s (j + 1) (0x80 .|. shiftR c 6 .&. 0x3F)
     setByte s (j + 2) (0x80 .|. c .&. 0x3F)
   else do
-    setByte s j (0xF0 .|. prim__shr_Bits64 c 18)
-    setByte s (j + 1) (0x80 .|. prim__shr_Bits64 c 12 .&. 0x3F)
-    setByte s (j + 2) (0x80 .|. prim__shr_Bits64 c 6 .&. 0x3F)
+    setByte s j (0xF0 .|. shiftR c 18)
+    setByte s (j + 1) (0x80 .|. shiftR c 12 .&. 0x3F)
+    setByte s (j + 2) (0x80 .|. shiftR c 6 .&. 0x3F)
     setByte s (j + 3) (0x80 .|. c .&. 0x3F)
 
 ------------------------------------------------------------------------------
@@ -316,7 +318,7 @@ compare x y = do
 
 ||| The header of a list's `(::)`.
 consHeader : Bits64
-consHeader = kindId CON + prim__shl_Bits64 1 (fst (place ConId)) + prim__shl_Bits64 2 (fst (place ConArity))
+consHeader = kindId CON + shiftL 1 (fst (place ConId)) + shiftL 2 (fst (place ConArity))
 
 ||| The header of a list's `[]`.
 nilHeader : Bits64

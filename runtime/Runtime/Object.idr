@@ -8,9 +8,7 @@ module Runtime.Object
 
 import public Runtime.Memory
 
--- The shifts are the primitives: `Data.Bits`' take their count as a
--- `Fin 64`, a `Nat` at run time, which flat code cannot hold, and the
--- counts here are words besides, from `place`.
+import Runtime.Bits
 
 %default total
 
@@ -33,22 +31,22 @@ forwardingId = 15
 
 export
 forwardingHeader : (to : Bits64) -> Bits64
-forwardingHeader to = prim__shl_Bits64 to 4 .|. forwardingId
+forwardingHeader to = shiftL to 4 .|. forwardingId
 
 export
 forwardedTo : (header : Bits64) -> Bits64
-forwardedTo h = prim__shr_Bits64 h 4
+forwardedTo h = shiftR h 4
 
 ||| A part of a header word, where `place` puts it. Inline, so that at a
 ||| part written in the code the shift and the mask are constants.
 export %inline
 part : HeaderPart k -> (header : Bits64) -> Bits64
-part p h = prim__shr_Bits64 h (fst (place p)) .&. (prim__shl_Bits64 1 (snd (place p)) - 1)
+part p h = shiftR h (fst (place p)) .&. (shiftL 1 (snd (place p)) - 1)
 
 ||| The words `bytes` take, rounded up.
 export %inline
 byteWords : Bits64 -> Bits64
-byteWords b = prim__shr_Bits64 (b + 7) 3
+byteWords b = shiftR (b + 7) 3
 
 ||| The words of an object with a header, the header included, by its kind's
 ||| id and its header word; 0 for an id that is no kind's.
@@ -88,7 +86,7 @@ layoutValues l = l .&. 0xFFFFFF
 
 export
 layoutRaws : (layout : Bits64) -> Bits64
-layoutRaws l = prim__shr_Bits64 l 24 .&. 0xFFFFFF
+layoutRaws l = shiftR l 24 .&. 0xFFFFFF
 
 export
 continuationWords : (layout : Bits64) -> Bits64

@@ -1,4 +1,4 @@
-the generic runtime: 9 modules checked
+the generic runtime: its modules checked
 x86_64-linux: built and run
 native: the target x86_64-freebsd is not implemented; only x86_64-linux is
 native: the target x86_64-openbsd is not implemented; only x86_64-linux is

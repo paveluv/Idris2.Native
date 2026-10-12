@@ -10,7 +10,7 @@ runtime=../../../runtime
 for f in "$runtime"/Runtime.idr "$runtime"/Runtime/*.idr; do
   if grep -qE 'Runtime\.OS\.Syscall|syscall' "$f"; then echo "system call outside Runtime/OS: $(basename "$f")"; fi
 done
-echo "the generic runtime: $(ls "$runtime"/Runtime/*.idr | wc -l) modules checked"
+[ "$(ls "$runtime"/Runtime/*.idr | wc -l)" -gt 0 ] && echo "the generic runtime: its modules checked"
 idris2 --cg native --directive target=x86_64-linux -o main Main.idr > /dev/null && ./build/exec/main && echo "x86_64-linux: built and run"
 for t in x86_64-freebsd x86_64-openbsd x86_64-macos aarch64-macos x86_64-windows aarch64-linux sparc-linux x86_64; do
   idris2 --cg native --directive target=$t -o main Main.idr 2>&1 | grep -o 'native: .*' | head -1

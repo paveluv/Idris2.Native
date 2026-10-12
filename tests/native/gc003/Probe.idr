@@ -18,6 +18,10 @@ module Probe
 import Runtime.Space
 import Runtime.String.Utf8
 
+-- the runtime's functions use its own bit operations, which it does not
+-- re-export; flat code that reaches into them imports those too
+import Runtime.Bits
+
 -- this module's `do` is the runtime's, over the token
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)

@@ -6,6 +6,8 @@ module Runtime.Start
 
 import public Runtime.Space
 
+import Runtime.Bits
+
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
 %hide Prelude.Interfaces.pure
@@ -36,7 +38,7 @@ reserveSpace : (bytes : Bits64) -> Op Heap (Bits64, Bits64)
 reserveSpace bytes =
   if bytes < 67108864 then crashOp "idris: cannot reserve memory" else do
     a <- reserveMemory bytes
-    if a == 0 then reserveSpace (prim__shr_Bits64 bytes 1) else pure (a, bytes)
+    if a == 0 then reserveSpace (shiftR bytes 1) else pure (a, bytes)
 
 %cg native flat Runtime.Start.start
 ||| `idris_start`: the two spaces reserved and the first window committed,

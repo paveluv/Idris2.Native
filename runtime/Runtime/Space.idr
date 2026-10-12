@@ -19,6 +19,8 @@ import public Runtime.Collect
 import public Runtime.Object
 import public Runtime.State
 
+import Runtime.Bits
+
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
 %hide Prelude.Interfaces.pure
@@ -150,7 +152,7 @@ grow bytes = do
   limit <- getState heapLimit
   win <- getState windowBytes
   let next = hp + bytes
-  if limit /= 0 && next - base > prim__shr_Bits64 limit 1
+  if limit /= 0 && next - base > shiftR limit 1
      then crashOp "idris: heap limit exceeded"
      else do
        commitSpace fromCommitted fromEnd (next + win)

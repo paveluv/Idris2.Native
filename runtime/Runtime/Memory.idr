@@ -10,10 +10,12 @@ module Runtime.Memory
 -- public, so that a module importing this one has the definitions the flat
 -- translation reaches through it, as it checks that module's flat functions
 import public Compiler.Native.HeapObject
-import public Data.Bits
 import public Flat.Uniform
 import public Runtime.Heap
 import public Runtime.OS
+
+-- the runtime's own, never re-exported: each module that uses it imports it
+import Runtime.Bits
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
@@ -228,13 +230,13 @@ fieldPointer a = do
 ||| left by one, with the fixnum tag, the pointer tag's complement, below.
 export
 fixnumOf : (word : Bits64) -> Bits64
-fixnumOf w = prim__shr_Bits64 w 1
+fixnumOf w = shiftR w 1
 
 export
 fixnumWord : Bits64 -> Op Heap Bits64
 fixnumWord n = do
   tag <- pointerTag
-  pure (prim__shl_Bits64 n 1 + (1 - tag))
+  pure (shiftL n 1 + (1 - tag))
 
 ------------------------------------------------------------------------------
 -- The system's memory
@@ -275,7 +277,7 @@ mapMemory : (bytes : Bits64) -> Op Heap (Addr k)
 mapMemory bytes = do
   whole <- roundToPage bytes
   a <- osReserve whole
-  ok <- if a == 0 then pure (the Bits64 0) else osCommit a whole
+  ok <- if a == 0 then pure 0 else osCommit a whole
   if ok == 0
      then assert_total (idris_crash "idris: cannot map memory")
      else pure (MkAddr a)

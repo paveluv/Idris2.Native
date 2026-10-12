@@ -4,6 +4,7 @@
 ||| the others.
 module Runtime
 
+import public Runtime.Bits
 import public Runtime.Collect
 import public Runtime.Foreign.System
 import public Runtime.Heap
