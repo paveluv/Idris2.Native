@@ -73,6 +73,8 @@ import Idris.SetOptions
 ||| * `dump-ir=<file>`: write the IR the produce pass makes to the file.
 ||| * `dump-asm=<file>`: write the rendered instructions to the file, in Intel
 |||   syntax, with each function's name before its code.
+||| * `dump-foreign=<file>`: write the foreign functions and externs of the
+|||   program's libraries, each with how this backend implements it.
 ||| * `val-encoding=tag1`, `tag0` or `nofixnums`: how a uniform value is a word
 |||   (`ValEnc` in `Compiler.Native.HeapObject`): fixnum tag 1, the
 |||   default; fixnum tag 0; or no fixnums, every integer boxed, which is not
@@ -86,11 +88,12 @@ record Settings where
   dumpFlat : Maybe String
   dumpIr : Maybe String
   dumpAsm : Maybe String
+  dumpForeign : Maybe String
   encodings : Enc
   platform : Platform
 
 parseSettings : List String -> Either String Settings
-parseSettings = foldlM setting (MkSettings windowBytes Nothing Nothing Nothing defaultEnc defaultPlatform)
+parseSettings = foldlM setting (MkSettings windowBytes Nothing Nothing Nothing Nothing defaultEnc defaultPlatform)
   where
     setting : Settings -> String -> Either String Settings
     setting o d = case forget (split (== '=') d) of
@@ -105,6 +108,7 @@ parseSettings = foldlM setting (MkSettings windowBytes Nothing Nothing Nothing d
       ["dump-flat", path] => Right ({ dumpFlat := Just path } o)
       ["dump-ir", path] => Right ({ dumpIr := Just path } o)
       ["dump-asm", path] => Right ({ dumpAsm := Just path } o)
+      ["dump-foreign", path] => Right ({ dumpForeign := Just path } o)
       ["val-encoding", "tag1"] => Right ({ encodings.val := FixnumTag1 } o)
       ["val-encoding", "tag0"] => Right ({ encodings.val := FixnumTag0 } o)
       ["val-encoding", "nofixnums"] => Left "the encoding nofixnums, every integer boxed, is not implemented"
@@ -139,13 +143,20 @@ flatInputs table services roots = do
         reach (insert n () seen) (fd :: acc)
               (formCallees fd ++ mapMaybe (\p => Data.List.lookup p services) (formPrims fd) ++ ns)
 
+||| The runtime's function for a foreign function of the program it
+||| implements.
+foreignRoot : {enc : Enc} -> (Name, VMDef) -> Maybe Name
+foreignRoot (n, MkVMForeign {}) = if elem n (foreignFunctions enc) then Just (foreignImplementation n) else Nothing
+foreignRoot _ = Nothing
+
 ||| From VMCode to the image, under encodings whose value encoding has
 ||| fixnums: produce the term, allocate its registers, render, link.
 pipeline : {auto c : Ref Ctxt Defs} -> (enc : Enc) -> {auto 0 _ : HasFixnums enc.val} ->
            Settings -> NameMap FlatDef -> List (Name, VMDef) -> Core (List Bits8)
 pipeline enc settings table defs = do
   (forms, shapes) <- flatInputs table (serviceBindings {enc} settings.platform)
-                                (map fst defs ++ [r.name | r <- routines {enc}, r.provided])
+                                (map fst defs ++ [r.name | r <- routines {enc}, r.provided]
+                                 ++ mapMaybe (foreignRoot {enc}) defs)
   Right (_ ** term) <- pure (lowerProgram enc settings.platform forms shapes defs)
     | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
   let ir = allocRegs x86_64 term
@@ -219,6 +230,44 @@ loadRuntime platform = do
   traverse_ (\ns => addImport (MkImport EmptyFC False (nsAsModuleIdent ns) ns))
             (mkNamespace "Runtime" :: toList (platformModule platform))
 
+||| The foreign functions and externs of the libraries in the context, each
+||| with how this backend implements it: by the runtime (`runtime`), by the
+||| lowering inline (`lowered`), or not yet (`missing`). The runtime's own
+||| externs are its intrinsics and services, not the libraries', and are left
+||| out.
+dumpForeign : {auto c : Ref Ctxt Defs} -> Enc -> String -> Core ()
+dumpForeign enc path = do
+  defs <- get Ctxt
+  all <- traverse (\n => (n,) <$> lookupCtxtExact n (gamma defs)) !(allNames (gamma defs))
+  entries <- traverse entry (mapMaybe library all)
+  Right () <- coreLift (writeFile path (unlines (sort entries)))
+    | Left err => throw (FileErr path err)
+  pure ()
+  where
+    foreignOf : GlobalDef -> Bool
+    foreignOf g = case definition g of
+      ForeignDef _ _ => True
+      ExternDef _ => True
+      _ => False
+
+    inRuntime : Name -> Bool
+    inRuntime (NS ns _) = isPrefixOf "Runtime" (show ns)
+    inRuntime _ = False
+
+    library : (Name, Maybe GlobalDef) -> Maybe (Name, GlobalDef)
+    library (n, Just g) = if foreignOf g && not (inRuntime n) then Just (n, g) else Nothing
+    library (_, Nothing) = Nothing
+
+    lowered : List String
+    lowered = ["prim__newArray", "prim__arrayGet", "prim__arraySet"]
+
+    entry : (Name, GlobalDef) -> Core String
+    entry (n, _) = do
+      n' <- toFullNames n
+      pure $ (if elem n' (foreignFunctions enc) then "runtime  "
+              else if elem (nameRoot n') lowered then "lowered  "
+              else "missing  ") ++ show n'
+
 compileExpr : Ref Ctxt Defs -> Ref Syn SyntaxInfo ->
               (tmpDir : String) -> (outputDir : String) ->
               ClosedTerm -> (outfile : String) -> Core (Maybe String)
@@ -230,6 +279,7 @@ compileExpr c s _ outputDir tm outfile = do
   [] <- checkIntrinsics settings.encodings
     | errs => throw (GenericMsg EmptyFC ("native: " ++ fastConcat (intersperse "\n" errs)))
   whenJust settings.dumpFlat $ \f => dumpFlat f table
+  whenJust settings.dumpForeign $ \f => dumpForeign settings.encodings f
   cdata <- getCompileData False VMCode tm
   image <- case settings.encodings of
     MkEnc FixnumTag1 b => pipeline (MkEnc FixnumTag1 b) settings table (vmcode cdata)

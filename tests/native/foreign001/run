@@ -1,0 +1,8 @@
+. ../../testutils.sh
+
+# The foreign surface of prelude and base, with how the native code
+# generator implements each function: the checklist of PQ-020's items.
+idris2 --cg native --directive dump-foreign=foreign.txt -o main Main.idr > /dev/null
+cat foreign.txt
+echo "$(grep -c '^runtime' foreign.txt) by the runtime, $(grep -c '^lowered' foreign.txt) lowered inline, $(grep -c '^missing' foreign.txt) missing"
+rm -f foreign.txt

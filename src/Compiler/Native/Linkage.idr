@@ -175,11 +175,6 @@ public export
 runtimeAllocMutable : Name
 runtimeAllocMutable = NS (mkNamespace "Runtime.Space") (UN (Basic "allocMutable"))
 
-||| The routine that ends the process with a status.
-public export
-runtimeExit : Name
-runtimeExit = NS (mkNamespace "Runtime.System") (UN (Basic "exit"))
-
 ||| The routine that writes a message to the standard error and ends the
 ||| process with status 1.
 public export
@@ -199,7 +194,6 @@ routines =
   [ MkRoutine runtimeStart True (Just SymRuntimeStart) [] [W64, W64]
   , MkRoutine runtimeAllocSlow True (Just SymAllocSlow) [W64] [W64]
   , MkRoutine runtimeAllocMutable True (Just SymAllocMutable) [W64] [W64]
-  , MkRoutine runtimeExit True Nothing [] [W64]
   , MkRoutine runtimeCrash True (Just SymCrash) [] [W64, W64]
   , integer "add" [Val] [Val, Val]
   , integer "sub" [Val] [Val, Val]
@@ -306,6 +300,25 @@ intrinsics =
 export
 intrinsicOf : {0 enc : Enc} -> Name -> Maybe Intrinsic
 intrinsicOf n = (.intrinsic) <$> find (\i => i.name == n) (intrinsics {enc})
+
+||| The foreign functions of the libraries a program uses, `prelude` and
+||| `base`, that the runtime implements: each by a flat function of
+||| `Runtime.Foreign` with the module path and the name of the foreign one
+||| (`System.prim__exit` by `Runtime.Foreign.System.prim__exit`), of the same
+||| type position by position, so that the lowering gives the foreign function
+||| the boundary to it, which converts each argument and the result as their
+||| types say. A foreign function is bound by its Idris name, whatever names
+||| the library gives it for C or Scheme; one not listed stays `Unsupported`.
+export
+foreignFunctions : Enc -> List Name
+foreignFunctions _ =
+  [ NS (mkNamespace "System") (UN (Basic "prim__exit")) ]
+
+||| The runtime's function that implements a foreign function.
+export
+foreignImplementation : Name -> Name
+foreignImplementation (NS ns n) = NS (mkNamespace ("Runtime.Foreign." ++ show ns)) n
+foreignImplementation n = NS (mkNamespace "Runtime.Foreign") n
 
 ||| An OS service: what the runtime asks of the operating system, by the
 ||| name of the generic runtime's `%extern` for it, `Runtime.OS.prim__os_`

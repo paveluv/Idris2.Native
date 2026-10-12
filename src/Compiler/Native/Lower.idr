@@ -72,9 +72,6 @@ import Data.Vect
 ------------------------------------------------------------------------------
 -- Names the lowering introduces
 
-exitForeign : Name
-exitForeign = NS (mkNamespace "System") (UN (Basic "prim__exit"))
-
 ||| One of the `%extern` array primitives of `Data.IOArray.Prims`.
 arrayPrim : String -> Name
 arrayPrim s = NS (mkNamespace "Data.IOArray.Prims") (UN (Basic s))
@@ -1087,19 +1084,9 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
     lower d refs (fromList (zip args (map (\x => (x, Nothing)) (allVals ps)))) (singleton (-1)) True body
           (\env => return (get env RVal))
 
-  ||| A foreign function: `System.prim__exit` calls the runtime's
-  ||| `idris_exit` with the status's value, an `Int` and so a fixnum or a box;
-  ||| any other is the abort stub until the runtime provides it.
+  ||| A foreign function the runtime does not implement: the abort stub.
   lowerForeign : (d : Decls enc) -> Refs enc d -> Name -> (arity : Nat) -> Closed d InCPS False (replicate arity Val)
-  lowerForeign d refs n arity = build $ \ps =>
-    if n == exitForeign && arity == 2
-       then case allVals ps of
-              (status :: _) => do
-                w <- wideWord d refs status
-                _ <- callRoutine d refs (flatName runtimeExit) {rs = []} {ps = [W64]} [w]
-                crash "exit returned"
-              [] => crash "exit without a status"
-       else unsupported ("the foreign function " ++ show n)
+  lowerForeign d refs n arity = build $ \ps => unsupported ("the foreign function " ++ show n)
 
   ||| A function that has a flat form, as the wrapper around the form's.
   lowerBoundary : (d : Decls enc) -> Refs enc d -> Callee d -> List Shape -> Shape -> (arity : Nat) ->
@@ -1187,6 +1174,28 @@ nullaries (DataShape cs) = concatMap con cs
                (AsObject cid, []) => [cid]
                _ => []) ++ concatMap nullaries c.fields
 
+||| Whether a value of the C type is held as a flat value of the skeleton:
+||| an integer as its machine type, a `Char`, a `Double`, the world, `()`, a
+||| primitive's `IORes`, and a `String` held as ordinary code holds it.
+export
+cfAgrees : CFType -> Skeleton -> Bool
+cfAgrees CFInt (SPrim IntType) = True
+cfAgrees CFInt8 (SPrim Int8Type) = True
+cfAgrees CFInt16 (SPrim Int16Type) = True
+cfAgrees CFInt32 (SPrim Int32Type) = True
+cfAgrees CFInt64 (SPrim Int64Type) = True
+cfAgrees CFUnsigned8 (SPrim Bits8Type) = True
+cfAgrees CFUnsigned16 (SPrim Bits16Type) = True
+cfAgrees CFUnsigned32 (SPrim Bits32Type) = True
+cfAgrees CFUnsigned64 (SPrim Bits64Type) = True
+cfAgrees CFChar (SPrim CharType) = True
+cfAgrees CFDouble (SPrim DoubleType) = True
+cfAgrees CFWorld (SPrim WorldType) = True
+cfAgrees CFUnit (SCon n []) = n == NS (mkNamespace "Builtin") (UN (Basic "Unit"))
+cfAgrees (CFIORes t) (SCon n [s]) = n == NS (mkNamespace "PrimIO") (UN (Basic "IORes")) && cfAgrees t s
+cfAgrees CFString (SCon n [SPrim StringType]) = n == NS (mkNamespace "Flat.Uniform") (UN (Basic "Uniform"))
+cfAgrees _ _ = False
+
 ||| A whole program, as a term: every function and foreign function, the
 ||| runtime's routines, the statics of the nullary constructors and of the
 ||| big constants, and `__mainExpression` as the entry, first.
@@ -1196,6 +1205,11 @@ nullaries (DataShape cs) = concatMap con cs
 ||| that has a form becomes the boundary to it, if its arity is the form's
 ||| and the shapes of its parameters and result are known, and every form
 ||| becomes a `Direct` function.
+|||
+||| A foreign function the runtime implements (`Compiler.Native.Linkage.
+||| foreignFunctions`) becomes the boundary to the runtime's function, which
+||| must take and return, position by position, what the foreign function's
+||| C types say; one that does not is an error.
 |||
 ||| The runtime's routines are forms among them, each checked against the
 ||| runtime contract (`Compiler.Native.Linkage.routines`): a routine the
@@ -1210,6 +1224,7 @@ lowerProgram : (enc : Enc) -> {auto 0 fx : HasFixnums enc.val} -> Platform -> Li
 lowerProgram enc platform forms shapes vmdefs = do
   traverse_ provided (routines {enc})
   traverse_ implemented (osServices {enc})
+  traverse_ agrees (mapMaybe boundForeign vmdefs)
   let entryPlan = case Data.List.lookup mainExpression vmdefs of
                     Just (MkVMFun [] body) => FromVM [] body
                     _ => NoEntry
@@ -1254,11 +1269,29 @@ lowerProgram enc platform forms shapes vmdefs = do
     byName : SortedMap Name FlatDef
     byName = fromList [(fd.name, fd) | fd <- forms]
 
+    boundForeign : (Name, VMDef) -> Maybe (Name, List CFType, CFType)
+    boundForeign (n, MkVMForeign _ fargs ret) = if elem n (foreignFunctions enc) then Just (n, fargs, ret) else Nothing
+    boundForeign _ = Nothing
+
+    -- A foreign function and its implementation, position by position.
+    agrees : (Name, List CFType, CFType) -> Either String ()
+    agrees (n, fargs, ret) = case lookup (foreignImplementation n) byName of
+      Nothing => Left ("the runtime has no " ++ show (foreignImplementation n) ++ ", which implements " ++ show n)
+      Just fd =>
+        if length fd.params == length fargs
+           && all (\(c, p) => cfAgrees c p.skeleton) (zip fargs fd.params)
+           && cfAgrees ret fd.resultSkeleton
+           then Right ()
+           else Left (show (foreignImplementation n) ++ " takes " ++ show (map skeleton fd.params)
+                      ++ " and returns " ++ show fd.resultSkeleton ++ ", but " ++ show n
+                      ++ " is declared with " ++ show fargs ++ " -> " ++ show ret)
+
     -- The boundary of a function that has a form of its arity, whose
     -- parameters' and result's shapes are known and lay out as the form's.
+    -- A foreign function's is its implementation's.
     boundaryOf : Name -> Nat -> Maybe Plan
     boundaryOf n arity = do
-      fd <- lookup n byName
+      fd <- lookup n byName <|> (if elem n (foreignFunctions enc) then lookup (foreignImplementation n) byName else Nothing)
       guard (length fd.params == arity)
       ss <- traverse (shapeOf shapes . skeleton) fd.params
       r <- shapeOf shapes fd.resultSkeleton
@@ -1274,7 +1307,9 @@ lowerProgram enc platform forms shapes vmdefs = do
     plan (n, MkVMFun args body) =
       Just (MkSig n InCPS (replicate (length args) Val) False,
             fromMaybe (FromVM args body) (boundaryOf n (length args)))
-    plan (n, MkVMForeign _ fargs _) = Just (MkSig n InCPS (replicate (length fargs) Val) False, Foreign (length fargs))
+    plan (n, MkVMForeign _ fargs _) =
+      Just (MkSig n InCPS (replicate (length fargs) Val) False,
+            fromMaybe (Foreign (length fargs)) (boundaryOf n (length fargs)))
     plan (n, MkVMError _) = Nothing
 
     bodyStatics : (Name, VMDef) -> Maybe (SortedMap Name StaticPlan)

@@ -5,6 +5,7 @@
 module Runtime
 
 import public Runtime.Collect
+import public Runtime.Foreign.System
 import public Runtime.Heap
 import public Runtime.Memory
 import public Runtime.Object
