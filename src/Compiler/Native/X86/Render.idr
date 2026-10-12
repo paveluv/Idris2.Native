@@ -147,6 +147,7 @@ parameters (enc : Enc)
   opTy : Operand enc -> Ty enc
   opTy (R r) = regTy r
   opTy (Imm _) = W64
+  opTy (S _) = Val
 
   slotOf : Reg enc -> R enc Nat
   slotOf (Slot n _) = do uses (MkAreas 0 0 (S n)); pure n
@@ -154,6 +155,19 @@ parameters (enc : Enc)
 
   slotMem : Nat -> Mem
   slotMem n = MBase RBX (cast (8 * n))
+
+  staticLabel : Name -> R enc Label
+  staticLabel n = do
+    s <- get
+    case lookup n s.statics of
+      Just l => pure l
+      Nothing => failWith ("no static " ++ show n)
+
+  ||| The pointer tag of the value encoding: a pointer word is the object's address
+  ||| plus it, so every load and store through a pointer folds its negation
+  ||| into the displacement.
+  ptag : Int
+  ptag = cast (pointerTag enc.val)
 
   ||| The word of an immediate where a value of the type is expected: in a
   ||| `Val` or `Fix` position the immediate is an integer, and the value
@@ -167,13 +181,8 @@ parameters (enc : Enc)
   ||| Load an operand where a value of the type is expected.
   loadAs : Ty enc -> Reg64 -> Operand enc -> R enc ()
   loadAs t r (Imm i) = emit (MovRI r (immWord t i))
+  loadAs _ r (S s) = do l <- staticLabel s; emit (Lea r (MRip l ptag))
   loadAs _ r (R x) = do n <- slotOf x; emit (MovRM r (slotMem n))
-
-  ||| The pointer tag of the value encoding: a pointer word is the object's address
-  ||| plus it, so every load and store through a pointer folds its negation
-  ||| into the displacement.
-  ptag : Int
-  ptag = cast (pointerTag enc.val)
 
   ||| What a load or store through the register subtracts: the pointer tag if
   ||| the register holds a pointer word, nothing if it holds an address.
@@ -192,6 +201,8 @@ parameters (enc : Enc)
   pairTy : Operand enc -> Operand enc -> Ty enc
   pairTy (R x) _ = regTy x
   pairTy _ (R y) = regTy y
+  pairTy (S _) _ = Val
+  pairTy _ (S _) = Val
   pairTy _ _ = W64
 
   loadReg : Reg64 -> Reg enc -> R enc ()
@@ -227,6 +238,7 @@ parameters (enc : Enc)
     else if fitsImm32 w then emit (AluI CMP RAX (cast w))
     else emits [MovRI RCX w, Alu CMP RAX RCX]
   compareWith _ (R y) = do loadReg RCX y; emit (Alu CMP RAX RCX)
+  compareWith _ (S s) = do l <- staticLabel s; emits [Lea RCX (MRip l ptag), Alu CMP RAX RCX]
 
   ------------------------------------------------------------------------------
   -- Arithmetic
@@ -262,6 +274,7 @@ parameters (enc : Enc)
   ||| immediate doubled.
   loadTwice : {auto 0 fx : HasFixnums enc.val} -> Reg64 -> Operand enc -> R enc ()
   loadTwice r (Imm c) = emit (MovRI r (2 * cast c))
+  loadTwice r (S _) = failWith "a static where a fixnum is expected"
   loadTwice r (R x) = do
     loadReg r x
     when (fixnumTag enc.val /= 0) $ emit (AluI SUB r (cast (fixnumTag enc.val)))
@@ -269,6 +282,7 @@ parameters (enc : Enc)
   ||| Load a fixnum's value.
   loadValue : Reg64 -> Operand enc -> R enc ()
   loadValue r (Imm c) = emit (MovRI r (cast c))
+  loadValue r (S _) = failWith "a static where a fixnum is expected"
   loadValue r (R x) = do loadReg r x; emit (ShiftI SAR r 1)
 
   ||| `op` of rax and twice the operand's value, an immediate folded into the
@@ -480,13 +494,6 @@ parameters (enc : Enc)
       Just l => pure l
       Nothing => failWith ("no function " ++ show n)
 
-  staticLabel : Name -> R enc Label
-  staticLabel n = do
-    s <- get
-    case lookup n s.statics of
-      Just l => pure l
-      Nothing => failWith ("no static " ++ show n)
-
   ||| The label of a function outside the program: a routine of the runtime
   ||| contract that the runtime does not have yet, whose call ends the
   ||| program as `Unsupported` does.
@@ -501,6 +508,7 @@ parameters (enc : Enc)
   loadFloat : Xmm -> Operand enc -> R enc ()
   loadFloat x (R r) = do n <- slotOf r; emit (MovsdRM x (slotMem n))
   loadFloat x (Imm i) = emits [MovRI RAX (cast i), MovqXR x RAX]
+  loadFloat x (S _) = failWith "a static where a double is expected"
 
   ||| Pass values of the types where `place` puts them, for a call or a
   ||| return: `ARGS` first, through rax and rcx, then the floating-point
@@ -900,7 +908,10 @@ parameters (enc : Enc)
     emits setBase
     takeValues f.params
     emit (Jmp (blk f.entry))
-    traverse_ (block blk f.results (resumes f)) f.blocks
+    -- bound once: an argument of a partial application is evaluated again
+    -- at every call of it, which read the function's blocks once per block
+    let rs = resumes f
+    traverse_ (block blk f.results rs) f.blocks
     s <- get
     put ({ text := s.text <>< (s.cold <>> []), cold := [<] } s)
 

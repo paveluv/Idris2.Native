@@ -129,10 +129,10 @@ nameShstrtab = 20
 ||| label). Section headers are not needed to run but let `readelf`/`objdump`
 ||| and debuggers see the regions.
 export
-elfImage : Arch -> Layout -> (text : List Bits8) -> (rodata : List Bits8) -> (bssSize : Int) -> (entry : Int) -> List Bits8
+elfImage : Arch -> Layout -> (text : Builder) -> (rodata : Builder) -> (bssSize : Int) -> (entry : Int) -> Builder
 elfImage m lay text rodata bssSize entry =
-  let ts = cast (length text)
-      rs = cast (length rodata)
+  let ts = cast (size text)
+      rs = cast (size rodata)
       strOff = rodataOff lay + rs
       strSize = cast (length shstrtab)
       shoff = alignUp (strOff + strSize) 8
@@ -145,23 +145,28 @@ elfImage m lay text rodata bssSize entry =
               ++ sectionHeader nameRodata shtProgbits shfAlloc (rodataBase lay) (rodataOff lay) rs 16
               ++ sectionHeader nameBss shtNobits (shfAlloc + shfWrite) (bssBase lay) (bssOff lay) bssSize 16
               ++ sectionHeader nameShstrtab shtStrtab 0 0 strOff strSize 1
-  in headers
-  ++ zeros (cast (textOff lay - cast (length headers)))
-  ++ text
-  ++ zeros (cast (rodataOff lay - (textOff lay + ts)))
-  ++ rodata
-  ++ shstrtab
-  ++ zeros (cast (shoff - (strOff + strSize)))
-  ++ sections
+  in fromBytes headers
+  <+> fromBytes (zeros (cast (textOff lay - cast (length headers))))
+  <+> text
+  <+> fromBytes (zeros (cast (rodataOff lay - (textOff lay + ts))))
+  <+> rodata
+  <+> fromBytes shstrtab
+  <+> fromBytes (zeros (cast (shoff - (strOff + strSize))))
+  <+> fromBytes sections
 
 ||| Write an image to a file and make it executable (owner rwx, others rx).
 export
-writeImage : (path : String) -> List Bits8 -> IO (Either FileError ())
-writeImage path bytes = do
-  let n = length bytes
+writeImage : (path : String) -> Builder -> IO (Either FileError ())
+writeImage path image = do
+  let n = size image
+      bytes = toBytes image
   Just buf <- newBuffer (cast n)
     | Nothing => pure (Left FileWriteError)
-  traverse_ (\(i, b) => setBits8 buf (cast i) b) (zip [0 .. minus n 1] bytes)
+  fill buf 0 bytes
   Right () <- writeBufferToFile path buf (cast n)
     | Left (err, _) => pure (Left err)
   chmod path (MkPermissions [Read, Write, Execute] [Read, Execute] [Read, Execute])
+  where
+    fill : Buffer -> Int -> List Bits8 -> IO ()
+    fill buf i [] = pure ()
+    fill buf i (b :: bs) = do setBits8 buf i b; fill buf (i + 1) bs

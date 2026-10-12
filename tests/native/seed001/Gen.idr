@@ -114,7 +114,7 @@ emit name prog = case link SeedEnc (prog ++ startByHand ++ allocSlowByHand ++ cr
   Right image => do
     Right () <- writeImage name image
       | Left err => putStrLn (name ++ ": write failed: " ++ show err)
-    putStrLn (name ++ ": " ++ show (length image) ++ " bytes")
+    putStrLn (name ++ ": " ++ show (size image) ++ " bytes")
 
 main : IO ()
 main = do

@@ -100,7 +100,7 @@ term (Unsupported s) = "Unsupported " ++ show s
 block : Block enc -> String
 block b =
   "  " ++ show b.label ++ (if null b.params then "" else " " ++ regs b.params) ++ ":\n"
-  ++ concatMap (\i => "    " ++ instr i ++ "\n") b.body
+  ++ fastConcat (map (\i => "    " ++ instr i ++ "\n") b.body)
   ++ "    " ++ term b.term ++ "\n"
 
 ||| One function: its name, convention, parameters and blocks.
@@ -109,11 +109,11 @@ dumpFunction : Function enc -> String
 dumpFunction f =
   "function " ++ show f.name ++ " " ++ show f.conv ++ " " ++ regs f.params
   ++ (if null f.results then "" else " -> " ++ show f.results)
-  ++ " entry " ++ show f.entry ++ "\n" ++ concatMap block f.blocks
+  ++ " entry " ++ show f.entry ++ "\n" ++ fastConcat (map block f.blocks)
 
 ||| A whole program: the statics, then every function.
 export
 dumpProgram : Program enc -> String
 dumpProgram p =
-  concatMap (\s => "static " ++ show s.sym ++ " " ++ show s.header ++ "\n") p.statics
-  ++ concatMap (\f => dumpFunction f ++ "\n") p.functions
+  fastConcat (map (\s => "static " ++ show s.sym ++ " " ++ show s.header ++ "\n") p.statics)
+  ++ fastConcat (map (\f => dumpFunction f ++ "\n") p.functions)

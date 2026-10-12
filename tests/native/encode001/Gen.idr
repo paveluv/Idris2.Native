@@ -122,7 +122,8 @@ writeBytes path bs = do
 
 emit : String -> List Instr -> IO ()
 emit name is = do
-  let (bytes, _, missing) = assemble 0 is
+  let (code, _, missing) = assemble 0 is
+      bytes = toBytes code
   writeBytes (name ++ ".bin") bytes
   ignore $ writeFile (name ++ ".s") (".intel_syntax noprefix\n.text\n" ++ concat (map (\i => show i ++ "\n") is))
   putStrLn (name ++ ": " ++ show (length is) ++ " instructions, " ++ show (length bytes) ++ " bytes, missing labels: " ++ show (length missing))

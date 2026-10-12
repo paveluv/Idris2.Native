@@ -205,9 +205,7 @@ function Main.grow CPS [slot0:Val] entry 0
     slot40:Val := slot44:Val
     Jump 17
   19:
-    slot47:Ptr CON := StaticAddr _native.con2
-    slot48:Val := Widen slot47:Ptr CON
-    slot30:Val := slot48:Val
+    slot30:Val := StaticAddr _native.con2
     Jump 12
   20:
     Crash "no constructor of the type"

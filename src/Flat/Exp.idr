@@ -421,7 +421,7 @@ mutual
       = show c ++ maybe "" (\t => "{" ++ show t ++ "}") t ++ showArgs i as
   showExp i (FCase _ sc alts def)
       = "case " ++ showExp i sc ++ " of"
-        ++ concatMap (\a => "\n" ++ showIndent (i + 2) ++ showAlt (i + 4) a) alts
+        ++ fastConcat (map (\a => "\n" ++ showIndent (i + 2) ++ showAlt (i + 4) a) alts)
         ++ maybe "" (\d => "\n" ++ showIndent (i + 2) ++ "_ => " ++ showExp (i + 4) d) def
   showExp i (FCrash _ msg) = "crash " ++ show msg
   showExp i (FNone _) = "()"
@@ -430,7 +430,7 @@ mutual
   showAlt : Nat -> FlatAlt -> String
   showAlt i (FConAlt c t vs sc)
       = show c ++ maybe "" (\t => "{" ++ show t ++ "}") t
-        ++ concatMap (\v => " (" ++ show v ++ ")") vs ++ " => " ++ showExp i sc
+        ++ fastConcat (map (\v => " (" ++ show v ++ ")") vs) ++ " => " ++ showExp i sc
   showAlt i (FConstAlt c sc) = show c ++ " => " ++ showExp i sc
 
   covering

@@ -1,14 +1,12 @@
 function Main.wrap CPS [slot0:Val] entry 0
   0:
-    slot1:Ptr CON := StaticAddr _native.con0
+    slot1:Ptr CON := AllocObj CON ConId=1 ConArity=2 (slot0:Val, @_native.con0) live [slot0:Val]
     slot2:Val := Widen slot1:Ptr CON
-    slot3:Ptr CON := AllocObj CON ConId=1 ConArity=2 (slot0:Val, slot2:Val) live [slot0:Val, slot2:Val]
-    slot4:Val := Widen slot3:Ptr CON
-    Call Main.count (slot0:Val, #1) resume 1 live [slot4:Val]
-  1 [slot4:Val, slot5:Val]:
-    Call Main.first (slot4:Val) resume 2 live [slot5:Val]
-  2 [slot5:Val, slot6:Val]:
-    TailCall Main.count (slot6:Val, slot5:Val)
+    Call Main.count (slot0:Val, #1) resume 1 live [slot2:Val]
+  1 [slot2:Val, slot3:Val]:
+    Call Main.first (slot2:Val) resume 2 live [slot3:Val]
+  2 [slot3:Val, slot4:Val]:
+    TailCall Main.count (slot4:Val, slot3:Val)
 
 function Main.first CPS [slot0:Val] entry 0
   0:

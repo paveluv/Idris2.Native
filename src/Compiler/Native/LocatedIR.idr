@@ -95,16 +95,22 @@ public export
 data Operand : Enc -> Type where
   R : Reg enc -> Operand enc
   Imm : Int64 -> Operand enc
+  ||| The address of a static object, as a value. A static never moves, so
+  ||| its address needs no register, no slot and no rooting: the rendering
+  ||| loads it where it is used.
+  S : Name -> Operand enc
 
 public export
 Show (Operand enc) where
   show (R r) = show r
   show (Imm i) = "#" ++ show i
+  show (S n) = "@" ++ show n
 
 public export
 opRegs : Operand enc -> List (Reg enc)
 opRegs (R r) = [r]
 opRegs (Imm _) = []
+opRegs (S _) = []
 
 ||| A memory operand: a base register, an optional index register, and a
 ||| constant byte offset. The base is a `PtrTo k` or a `W64`, such as an area's
