@@ -1264,7 +1264,7 @@ lowerProgram enc platform forms shapes vmdefs = do
                  ++ [(formSig fd, Form fd) | fd <- forms]
                  ++ [(MkSig r.name (Direct r.results False) r.params False, Routine)
                     | r <- routines {enc}, not r.provided]
-      boxing = fromList [(nullaryCon c, Nullary c) | c <- contents (concatMap (boxed . snd) planned)]
+      boxing = fromList [(nullaryCon c, Nullary c) | c <- toList (concatMap (boxed . snd) planned)]
       statics = Data.SortedMap.toList (foldl mergeLeft boxing (mapMaybe bodyStatics vmdefs))
   pure (program forms shapes (fromList (serviceBindings {enc} platform)) entryPlan others (mapMaybe ready statics))
   where

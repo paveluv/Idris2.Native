@@ -1,0 +1,7 @@
+leaning left: first Just 1, last Just 200000, length 200000, sum from the left 20000100000, from the right 20000100000, one by one alike True
+leaning right: first Just 1, last Just 200000, length 200000, sum from the left 20000100000, from the right 20000100000, one by one alike True
+empty: True, True, False
+foldMap: [1, 2, 3, 4, 5]
+line 1
+line 2
+line 3

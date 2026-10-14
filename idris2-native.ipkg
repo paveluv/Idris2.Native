@@ -15,6 +15,7 @@ modules =
     Compiler.Native.Bytes,
     Data.Builder,
     Data.Distinct,
+    Data.WriteBuilder,
     Compiler.Native.ELF,
     Compiler.Native.HeapObject.BignumEnc,
     Compiler.Native.HeapObject.Enc,

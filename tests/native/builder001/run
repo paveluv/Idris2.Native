@@ -1,0 +1,10 @@
+. ../../testutils.sh
+
+# Data.Builder read where it is: folded from either side, taken one
+# element at a time, and written to a file a piece at a time, each on a
+# builder leaning left and one leaning right. It uses the code
+# generator's modules, installed as the package `idris2-native`, and runs
+# on the Chez backend.
+idris2 -p idris2-native Main.idr -o builder > /dev/null
+./build/exec/builder
+rm -rf build pieces.txt

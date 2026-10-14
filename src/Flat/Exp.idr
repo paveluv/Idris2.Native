@@ -250,52 +250,48 @@ mutual
     ||| A constant.
     FConstAlt : Constant -> Exp -> FlatAlt
 
-||| An expression as text, each line after the first indented by `i`.
+||| An expression as text in pieces, each line after the first indented by
+||| `i`: appending strings level by level would copy the text below at
+||| each level.
 covering
-showExp : Nat -> Exp -> String
-showExp i e = fastConcat (contents (expPieces i e))
+expPieces : Nat -> Exp -> Builder String
+expPieces i exp = case exp of
+  FVar _ n => single (show n)
+  FLet _ v val sc
+     => single ("let " ++ show v ++ " = ") <+> expPieces (i + 2) val <+> single "\n"
+        <+> single (showIndent i) <+> expPieces i sc
+  FConst _ c => single (show c)
+  FOp _ op as => single (show op) <+> argPieces i (toList as)
+  FCall _ n as => single (show n) <+> argPieces i as
+  FPrim _ n _ _ as => single ("%prim " ++ show n) <+> argPieces i as
+  FCon _ c t s l as
+     => single (show c ++ maybe "" (\t => "{" ++ show t ++ "}") t) <+> argPieces i as
+  FCase _ sc alts def
+     => single "case " <+> expPieces i sc <+> single " of"
+        <+> concatMap (\a => single ("\n" ++ showIndent (i + 2)) <+> altPieces (i + 4) a) alts
+        <+> maybe neutral (\d => single ("\n" ++ showIndent (i + 2) ++ "_ => ") <+> expPieces (i + 4) d) def
+  FCrash _ msg => single ("crash " ++ show msg)
+  FNone _ => single "()"
   where
-    -- The text of an expression in pieces, joined once by `showExp`:
-    -- appending strings level by level copies the text below at each level.
     covering
-    expPieces : Nat -> Exp -> Builder String
-    expPieces i exp = case exp of
-      FVar _ n => single (show n)
-      FLet _ v val sc
-         => single ("let " ++ show v ++ " = ") <+> expPieces (i + 2) val <+> single "\n"
-            <+> single (showIndent i) <+> expPieces i sc
-      FConst _ c => single (show c)
-      FOp _ op as => single (show op) <+> argPieces i (toList as)
-      FCall _ n as => single (show n) <+> argPieces i as
-      FPrim _ n _ _ as => single ("%prim " ++ show n) <+> argPieces i as
-      FCon _ c t s l as
-         => single (show c ++ maybe "" (\t => "{" ++ show t ++ "}") t) <+> argPieces i as
-      FCase _ sc alts def
-         => single "case " <+> expPieces i sc <+> single " of"
-            <+> concatMap (\a => single ("\n" ++ showIndent (i + 2)) <+> altPieces (i + 4) a) alts
-            <+> maybe neutral (\d => single ("\n" ++ showIndent (i + 2) ++ "_ => ") <+> expPieces (i + 4) d) def
-      FCrash _ msg => single ("crash " ++ show msg)
-      FNone _ => single "()"
-      where
-        covering
-        altPieces : Nat -> FlatAlt -> Builder String
-        altPieces i (FConAlt c t vs sc)
-            = single (show c ++ maybe "" (\t => "{" ++ show t ++ "}") t
-                      ++ fastConcat (map (\v => " (" ++ show v ++ ")") vs) ++ " => ")
-              <+> expPieces i sc
-        altPieces i (FConstAlt c sc) = single (show c ++ " => ") <+> expPieces i sc
+    altPieces : Nat -> FlatAlt -> Builder String
+    altPieces i (FConAlt c t vs sc)
+        = single (show c ++ maybe "" (\t => "{" ++ show t ++ "}") t
+                  ++ fastConcat (map (\v => " (" ++ show v ++ ")") vs) ++ " => ")
+          <+> expPieces i sc
+    altPieces i (FConstAlt c sc) = single (show c ++ " => ") <+> expPieces i sc
 
-        covering
-        argPieces : Nat -> List Exp -> Builder String
-        argPieces i [] = neutral
-        argPieces i as = single "(" <+> concat (intersperse (single ", ") (map (expPieces i) as)) <+> single ")"
+    covering
+    argPieces : Nat -> List Exp -> Builder String
+    argPieces i [] = neutral
+    argPieces i as = single "(" <+> concat (intersperse (single ", ") (map (expPieces i) as)) <+> single ")"
 
-        showIndent : Nat -> String
-        showIndent i = pack (replicate i ' ')
+    showIndent : Nat -> String
+    showIndent i = pack (replicate i ' ')
 
 export covering
 Show Exp where
-  show = showExp 0
+  show e = fastConcat (toList (expPieces 0 e))
 
 ||| A definition's flat form. Its parameters are the run-time arguments of its
 ||| type, in order, every one of them: the type arity.
@@ -309,11 +305,18 @@ record FlatDef where
   body : Exp
   fc : FC
 
+||| A definition's flat form as text in pieces: what `show` joins, and what
+||| a dump writes a piece at a time.
+export covering
+defPieces : FlatDef -> Builder String
+defPieces d =
+  single (show d.name ++ " (" ++ concat (intersperse ", " (map show d.params)) ++ ")"
+          ++ " : " ++ show d.resultSkeleton ++ " " ++ show d.result ++ " =\n  ")
+  <+> expPieces 2 d.body
+
 export covering
 Show FlatDef where
-  show d = show d.name ++ " (" ++ concat (intersperse ", " (map show d.params)) ++ ")"
-           ++ " : " ++ show d.resultSkeleton ++ " " ++ show d.result ++ " =\n  "
-           ++ showExp 2 d.body
+  show d = fastConcat (toList (defPieces d))
 
 ------------------------------------------------------------------------------
 -- The type of an expression
@@ -380,7 +383,7 @@ expType var form (FNone _) = Just (SOther, [])
 ||| The forms a form calls.
 export
 formCallees : FlatDef -> List Name
-formCallees fd = contents (go fd.body)
+formCallees fd = toList (go fd.body)
   where
     go : Exp -> Builder Name
     go (FVar _ _) = neutral
@@ -401,7 +404,7 @@ formCallees fd = contents (go fd.body)
 ||| The primitives a form calls.
 export
 formPrims : FlatDef -> List Name
-formPrims fd = contents (go fd.body)
+formPrims fd = toList (go fd.body)
   where
     go : Exp -> Builder Name
     go (FVar _ _) = neutral
@@ -424,7 +427,7 @@ formPrims fd = contents (go fd.body)
 ||| shapes of the data types among them.
 export
 formSkeletons : FlatDef -> List Skeleton
-formSkeletons fd = contents (single fd.resultSkeleton <+> piece (map skeleton fd.params) <+> go fd.body)
+formSkeletons fd = toList (single fd.resultSkeleton <+> piece (map skeleton fd.params) <+> go fd.body)
   where
     go : Exp -> Builder Skeleton
     go (FVar _ _) = neutral

@@ -64,6 +64,7 @@ import Data.List1
 import Data.Maybe
 import Data.SortedMap
 import Data.String
+import Data.WriteBuilder
 import Flat.Exp
 import Flat.Marked
 import Flat.Problem
@@ -243,7 +244,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
           defs <- get Ctxt
           all <- traverse (\n => (n,) <$> lookupCtxtExact n (gamma defs)) !(allNames (gamma defs))
           entries <- traverse entry (mapMaybe library all)
-          Right () <- coreLift (writeFile path (unlines (sort entries)))
+          Right () <- coreLift (writeBuilder path (concatMap (\e => single (e ++ "\n")) (sort entries)))
             | Left err => throw (FileErr path err)
           pure ()
           where
@@ -309,7 +310,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
           ir <- phase "register allocation" (later (allocRegs x86_64 term))
           case settings.dumpIr of
             Just path => do
-              Right () <- coreLift (writeFile path (dumpProgram ir))
+              Right () <- coreLift (writeBuilder path (dumpProgram ir))
                 | Left err => throw (FileErr path err)
               pure ()
             Nothing => pure ()
@@ -317,7 +318,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
             | Left err => throw (InternalError ("native: " ++ err))
           case settings.dumpAsm of
             Just path => do
-              Right () <- coreLift (writeFile path (unlines (map show rendered.text)))
+              Right () <- coreLift (writeBuilder path (concatMap (\i => single (show i ++ "\n")) rendered.text))
                 | Left err => throw (FileErr path err)
               pure ()
             Nothing => pure ()
@@ -332,7 +333,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
                          Core (List FlatDef, Shapes)
             flatInputs table services roots = do
               forms <- reach empty [<] roots
-              let skeletons = nub (filter isData (contents (concatMap (piece . formSkeletons) forms)))
+              let skeletons = nub (filter isData (toList (concatMap (piece . formSkeletons) forms)))
               shapes <- traverse (\sk => map (sk,) <$> shape sk) skeletons
               pure (forms, catMaybes shapes)
               where

@@ -62,6 +62,7 @@ import Compiler.Native.X86.Target
 import Core.FC
 import Core.Name
 import Core.Name.Namespace
+import Data.Builder
 import Data.Distinct
 import Data.List
 import Data.List.Quantifiers
@@ -471,5 +472,5 @@ main = do
   case choose (distinct (map (.name) (sigs Cover)) && distinct (map (.sym) (statics Cover))) of
     Left ok => do
       let cover = allocRegs x86_64 (MkProgram {d = Cover} [Defined c, Defined rt, External] [] (MkEntry here) noConIds)
-      putStr (dumpProgram cover)
+      putStr (fastConcat (toList (dumpProgram cover)))
     Right _ => putStrLn "the covering program: names repeat"

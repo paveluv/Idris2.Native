@@ -191,7 +191,7 @@ Code : Enc -> Type
 Code enc = (Builder (LocatedIR.Instr enc), Terminator enc)
 
 addBlock : Label -> List (Reg enc) -> Code enc -> M enc ()
-addBlock l ps (is, t) = modify { blocks $= insert l (MkBlock l ps (contents is) t) }
+addBlock l ps (is, t) = modify { blocks $= insert l (MkBlock l ps (toList is) t) }
 
 ||| Code, with the registers of its environment it reads.
 Lowered : Enc -> Type

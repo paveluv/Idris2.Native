@@ -58,11 +58,13 @@ allowed ours importer imported = case layerOf importer of
       else if isPrefixOf "Data." m then Just DataLayer
       else Nothing
 
-    ||| The modules of other layers that a layer may import: a module of no layer
-    ||| among ours (a program) by none, and the runtime only what it shares with
-    ||| the compiler: the heap-object model's modules, and `Flat.Uniform`.
+    ||| The modules a layer may import: its own, and of the layers below it;
+    ||| a module of no layer among ours (a program) by none, the data
+    ||| structures nothing but data structures, and the runtime only what it
+    ||| shares with the compiler: the heap-object model's modules, and
+    ||| `Flat.Uniform`.
     mayImport : Layer -> String -> Bool
-    mayImport DataLayer m = False
+    mayImport DataLayer m = layerOf m == Just DataLayer
     mayImport FlatLayer m = layerOf m == Just DataLayer || layerOf m == Just FlatLayer
     mayImport NativeLayer m = maybe False (\l => l == DataLayer || l == FlatLayer || l == NativeLayer) (layerOf m)
     mayImport RuntimeLayer m = layerOf m == Just RuntimeLayer || isPrefixOf "Compiler.Native.HeapObject." m || m == "Flat.Uniform"

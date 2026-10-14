@@ -184,7 +184,7 @@ parameters (enc : Enc)
       staticBytes : Static enc -> Render enc (List Bits8)
       staticBytes s = do
         fields <- traverse field s.fields
-        pure (contents (piece (le64 (cast (encodeHeader s.header))) <+> concatMap piece fields))
+        pure (toList (piece (le64 (cast (encodeHeader s.header))) <+> concatMap piece fields))
         where
           field : SField -> Render enc (List Bits8)
           field (SWord w) = pure (le64 (cast w))

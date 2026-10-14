@@ -92,6 +92,7 @@ import Data.Maybe
 import Data.SnocList
 import Data.String
 import Data.Vect
+import Data.WriteBuilder
 import Data.Zippable
 import Flat.Exp
 import Flat.Judgement
@@ -1015,7 +1016,7 @@ root n
                               where
                                 -- The `Bound` names a term refers to, in the order it first refers to them.
                                 boundRefs : Term vars'' -> List Name
-                                boundRefs tm = nub (contents (go tm))
+                                boundRefs tm = nub (toList (go tm))
                                   where
                                     -- The terms a binder holds.
                                     binderTerms : Binder (Term vars') -> List (Term vars')
@@ -1117,7 +1118,7 @@ root n
                                 relocate : (caps : NameMap Name) -> List ClosedTerm -> Core (List ClosedTerm)
                                 relocate caps ts
                                     = do sts <- statics <$> get FlatSt
-                                         let moved = filter (captures sts []) (nub (contents (concatMap (reachable sts []) ts)))
+                                         let moved = filter (captures sts []) (nub (toList (concatMap (reachable sts []) ts)))
                                          renames <- traverse (\x => pure (x, !(fresh x))) moved
                                          let m = foldl (\acc, (x, x') => insert x x' acc) caps renames
                                          traverse_ (\(x, x') => case lookup x sts of
@@ -1638,7 +1639,7 @@ useFlatForms forms = traverse_ use (toList forms)
   where
     -- The definitions a flat form refers to at run time.
     references : Exp -> List Name
-    references e = contents (go e)
+    references e = toList (go e)
       where
         go : Exp -> Builder Name
         go (FVar _ _) = neutral
@@ -1674,8 +1675,8 @@ useFlatForms forms = traverse_ use (toList forms)
 export
 dumpFlat : {auto c : Ref Ctxt Defs} -> String -> NameMap FlatDef -> Core ()
 dumpFlat file forms
-    = do texts <- traverse dumpForm (map snd (toList forms))
-         Right () <- coreLift $ writeFile file (fastConcat texts)
+    = do texts <- traverse dumpForm (map snd (NameMap.toList forms))
+         Right () <- coreLift $ writeBuilder file (concat texts)
            | Left err => throw (FileErr file err)
          pure ()
   where
@@ -1685,10 +1686,10 @@ dumpFlat file forms
 
     -- A form, then the shape of each data type among its parameters and
     -- result.
-    dumpForm : FlatDef -> Core String
+    dumpForm : FlatDef -> Core (Builder String)
     dumpForm d
         = do let sks = nub (filter isData (map skeleton d.params ++ [d.resultSkeleton]))
              shapes <- traverse (\sk => do s <- shape sk
                                            pure ("  shape " ++ show sk ++ " = " ++ maybe "none" show s ++ "\n"))
                                 sks
-             pure (show d ++ "\n" ++ fastConcat shapes ++ "\n")
+             pure (defPieces d <+> single "\n" <+> piece shapes <+> single "\n")

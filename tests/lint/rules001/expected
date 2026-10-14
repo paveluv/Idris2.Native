@@ -4,6 +4,7 @@
 ./Cites.idr:2:1 cites-plan: cites `IL-001`: the code states what it needs
 ./Cites.idr:7:1 cites-plan: cites `PQ-123`: the code states what it needs
 ./Cites.idr:7:1 cites-plan: cites `docs/design-cites.md`: the code states what it needs
+./Data/Upward.idr:5:1 layering: `Data.Upward` may not import `Compiler.Native.Thing`: the layers
 ./Escapes.idr:10:10 trust-escape: `assert_total`: say why it is sound
 ./Escapes.idr:16:1 suppression: a suppression of `trust-escape` says why
 ./Escapes.idr:20:1 suppression: no rule `no-such-rule`

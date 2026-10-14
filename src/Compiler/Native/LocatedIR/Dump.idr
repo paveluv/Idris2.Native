@@ -134,11 +134,12 @@ functionPieces f =
 ||| One function: its name, convention, parameters and blocks.
 export
 dumpFunction : Function enc -> String
-dumpFunction f = fastConcat (contents (functionPieces f))
+dumpFunction f = fastConcat (toList (functionPieces f))
 
-||| A whole program: the statics, then every function.
+||| A whole program, in pieces to write a piece at a time: the statics, then
+||| every function.
 export
-dumpProgram : Program enc -> String
+dumpProgram : Program enc -> Builder String
 dumpProgram p =
-  fastConcat (contents (concatMap (\s => single ("static " ++ show s.sym ++ " " ++ show s.header ++ "\n")) p.statics
-                        <+> concatMap (\f => functionPieces f <+> single "\n") p.functions))
+  concatMap (\s => single ("static " ++ show s.sym ++ " " ++ show s.header ++ "\n")) p.statics
+  <+> concatMap (\f => functionPieces f <+> single "\n") p.functions

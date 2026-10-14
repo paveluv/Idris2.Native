@@ -1,9 +1,12 @@
 ||| Results joined, from either side: what a pass makes by joining what its
 ||| recursive calls return (a tree walk's `go l <+> go r`, an instruction's
-||| moves before the code of the rest), read once when the pass is done.
-||| Joining costs nothing, whichever side is the longer, and reading out
-||| costs the number of elements, once. The type has no other operation, so
-||| no pass can copy what it has joined so far.
+||| moves before the code of the rest), used where it is when the pass is
+||| done: folded (`Foldable`), taken an element at a time (`uncons`), or
+||| written a piece at a time (`Data.WriteBuilder`), never first read out
+||| into a list unless a list is what is wanted (`toList`). Joining costs
+||| nothing, whichever side is the longer, and reading costs the number of
+||| elements, once. The type has no other operation, so no pass can copy
+||| what it has joined so far.
 |||
 ||| Which structure an output takes follows its shape. A piece bounded by a
 ||| construct (an instruction's bytes, a call's arguments, a type's fields)
@@ -21,21 +24,74 @@ module Data.Builder
 
 %default total
 
+||| A builder: nothing, a piece, or two builders joined. A join keeps the
+||| number of nodes under it, itself included: no walk of a builder takes
+||| more steps than that, which is how Idris knows each walk ends.
 export
 data Builder : Type -> Type where
   Empty : Builder a
   Piece : List a -> Builder a
-  Append : Builder a -> Builder a -> Builder a
+  Append : (nodes : Nat) -> Builder a -> Builder a -> Builder a
+
+||| The nodes of a builder: what bounds a walk of it.
+nodes : Builder a -> Nat
+nodes (Append n _ _) = n
+nodes _ = 1
 
 export
 Semigroup (Builder a) where
   Empty <+> b = b
   a <+> Empty = a
-  a <+> b = Append a b
+  a <+> b = Append (S (nodes a + nodes b)) a b
 
 export
 Monoid (Builder a) where
   neutral = Empty
+
+-- The walks the folds make, with the subtrees still to visit, each step
+-- taking one node: a leaf off the list, or a join replaced by its two
+-- parts. `foldr`'s walk takes a join's right part first, `foldl`'s and
+-- `foldlM`'s its left. The fuel is the nodes left, which runs out as the
+-- list does.
+
+walkRight : (a -> b -> b) -> (fuel : Nat) -> List (Builder a) -> b -> b
+walkRight f (S k) (Empty :: rest) acc = walkRight f k rest acc
+walkRight f (S k) (Piece xs :: rest) acc = walkRight f k rest (foldr f acc xs)
+walkRight f (S k) (Append _ l r :: rest) acc = walkRight f k (r :: l :: rest) acc
+walkRight _ _ _ acc = acc
+
+walkLeft : (b -> a -> b) -> (fuel : Nat) -> b -> List (Builder a) -> b
+walkLeft f (S k) acc (Empty :: rest) = walkLeft f k acc rest
+walkLeft f (S k) acc (Piece xs :: rest) = walkLeft f k (foldl f acc xs) rest
+walkLeft f (S k) acc (Append _ l r :: rest) = walkLeft f k acc (l :: r :: rest)
+walkLeft _ _ acc _ = acc
+
+walkLeftM : Monad m => (b -> a -> m b) -> (fuel : Nat) -> b -> List (Builder a) -> m b
+walkLeftM f (S k) acc (Empty :: rest) = walkLeftM f k acc rest
+walkLeftM f (S k) acc (Piece xs :: rest) = foldlM f acc xs >>= \acc' => walkLeftM f k acc' rest
+walkLeftM f (S k) acc (Append _ l r :: rest) = walkLeftM f k acc (l :: r :: rest)
+walkLeftM _ _ acc _ = pure acc
+
+||| A builder is read by folding it. Each fold walks the tree with the
+||| subtrees it has still to visit in a list, never by recursion into one
+||| side, so it runs in constant stack whichever way the builder leans:
+||| a tree walk's results lean whichever way its recursion went. A piece,
+||| bounded by a construct, is folded as a list.
+|||
+||| `foldr` visits the elements from the last, `foldl` from the first, and
+||| `foldlM` from the first, each step's effect before the next. `foldMap`
+||| folds from the right, so that even a builder of lists concatenates in
+||| linear time: each list goes in front of what follows it. `toList` is the
+||| elements in order, each laid once.
+export
+Foldable Builder where
+  foldr f z b = walkRight f (nodes b) [b] z
+  foldl f z b = walkLeft f (nodes b) z [b]
+  null Empty = True
+  null _ = False
+  foldlM f z b = walkLeftM f (nodes b) z [b]
+  toList b = walkRight (::) (nodes b) [b] []
+  foldMap f b = walkRight (\x, rest => f x <+> rest) (nodes b) [b] neutral
 
 ||| A piece: a list bounded by a construct.
 export
@@ -48,26 +104,27 @@ export
 single : a -> Builder a
 single x = Piece [x]
 
-||| The elements, in order: each piece laid in front of what follows it,
-||| so nothing is copied twice and nothing is reversed. The recursion into
-||| the left is the tail call, so a builder that leans left is read in
-||| constant stack, and one that leans right in stack as deep as it leans.
-export
-contents : Builder a -> List a
-contents b = go b []
-  where
-    lay : List a -> List a -> List a
-    lay [] rest = rest
-    lay (x :: xs) rest = x :: lay xs rest
+-- uncons's walk down the left spine, each step a node: past an empty part,
+-- or turning a join on the left to the right
+unconsWithin : (fuel : Nat) -> Builder a -> Maybe (a, Builder a)
+unconsWithin _ (Piece (x :: xs)) = Just (x, piece xs)
+unconsWithin (S k) (Append _ Empty r) = unconsWithin k r
+unconsWithin (S k) (Append _ (Piece []) r) = unconsWithin k r
+unconsWithin _ (Append _ (Piece (x :: xs)) r) = Just (x, piece xs <+> r)
+unconsWithin (S k) (Append _ (Append _ l m) r) = unconsWithin k (l <+> (m <+> r))
+unconsWithin _ _ = Nothing
 
-    go : Builder a -> List a -> List a
-    go Empty rest = rest
-    go (Piece xs) rest = lay xs rest
-    go (Append l r) rest = go l (go r rest)
+||| The first element and the rest, for a reader that takes one element at
+||| a time, in amortised constant time each: the builder's left spine is
+||| turned to its right as the reader goes, each join once, so taking all
+||| `n` elements costs `n` in all, in constant stack.
+export
+uncons : Builder a -> Maybe (a, Builder a)
+uncons b = unconsWithin (nodes b) b
 
 ||| The lists `f` makes of the elements, joined in order, in linear time:
 ||| `concatMap` on lists folds from the left, copying what it has joined at
 ||| every step.
 export
 joinMap : (a -> List b) -> List a -> List b
-joinMap f xs = contents (concatMap (piece . f) xs)
+joinMap f xs = toList (concatMap (piece . f) xs)
