@@ -183,8 +183,10 @@ xmmOfNum _ = XMM15
 -- Conditions and operation groups
 
 ||| Condition codes in hardware order (the low nibble of `jcc`/`setcc`/`cmovcc`).
+||| The sign conditions are `Sign` and `NoSign`, not `S` and `NS`: `S` is the
+||| Prelude's successor, which no name of ours shadows.
 public export
-data Cond = O | NO | B | AE | E | NE | BE | A | S | NS | P | NP | L | GE | LE | G
+data Cond = O | NO | B | AE | E | NE | BE | A | Sign | NoSign | P | NP | L | GE | LE | G
 
 public export
 Show Cond where
@@ -196,8 +198,8 @@ Show Cond where
   show NE = "ne"
   show BE = "be"
   show A = "a"
-  show S = "s"
-  show NS = "ns"
+  show Sign = "s"
+  show NoSign = "ns"
   show P = "p"
   show NP = "np"
   show L = "l"
@@ -215,8 +217,8 @@ condCode E = 4
 condCode NE = 5
 condCode BE = 6
 condCode A = 7
-condCode S = 8
-condCode NS = 9
+condCode Sign = 8
+condCode NoSign = 9
 condCode P = 10
 condCode NP = 11
 condCode L = 12

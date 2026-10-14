@@ -29,7 +29,7 @@ xmms : List Xmm
 xmms = [XMM0, XMM1, XMM2, XMM3, XMM4, XMM5, XMM6, XMM7, XMM8, XMM9, XMM10, XMM11, XMM12, XMM13, XMM14, XMM15]
 
 conds : List Cond
-conds = [O, NO, B, AE, E, NE, BE, A, S, NS, P, NP, L, GE, LE, G]
+conds = [O, NO, B, AE, E, NE, BE, A, Sign, NoSign, P, NP, L, GE, LE, G]
 
 alus : List AluOp
 alus = [ADD, OR, AND, SUB, XOR, CMP]
