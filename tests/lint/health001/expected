@@ -2,26 +2,26 @@ architectural health: 97
   structure        99
     encapsulation 100  private imports, façades exempt: 8 of 8
     layering      100  imports the layers allow: 0 of 0
-    coupling       95  module pairs a change cannot reach: 161 of 169
+    coupling       96  module pairs a change cannot reach: 188 of 196
     distinction   100  group members that stand apart from their siblings: 0 of 0
-  readability      94
+  readability      95
     cohesion      100  implementations next to their types: 0 of 0
-    names          85  modules named after a symbol they define: 11 of 13
-    uniqueness     92  exported names never written bare where another of the name is seen: 24 of 26
+    names          86  modules named after a symbol they define: 12 of 14
+    uniqueness     93  exported names never written bare where another of the name is seen: 25 of 27
     scoping       100  helpers local to a function or a namespace block, of those and the ones a single user leaves module-wide: 0 of 0
 architectural health: 97
   structure        99
     encapsulation 100  private imports, façades exempt: 8 of 8
     layering      100  imports the layers allow: 0 of 0
-    coupling       95  module pairs a change cannot reach: 161 of 169
-          2  Canvas: its imports reach 2 of our 13 modules
-          2  Night: its imports reach 2 of our 13 modules
+    coupling       96  module pairs a change cannot reach: 188 of 196
+          2  Canvas: its imports reach 2 of our 14 modules
+          2  Night: its imports reach 2 of our 14 modules
     distinction   100  group members that stand apart from their siblings: 0 of 0
-  readability      94
+  readability      95
     cohesion      100  implementations next to their types: 0 of 0
-    names          85  modules named after a symbol they define: 11 of 13
+    names          86  modules named after a symbol they define: 12 of 14
           1  Elsewhere: defines `found`
           1  Farm.FarmHand: defines `farmTool`, `farmstead`
-    uniqueness     92  exported names never written bare where another of the name is seen: 24 of 26
+    uniqueness     93  exported names never written bare where another of the name is seen: 25 of 27
           2  speak: defined in `Cat`, `Dog`; they meet bare in `Pets`, `Zoo`
     scoping       100  helpers local to a function or a namespace block, of those and the ones a single user leaves module-wide: 0 of 0

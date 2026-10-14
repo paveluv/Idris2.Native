@@ -4,3 +4,4 @@
 ./Farm/FarmHand.idr:1:1 group-prefix: `FarmHand` begins with its group's name, `Farm`, which qualifies it already: `Farm.Hand`
 ./Farm/FarmHand.idr:1:1 module-name: `Farm.FarmHand` is named after nothing it defines: a reader looks a symbol up by its module's name
 ./Farm/FarmHand.idr:9:1 group-prefix: `farmTool` begins with its group's name, `Farm`, which qualifies it already: `Farm.tool`
+./Long.idr:1:1 long-file: `Long` is 259 lines long, more than 256: a design to reconsider, its concepts and helpers, case by case

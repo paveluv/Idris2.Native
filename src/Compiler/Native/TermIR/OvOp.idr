@@ -3,7 +3,7 @@
 ||| Part of the term IR (`Compiler.Native.TermIR.Program` says what it is).
 module Compiler.Native.TermIR.OvOp
 
-import Compiler.Native.IRCommon.Operators.ArithOp
+import Compiler.Native.IRCommon.Operators
 
 %default total
 

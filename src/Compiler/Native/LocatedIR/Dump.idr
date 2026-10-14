@@ -19,9 +19,7 @@ import Compiler.Native.HeapObject.Enc
 import Compiler.Native.HeapObject.Header
 import Compiler.Native.HeapObject.Kind
 import Compiler.Native.IRCommon.Conv
-import Compiler.Native.IRCommon.Operators.ArithOp
-import Compiler.Native.IRCommon.Operators.Rel
-import Compiler.Native.IRCommon.Operators.SubWord
+import Compiler.Native.IRCommon.Operators
 import Compiler.Native.IRCommon.Ty
 import Core.Name
 import Data.Builder

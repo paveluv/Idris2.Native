@@ -4,7 +4,10 @@ depends = idris2-native
 
 modules =
     Both,
+    Calc,
     Dump,
     Heap.Header,
     Heap.Ring,
+    Ops.Add,
+    Ops.Sub,
     Places

@@ -27,7 +27,7 @@ import Compiler.Native.TermIR.Var as TermIR
 import Compiler.Native.HeapObject.Enc
 import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.Conv
-import Compiler.Native.IRCommon.Operators.Rel
+import Compiler.Native.IRCommon.Operators
 import Compiler.Native.IRCommon.Ty
 import Core.Name
 import Data.Distinct
@@ -43,7 +43,7 @@ import Decidable.Equality
 -- Bodies with binders
 
 ||| A body whose binders are functions, mirroring `Body`.
-public export
+export
 data PBody : Decls enc -> Conv enc -> Bool -> (v : Ty enc -> Type) -> (l : List (Ty enc) -> Type) -> Type where
   PBind : {ts : List (Ty enc)} -> Instr d m v ts -> (All v ts -> PBody d c m v l) -> PBody d c m v l
   PJoin : (ps : List (Ty enc)) -> (l ps -> All v ps -> PBody d c m v l) -> (l ps -> PBody d c m v l) ->

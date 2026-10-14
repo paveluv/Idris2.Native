@@ -19,12 +19,17 @@ import Lint.Source
 import Core.FC
 import Core.Name
 import Core.Name.Namespace
+import Core.TT
+import Core.WithData
 import Data.List
+import Data.List1
 import Data.Maybe
 import Data.SortedMap
 import Data.SortedSet
 import Data.String
 import Idris.Syntax
+import Libraries.Data.WithData
+import Libraries.Data.WithDefault
 
 %default covering
 
@@ -89,10 +94,59 @@ modulesOf fms r =
 
 ||| The rules over the program resolved.
 export
-resolvedRules : List (SourceFile, List Declared, Mentions) -> Resolution -> List Finding
-resolvedRules fms r =
+resolvedRules : List (SourceFile, List Declared, Mentions) -> (programNames : SortedSet String) -> Resolution -> List Finding
+resolvedRules fms programNames r =
   joined [ importUnused m ++ importIndirect r m ++ listAccumulation m ++ genericExport m | m <- modulesOf fms r ]
+  ++ joined [ publicUnneeded f ds | (f, ds, _) <- fms ]
   where
+    ||| `public-unneeded`, a warning: a `public export` that only its module
+    ||| needs public. A data type whose constructors no other module uses
+    ||| (resolved) and no program writes could be `export`, the type kept and
+    ||| its constructors not; a function or constant no other module uses
+    ||| needs no body public, if a name exported at all. Either is needed
+    ||| public when another public declaration of its module mentions it,
+    ||| since that one's body is visible to importers.
+    publicUnneeded : SourceFile -> List Declared -> List Finding
+    publicUnneeded f ds =
+      let m = show f.mod.moduleNS
+          usedElsewhere = the (SortedSet String) (fromList [ u.name | rm <- r.modules, rm.name /= m, u <- rm.uses, u.definer == m ])
+          publicNames = joined (map (.defines) (filter isPublicClaim ds))
+          inPublic = [ n | d <- ds, isPublicDecl publicNames d, n <- d.mentions, not (n `elem` d.defines) ]
+          needed = \n => contains n usedElsewhere || contains n programNames || (n `elem` inPublic)
+      in joined (map (finding' needed) ds)
+      where
+        publicVisibility : WithDefault Visibility Private -> Bool
+        publicVisibility v = collapseDefault v == Public
+
+        isPublicClaim : Declared -> Bool
+        isPublicClaim d = case d.decl.val of
+          PClaim c => c.vis == Public
+          _ => False
+
+        -- a public declaration whose body its importers see: a public
+        -- claim's definition, or a public type
+        isPublicDecl : List String -> Declared -> Bool
+        isPublicDecl publicNames d = case d.decl.val of
+          PDef _ => any (`elem` publicNames) d.defines
+          PData _ v _ _ => publicVisibility v
+          PRecord _ v _ _ => publicVisibility v
+          _ => False
+
+        finding' : (String -> Bool) -> Declared -> List Finding
+        finding' needed d = case d.decl.val of
+          PData _ v _ (MkPData _ n _ _ cons@(_ :: _)) =>
+            let names = foldr (\c, rest => map (nameRoot . (.val) . snd) (List1.forget c.val.names) ++ rest) [] cons in
+            if publicVisibility v && not (any needed names)
+              then [finding f "public-unneeded" d.decl.fc (nameRoot n)
+                      ("`" ++ nameRoot n ++ "`'s constructors are used only in its module: `export` keeps them there")]
+              else []
+          PClaim c =>
+            if c.vis == Public && not (any needed d.defines)
+              then [ finding f "public-unneeded" d.decl.fc n ("no other module uses `" ++ n ++ "`: its body need not be public")
+                   | n <- d.defines ]
+              else []
+          _ => []
+
     ||| `import-unused`: a private import that gives the module nothing it does
     ||| not import directly: none of the names it makes visible used, neither
     ||| the module's own nor any it re-exports, or only those of modules

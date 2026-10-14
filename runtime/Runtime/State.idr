@@ -45,7 +45,7 @@ scanCursor = 7
 
 ||| The bytes the last collection left live; the most bytes the heap may
 ||| commit, 0 for no limit; the window's size; the collections so far.
-public export
+export
 liveBytes, heapLimit, windowBytes, collections : State
 liveBytes = 8
 heapLimit = 9

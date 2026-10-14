@@ -15,7 +15,7 @@ import Compiler.Native.TermIR.Var
 import Compiler.Native.HeapObject.Enc
 import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.Conv
-import Compiler.Native.IRCommon.Operators.Rel
+import Compiler.Native.IRCommon.Operators
 import Compiler.Native.IRCommon.Ty
 import Core.Name
 import Data.Distinct

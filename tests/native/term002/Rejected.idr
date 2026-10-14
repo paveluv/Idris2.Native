@@ -12,9 +12,7 @@ import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.Area
 import Compiler.Native.IRCommon.ConIds
 import Compiler.Native.IRCommon.Conv
-import Compiler.Native.IRCommon.Operators.ArithOp
-import Compiler.Native.IRCommon.Operators.Rel
-import Compiler.Native.IRCommon.Operators.UnOp
+import Compiler.Native.IRCommon.Operators
 import Compiler.Native.IRCommon.Ty
 import Compiler.Native.TermIR.Body
 import Compiler.Native.TermIR.Build

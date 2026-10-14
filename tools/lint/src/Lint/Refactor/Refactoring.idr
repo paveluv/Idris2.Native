@@ -104,9 +104,23 @@ refactor dryRun check r project changedFiles path = loop [] [] empty
     Saved : Type
     Saved = SortedMap String (Maybe String)
 
+    -- the directory a file is in, and the directories down to it,
+    -- made where they are missing
+    directoryOf : String -> String
+    directoryOf p = case reverse (List1.forget (split (== '/') p)) of
+      (_ :: rest@(_ :: _)) => joinBy "/" (reverse rest)
+      _ => "."
+
+    createDirectories : String -> IO (Either FileError ())
+    createDirectories d = do
+      True <- not <$> exists d
+        | False => pure (Right ())
+      ignore (createDirectories (directoryOf d))
+      createDir d
+
     restore : Saved -> IO ()
     restore saved = for_ (SortedMap.toList saved) $ \(p, old) => case old of
-      Just t => ignore (writeFile p t)
+      Just t => do ignore (createDirectories (directoryOf p)); ignore (writeFile p t)
       Nothing => ignore (removeFile p)
 
     finish : List String -> List (String, String) -> Saved -> IO Report
@@ -121,7 +135,9 @@ refactor dryRun check r project changedFiles path = loop [] [] empty
     makeChange ch = do
       Right saved <- editAll empty ch.edits
         | Left (why, saved) => do restore saved; pure (Left why)
-      Right saved' <- createAll saved ch.created
+      Right created <- createAll saved ch.created
+        | Left (why, created) => do restore created; pure (Left why)
+      Right saved' <- removeAll created ch.removed
         | Left (why, saved') => do restore saved'; pure (Left why)
       Nothing <- unparsed (sources saved')
         | Just why => do restore saved'; pure (Left why)
@@ -132,7 +148,21 @@ refactor dryRun check r project changedFiles path = loop [] [] empty
         -- the Idris files a change touched, which are parsed and checked
         -- again: a package's list is not
         sources : Saved -> List String
-        sources saved = filter (isSuffixOf ".idr") (keys saved)
+        sources saved = filter (\p => isSuffixOf ".idr" p && not (p `elem` ch.removed)) (keys saved)
+
+        -- the files removed, what each was kept to be put back
+        removeAll : Saved -> List String -> IO (Either (String, Saved) Saved)
+        removeAll saved [] = pure (Right saved)
+        removeAll saved (p :: rest) = do
+          Right old <- readFile p
+            | Left e => pure (Left ("cannot read " ++ p ++ ": " ++ show e, saved))
+          let saved' = insert p (Just old) saved
+          Right () <- removeFile p
+            | Left e => pure (Left ("cannot remove " ++ p ++ ": " ++ show e, saved'))
+          -- the directory too, if the file was its last; an undo makes it
+          -- again
+          ignore (removeDir (directoryOf p))
+          removeAll saved' rest
 
         editAll : Saved -> List (String, List Edit) -> IO (Either (String, Saved) Saved)
         editAll saved [] = pure (Right saved)
@@ -146,20 +176,6 @@ refactor dryRun check r project changedFiles path = loop [] [] empty
               Right () <- writeFile p new
                 | Left e => pure (Left ("cannot write " ++ p ++ ": " ++ show e, saved'))
               editAll saved' rest
-
-        -- the directory a file is in, and the directories down to it,
-        -- made where they are missing
-        directoryOf : String -> String
-        directoryOf p = case reverse (List1.forget (split (== '/') p)) of
-          (_ :: rest@(_ :: _)) => joinBy "/" (reverse rest)
-          _ => "."
-
-        createDirectories : String -> IO (Either FileError ())
-        createDirectories d = do
-          True <- not <$> exists d
-            | False => pure (Right ())
-          ignore (createDirectories (directoryOf d))
-          createDir d
 
         createAll : Saved -> List (String, String) -> IO (Either (String, Saved) Saved)
         createAll saved [] = pure (Right saved)
@@ -207,9 +223,13 @@ refactor dryRun check r project changedFiles path = loop [] [] empty
         let old = fromMaybe "" (join (lookup p saved))
         for_ es $ \e => traverse_ (putStrLn . ("    " ++)) (describe old e)
       for_ ch.created $ \(p, _) => putStrLn ("  created " ++ p)
+      for_ ch.removed $ \p => putStrLn ("  removed " ++ p)
 
     loop : List String -> List (String, String) -> Saved -> IO Report
     loop changed stays saved = do
+      -- a change of another file's may have removed this one
+      True <- exists path
+        | False => finish changed stays saved
       Right s <- load path
         | Left e => finish changed (("the file", "it does not parse: " ++ e) :: stays) saved
       others <- if r.wide then project else pure (MkProject [] [])

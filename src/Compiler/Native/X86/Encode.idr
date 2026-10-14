@@ -213,7 +213,7 @@ fieldsFit instr = case instr of
     memFits (MRip _ d) = fitsInt32 (cast d)
 
 ||| What `assembleWith` could not encode faithfully.
-public export
+export
 data AsmProblem
   = ||| A reference to a label that nothing defines. It encodes as
     ||| displacement 0.

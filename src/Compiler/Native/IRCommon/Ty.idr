@@ -112,7 +112,7 @@ classOf F64 = FloatClass
 classOf _ = WordClass
 
 ||| Whether the collector must find, and may move, what a register holds.
-public export
+export
 gcVisible : Ty enc -> Bool
 gcVisible Val = True
 gcVisible (PtrTo _) = True

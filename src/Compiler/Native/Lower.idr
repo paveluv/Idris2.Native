@@ -58,10 +58,7 @@ import Compiler.Native.HeapObject.Kind
 import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.ConIds
 import Compiler.Native.IRCommon.Conv
-import Compiler.Native.IRCommon.Operators.ArithOp
-import Compiler.Native.IRCommon.Operators.Rel
-import Compiler.Native.IRCommon.Operators.SubWord
-import Compiler.Native.IRCommon.Operators.UnOp
+import Compiler.Native.IRCommon.Operators
 import Compiler.Native.IRCommon.Ty
 import Compiler.Native.Linkage.ConvertsIn
 import Compiler.Native.Linkage.ForeignFunctions

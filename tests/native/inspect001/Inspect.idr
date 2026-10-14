@@ -15,7 +15,7 @@ import Compiler.Native.HeapObject.Kind
 import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.Conv
 import Compiler.Native.IRCommon.Intrinsic
-import Compiler.Native.IRCommon.Operators.ArithOp
+import Compiler.Native.IRCommon.Operators
 import Compiler.Native.IRCommon.Ty
 import Compiler.Native.Linkage.Sym
 import Compiler.Native.Platform

@@ -65,12 +65,7 @@ import Compiler.Native.HeapObject.LayoutWord
 import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.Conv
 import Compiler.Native.IRCommon.Intrinsic as IRCommon
-import Compiler.Native.IRCommon.Operators.ArithOp as Operators
-import Compiler.Native.IRCommon.Operators.ConvOp
-import Compiler.Native.IRCommon.Operators.FOp
-import Compiler.Native.IRCommon.Operators.Rel
-import Compiler.Native.IRCommon.Operators.SubWord
-import Compiler.Native.IRCommon.Operators.UnOp
+import Compiler.Native.IRCommon.Operators
 import Compiler.Native.IRCommon.Ty
 import Compiler.Native.Linkage.Areas
 import Compiler.Native.Linkage.ResumePoint

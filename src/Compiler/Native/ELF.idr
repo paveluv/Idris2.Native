@@ -58,8 +58,9 @@ planLayout ts rs bs =
 ||| A stretch of an image's bytes: bytes in order; bytes accumulated at the
 ||| end of a snoc-list, the text the encoder made and the read-only data,
 ||| which the writer lays from their last byte, never read out into a list;
-||| or a run of zero bytes.
-public export
+||| or a run of zero bytes. Abstract: an image is built, measured and
+||| written here, and only passed along elsewhere.
+export
 data Stretch = Bytes (List Bits8) | SnocBytes (SnocList Bits8) | Zeros Nat
 
 ||| An image: its stretches, in file order.

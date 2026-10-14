@@ -7,6 +7,9 @@ modules =
     Frame,
     Gallery,
     JoinAll,
+    Mode,
+
+    Pace,
     Report,
     Shape,
     Shapes,

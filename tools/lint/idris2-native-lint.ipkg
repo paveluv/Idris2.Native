@@ -21,6 +21,8 @@ modules =
     Lint.Refactor.Edit,
     Lint.Refactor.Extent,
     Lint.Refactor.Free,
+    Lint.Refactor.JoinModules,
+    Lint.Refactor.Listing,
     Lint.Refactor.MergeClauses,
     Lint.Refactor.NamedArguments,
     Lint.Refactor.OrderImports,

@@ -24,7 +24,8 @@
 ||| after which the command fails on a file the change touched, the file's
 ||| path in the place of `{}` (`make check-source SOURCE={}`). A
 ||| refactoring may take arguments, each by `--arg` (`split-module`: the
-||| module to make, then the concepts to move into it), and one whose
+||| module to make, then the concepts to move into it; `join-modules`: the
+||| module to make, then the modules to join), and one whose
 ||| changes only the type checker can judge runs only with `--check`
 ||| (`prune-imports`). `--fix`
 ||| puts each file's imports in order first: the refactoring
@@ -49,6 +50,7 @@ module Lint.Main
 import Lint.Distinction
 import Lint.Finding
 import Lint.Graph
+import Lint.Refactor.JoinModules
 import Lint.Refactor.MergeClauses
 import Lint.Refactor.OrderImports
 import Lint.Refactor.Project
@@ -63,6 +65,7 @@ import Lint.Rules
 import Lint.Source
 
 import Core.FC
+import Core.Name
 import Core.Name.Namespace
 import Core.WithData
 import Data.Either
@@ -160,7 +163,9 @@ main = do
         putStrLn ("below the minimum, " ++ show m)
         exitWith (ExitFailure 1)
     else do
-      let findings = (failed ++ failedPrograms) ++ lint fdms ps res
+      pms <- traverse (\f => mentions f.mod.decls) ps
+      let programNames = the (SortedSet String) (fromList (joined (map (\m => map (nameRoot . snd) m.refs) pms)))
+          findings = (failed ++ failedPrograms) ++ lint fdms ps programNames res
       let errors = filter (not . isWarning . (.rule)) findings
           shown = if o.warnings && not o.golden then findings else errors
       traverse_ (putStrLn . if o.golden then withoutPosition else withPosition) shown
@@ -189,14 +194,15 @@ main = do
     ||| The findings of the product's files and of the programs, suppressions
     ||| applied: those of the resolved rules too, given the resolution, or the
     ||| findings that kept it from being made.
-    lint : List (SourceFile, List Declared, Mentions) -> List SourceFile -> Maybe (Either (List Finding) Resolution) -> List Finding
-    lint fdms ps res =
+    lint : List (SourceFile, List Declared, Mentions) -> List SourceFile -> (programNames : SortedSet String) ->
+           Maybe (Either (List Finding) Resolution) -> List Finding
+    lint fdms ps programNames res =
       let fs = map (\(f, _, _) => f) fdms
           fds = map (\(f, ds, _) => (f, ds)) fdms
           resolved = case res of
             Nothing => []
             Just (Left problems) => problems
-            Just (Right r) => resolvedRules fdms r
+            Just (Right r) => resolvedRules fdms programNames r
           ours = the (SortedSet String) (fromList (map (\f => show f.mod.moduleNS) fs))
           aliases = joined (map (\(f, _, ms) => importAlias ours f ms.refs) fdms)
           all = joined (map (\(f, ds, ms) => fileRules f ms ds) fdms) ++ joined (map programRules ps) ++ graphRules fs ++ sameName fds
@@ -256,7 +262,7 @@ main = do
     ||| those that take them read: `split-module` the module to make and the
     ||| concepts to move to it.
     refactorings : List String -> List Refactoring
-    refactorings args = [mergeClauses, orderImports, pruneImports, removeUnused, scopeHelpers, splitModule args]
+    refactorings args = [joinModules args, mergeClauses, orderImports, pruneImports, removeUnused, scopeHelpers, splitModule args]
 
     ||| The files of a run parsed once, and again only after a change: a wide
     ||| refactoring asks for them at every file it looks at.

@@ -156,7 +156,7 @@ record Target where
 
 ||| The registers register allocation may never use: the pinned ones and the
 ||| stack pointer.
-public export
+export
 reserved : Target -> List TargetReg
 reserved t =
   [t.hp, t.hplim, t.stackPointer] ++ (if t.lowering == HeapLowering then [t.k] else [])

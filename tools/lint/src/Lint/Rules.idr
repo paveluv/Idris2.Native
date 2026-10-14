@@ -535,8 +535,23 @@ fileRules : SourceFile -> Mentions -> List Declared -> List Finding
 fileRules f ms ds =
   importOrder f ++ publicImport f ++ defaultTotality f ++ elabReflection f ms
   ++ trustEscape f ms ++ citesPlan f ++ todo f ++ headerComment f
-  ++ implementationAdjacent f ds ++ moduleName' f ds ++ groupPrefix f ds
+  ++ implementationAdjacent f ds ++ moduleName' f ds ++ groupPrefix f ds ++ longFile f
   where
+    ||| The lines a file may have before `long-file` reports it.
+    longLines : Nat
+    longLines = 256
+
+    ||| `long-file`, a warning: a file of more than `longLines` lines. A long
+    ||| file is a design to reconsider, its concepts and its helpers, not a
+    ||| text to cut mechanically: each is taken case by case.
+    longFile : SourceFile -> List Finding
+    longFile f =
+      if f.lineCount > longLines
+        then [finding f "long-file" f.mod.headerLoc (show f.mod.moduleNS)
+                ("`" ++ show f.mod.moduleNS ++ "` is " ++ show f.lineCount ++ " lines long, more than " ++ show longLines
+                 ++ ": a design to reconsider, its concepts and helpers, case by case")]
+        else []
+
     ||| `public-import`: a module imports what it uses, so a public import is for
     ||| a façade.
     publicImport : SourceFile -> List Finding
@@ -651,6 +666,7 @@ fileRules f ms ds =
 export
 isWarning : (rule : String) -> Bool
 isWarning rule = rule == "module-name" || rule == "same-name" || rule == "list-accumulation" || rule == "group-prefix"
+                 || rule == "public-unneeded" || rule == "long-file"
 
 ||| The names of every rule, those over the graph and over the resolution
 ||| included.

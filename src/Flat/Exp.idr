@@ -323,7 +323,7 @@ Show FlatDef where
 -- The type of an expression
 
 ||| The layout of a primitive type.
-public export
+export
 primLayout : PrimType -> Layout
 primLayout DoubleType = [Dbl]
 primLayout WorldType = []

@@ -98,7 +98,7 @@ inFixnumRange v = v >= fixnumMin && v <= fixnumMax
 ||| fixnum under an encoding with fixnums; under `NoFixnums`, where integers
 ||| are boxed, only 0, the erased value. An immediate in a `Val` position
 ||| means the integer, and the rendering takes its word from here.
-public export
+export
 valWord : ValEnc -> Integer -> Maybe Int64
 valWord FixnumTag1 v = if inFixnumRange v then Just (cast (2 * v + 1)) else Nothing
 valWord FixnumTag0 v = if inFixnumRange v then Just (cast (2 * v)) else Nothing
@@ -106,7 +106,7 @@ valWord NoFixnums v = if v == 0 then Just 0 else Nothing
 
 ||| The erased value's word: fixnum 0's under an encoding with fixnums, the
 ||| word 0 under `NoFixnums`.
-public export
+export
 erasedWord : ValEnc -> Int64
 erasedWord FixnumTag1 = 1
 erasedWord FixnumTag0 = 0

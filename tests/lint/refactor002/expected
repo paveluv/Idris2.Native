@@ -2,6 +2,7 @@
 ./Heap/Ring.idr: 0 changed, 1 stay
   `split B into Heap.Ring.B` stays: what moves and what stays refer to each other: the two modules would import each other
 Heap/Part.idr: 1 changed, 0 stay
+./Ops/Add.idr: 1 changed, 0 stay
 ./Heap/Header.idr: 1 changed, 0 stay
 --- Heap/Part.idr
 ||| `Part`, from `Heap.Header`.
@@ -78,6 +79,33 @@ import Heap.Header
 export
 first : List Header
 first = [Con 1]
+--- Ops.idr
+||| `Add`, `Sub`, joined.
+module Ops
+
+%default total
+
+||| The sum of two numbers.
+export
+add : Nat -> Nat -> Nat
+add = plus
+
+||| The difference of two numbers, or zero.
+export
+sub : Nat -> Nat -> Nat
+sub = minus
+--- Calc.idr
+||| Imports both modules joined, one under the name the joined module has:
+||| it imports `Ops`, once, the alias gone.
+module Calc
+
+import Ops
+
+%default total
+
+export
+calc : Nat
+calc = Ops.sub (add 2 3) 1
 --- fixtures.ipkg
 package fixtures
 
@@ -85,13 +113,18 @@ depends = idris2-native
 
 modules =
     Both,
+    Calc,
     Dump,
     Heap.Header,
     Heap.Part,
     Heap.Ring,
+    Ops,
     Places
+Ops/ holds no module
 Heap/Part.idr checks
 Heap/Header.idr checks
 Places.idr checks
 Both.idr checks
 Dump.idr checks
+Ops.idr checks
+Calc.idr checks

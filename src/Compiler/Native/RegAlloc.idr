@@ -28,8 +28,7 @@ import Compiler.Native.HeapObject.Kind
 import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.Conv
 import Compiler.Native.IRCommon.Intrinsic
-import Compiler.Native.IRCommon.Operators.Rel
-import Compiler.Native.IRCommon.Operators.SubWord
+import Compiler.Native.IRCommon.Operators
 import Compiler.Native.IRCommon.Ty
 import Compiler.Native.LocatedIR.Block as LocatedIR
 import Compiler.Native.LocatedIR.Cont as LocatedIR
@@ -633,7 +632,7 @@ parameters (d : Decls enc)
 
 ||| The IR's programs, for producers that build terms and need not import
 ||| the IR, whose names the term's share.
-public export
+export
 0 LocatedProgram : Enc -> Type
 LocatedProgram enc = LocatedIR.Program enc
 

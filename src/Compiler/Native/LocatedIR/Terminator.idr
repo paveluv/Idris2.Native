@@ -11,7 +11,7 @@ import Compiler.Native.LocatedIR.Reg
 
 import Compiler.Native.HeapObject.Enc
 import Compiler.Native.HeapObject.ValEnc
-import Compiler.Native.IRCommon.Operators.Rel
+import Compiler.Native.IRCommon.Operators
 import Core.Name
 
 %default total
