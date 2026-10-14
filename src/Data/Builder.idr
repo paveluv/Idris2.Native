@@ -60,12 +60,6 @@ walkRight f (S k) (Piece xs :: rest) acc = walkRight f k rest (foldr f acc xs)
 walkRight f (S k) (Append _ l r :: rest) acc = walkRight f k (r :: l :: rest) acc
 walkRight _ _ _ acc = acc
 
-walkLeft : (b -> a -> b) -> (fuel : Nat) -> b -> List (Builder a) -> b
-walkLeft f (S k) acc (Empty :: rest) = walkLeft f k acc rest
-walkLeft f (S k) acc (Piece xs :: rest) = walkLeft f k (foldl f acc xs) rest
-walkLeft f (S k) acc (Append _ l r :: rest) = walkLeft f k acc (l :: r :: rest)
-walkLeft _ _ acc _ = acc
-
 walkLeftM : Monad m => (b -> a -> m b) -> (fuel : Nat) -> b -> List (Builder a) -> m b
 walkLeftM f (S k) acc (Empty :: rest) = walkLeftM f k acc rest
 walkLeftM f (S k) acc (Piece xs :: rest) = foldlM f acc xs >>= \acc' => walkLeftM f k acc' rest
@@ -87,6 +81,12 @@ export
 Foldable Builder where
   foldr f z b = walkRight f (nodes b) [b] z
   foldl f z b = walkLeft f (nodes b) z [b]
+    where
+      walkLeft : (b' -> a -> b') -> (fuel : Nat) -> b' -> List (Builder a) -> b'
+      walkLeft f (S k) acc (Empty :: rest) = walkLeft f k acc rest
+      walkLeft f (S k) acc (Piece xs :: rest) = walkLeft f k (foldl f acc xs) rest
+      walkLeft f (S k) acc (Append _ l r :: rest) = walkLeft f k acc (l :: r :: rest)
+      walkLeft _ _ acc _ = acc
   null Empty = True
   null _ = False
   foldlM f z b = walkLeftM f (nodes b) z [b]
@@ -104,16 +104,6 @@ export
 single : a -> Builder a
 single x = Piece [x]
 
--- uncons's walk down the left spine, each step a node: past an empty part,
--- or turning a join on the left to the right
-unconsWithin : (fuel : Nat) -> Builder a -> Maybe (a, Builder a)
-unconsWithin _ (Piece (x :: xs)) = Just (x, piece xs)
-unconsWithin (S k) (Append _ Empty r) = unconsWithin k r
-unconsWithin (S k) (Append _ (Piece []) r) = unconsWithin k r
-unconsWithin _ (Append _ (Piece (x :: xs)) r) = Just (x, piece xs <+> r)
-unconsWithin (S k) (Append _ (Append _ l m) r) = unconsWithin k (l <+> (m <+> r))
-unconsWithin _ _ = Nothing
-
 ||| The first element and the rest, for a reader that takes one element at
 ||| a time, in amortised constant time each: the builder's left spine is
 ||| turned to its right as the reader goes, each join once, so taking all
@@ -121,6 +111,16 @@ unconsWithin _ _ = Nothing
 export
 uncons : Builder a -> Maybe (a, Builder a)
 uncons b = unconsWithin (nodes b) b
+  where
+    -- uncons's walk down the left spine, each step a node: past an empty part,
+    -- or turning a join on the left to the right
+    unconsWithin : (fuel : Nat) -> Builder a' -> Maybe (a', Builder a')
+    unconsWithin _ (Piece (x :: xs)) = Just (x, piece xs)
+    unconsWithin (S k) (Append _ Empty r) = unconsWithin k r
+    unconsWithin (S k) (Append _ (Piece []) r) = unconsWithin k r
+    unconsWithin _ (Append _ (Piece (x :: xs)) r) = Just (x, piece xs <+> r)
+    unconsWithin (S k) (Append _ (Append _ l m) r) = unconsWithin k (l <+> (m <+> r))
+    unconsWithin _ _ = Nothing
 
 ||| The lists `f` makes of the elements, joined in order, in linear time:
 ||| `concatMap` on lists folds from the left, copying what it has joined at
