@@ -52,6 +52,7 @@ import Data.SortedSet
 import Data.String
 import Data.Zippable
 import Idris.Syntax
+import Lint.Distinction
 import Lint.Finding
 import Lint.Graph
 import Lint.Refactor.MergeClauses
@@ -136,7 +137,7 @@ main = do
           exitWith (ExitFailure 2)
         Just (Right r) => pure (Just r)
         Nothing => pure Nothing
-      let cs = health fds ++ maybe [] (resolvedHealth fdms) r
+      let cs = health fds ++ [distinction (map fst fds)] ++ maybe [] (resolvedHealth fdms) r
           overall = score cs
       putStrLn ("architectural health: " ++ show overall)
       for_ (groups cs) $ \g => do

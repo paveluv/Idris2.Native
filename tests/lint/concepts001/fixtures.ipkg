@@ -1,0 +1,18 @@
+package fixtures
+
+depends = idris2-native
+
+modules =
+    Bits,
+    Bulk,
+    Dump,
+    Geo.Point,
+    Heap.Header,
+    Heap.Left,
+    Heap.Right,
+    Norms,
+    Ops.Add,
+    Ops.Sub,
+    Places,
+    Sizes,
+    Tally

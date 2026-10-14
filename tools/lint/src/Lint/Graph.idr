@@ -315,17 +315,6 @@ record Component where
   counted : String
   offenders : List Offender
 
-||| One import between our modules, by how much the importer uses: the names
-||| the import makes visible (the module's own and its public re-exports')
-||| that the importer mentions, and all of them.
-public export
-record ImportEdge where
-  constructor MkImportEdge
-  importer : String
-  imported : String
-  used : Nat
-  offered : Nat
-
 ||| A module left out of a component of the score, by a comment of its own,
 ||| `-- lint: exclude <component>: <reason>`: the component, the reason, and
 ||| where the comment is. Only precision leaves modules out, as imported
@@ -381,16 +370,12 @@ export
 health : List (SourceFile, List Declared) -> List Component
 health fds =
   let fs = map fst fds in
-  [ encapsulation fs, layering fs, coupling fs, precision fs, cohesion, names, uniqueness, scoping ]
+  [ encapsulation fs, layering fs, coupling fs, cohesion, names, uniqueness, scoping ]
   where
     directive : PDecl -> Bool
     directive d = case d.val of
       PDirective _ => True
       _ => False
-
-    leftOut : List String -> String
-    leftOut [] = ""
-    leftOut ms = "; left out: " ++ listed ms
 
     encapsulation : List SourceFile -> Component
     encapsulation fs =
@@ -441,64 +426,6 @@ health fds =
       in MkComponent "structure" "coupling" (percent (n * n `minus` reached) (n * n))
            ("module pairs a change cannot reach: " ++ show (n * n `minus` reached) ++ " of " ++ show (n * n))
            (map (reaching n) reachOf)
-
-    -- modules left out of precision, as imported ones
-    excluded : List SourceFile -> List String
-    excluded fs = [ moduleOf f | f <- fs, any (\e => e.componentName == "precision" && e.reason /= "") (exclusions f) ]
-
-    ||| Of what our modules import from each other, how much they use, import
-    ||| by import. Weighted by size, so that a large bundle imported for a few
-    ||| names costs more than a small module.
-    importEdges : List (SourceFile, List Declared) -> List ImportEdge
-    importEdges fds =
-      let ours = ourModules (map fst fds)
-          visibleIn = the (SortedMap String (List String)) (fromList [ (moduleOf f, joined (map (.visible) ds)) | (f, ds) <- fds ])
-          reexports = the (SortedMap String (List String))
-                        (fromList [ (moduleOf f, filter (\i => contains i ours) (map (show . (.path)) (filter (.reexport) f.mod.imports))) | (f, _) <- fds ])
-          pairs = joined [ map (f, ds,) (filter (\i => contains i ours) (map (show . (.path)) f.mod.imports)) | (f, ds) <- fds ]
-      in map (edge visibleIn reexports) pairs
-      where
-        exposed : SortedMap String (List String) -> String -> SortedSet String
-        exposed reexports b = go (singleton b) (fromMaybe [] (lookup b reexports))
-          where
-            go : SortedSet String -> List String -> SortedSet String
-            go acc [] = acc
-            go acc (i :: is) = if contains i acc then go acc is else go (insert i acc) (fromMaybe [] (lookup i reexports) ++ is)
-
-        edge : SortedMap String (List String) -> SortedMap String (List String) ->
-               (SourceFile, List Declared, String) -> ImportEdge
-        edge visibleIn reexports (f, ds, b) =
-          let names = the (SortedSet String) (fromList (joined (map (\m => fromMaybe [] (lookup m visibleIn)) (Prelude.toList (exposed reexports b)))))
-              mentioned = the (SortedSet String) (fromList (joined (map (.mentions) ds)))
-              used = length (filter (\n => contains n mentioned) (Prelude.toList names))
-          in MkImportEdge (moduleOf f) b used (length (Prelude.toList names))
-
-    ||| The offenders of precision: each imported module, by the names its
-    ||| importers leave unused, with the importers that use the fewest.
-    precisionOffenders : List ImportEdge -> List Offender
-    precisionOffenders edges =
-      let byImported = foldl (\acc, e => insert e.imported (e :: fromMaybe [] (lookup e.imported acc)) acc)
-                             (the (SortedMap String (List ImportEdge)) empty) edges
-      in map offender (SortedMap.toList byImported)
-      where
-        offender : (String, List ImportEdge) -> Offender
-        offender (b, importers) =
-          let offered = foldl (\m, e => max m e.offered) (the Nat 0) importers
-              unused = sum (map (\e => minus e.offered e.used) importers)
-              fewest = sortBy (\e, e' => compare e.used e'.used) importers
-          in MkOffender b unused
-               (show (length importers) ++ (if length importers == 1 then " importer" else " importers") ++ " of its " ++ show offered ++ " names; fewest used: "
-                ++ fastConcat (intersperse ", " (map (\e => e.importer ++ " " ++ show e.used) (take 4 fewest))))
-
-    precision : List SourceFile -> Component
-    precision fs =
-      let out = excluded fs
-          edges = filter (\e => not (e.imported `elem` out)) (importEdges fds)
-          usedNames = sum (map (.used) edges)
-          offered = sum (map (.offered) edges)
-      in MkComponent "structure" "precision" (percent usedNames offered)
-           ("imported names a module uses: " ++ show usedNames ++ " of " ++ show offered ++ leftOut out)
-           (precisionOffenders edges)
 
     cohesion : Component
     cohesion =

@@ -10,9 +10,12 @@ depends = idris2, contrib
 sourcedir = "src"
 
 modules =
+    Lint.Concept,
+    Lint.Distinction,
     Lint.Finding,
     Lint.Graph,
     Lint.Main,
+    Lint.Precision,
     Lint.Refactor.Binders,
     Lint.Refactor.Change,
     Lint.Refactor.Edit,
@@ -32,6 +35,7 @@ modules =
     Lint.Resolution,
     Lint.ResolvedRules,
     Lint.Rules,
+    Lint.Separation,
     Lint.Source
 
 main = Lint.Main

@@ -111,6 +111,19 @@ record Resolution where
   modules : List ResolvedModule
   importsOf : SortedMap String (List (String, Bool))
 
+||| What a module makes visible to its importers: itself, and what it
+||| re-exports publicly, in turn, re-exports followed where `follow` says.
+export
+visibleThrough : SortedMap String (List (String, Bool)) -> (follow : String -> Bool) -> String -> SortedSet String
+visibleThrough imports follow m = go empty [m]
+  where
+    go : SortedSet String -> List String -> SortedSet String
+    go acc [] = acc
+    go acc (i :: is) =
+      if contains i acc then go acc is
+      else let next = if follow i then map (\(j, _) => j) (filter (\(_, reexported) => reexported) (fromMaybe [] (lookup i imports))) else [] in
+           go (insert i acc) (next ++ is)
+
 ------------------------------------------------------------------------------
 -- Names
 

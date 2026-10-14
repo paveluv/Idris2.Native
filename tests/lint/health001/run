@@ -5,7 +5,8 @@
 # how the score is computed shows here. Then the same with the offenders:
 # under each component short of 100, the two that cost it most, each with
 # its cost in the component's units and what the cost is made of (the
-# modules named after nothing they define, the names that meet). `Bulk`
-# leaves itself out of precision, which names it.
+# modules named after nothing they define, the names that meet). The
+# components that read resolved names, precision and separation among
+# them, are concepts001's.
 ../../../tools/lint/build/exec/idris2-native-lint --health ../rules002
 ../../../tools/lint/build/exec/idris2-native-lint --health --offenders 2 ../rules002

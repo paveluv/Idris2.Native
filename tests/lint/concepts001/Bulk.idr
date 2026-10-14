@@ -1,6 +1,7 @@
-||| A module of many names, of which its importer uses one: what precision
-||| counts against. Its own comment leaves it out of precision, as a module
-||| is until its importers are reshaped, and the score names it.
+||| A module of four concepts, of which its importer uses one: what
+||| precision counts against. Its own comment leaves it out of precision,
+||| as a module is until its importers are reshaped, and the score names
+||| it.
 module Bulk
 
 -- lint: exclude precision: the fixture of a module left out

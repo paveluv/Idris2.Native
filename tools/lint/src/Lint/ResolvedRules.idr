@@ -19,23 +19,13 @@ import Data.String
 import Idris.Syntax
 import Lint.Finding
 import Lint.Graph
+import Lint.Precision
 import Lint.Resolution
 import Lint.Rules
+import Lint.Separation
 import Lint.Source
 
 %default covering
-
-||| What a module makes visible to its importers: itself, and what it
-||| re-exports publicly, in turn, re-exports followed where `follow` says.
-visibleThrough : SortedMap String (List (String, Bool)) -> (follow : String -> Bool) -> String -> SortedSet String
-visibleThrough imports follow m = go empty [m]
-  where
-    go : SortedSet String -> List String -> SortedSet String
-    go acc [] = acc
-    go acc (i :: is) =
-      if contains i acc then go acc is
-      else let next = if follow i then map (\(j, _) => j) (filter (\(_, reexported) => reexported) (fromMaybe [] (lookup i imports))) else [] in
-           go (insert i acc) (next ++ is)
 
 ||| What a private import gives the module.
 data Usage
@@ -194,14 +184,16 @@ resolvedRules fms r =
 export
 resolvedHealth : List (SourceFile, List Declared, Mentions) -> Resolution -> List Component
 resolvedHealth fms r =
-  let ms = modulesOf fms r
+  let fds = map (\(f, ds, _) => (f, ds)) fms
+      ms = modulesOf fms r
       pairs = joined [ map (m,) (keys m.writtenUses) | m <- ms ]
       indirect = [ (m, u) | (m, u) <- pairs, not (contains u m.reached) ]
       imports = joined [ map (m,) m.privateImports | m <- ms, not (facade m.file) ]
       unneeded = [ (m, i, u) | (m, (i, u)) <- imports, not (needed u) ]
       unstructured = sum [ a.atEnd + a.leftFolds | m <- ms, a <- m.resolved.accumulations ]
       structured = sum [ a.structured | m <- ms, a <- m.resolved.accumulations ]
-  in [ MkComponent "structure" "directness" (percent (minus (length pairs) (length indirect)) (length pairs))
+  in [ precision fds r, separation fds r
+     , MkComponent "structure" "directness" (percent (minus (length pairs) (length indirect)) (length pairs))
          ("modules used that are imported directly: " ++ show (minus (length pairs) (length indirect)) ++ " of " ++ show (length pairs))
          [ MkOffender m.resolved.name 1 ("uses `" ++ u ++ "` through another's re-export") | (m, u) <- indirect ]
      , MkComponent "structure" "leanness" (percent (minus (length imports) (length unneeded)) (length imports))

@@ -1,0 +1,27 @@
+. ../../testutils.sh
+
+# What our modules take from each other, by concepts (Lint.Concept): a
+# type with its constructors, fields, implementations and the functions
+# about it is one concept; anything else is one of its own.
+#
+# precision: of the concepts an import offers, the share used. Dump,
+# Sizes, Places and Bits each import Heap.Header's three concepts and use
+# one or two of them, Norms one of Geo.Point's two.
+#
+# separation: Heap.Header's concepts fall in two pieces no importer needs
+# together, `Header` (Dump, Sizes) and `Part` with `wordBits` (Places,
+# Bits, which uses both): a split would cost no importer anything.
+#
+# Bulk leaves itself out of precision, which names it.
+#
+# distinction: Heap.Left and Heap.Right are always imported together, by
+# the same two modules: probably one module split in two, two of Heap's
+# three members. Ops.Add and Ops.Sub are too, all of Ops: a group that
+# could be one module, a candidate to collapse.
+#
+# The three components read the TTCs the build writes, so the fixtures are
+# built first.
+idris2 --build fixtures.ipkg > /dev/null
+../../../tools/lint/build/exec/idris2-native-lint --resolved --health --offenders 3 . \
+  | awk '/^    [a-z]/ { show = ($1 == "precision" || $1 == "separation" || $1 == "distinction") } show'
+rm -rf build
