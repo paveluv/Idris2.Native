@@ -6,22 +6,22 @@ module Compiler.Native.LocatedIR.Dump
 import Compiler.Native.HeapObject.Enc
 import Compiler.Native.HeapObject.Header
 import Compiler.Native.HeapObject.Kind
+import Compiler.Native.IRCommon.Conv
 import Compiler.Native.IRCommon.Operators.ArithOp
 import Compiler.Native.IRCommon.Operators.Rel
 import Compiler.Native.IRCommon.Operators.SubWord
 import Compiler.Native.IRCommon.Ty
 import Compiler.Native.LocatedIR.Block
-import Compiler.Native.LocatedIR.BlockLabel
-import Compiler.Native.LocatedIR.BlockTerminator
-import Compiler.Native.LocatedIR.CallingConvention
 import Compiler.Native.LocatedIR.Cont
 import Compiler.Native.LocatedIR.Function
 import Compiler.Native.LocatedIR.Instr
-import Compiler.Native.LocatedIR.MemRef
-import Compiler.Native.LocatedIR.Operand
+import Compiler.Native.LocatedIR.Label
+import Compiler.Native.LocatedIR.Mem
+import Compiler.Native.LocatedIR.Opnd
 import Compiler.Native.LocatedIR.Program
 import Compiler.Native.LocatedIR.Reg
 import Compiler.Native.LocatedIR.Static
+import Compiler.Native.LocatedIR.Terminator
 import Core.Name
 import Data.Builder
 import Data.String
@@ -31,16 +31,16 @@ import Data.String
 regs : List (Reg enc) -> String
 regs rs = "[" ++ joinBy ", " (map show rs) ++ "]"
 
-ops : List (Operand enc) -> String
+ops : List (Opnd enc) -> String
 ops xs = joinBy ", " (map show xs)
 
 -- The registers an instruction defines, before its `:=`.
-results : List (Reg enc) -> String
-results [] = ""
-results ds = joinBy ", " (map show ds) ++ " := "
+assigned : List (Reg enc) -> String
+assigned [] = ""
+assigned ds = joinBy ", " (map show ds) ++ " := "
 
 -- `w`: the access's width, the unit of the index.
-mem : Nat -> MemRef enc -> String
+mem : Nat -> Mem enc -> String
 mem w m = "[" ++ show m.base ++ maybe "" (\i => " + " ++ show i ++ "*" ++ show w) m.index
             ++ " + " ++ show m.offset ++ "]"
 
@@ -89,9 +89,9 @@ instr (AllocSized d p n f live)
     = show d ++ " := AllocSized " ++ show p ++ "=" ++ show n
         ++ maybe "" (\o => " fill " ++ show o) f ++ " live " ++ regs live
 instr (DirectCall f xs ds m live) =
-  results ds ++ "DirectCall " ++ show f ++ " (" ++ ops xs ++ ")"
+  assigned ds ++ "DirectCall " ++ show f ++ " (" ++ ops xs ++ ")"
   ++ (if m then " mayCollect" else "") ++ " live " ++ regs live
-instr i@(Intrinsic _ d xs) = maybe "" (\r => show r ++ " := ") d ++ instrName i ++ " (" ++ ops xs ++ ")"
+instr i@(Intrinsic _ ds xs) = assigned ds ++ instrName i ++ " (" ++ ops xs ++ ")"
 instr (Move d s) = show d ++ " := " ++ show s
 instr (Loc _) = "Loc"
 instr (Comment s) = "-- " ++ s
@@ -99,9 +99,9 @@ instr (Comment s) = "-- " ++ s
 cont : Cont enc -> String
 cont c = "resume " ++ show c.resume ++ " live " ++ regs c.live
 
-term : BlockTerminator enc -> String
+term : Terminator enc -> String
 term (Jump l) = "Jump " ++ show l
-term (IsFixnum rs y n) = "IsFixnum " ++ regs rs ++ " " ++ show y ++ " " ++ show n
+term (IfFixnums rs y n) = "IfFixnums " ++ regs rs ++ " " ++ show y ++ " " ++ show n
 term (Branch r x y t f) = "Branch " ++ show x ++ " " ++ rel r ++ " " ++ show y ++ " " ++ show t ++ " " ++ show f
 term (Switch r cs d) =
   "Switch " ++ show r ++ " [" ++ joinBy ", " (map (\c => show (fst c) ++ " -> " ++ show (snd c)) cs) ++ "] else " ++ show d
@@ -125,7 +125,7 @@ blockPieces b =
 functionPieces : Function enc -> Builder String
 functionPieces f =
   single ("function " ++ show f.name ++ " " ++ show f.conv ++ " " ++ regs f.params
-          ++ (if null f.results then "" else " -> " ++ show f.results)
+          ++ (if null (results f.conv) then "" else " -> " ++ show (results f.conv))
           ++ " entry " ++ show f.entry ++ "\n")
   <+> concatMap blockPieces f.blocks
 

@@ -13,7 +13,7 @@
 |||
 ||| An integer outside the fixnum range, and under `NoFixnums` every integer,
 ||| is a boxed object (`INT64`, `BIGNUM`). The renderings carry the encoding
-||| out in their `Tag`, `Untag`, `TagOv` and `IsFixnum`, in their arithmetic,
+||| out in their `Tag`, `Untag`, `TagOv` and `IfFixnums`, in their arithmetic,
 ||| comparisons and switches on fixnums, and in the pointer tag of every load
 ||| and store through a pointer.
 |||

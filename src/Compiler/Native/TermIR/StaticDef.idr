@@ -6,8 +6,8 @@ module Compiler.Native.TermIR.StaticDef
 import Compiler.Native.HeapObject.Enc
 import Compiler.Native.HeapObject.Header
 import Compiler.Native.HeapObject.Kind
+import Compiler.Native.IRCommon.Conv
 import Compiler.Native.IRCommon.Ty
-import Compiler.Native.TermIR.Conv
 import Compiler.Native.TermIR.Decls
 import Compiler.Native.TermIR.FieldTys
 import Compiler.Native.TermIR.Sig
@@ -24,7 +24,7 @@ public export
 data SField : Decls enc -> Type where
   SWord : Int64 -> SField d
   SRef : Var d.statics s -> SField d
-  SCode : Var d.sigs (MkSig n InCPS ps cv) -> SField d
+  SCode : Var d.sigs (MkSig n CPS ps cv) -> SField d
 
 ||| A static object's definition: its header and its words after it.
 public export

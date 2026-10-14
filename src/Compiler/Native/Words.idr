@@ -5,12 +5,12 @@
 module Compiler.Native.Words
 
 import Compiler.Native.HeapObject.Enc
+import Compiler.Native.IRCommon.Conv
 import Compiler.Native.IRCommon.Operators.ArithOp
 import Compiler.Native.IRCommon.Operators.Rel
 import Compiler.Native.IRCommon.Operators.UnOp
 import Compiler.Native.IRCommon.Ty
 import Compiler.Native.TermIR.Build
-import Compiler.Native.TermIR.Conv
 import Compiler.Native.TermIR.Decls
 import Compiler.Native.TermIR.Instr
 import Compiler.Native.TermIR.IsInt

@@ -60,6 +60,7 @@ import Compiler.Native.HeapObject.Header as HeapObject
 import Compiler.Native.HeapObject.Kind
 import Compiler.Native.HeapObject.LayoutWord
 import Compiler.Native.HeapObject.ValEnc
+import Compiler.Native.IRCommon.Conv
 import Compiler.Native.IRCommon.Intrinsic as IRCommon
 import Compiler.Native.IRCommon.Operators.ArithOp as Operators
 import Compiler.Native.IRCommon.Operators.ConvOp
@@ -73,17 +74,16 @@ import Compiler.Native.Linkage.ResumePoint
 import Compiler.Native.Linkage.Routine
 import Compiler.Native.Linkage.Sym
 import Compiler.Native.LocatedIR.Block
-import Compiler.Native.LocatedIR.BlockLabel
-import Compiler.Native.LocatedIR.BlockTerminator as LocatedIR
-import Compiler.Native.LocatedIR.CallingConvention
 import Compiler.Native.LocatedIR.Cont
 import Compiler.Native.LocatedIR.Function
 import Compiler.Native.LocatedIR.Instr as LocatedIR
-import Compiler.Native.LocatedIR.MemRef
-import Compiler.Native.LocatedIR.Operand as LocatedIR
+import Compiler.Native.LocatedIR.Label as LocatedIR
+import Compiler.Native.LocatedIR.Mem as LocatedIR
+import Compiler.Native.LocatedIR.Opnd
 import Compiler.Native.LocatedIR.Program
 import Compiler.Native.LocatedIR.Reg
 import Compiler.Native.LocatedIR.Static
+import Compiler.Native.LocatedIR.Terminator as LocatedIR
 import Compiler.Native.Target as Native
 import Compiler.Native.X86.Asm as X86
 import Compiler.Native.X86.Target
@@ -104,22 +104,22 @@ public export
 record Rendered where
   constructor MkRendered
   text : List X86.Instr
-  rodata : List (Label, List Bits8)
+  rodata : List (X86.Label, List Bits8)
   areas : Areas
 
 record RS (enc : Enc) where
   constructor MkRS
   nextLabel : Nat
-  funs : SortedMap Name Label
+  funs : SortedMap Name X86.Label
   ||| Each function's parameter types: an immediate argument for a `Val` or a
   ||| `Fix` parameter is an integer, whose word the value encoding gives.
   params : SortedMap Name (List (Ty enc))
-  statics : SortedMap Name Label
+  statics : SortedMap Name X86.Label
   ||| The code so far, accumulating at its end.
   text : SnocList X86.Instr
   ||| Slow paths, placed after the function being rendered.
   cold : SnocList X86.Instr
-  rodata : SnocList (Label, List Bits8)
+  rodata : SnocList (X86.Label, List Bits8)
   ||| The most of each per-thread area the code so far uses.
   areas : Areas
 
@@ -142,13 +142,13 @@ coldEmit i = modify { cold $= (:< i) }
 uses : Areas -> Render enc ()
 uses a = modify { areas $= maxAreas a }
 
-fresh : Render enc Label
+fresh : Render enc X86.Label
 fresh = do
   s <- get
   put ({ nextLabel := S s.nextLabel } s)
   pure s.nextLabel
 
-sym : Sym -> Label
+sym : Sym -> X86.Label
 sym = symLabel
 
 -- Everything below renders for the program's encodings. The value encoding
@@ -173,10 +173,10 @@ parameters (enc : Enc)
   placeTys tys = Native.place abi (map classOf tys)
 
   ||| The type of an operand: its register's, or a word for an immediate.
-  opTy : Operand enc -> Ty enc
+  opTy : Opnd enc -> Ty enc
   opTy (R r) = regTy r
   opTy (Imm _) = W64
-  opTy (LocatedIR.S _) = Val
+  opTy (StaticRef _) = Val
 
   ||| The register's slot, recorded as used.
   useSlot : Reg enc -> Render enc Nat
@@ -184,10 +184,10 @@ parameters (enc : Enc)
                  uses (MkAreas 0 0 (S n))
                  pure n
 
-  slotMem : Nat -> Mem
+  slotMem : Nat -> X86.Mem
   slotMem n = MBase RBX (cast (8 * n))
 
-  staticLabel : Name -> Render enc Label
+  staticLabel : Name -> Render enc X86.Label
   staticLabel n = do
     s <- get
     case lookup n s.statics of
@@ -210,9 +210,9 @@ parameters (enc : Enc)
   immWord _ i = cast i
 
   ||| Load an operand where a value of the type is expected.
-  loadAs : Ty enc -> Reg64 -> Operand enc -> Render enc ()
+  loadAs : Ty enc -> Reg64 -> Opnd enc -> Render enc ()
   loadAs t r (Imm i) = emit (MovRI r (immWord t i))
-  loadAs _ r (LocatedIR.S s) = do l <- staticLabel s; emit (Lea r (MRip l ptag))
+  loadAs _ r (StaticRef s) = do l <- staticLabel s; emit (Lea r (MRip l ptag))
   loadAs _ r (R x) = do n <- useSlot x; emit (MovRM r (slotMem n))
 
   ||| What a load or store through the register subtracts: the pointer tag if
@@ -225,15 +225,15 @@ parameters (enc : Enc)
   tagPointer d s = if ptag == 0 then (if d == s then [] else [MovRR d s]) else [Lea d (MBase s ptag)]
 
   ||| Load a raw operand.
-  load : Reg64 -> Operand enc -> Render enc ()
+  load : Reg64 -> Opnd enc -> Render enc ()
   load = loadAs W64
 
   ||| The type two compared operands share: the register's, if either is one.
-  pairTy : Operand enc -> Operand enc -> Ty enc
+  pairTy : Opnd enc -> Opnd enc -> Ty enc
   pairTy (R x) _ = regTy x
   pairTy _ (R y) = regTy y
-  pairTy (LocatedIR.S _) _ = Val
-  pairTy _ (LocatedIR.S _) = Val
+  pairTy (StaticRef _) _ = Val
+  pairTy _ (StaticRef _) = Val
   pairTy _ _ = W64
 
   loadReg : Reg64 -> Reg enc -> Render enc ()
@@ -262,21 +262,21 @@ parameters (enc : Enc)
 
   ||| Compare rax with the operand, where a value of the type is expected:
   ||| `test` against the word 0, an immediate compare where the word fits.
-  compareWith : Ty enc -> Operand enc -> Render enc ()
+  compareWith : Ty enc -> Opnd enc -> Render enc ()
   compareWith t (Imm c) =
     let w = immWord t c in
     if w == 0 then emit (Test RAX RAX)
     else if fitsImm32 w then emit (AluI CMP RAX (cast w))
     else emits [MovRI RCX w, Alu CMP RAX RCX]
   compareWith _ (R y) = do loadReg RCX y; emit (Alu CMP RAX RCX)
-  compareWith _ (LocatedIR.S s) = do l <- staticLabel s; emits [Lea RCX (MRip l ptag), Alu CMP RAX RCX]
+  compareWith _ (StaticRef s) = do l <- staticLabel s; emits [Lea RCX (MRip l ptag), Alu CMP RAX RCX]
 
   ------------------------------------------------------------------------------
   -- Arithmetic
 
   ||| Arithmetic on raw words, into rax.
-  wordArith : ArithOp -> Operand enc -> Operand enc ->
-              (overflow : Maybe Label) -> Render enc ()
+  wordArith : ArithOp -> Opnd enc -> Opnd enc ->
+              (overflow : Maybe X86.Label) -> Render enc ()
   wordArith o x y ov = do
     load RAX x
     load RCX y
@@ -303,22 +303,22 @@ parameters (enc : Enc)
 
   ||| Load twice a fixnum's value: its word less the fixnum tag, or an
   ||| immediate doubled.
-  loadTwice : {auto 0 fx : HasFixnums enc.val} -> Reg64 -> Operand enc -> Render enc ()
+  loadTwice : {auto 0 fx : HasFixnums enc.val} -> Reg64 -> Opnd enc -> Render enc ()
   loadTwice r (Imm c) = emit (MovRI r (2 * cast c))
-  loadTwice r (LocatedIR.S _) = failWith "a static where a fixnum is expected"
+  loadTwice r (StaticRef _) = failWith "a static where a fixnum is expected"
   loadTwice r (R x) = do
     loadReg r x
     when (fixnumTag enc.val /= 0) $ emit (AluI SUB r (cast (fixnumTag enc.val)))
 
   ||| Load a fixnum's value.
-  loadValue : Reg64 -> Operand enc -> Render enc ()
+  loadValue : Reg64 -> Opnd enc -> Render enc ()
   loadValue r (Imm c) = emit (MovRI r (cast c))
-  loadValue r (LocatedIR.S _) = failWith "a static where a fixnum is expected"
+  loadValue r (StaticRef _) = failWith "a static where a fixnum is expected"
   loadValue r (R x) = do loadReg r x; emit (ShiftI SAR r 1)
 
   ||| `op` of rax and twice the operand's value, an immediate folded into the
   ||| instruction where it fits.
-  aluTwice : {auto 0 fx : HasFixnums enc.val} -> AluOp -> Operand enc -> Render enc ()
+  aluTwice : {auto 0 fx : HasFixnums enc.val} -> AluOp -> Opnd enc -> Render enc ()
   aluTwice op (Imm c) =
     let v = 2 * cast c in
     if fitsImm32 v then emit (AluI op RAX (cast v)) else emits [MovRI RCX v, Alu op RAX RCX]
@@ -332,7 +332,7 @@ parameters (enc : Enc)
   ||| outside the fixnum range. A shift has no such identity: it takes the
   ||| values, shifts and tags.
   fixArith : {auto 0 fx : HasFixnums enc.val} -> ArithOp ->
-             Operand enc -> Operand enc -> (overflow : Maybe Label) -> Render enc ()
+             Opnd enc -> Opnd enc -> (overflow : Maybe X86.Label) -> Render enc ()
   fixArith o x y ov = case o of
       Add => do loadAs Fix RAX x; aluTwice ADD y; jo
       Sub => do loadAs Fix RAX x; aluTwice SUB y; jo
@@ -495,7 +495,7 @@ parameters (enc : Enc)
   ||| The base of a memory operand into `r`, plus its index scaled by `width`,
   ||| the access's width in bytes: an address that lives only within the
   ||| instruction that computes it.
-  address : Reg64 -> MemRef enc -> (width : Nat) -> Render enc ()
+  address : Reg64 -> LocatedIR.Mem enc -> (width : Nat) -> Render enc ()
   address r m width = do
     loadReg r m.base
     case m.index of
@@ -518,7 +518,7 @@ parameters (enc : Enc)
   ------------------------------------------------------------------------------
   -- Instructions
 
-  funLabel : Name -> Render enc Label
+  funLabel : Name -> Render enc X86.Label
   funLabel n = do
     s <- get
     case lookup n s.funs of
@@ -528,7 +528,7 @@ parameters (enc : Enc)
   ||| The label of a function outside the program: a routine of the runtime
   ||| contract that the runtime does not have yet, whose call ends the
   ||| program as `Unsupported` does.
-  runtimeRoutine : Name -> Render enc Label
+  runtimeRoutine : Name -> Render enc X86.Label
   runtimeRoutine n =
     if any (\r => not r.provided && r.name == n) (routines {enc})
        then pure (sym SymUnsupported)
@@ -536,15 +536,15 @@ parameters (enc : Enc)
 
   ||| Load an operand into a floating-point register: a slot's bits, or an
   ||| immediate's word, through rax.
-  loadFloat : Xmm -> Operand enc -> Render enc ()
+  loadFloat : Xmm -> Opnd enc -> Render enc ()
   loadFloat x (R r) = do n <- useSlot r; emit (MovsdRM x (slotMem n))
   loadFloat x (Imm i) = emits [MovRI RAX (cast i), MovqXR x RAX]
-  loadFloat x (LocatedIR.S _) = failWith "a static where a double is expected"
+  loadFloat x (StaticRef _) = failWith "a static where a double is expected"
 
   ||| Pass values of the types where `place` puts them, for a call or a
   ||| return: `ARGS` first, through rax and rcx, then the floating-point
   ||| registers, then the word registers, since rcx is one of them.
-  putValues : List (Ty enc) -> List (Operand enc) -> Render enc ()
+  putValues : List (Ty enc) -> List (Opnd enc) -> Render enc ()
   putValues tys xs = do
     uses (MkAreas (argsWords abi (map classOf tys)) 0 0)
     let items = zip3 (placeTys tys) tys xs
@@ -585,12 +585,12 @@ parameters (enc : Enc)
 
   ||| A callee's parameter types, or, for a routine outside the program, the
   ||| arguments' own.
-  paramTys : Name -> List (Operand enc) -> Render enc (List (Ty enc))
+  paramTys : Name -> List (Opnd enc) -> Render enc (List (Ty enc))
   paramTys f args = do
     s <- get
     pure (fromMaybe (map opTy args) (lookup f s.params))
 
-  instr : (Nat -> Label) -> LocatedIR.Instr enc -> Render enc ()
+  instr : (LocatedIR.Label -> X86.Label) -> LocatedIR.Instr enc -> Render enc ()
   instr blk (Const d c) = do emit (MovRI RAX (immWord (regTy d) c)); store d RAX
   instr blk (CodeAddr d f) = do l <- funLabel f; emit (Lea RAX (MRip l 0)); store d RAX
   instr blk (StaticAddr d s) = do l <- staticLabel s; emit (Lea RAX (MRip l ptag)); store d RAX
@@ -789,13 +789,13 @@ parameters (enc : Enc)
     emit (Lea RAX (MRip (sym (areaSym a)) 0))
     store d RAX
   -- the pinned registers: the allocation window and the current continuation
-  instr blk (LocatedIR.Intrinsic GetHp (Just d) []) = store d R15
-  instr blk (LocatedIR.Intrinsic SetHp Nothing [x]) = load R15 x
-  instr blk (LocatedIR.Intrinsic GetHpLim (Just d) []) = store d R14
-  instr blk (LocatedIR.Intrinsic SetHpLim Nothing [x]) = load R14 x
-  instr blk (LocatedIR.Intrinsic GetK (Just d) []) = store d R12
-  instr blk (LocatedIR.Intrinsic SetK Nothing [x]) = load R12 x
-  instr blk (LocatedIR.Intrinsic IRCommon.Syscall (Just d) (n :: args)) =
+  instr blk (LocatedIR.Intrinsic GetHp [d] []) = store d R15
+  instr blk (LocatedIR.Intrinsic SetHp [] [x]) = load R15 x
+  instr blk (LocatedIR.Intrinsic GetHpLim [d] []) = store d R14
+  instr blk (LocatedIR.Intrinsic SetHpLim [] [x]) = load R14 x
+  instr blk (LocatedIR.Intrinsic GetK [d] []) = store d R12
+  instr blk (LocatedIR.Intrinsic SetK [] [x]) = load R12 x
+  instr blk (LocatedIR.Intrinsic (IRCommon.Syscall _) [d] (n :: args)) =
     if length args > 6 then failWith "a system call of more than six arguments" else do
       traverse_ (\(r, x) => load r x) (zip [RDI, RSI, RDX, R10, R8, R9] args)
       load RAX n
@@ -812,7 +812,7 @@ parameters (enc : Enc)
   ||| the current one. Its layout word counts fewer than 2^24 GC-visible and
   ||| fewer than 2^24 raw values (`layoutWord`); a continuation keeping more
   ||| is refused.
-  pushCont : (Nat -> Label) -> Cont enc -> (alsoLive : List (Reg enc)) -> Render enc ()
+  pushCont : (LocatedIR.Label -> X86.Label) -> Cont enc -> (alsoLive : List (Reg enc)) -> Render enc ()
   pushCont blk c alsoLive = do
     let vals = filter (gcVisible . regTy) c.live
         raws = filter (not . gcVisible . regTy) c.live
@@ -827,15 +827,15 @@ parameters (enc : Enc)
               (zip [0 .. length c.live] (vals ++ raws))
     emits (tagPointer R12 RAX)
 
-  argRegsOf : List (Operand enc) -> List (Reg enc)
+  argRegsOf : List (Opnd enc) -> List (Reg enc)
   argRegsOf = joinMap opRegs
 
-  term : (Nat -> Label) -> (results : List (Ty enc)) -> BlockTerminator enc -> Render enc ()
+  term : (LocatedIR.Label -> X86.Label) -> (results : List (Ty enc)) -> Terminator enc -> Render enc ()
   term blk res (Jump l) = emit (Jmp (blk l))
   -- Several tags in one test: under fixnum tag 1 every word is odd exactly
   -- when their `and` is, and under fixnum tag 0 every word is even exactly
   -- when their `or` is.
-  term blk res (IsFixnum {fx} rs y n) = do
+  term blk res (IfFixnums {fx} rs y n) = do
     case rs of
       [] => pure ()
       (r :: more) => do
@@ -888,18 +888,18 @@ parameters (enc : Enc)
 
   ||| The live values a resume block reloads, in the order its continuation
   ||| stores them, and the layout word for them.
-  resumes : Function enc -> SortedMap BlockLabel (List (Reg enc), Integer)
+  resumes : Function enc -> SortedMap LocatedIR.Label (List (Reg enc), Integer)
   resumes f = fromList (mapMaybe resume f.blocks)
     where
-      resume : Block enc -> Maybe (BlockLabel, (List (Reg enc), Integer))
+      resume : Block enc -> Maybe (LocatedIR.Label, (List (Reg enc), Integer))
       resume b = do
         c <- termCont b.term
         let vals = filter (gcVisible . regTy) c.live
             raws = filter (not . gcVisible . regTy) c.live
         pure (c.resume, (vals ++ raws, layoutWord (cast (length vals)) (cast (length raws))))
 
-  block : (Nat -> Label) -> (results : List (Ty enc)) ->
-          SortedMap BlockLabel (List (Reg enc), Integer) -> Block enc -> Render enc ()
+  block : (LocatedIR.Label -> X86.Label) -> (results : List (Ty enc)) ->
+          SortedMap LocatedIR.Label (List (Reg enc), Integer) -> Block enc -> Render enc ()
   block blk res rs b = do
     case lookup b.label rs of
       Just (live, word) => do
@@ -922,23 +922,24 @@ parameters (enc : Enc)
     fl <- funLabel f.name
     labels <- traverse (\b => map (\l => (b.label, l)) fresh) f.blocks
     let table = fromList labels
-        blk : Nat -> Label
+        blk : LocatedIR.Label -> X86.Label
         blk n = fromMaybe 0 (lookup n table)
     emits [X86.Comment (show f.name), Lbl fl]
     -- a routine reached by symbol: the symbol is its entry too
     whenJust (routineSymbol {enc} f.name) $ \s => emit (Lbl (sym s))
     -- a machine call pushed a word: keep the stack 16-aligned inside; and
     -- below the stack limit, end the program
-    when (f.conv == Direct) $
-      emits [ AluI SUB RSP 8, MovRM RAX (MRip (sym SymStackLimit) 0), Alu CMP RSP RAX
-            , Jcc B (sym SymStackOverflow) ]
+    case f.conv of
+      Direct _ _ => emits [ AluI SUB RSP 8, MovRM RAX (MRip (sym SymStackLimit) 0), Alu CMP RSP RAX
+                          , Jcc B (sym SymStackOverflow) ]
+      CPS => pure ()
     emits setBase
     takeValues f.params
     emit (Jmp (blk f.entry))
     -- bound once: an argument of a partial application is evaluated again
     -- at every call of it, which read the function's blocks once per block
     let rs = resumes f
-    traverse_ (block blk f.results rs) f.blocks
+    traverse_ (block blk (results f.conv) rs) f.blocks
     s <- get
     put ({ text := s.text ++ s.cold, cold := [<] } s)
 
@@ -947,7 +948,7 @@ parameters (enc : Enc)
     fields <- traverse field s.fields
     pure (contents (piece (le64 (cast (encodeHeader s.header))) <+> concatMap piece fields))
     where
-      field : StaticField -> Render enc (List Bits8)
+      field : SField -> Render enc (List Bits8)
       field (SWord w) = pure (le64 (cast w))
       field _ = failWith ("the rendering does not support code or static references in statics yet")
 

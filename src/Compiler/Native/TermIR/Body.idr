@@ -6,9 +6,9 @@ module Compiler.Native.TermIR.Body
 
 import Compiler.Native.HeapObject.Enc
 import Compiler.Native.HeapObject.ValEnc
+import Compiler.Native.IRCommon.Conv
 import Compiler.Native.IRCommon.Operators.Rel
 import Compiler.Native.IRCommon.Ty
-import Compiler.Native.TermIR.Conv
 import Compiler.Native.TermIR.Decls
 import Compiler.Native.TermIR.Instr
 import Compiler.Native.TermIR.IsInt
@@ -66,17 +66,17 @@ data Body : Decls enc -> Conv enc -> Bool -> List (List (Ty enc)) -> List (Ty en
   Switch : {auto 0 int : IsInt t} -> Op ctx t -> (keys : List Int64) ->
            {auto 0 ok : So (distinct keys && keysFit t keys)} ->
            All (\_ => Body d c m ls ctx) keys -> (dflt : Body d c m ls ctx) -> Body d c m ls ctx
-  Call : Var d.sigs (MkSig n InCPS ps cv) -> All (Op ctx) ps -> (resume : Body d InCPS m ls (Val :: ctx)) ->
-         Body d InCPS m ls ctx
-  TailCall : Var d.sigs (MkSig n InCPS ps cv) -> All (Op ctx) ps -> Body d InCPS m ls ctx
+  Call : Var d.sigs (MkSig n CPS ps cv) -> All (Op ctx) ps -> (resume : Body d CPS m ls (Val :: ctx)) ->
+         Body d CPS m ls ctx
+  TailCall : Var d.sigs (MkSig n CPS ps cv) -> All (Op ctx) ps -> Body d CPS m ls ctx
   ||| Apply a closure to one argument, through the runtime's apply routine.
-  Apply : (fn, arg : Op ctx Val) -> (resume : Body d InCPS m ls (Val :: ctx)) -> Body d InCPS m ls ctx
-  TailApply : (fn, arg : Op ctx Val) -> Body d InCPS m ls ctx
-  Return : Op ctx Val -> Body d InCPS m ls ctx
+  Apply : (fn, arg : Op ctx Val) -> (resume : Body d CPS m ls (Val :: ctx)) -> Body d CPS m ls ctx
+  TailApply : (fn, arg : Op ctx Val) -> Body d CPS m ls ctx
+  Return : Op ctx Val -> Body d CPS m ls ctx
   ||| Jump to a code address with arguments, under the current continuation:
   ||| the runtime's one way into Idris code.
   Enter : Op ctx W64 -> List (Op ctx Val) -> Body d c m ls ctx
-  Ret : All (Op ctx) rs -> Body d (InDirect rs col) m ls ctx
+  Ret : All (Op ctx) rs -> Body d (Direct rs col) m ls ctx
   Crash : String -> Body d c m ls ctx
   ||| Exit with the abort status: a construct the backend does not lower yet.
   Unsupported : String -> Body d c m ls ctx

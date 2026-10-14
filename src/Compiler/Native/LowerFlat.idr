@@ -15,15 +15,15 @@
 ||| registers in turn and whose results are its result's, and which never
 ||| collects. It is a function of the program, whose term IR is indexed by
 ||| the encoding of uniform values; flat code holds no uniform value, so the
-||| lowering is the same under every encoding but for the intrinsic that
+||| lowering is the same under every encoding but for the inline extern that
 ||| names the encoding's pointer tag. The functions of the module that
 ||| implements the runtime's memory may convert between words and addresses
-||| (`convertsIn`), which the intrinsics on the current continuation need; no
+||| (`convertsIn`), which the inline externs on the current continuation need; no
 ||| other may. A `case` on a sum is a switch on the tag, and one that is not
 ||| in tail position a join, whose parameters are the case's registers. A
 ||| call of a form is a `DirectCall`; a call of the form itself in tail
 ||| position jumps back to its start, so self tail recursion is a loop. The
-||| runtime's intrinsics (`intrinsics` in `Compiler.Native.Linkage.Intrinsic`) lower to the
+||| runtime's inline externs (`inlineExterns` in `Compiler.Native.Linkage.InlineExtern`) lower to the
 ||| instructions they stand for, and its OS services to calls of the
 ||| functions that implement them on the platform; every other `%extern` and `%foreign` primitive (`FPrim`), the
 ||| operations on strings and the double functions of the C library lower to
@@ -33,6 +33,8 @@ module Compiler.Native.LowerFlat
 import Compiler.Native.HeapObject.Enc
 import Compiler.Native.HeapObject.Kind
 import Compiler.Native.HeapObject.ValEnc
+import Compiler.Native.IRCommon.Conv
+import Compiler.Native.IRCommon.Intrinsic
 import Compiler.Native.IRCommon.Operators.ArithOp
 import Compiler.Native.IRCommon.Operators.ConvOp
 import Compiler.Native.IRCommon.Operators.FOp as Operators
@@ -41,11 +43,10 @@ import Compiler.Native.IRCommon.Operators.SubWord
 import Compiler.Native.IRCommon.Operators.UnOp
 import Compiler.Native.IRCommon.Ty
 import Compiler.Native.Linkage.ConvertsIn
-import Compiler.Native.Linkage.Intrinsic
+import Compiler.Native.Linkage.InlineExtern
 import Compiler.Native.Linkage.Routine
 import Compiler.Native.TermIR.Body
 import Compiler.Native.TermIR.Build
-import Compiler.Native.TermIR.Conv
 import Compiler.Native.TermIR.Decls
 import Compiler.Native.TermIR.Instr as TermIR
 import Compiler.Native.TermIR.IsInt
@@ -104,7 +105,7 @@ paramsLayout (p :: ps) = p.layout ++ paramsLayout ps
 ||| The signature of a form's `Direct` function.
 export
 formSig : FlatDef -> Sig enc
-formSig fd = MkSig (flatName fd.name) (InDirect (tys fd.result) False) (tys (paramsLayout fd.params)) (convertsIn fd.name)
+formSig fd = MkSig (flatName fd.name) (Direct (tys fd.result) False) (tys (paramsLayout fd.params)) (convertsIn fd.name)
 
 ------------------------------------------------------------------------------
 -- Values
@@ -251,7 +252,7 @@ public export
 record Callee (d : Decls enc) where
   constructor MkCallee
   form : FlatDef
-  var : (n ** Var d.sigs (MkSig n (InDirect (tys form.result) False) (tys (paramsLayout form.params)) (convertsIn form.name)))
+  var : (n ** Var d.sigs (MkSig n (Direct (tys form.result) False) (tys (paramsLayout form.params)) (convertsIn form.name)))
 
 ||| The forms the declarations have `Direct` functions for, by the forms'
 ||| names.
@@ -263,7 +264,7 @@ callees d fds = fromList (mapMaybe one (enumerate d.sigs))
     byName = fromList [(flatName fd.name, fd) | fd <- fds]
 
     one : (s ** Var d.sigs s) -> Maybe (Name, Callee d)
-    one (MkSig n (InDirect rs False) ps cv ** var) = do
+    one (MkSig n (Direct rs False) ps cv ** var) = do
       fd <- lookup n byName
       case (decEq rs (tys fd.result), decEq ps (tys (paramsLayout fd.params)), decEq cv (convertsIn fd.name)) of
         (Yes Refl, Yes Refl, Yes Refl) => Just (fd.name, MkCallee fd (n ** var))
@@ -365,13 +366,13 @@ parameters {enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef) (m 
            {0 v : Ty enc -> Type} {0 l : List (Ty enc) -> Type}
 
   0 B : Type -> Type
-  B = Build d (InDirect (tys self.result) False) m v l
+  B = Build d (Direct (tys self.result) False) m v l
 
   0 E : Type
-  E = End d (InDirect (tys self.result) False) m v l
+  E = End d (Direct (tys self.result) False) m v l
 
   0 Again : Type
-  Again = Jumper d (InDirect (tys self.result) False) m v l (tys (paramsLayout self.params))
+  Again = Jumper d (Direct (tys self.result) False) m v l (tys (paramsLayout self.params))
 
   ------------------------------------------------------------------------------
   -- Words and doubles
@@ -570,7 +571,7 @@ parameters {enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef) (m 
     expr env (FCall _ n args) = do
       xs <- traverse (\a => snd <$> expr env a) args
       callForm n xs
-    expr env (FPrim _ n sk lay args) = case intrinsicOf {enc} n of
+    expr env (FPrim _ n sk lay args) = case inlineExternOf {enc} n of
       Nothing => case lookup n pr.services of
         -- an OS service: a call of the platform's function for it
         Just f => do
@@ -581,8 +582,8 @@ parameters {enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef) (m 
         Nothing => unsupported ("the primitive " ++ show n ++ " in a flat form")
       Just i => do
         xs <- traverse (\a => snd <$> expr env a) args
-        x <- intrinsic n i (concatValues xs)
-        maybe (unsupported ("the intrinsic " ++ show n ++ ", whose result is not its type's"))
+        x <- inlineExtern n i (concatValues xs)
+        maybe (unsupported ("the inline extern " ++ show n ++ ", whose result is not its type's"))
               (\rs => pure (sk, MkValue lay rs)) (regsAs lay x)
     expr env (FCon _ c _ sk lay args) = do
       xs <- traverse (\a => snd <$> expr env a) args
@@ -603,77 +604,75 @@ parameters {enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef) (m 
     expr env (FCrash _ msg) = crash msg
     expr env (FNone _) = pure (SOther, noRegs)
 
-    ||| An intrinsic's instructions, from its arguments' registers.
-    intrinsic : Name -> Intrinsic -> Value enc v -> B (Value enc v)
+    ||| An inline extern's instructions, from its arguments' registers.
+    inlineExtern : Name -> InlineExtern -> Value enc v -> B (Value enc v)
     -- a uniform value and a pointer word: the conversions, so this module's
     -- functions alone
-    intrinsic n (ObjectWord k) (MkValue [Uniform] [u]) = case m of
+    inlineExtern n (ObjectWord k) (MkValue [Uniform] [u]) = case m of
       True => do
         p <- emit1 (NarrowPtr k u)
         w <- emit1 (AddrToWord p)
         pure (MkValue [Word] [w])
-      False => unsupported ("the intrinsic " ++ show n ++ " outside the memory module")
-    intrinsic n (WordObject k) (MkValue [Word] [w]) = case m of
+      False => unsupported ("the inline extern " ++ show n ++ " outside the memory module")
+    inlineExtern n (WordObject k) (MkValue [Word] [w]) = case m of
       True => do
         p <- emit1 (WordToAddr k w)
         u <- emit1 (WidenPtr p)
         pure (MkValue [Uniform] [u])
-      False => unsupported ("the intrinsic " ++ show n ++ " outside the memory module")
-    intrinsic n i x = case words x of
-      Just ws => wordIntrinsic n i ws
-      Nothing => unsupported ("the intrinsic " ++ show n ++ " on registers of another kind")
+      False => unsupported ("the inline extern " ++ show n ++ " outside the memory module")
+    inlineExtern n i x = case words x of
+      Just ws => wordExtern n i ws
+      Nothing => unsupported ("the inline extern " ++ show n ++ " on registers of another kind")
 
-    ||| An intrinsic on words.
-    wordIntrinsic : Name -> Intrinsic -> List (Opnd v W64) -> B (Value enc v)
-    wordIntrinsic _ Syscall6 [n, a, b, c, e, f, g] = do
-      r <- emit1 (SystemCall n [a, b, c, e, f, g])
-      pure (MkValue [Word] [r])
-    wordIntrinsic _ Load64 [base, off] = do
+    ||| An inline extern on words.
+    wordExtern : Name -> InlineExtern -> List (Opnd v W64) -> B (Value enc v)
+    -- an intrinsic: its words in and out, a pointer among them converted from
+    -- or to its word, so that one taking or giving a pointer is this module's
+    -- functions' alone
+    wordExtern n (Machine i) ws = do
+      xs <- takes (Intrinsic.params i) ws
+      rs <- emit (TermIR.Intrinsic i xs)
+      gives (Intrinsic.results i) rs
+      where
+        outside : B a
+        outside = unsupported ("the inline extern " ++ show n ++ " outside the memory module")
+
+        takes : (ts : List (Ty enc)) -> List (Opnd v W64) -> B (All (Opnd v) ts)
+        takes [] [] = pure []
+        takes (W64 :: ts) (w :: more) = (w ::) <$> takes ts more
+        takes (PtrTo k :: ts) (w :: more) = case m of
+          True => do p <- emit1 (WordToAddr k w); (p ::) <$> takes ts more
+          False => outside
+        takes _ _ = unsupported ("the inline extern " ++ show n ++ " with another number of arguments")
+
+        gives : (ts : List (Ty enc)) -> All v ts -> B (Value enc v)
+        gives [] [] = pure noRegs
+        gives (W64 :: ts) (r :: more) = appendValues (MkValue [Word] [V r]) <$> gives ts more
+        gives (PtrTo _ :: ts) (r :: more) = case m of
+          True => do w <- emit1 (AddrToWord (V r)); appendValues (MkValue [Word] [w]) <$> gives ts more
+          False => outside
+        gives _ _ = unsupported ("the inline extern " ++ show n ++ ", whose result is not words")
+    wordExtern _ Load64 [base, off] = do
       p <- emit1 (Arith Add base off)
       r <- emit1 (Load W64 (MkMem (AtWord p) Nothing 0))
       pure (MkValue [Word] [r])
-    wordIntrinsic _ (LoadNarrow sw) [base, off] = do
+    wordExtern _ (LoadNarrow sw) [base, off] = do
       p <- emit1 (Arith Add base off)
       r <- emit1 (LoadN sw False (MkMem (AtWord p) Nothing 0))
       pure (MkValue [Word] [r])
-    wordIntrinsic _ Store64 [base, off, x] = do
+    wordExtern _ Store64 [base, off, x] = do
       p <- emit1 (Arith Add base off)
       emit0 (Store W64 (MkMem (AtWord p) Nothing 0) x)
       pure noRegs
-    wordIntrinsic _ (StoreNarrow sw) [base, off, x] = do
+    wordExtern _ (StoreNarrow sw) [base, off, x] = do
       p <- emit1 (Arith Add base off)
       emit0 (StoreN sw (MkMem (AtWord p) Nothing 0) x)
       pure noRegs
-    wordIntrinsic _ GetHp [] = do
-      w <- emit1 ReadHp
-      pure (MkValue [Word] [w])
-    wordIntrinsic _ SetHp [w] = do
-      emit0 (WriteHp w)
-      pure noRegs
-    wordIntrinsic _ GetHpLim [] = do
-      w <- emit1 ReadHpLim
-      pure (MkValue [Word] [w])
-    wordIntrinsic _ SetHpLim [w] = do
-      emit0 (WriteHpLim w)
-      pure noRegs
-    -- the continuation is a pointer: its word needs the conversions
-    wordIntrinsic n GetK [] = case m of
-      True => do
-        k <- emit1 ReadK
-        w <- emit1 (AddrToWord k)
-        pure (MkValue [Word] [w])
-      False => unsupported ("the intrinsic " ++ show n ++ " outside the memory module")
-    wordIntrinsic n SetK [w] = case m of
-      True => do
-        k <- emit1 (WordToAddr CONT w)
-        emit0 (WriteK k)
-        pure noRegs
-      False => unsupported ("the intrinsic " ++ show n ++ " outside the memory module")
-    wordIntrinsic _ PointerTag [] = pure (MkValue [Word] [W (cast (pointerTag enc.val))])
-    wordIntrinsic _ (AreaAddress a) [] = do
+    wordExtern _ PointerTag [] = pure (MkValue [Word] [W (cast (pointerTag enc.val))])
+    wordExtern _ (AreaAddress a) [] = do
       p <- emit1 (AreaAddr a)
       pure (MkValue [Word] [p])
-    wordIntrinsic n _ _ = unsupported ("the intrinsic " ++ show n ++ " with another number of arguments")
+    wordExtern n _ _ = unsupported ("the inline extern " ++ show n ++ " with another number of arguments")
 
     ||| A `let`: the variable bound to the value.
     bind : Env enc v -> FlatVar -> Exp -> B (Env enc v)
@@ -782,7 +781,7 @@ parameters {enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef) (m 
 ||| is a loop, which a call in tail position jumps back to.
 export
 lowerForm : {enc : Enc} -> (0 d : Decls enc) -> Forms enc d -> (fd : FlatDef) ->
-            Closed d (InDirect (tys fd.result) False) (convertsIn fd.name) (tys (paramsLayout fd.params))
+            Closed d (Direct (tys fd.result) False) (convertsIn fd.name) (tys (paramsLayout fd.params))
 lowerForm d pr fd = build $ \xs =>
   if calls fd.name fd.body
      then loop (tys (paramsLayout fd.params)) xs $ \again, ys => formBody d pr fd (convertsIn fd.name) (Just again) ys

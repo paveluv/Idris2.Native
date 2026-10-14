@@ -2,7 +2,7 @@
 |||
 ||| The modules of `Compiler.Native.Linkage` are what generated code, the
 ||| runtime and the linker agree on: the runtime contract (its routines here,
-||| `Intrinsic`, `ForeignFunctions` and `OSService`), the image's symbols and
+||| `InlineExtern`, `ForeignFunctions` and `OSService`), the image's symbols and
 ||| their labels (`Sym`), the per-thread memory areas (`Areas`), and the
 ||| shape of a resume point (`ResumePoint`). Nothing here is code: the
 ||| runtime's routines are the runtime library's, the rest of the seed's are
@@ -13,11 +13,11 @@
 ||| routines are what the runtime provides: each reached by name or by
 ||| symbol, with its signature in the term IR; the lowering calls them as
 ||| declared, and the runtime library's flat forms are checked against the
-||| declarations when a program is lowered. The intrinsics are what the
+||| declarations when a program is lowered. The inline externs are what the
 ||| lowering provides to fragment code: `%extern` declarations of the runtime
 ||| library that the flat lowering turns into instructions; each is checked
 ||| against its declaration when the runtime is loaded. A routine or an
-||| intrinsic that is missing or has another signature is an error of the
+||| inline extern that is missing or has another signature is an error of the
 ||| compilation. The OS services are what an operating system provides to
 ||| the rest of the runtime: `%extern` declarations of the generic runtime,
 ||| each bound, for the platform a program is compiled for, to a function of

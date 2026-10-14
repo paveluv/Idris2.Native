@@ -1,9 +1,9 @@
 . ../../testutils.sh
 
-# The intrinsics, the other half of the runtime contract: what the native
+# The inline externs, the other half of the runtime contract: what the native
 # code generator provides to the runtime's code; and the OS services, what
 # the platform's module provides to the rest of the runtime. A copy of the
-# runtime that declares two intrinsics otherwise than the contract says,
+# runtime that declares two inline externs otherwise than the contract says,
 # `prim__load64` with a third argument and `prim__store8` with a result, and
 # one service, `prim__os_write` with a fourth argument, built as a later
 # version so that it is the one found, is refused when a program is

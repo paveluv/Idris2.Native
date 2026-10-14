@@ -17,9 +17,9 @@ import Compiler.Native.IRCommon.Operators.Rel
 import Compiler.Native.IRCommon.Operators.SubWord
 import Compiler.Native.IRCommon.Operators.UnOp
 import Compiler.Native.IRCommon.Ty
-import Compiler.Native.LocatedIR.BlockLabel
-import Compiler.Native.LocatedIR.MemRef
-import Compiler.Native.LocatedIR.Operand
+import Compiler.Native.LocatedIR.Label
+import Compiler.Native.LocatedIR.Mem
+import Compiler.Native.LocatedIR.Opnd
 import Compiler.Native.LocatedIR.Reg
 import Core.FC
 import Core.Name
@@ -54,7 +54,7 @@ data Instr : Enc -> Type where
   ||| computes it on the words, without untagging where the value encoding has
   ||| an identity for it. There is no arithmetic on `Val`s: a `Val` is narrowed
   ||| to a `Fix` first.
-  Arith      : ArithOp -> Reg enc -> Operand enc -> Operand enc -> Instr enc
+  Arith      : ArithOp -> Reg enc -> Opnd enc -> Opnd enc -> Instr enc
   ||| Negation or complement of a `W64`.
   Unary      : UnOp -> Reg enc -> Reg enc -> Instr enc
   ||| `Add`, `Sub` or `Mul`, with the operand types of `Arith`, then a branch
@@ -62,7 +62,7 @@ data Instr : Enc -> Type where
   ||| in the fixnum range for `Fix`es, which is the fixnum fast path. The
   ||| label is a successor of the block at this instruction, not at the
   ||| block's end.
-  ArithOv    : ArithOp -> Reg enc -> Operand enc -> Operand enc -> BlockLabel -> Instr enc
+  ArithOv    : ArithOp -> Reg enc -> Opnd enc -> Opnd enc -> Label -> Instr enc
   ||| Narrow a `W64` to the width, then sign- or zero-extend it back to 64
   ||| bits.
   Ext        : SubWord -> (signed : Bool) -> Reg enc -> Reg enc -> Instr enc
@@ -77,16 +77,16 @@ data Instr : Enc -> Type where
   ||| Compare two integers; the destination, a `W64`, is 1 or 0. The operands
   ||| are both `W64`s or both `Fix`es, compared as `Rel` says; a comparison
   ||| never makes a value.
-  Cmp        : Rel -> Reg enc -> Operand enc -> Operand enc -> Instr enc
+  Cmp        : Rel -> Reg enc -> Opnd enc -> Opnd enc -> Instr enc
   ||| Load a word of the given type.
-  Load       : Ty enc -> Reg enc -> MemRef enc -> Instr enc
+  Load       : Ty enc -> Reg enc -> Mem enc -> Instr enc
   ||| Store a register of the given type.
-  Store      : Ty enc -> MemRef enc -> Reg enc -> Instr enc
+  Store      : Ty enc -> Mem enc -> Reg enc -> Instr enc
   ||| Load 8, 16 or 32 bits into a `W64`, zero- or sign-extended: the bytes
   ||| of strings and buffers, the limbs of bignums.
-  LoadN      : SubWord -> (signed : Bool) -> Reg enc -> MemRef enc -> Instr enc
+  LoadN      : SubWord -> (signed : Bool) -> Reg enc -> Mem enc -> Instr enc
   ||| Store the low 8, 16 or 32 bits of a `W64`.
-  StoreN     : SubWord -> MemRef enc -> Reg enc -> Instr enc
+  StoreN     : SubWord -> Mem enc -> Reg enc -> Instr enc
   ||| The fixnum of a `W64`, as a `Fix`. The producer guarantees that the
   ||| value is in the fixnum range.
   Tag        : {auto 0 fx : HasFixnums enc.val} -> Reg enc -> Reg enc -> Instr enc
@@ -95,9 +95,9 @@ data Instr : Enc -> Type where
   ||| The fixnum of a `W64`, as a `Fix`, or a branch to the label if the value
   ||| is outside the fixnum range. The label is a successor of the block at
   ||| this instruction, as for `ArithOv`.
-  TagOv      : {auto 0 fx : HasFixnums enc.val} -> Reg enc -> Reg enc -> BlockLabel -> Instr enc
+  TagOv      : {auto 0 fx : HasFixnums enc.val} -> Reg enc -> Reg enc -> Label -> Instr enc
   ||| A `Val` as the type given, a `Fix` or a `PtrTo k`, which is the
-  ||| destination's. No code: the producer guarantees it, after an `IsFixnum`
+  ||| destination's. No code: the producer guarantees it, after an `IfFixnums`
   ||| or a `Switch` on a header, or from static typing. The only way from a
   ||| `Val` to a fixnum or a pointer.
   Narrow     : Ty enc -> Reg enc -> Reg enc -> Instr enc
@@ -134,7 +134,7 @@ data Instr : Enc -> Type where
   ||| across includes the field registers, because the fields are written
   ||| after the slow path's collection. The rendering may rematerialise a
   ||| static's address instead of saving it.
-  AllocObj   : {k : Kind} -> Reg enc -> Header enc k -> (fields : List (Operand enc)) ->
+  AllocObj   : {k : Kind} -> Reg enc -> Header enc k -> (fields : List (Opnd enc)) ->
                (live : List (Reg enc)) -> Instr enc
   ||| A whole object whose size is known only at run time: the destination, a
   ||| `PtrTo k`, becomes a new object of the part's kind, whose size part is
@@ -150,7 +150,7 @@ data Instr : Enc -> Type where
   ||| does. The rendering checks it, so no count can make an object smaller
   ||| than its header claims, a negative `Int` read as a word included.
   AllocSized : {k : Kind} -> Reg enc -> HeaderPart k -> (count : Reg enc) ->
-               (fill : Maybe (Operand enc)) -> (live : List (Reg enc)) -> Instr enc
+               (fill : Maybe (Opnd enc)) -> (live : List (Reg enc)) -> Instr enc
   ||| A machine call to a `Direct` function: one of the program's, or a
   ||| routine of the runtime. The registers receive the callee's results, in
   ||| order, where its `results` declares any. `mayCollect` says whether the callee may
@@ -163,10 +163,11 @@ data Instr : Enc -> Type where
   ||| pinned: across one that may collect, the GC-visible members in `ROOTS`,
   ||| where the collector updates them, and the rest on the stack; across one
   ||| that cannot, all of them on the stack, since nothing moves.
-  DirectCall : Name -> List (Operand enc) -> (results : List (Reg enc)) -> (mayCollect : Bool) ->
+  DirectCall : Name -> List (Opnd enc) -> (results : List (Reg enc)) -> (mayCollect : Bool) ->
                (live : List (Reg enc)) -> Instr enc
-  ||| An intrinsic: a fixed instruction sequence, never a call.
-  Intrinsic  : Intrinsic -> Maybe (Reg enc) -> List (Operand enc) -> Instr enc
+  ||| An intrinsic: a fixed instruction sequence, never a call, giving its
+  ||| results from its operands.
+  Intrinsic  : Intrinsic -> (results : List (Reg enc)) -> List (Opnd enc) -> Instr enc
   ||| Copy a register to another of the same type: a jump's arguments into
   ||| its block's parameters.
   Move       : Reg enc -> Reg enc -> Instr enc

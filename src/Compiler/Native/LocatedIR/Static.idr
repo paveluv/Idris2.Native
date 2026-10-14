@@ -1,4 +1,4 @@
-||| A static object (`Static`), and the words it holds (`StaticField`).
+||| A static object (`Static`), and the words it holds (`SField`).
 |||
 ||| Part of the located IR (`Compiler.Native.LocatedIR.Program` says what it
 ||| is).
@@ -13,7 +13,7 @@ import Core.Name
 
 ||| A word of a static object.
 public export
-data StaticField
+data SField
   = ||| A raw word or an immediate value.
     SWord Int64
   | ||| The address of another static. Reserved for constant data built from
@@ -35,4 +35,4 @@ record Static (enc : Enc) where
   sym : Name
   kind : Kind
   header : Header enc kind
-  fields : List StaticField
+  fields : List SField

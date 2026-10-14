@@ -6,7 +6,7 @@
 module Compiler.Native.LocatedIR.Cont
 
 import Compiler.Native.HeapObject.Enc
-import Compiler.Native.LocatedIR.BlockLabel
+import Compiler.Native.LocatedIR.Label
 import Compiler.Native.LocatedIR.Reg
 
 %default total
@@ -19,5 +19,5 @@ import Compiler.Native.LocatedIR.Reg
 public export
 record Cont (enc : Enc) where
   constructor MkCont
-  resume : BlockLabel
+  resume : Label
   live : List (Reg enc)

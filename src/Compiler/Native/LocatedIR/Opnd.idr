@@ -1,9 +1,9 @@
-||| What an instruction reads (`Operand`): a register, an immediate, or a
+||| What an instruction reads (`Opnd`): a register, an immediate, or a
 ||| static's address.
 |||
 ||| Part of the located IR (`Compiler.Native.LocatedIR.Program` says what it
 ||| is).
-module Compiler.Native.LocatedIR.Operand
+module Compiler.Native.LocatedIR.Opnd
 
 import Compiler.Native.HeapObject.Enc
 import Compiler.Native.LocatedIR.Reg
@@ -20,22 +20,22 @@ import Core.Name
 ||| fixnum 0, which as a `Val` is also the erased value, under every value
 ||| encoding.
 public export
-data Operand : Enc -> Type where
-  R : Reg enc -> Operand enc
-  Imm : Int64 -> Operand enc
+data Opnd : Enc -> Type where
+  R : Reg enc -> Opnd enc
+  Imm : Int64 -> Opnd enc
   ||| The address of a static object, as a value. A static never moves, so
   ||| its address needs no register, no slot and no rooting: the rendering
   ||| loads it where it is used.
-  S : Name -> Operand enc
+  StaticRef : Name -> Opnd enc
 
 public export
-Show (Operand enc) where
+Show (Opnd enc) where
   show (R r) = show r
   show (Imm i) = "#" ++ show i
-  show (S n) = "@" ++ show n
+  show (StaticRef n) = "@" ++ show n
 
 public export
-opRegs : Operand enc -> List (Reg enc)
+opRegs : Opnd enc -> List (Reg enc)
 opRegs (R r) = [r]
 opRegs (Imm _) = []
-opRegs (S _) = []
+opRegs (StaticRef _) = []

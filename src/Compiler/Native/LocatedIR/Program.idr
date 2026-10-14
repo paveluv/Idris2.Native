@@ -38,7 +38,7 @@
 ||| never a bit position or a size rule.
 |||
 ||| Some names are chosen to differ from names in modules that a renderer
-||| imports alongside it: `Rel`, `SubWord`, `MemRef` and `BlockLabel`
+||| imports alongside it: `Rel`, `SubWord`, `Mem` and `Label`
 ||| from the x86 assembly ADT's `Cond`, `Width`, `Mem` and `Label`; `PtrTo`,
 ||| `Negate` and `Complement` from the Prelude's `Ptr`, `Neg` and `Not`.
 module Compiler.Native.LocatedIR.Program

@@ -57,6 +57,7 @@ import Compiler.Native.HeapObject.Header
 import Compiler.Native.HeapObject.Kind
 import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.ConIds
+import Compiler.Native.IRCommon.Conv
 import Compiler.Native.IRCommon.Operators.ArithOp
 import Compiler.Native.IRCommon.Operators.Rel
 import Compiler.Native.IRCommon.Operators.SubWord
@@ -71,7 +72,6 @@ import Compiler.Native.Platform
 import Compiler.Native.Strings
 import Compiler.Native.TermIR.Body
 import Compiler.Native.TermIR.Build
-import Compiler.Native.TermIR.Conv
 import Compiler.Native.TermIR.Decls
 import Compiler.Native.TermIR.Def
 import Compiler.Native.TermIR.FieldTys
@@ -444,10 +444,10 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
            {0 v : Ty enc -> Type} {0 l : List (Ty enc) -> Type}
 
   0 B : Type -> Type
-  B = Build d InCPS False v l
+  B = Build d CPS False v l
 
   0 E : Type
-  E = End d InCPS False v l
+  E = End d CPS False v l
 
   ||| A fixnum as an immediate `Val`, its range decided here.
   fixnum : Integer -> Maybe (Opnd v Val)
@@ -464,9 +464,9 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
   -- References
 
   ||| A runtime routine's variable, with its results and parameters.
-  routine : Name -> (rs, ps : List (Ty enc)) -> Maybe (n ** Var d.sigs (MkSig n (InDirect rs False) ps False))
+  routine : Name -> (rs, ps : List (Ty enc)) -> Maybe (n ** Var d.sigs (MkSig n (Direct rs False) ps False))
   routine name rs ps = case lookup name refs.funs of
-    Just (MkSig n (InDirect rs' False) ps' False ** var) => case (decEq rs' rs, decEq ps' ps) of
+    Just (MkSig n (Direct rs' False) ps' False ** var) => case (decEq rs' rs, decEq ps' ps) of
       (Yes Refl, Yes Refl) => Just (n ** var)
       _ => Nothing
     _ => Nothing
@@ -501,9 +501,9 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
     _ => crash ("the Integer routine " ++ what ++ " takes one or two values")
 
   ||| A CPS function of the program of `n` parameters.
-  cpsFunction : Name -> (n : Nat) -> Maybe (nm ** cv ** Var d.sigs (MkSig nm InCPS (replicate n Val) cv))
+  cpsFunction : Name -> (n : Nat) -> Maybe (nm ** cv ** Var d.sigs (MkSig nm CPS (replicate n Val) cv))
   cpsFunction name n = case lookup name refs.funs of
-    Just (MkSig nm InCPS ps cv ** var) => case decEq ps (replicate n Val) of
+    Just (MkSig nm CPS ps cv ** var) => case decEq ps (replicate n Val) of
       Yes Refl => Just (nm ** cv ** var)
       No _ => Nothing
     _ => Nothing
@@ -900,7 +900,7 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
 
   ||| A closure of the function, with the arguments filled and `missing` to
   ||| come, its header decided here.
-  closure : Name -> Var d.sigs (MkSig n InCPS ps cv) -> (missing : Nat) -> (args : List (Opnd v Val)) -> B (Opnd v Val)
+  closure : Name -> Var d.sigs (MkSig n CPS ps cv) -> (missing : Nat) -> (args : List (Opnd v Val)) -> B (Opnd v Val)
   closure f code missing args =
     case choose (wellFormed (ClosureH {enc} (missing + length args) (length args))) of
       Left ok => do
@@ -1046,7 +1046,7 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
       let ks = filter (\r => contains r after)
                       (Prelude.toList (foldr (\alt, w => union w (writes alt)) (writes dflt) alts))
           kset = fromList ks
-          exitWith : Jumper d InCPS False v l (replicate (length ks) Val) -> Env v -> E
+          exitWith : Jumper d CPS False v l (replicate (length ks) Val) -> Env v -> E
           exitWith exit e = exit (passed e ks)
       vals <- joinPoint (replicate (length ks) Val) $ \exit =>
         dispatch (map (\alt => lower env False (annotate kset alt) (exitWith exit)) alts)
@@ -1081,7 +1081,7 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
     lower env t ((MKCON r (Right n) _, _) :: is) k = unsupported ("the type constructor " ++ show n ++ " as a value")
     lower env t ((MKCLOSURE r f missing args, _) :: is) k =
       case lookup f refs.funs of
-        Just (MkSig _ InCPS _ _ ** code) => do
+        Just (MkSig _ CPS _ _ ** code) => do
           x <- closure f code missing (map (get env) args)
           lower (set env r x) t is k
         _ => unsupported ("a closure of " ++ show f ++ ", which is not a function of the program")
@@ -1187,38 +1187,38 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
   ||| A VMCode function: its parameters are its locals at entry, and it
   ||| returns its result register.
   lowerFunction : (d : Decls enc) -> Refs enc d -> (args : List Int) -> List VMInst ->
-                  Closed d InCPS False (replicate (length args) Val)
+                  Closed d CPS False (replicate (length args) Val)
   lowerFunction d refs args body = build $ \ps =>
     lower d refs (fromList (zip args (map (\x => (x, Nothing)) (allVals ps)))) True (annotate (singleton (-1)) body)
           (\env => return (get env RVal))
 
   ||| A foreign function the runtime does not implement: the abort stub.
-  lowerForeign : (d : Decls enc) -> Refs enc d -> Name -> (arity : Nat) -> Closed d InCPS False (replicate arity Val)
+  lowerForeign : (d : Decls enc) -> Refs enc d -> Name -> (arity : Nat) -> Closed d CPS False (replicate arity Val)
   lowerForeign d refs n arity = build $ \ps => unsupported ("the foreign function " ++ show n)
 
   ||| A function that has a flat form, as the wrapper around the form's.
   lowerBoundary : (d : Decls enc) -> Refs enc d -> Callee d -> List Shape -> Shape -> (arity : Nat) ->
-                  Closed d InCPS False (replicate arity Val)
+                  Closed d CPS False (replicate arity Val)
   lowerBoundary d refs ce ss r arity = build $ \ps => boundary d refs ce ss r (allVals ps)
 
   ||| A function's definition, from its plan.
   defOf : (d : Decls enc) -> Refs enc d -> Forms enc d -> (s : Sig enc) -> Plan -> Def d s
-  defOf d refs fs (MkSig n InCPS ps False) (FromVM args body) = case decEq ps (replicate (length args) Val) of
+  defOf d refs fs (MkSig n CPS ps False) (FromVM args body) = case decEq ps (replicate (length args) Val) of
     Yes Refl => Defined (fromMaybe (Unsupported "a level outside its context") (close (lowerFunction d refs args body)))
     No _ => Defined (Unsupported ("the parameters of " ++ show n))
-  defOf d refs fs (MkSig n InCPS ps False) (Boundary arity fd ss r) =
+  defOf d refs fs (MkSig n CPS ps False) (Boundary arity fd ss r) =
     case (decEq ps (replicate arity Val), lookup fd.name fs.callees) of
       (Yes Refl, Just ce) =>
         Defined (fromMaybe (Unsupported "a level outside its context") (close (lowerBoundary d refs ce ss r arity)))
       _ => Defined (Unsupported ("the boundary of " ++ show n))
-  defOf d refs fs (MkSig n (InDirect rs False) ps cv) (Form fd) =
+  defOf d refs fs (MkSig n (Direct rs False) ps cv) (Form fd) =
     case (decEq rs (tys fd.result), decEq ps (tys (paramsLayout fd.params)), decEq cv (convertsIn fd.name)) of
       (Yes Refl, Yes Refl, Yes Refl) => Defined (fromMaybe (Unsupported "a level outside its context") (close (lowerForm d fs fd)))
       _ => Defined (Unsupported ("the registers of the flat form of " ++ show fd.name))
-  defOf d refs fs (MkSig n InCPS ps False) (Foreign arity) = case decEq ps (replicate arity Val) of
+  defOf d refs fs (MkSig n CPS ps False) (Foreign arity) = case decEq ps (replicate arity Val) of
     Yes Refl => Defined (fromMaybe (Unsupported "a level outside its context") (close (lowerForeign d refs n arity)))
     No _ => Defined (Unsupported ("the parameters of " ++ show n))
-  defOf d refs fs (MkSig n (InDirect rs False) ps False) Routine = External
+  defOf d refs fs (MkSig n (Direct rs False) ps False) Routine = External
   defOf d refs fs s NoEntry = Defined (Unsupported "a program without __mainExpression")
   defOf d refs fs s _ = Defined (Unsupported ("the definition of " ++ show s.name))
 
@@ -1256,7 +1256,7 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
 
 ||| The entry's signature: CPS, of no parameters.
 mainSig : Sig enc
-mainSig = MkSig mainExpression InCPS [] False
+mainSig = MkSig mainExpression CPS [] False
 
 ||| The declarations: the entry first, the other functions, the statics.
 declsOf : (es : List (Sig enc, Plan)) -> (rs : List (s ** ({0 d : Decls enc} -> StaticDef d s))) -> Decls enc
@@ -1346,7 +1346,7 @@ lowerProgram enc platform forms shapes vmdefs = do
       planned = mapMaybe plan (filter ((/= mainExpression) . fst) vmdefs)
       others = planned
                  ++ [(formSig fd, Form fd) | fd <- forms]
-                 ++ [(MkSig r.name (InDirect r.results False) r.params False, Routine)
+                 ++ [(MkSig r.name (Direct r.results False) r.params False, Routine)
                     | r <- routines {enc}, not r.provided]
       boxing = fromList [(nullaryCon c, Nullary c) | c <- contents (concatMap (boxed . snd) planned)]
       statics = Data.SortedMap.toList (foldl mergeLeft boxing (mapMaybe bodyStatics vmdefs))
@@ -1420,10 +1420,10 @@ lowerProgram enc platform forms shapes vmdefs = do
 
     plan : (Name, VMDef) -> Maybe (Sig enc, Plan)
     plan (n, MkVMFun args body) =
-      Just (MkSig n InCPS (replicate (length args) Val) False,
+      Just (MkSig n CPS (replicate (length args) Val) False,
             fromMaybe (FromVM args body) (boundaryOf n (length args)))
     plan (n, MkVMForeign _ fargs _) =
-      Just (MkSig n InCPS (replicate (length fargs) Val) False,
+      Just (MkSig n CPS (replicate (length fargs) Val) False,
             fromMaybe (Foreign (length fargs)) (boundaryOf n (length fargs)))
     plan (n, MkVMError _) = Nothing
 

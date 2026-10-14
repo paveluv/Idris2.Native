@@ -26,6 +26,8 @@ import Compiler.Native.HeapObject.StringEnc
 import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.Area
 import Compiler.Native.IRCommon.ConIds
+import Compiler.Native.IRCommon.Conv
+import Compiler.Native.IRCommon.Intrinsic
 import Compiler.Native.IRCommon.Operators.ArithOp
 import Compiler.Native.IRCommon.Operators.ConvOp
 import Compiler.Native.IRCommon.Operators.FOp
@@ -40,7 +42,6 @@ import Compiler.Native.LocatedIR.Program
 import Compiler.Native.RegAlloc
 import Compiler.Native.TermIR.Body
 import Compiler.Native.TermIR.Build
-import Compiler.Native.TermIR.Conv
 import Compiler.Native.TermIR.Decls
 import Compiler.Native.TermIR.Def
 import Compiler.Native.TermIR.FieldTys
@@ -89,43 +90,43 @@ fix i = Fx {enc = TestEnc} i {ok}
 
 Run : Decls TestEnc
 Run = MkDecls
-  [ MkSig (nm "main") InCPS [] False
-  , MkSig (nm "pair") InCPS [Val, Val] False
-  , MkSig (nm "sumTo") (InDirect [W64] False) [W64] False
-  , MkSig (nm "slowAdd") (InDirect [Val] False) [Val, Val] False
-  , MkSig (nm "addTo") InCPS [Val, Val] False
-  , MkSig (nm "same") InCPS [Val] False
-  , MkSig (nm "divMod") (InDirect [W64, W64] False) [W64, W64] False
-  , MkSig (nm "floats") (InDirect [W64] False) [F64, F64] False
-  , MkSig (nm "bytes") (InDirect [W64] False) [] False
-  , MkSig (flatName runtimeCrash) (InDirect [] False) [W64, W64] False
-  , MkSig (flatName runtimeStart) (InDirect [] False) [W64, W64] False
-  , MkSig (flatName runtimeAllocSlow) (InDirect [W64] False) [W64] False
-  , MkSig (flatName runtimeAllocMutable) (InDirect [W64] False) [W64] False ]
+  [ MkSig (nm "main") CPS [] False
+  , MkSig (nm "pair") CPS [Val, Val] False
+  , MkSig (nm "sumTo") (Direct [W64] False) [W64] False
+  , MkSig (nm "slowAdd") (Direct [Val] False) [Val, Val] False
+  , MkSig (nm "addTo") CPS [Val, Val] False
+  , MkSig (nm "same") CPS [Val] False
+  , MkSig (nm "divMod") (Direct [W64, W64] False) [W64, W64] False
+  , MkSig (nm "floats") (Direct [W64] False) [F64, F64] False
+  , MkSig (nm "bytes") (Direct [W64] False) [] False
+  , MkSig (flatName runtimeCrash) (Direct [] False) [W64, W64] False
+  , MkSig (flatName runtimeStart) (Direct [] False) [W64, W64] False
+  , MkSig (flatName runtimeAllocSlow) (Direct [W64] False) [W64] False
+  , MkSig (flatName runtimeAllocMutable) (Direct [W64] False) [W64] False ]
   [ MkStaticSig (nm "two") CON ]
 
-pairRef : Var (sigs Run) (MkSig (nm "pair") InCPS [Val, Val] False)
+pairRef : Var (sigs Run) (MkSig (nm "pair") CPS [Val, Val] False)
 pairRef = later here
 
-sumToRef : Var (sigs Run) (MkSig (nm "sumTo") (InDirect [W64] False) [W64] False)
+sumToRef : Var (sigs Run) (MkSig (nm "sumTo") (Direct [W64] False) [W64] False)
 sumToRef = later (later here)
 
-slowAddRef : Var (sigs Run) (MkSig (nm "slowAdd") (InDirect [Val] False) [Val, Val] False)
+slowAddRef : Var (sigs Run) (MkSig (nm "slowAdd") (Direct [Val] False) [Val, Val] False)
 slowAddRef = later (later (later here))
 
-addToRef : Var (sigs Run) (MkSig (nm "addTo") InCPS [Val, Val] False)
+addToRef : Var (sigs Run) (MkSig (nm "addTo") CPS [Val, Val] False)
 addToRef = later (later (later (later here)))
 
-sameRef : Var (sigs Run) (MkSig (nm "same") InCPS [Val] False)
+sameRef : Var (sigs Run) (MkSig (nm "same") CPS [Val] False)
 sameRef = later (later (later (later (later here))))
 
-divModRef : Var (sigs Run) (MkSig (nm "divMod") (InDirect [W64, W64] False) [W64, W64] False)
+divModRef : Var (sigs Run) (MkSig (nm "divMod") (Direct [W64, W64] False) [W64, W64] False)
 divModRef = later (later (later (later (later (later here)))))
 
-floatsRef : Var (sigs Run) (MkSig (nm "floats") (InDirect [W64] False) [F64, F64] False)
+floatsRef : Var (sigs Run) (MkSig (nm "floats") (Direct [W64] False) [F64, F64] False)
 floatsRef = later (later (later (later (later (later (later here))))))
 
-bytesRef : Var (sigs Run) (MkSig (nm "bytes") (InDirect [W64] False) [] False)
+bytesRef : Var (sigs Run) (MkSig (nm "bytes") (Direct [W64] False) [] False)
 bytesRef = later (later (later (later (later (later (later (later here)))))))
 
 twoRef : Var (statics Run) (MkStaticSig (nm "two") CON)
@@ -134,47 +135,47 @@ twoRef = here
 ||| The runtime's `start`, reduced to what this program needs: the first
 ||| allocation window, mapped, of `window` bytes, as the allocation pointer
 ||| and its limit. The stack limit stays 0, so the stack is not checked.
-startBody : Closed Run (InDirect [] False) False [W64, W64]
+startBody : Closed Run (Direct [] False) False [W64, W64]
 startBody = build $ \[entry, window] => do
   -- mmap(NULL, window, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)
-  w <- emit1 (SystemCall (W 9) [W 0, window, W 3, W 0x22, W (-1), W 0])
-  emit0 (WriteHp w)
+  w <- emit1 (Intrinsic (Syscall 6) [W 9, W 0, window, W 3, W 0x22, W (-1), W 0])
+  emit0 (Intrinsic SetHp [w])
   lim <- emit1 (Arith Add w window)
-  emit0 (WriteHpLim lim)
+  emit0 (Intrinsic SetHpLim [lim])
   ret []
 
 ||| The runtime's allocation slow path, reduced to what this program needs:
 ||| a fresh megabyte and `bytes` more from the system, the object at its
 ||| start, and the rest the allocation window. Nothing is collected.
-allocSlowBody : Closed Run (InDirect [W64] False) False [W64]
+allocSlowBody : Closed Run (Direct [W64] False) False [W64]
 allocSlowBody = build $ \[bytes] => do
   size <- emit1 (Arith Add bytes (W 1048576))
   -- mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)
-  w <- emit1 (SystemCall (W 9) [W 0, size, W 3, W 0x22, W (-1), W 0])
+  w <- emit1 (Intrinsic (Syscall 6) [W 9, W 0, size, W 3, W 0x22, W (-1), W 0])
   hp <- emit1 (Arith Add w bytes)
-  emit0 (WriteHp hp)
+  emit0 (Intrinsic SetHp [hp])
   lim <- emit1 (Arith Add w size)
-  emit0 (WriteHpLim lim)
+  emit0 (Intrinsic SetHpLim [lim])
   ret [w]
 
 ||| The runtime's `allocMutable`, which allocates a mutable object by a
 ||| call: here the slow path's body, since nothing distinguishes the two.
-allocMutableBody : Closed Run (InDirect [W64] False) False [W64]
+allocMutableBody : Closed Run (Direct [W64] False) False [W64]
 allocMutableBody = build $ \[bytes] => do
   size <- emit1 (Arith Add bytes (W 1048576))
-  w <- emit1 (SystemCall (W 9) [W 0, size, W 3, W 0x22, W (-1), W 0])
+  w <- emit1 (Intrinsic (Syscall 6) [W 9, W 0, size, W 3, W 0x22, W (-1), W 0])
   hp <- emit1 (Arith Add w bytes)
-  emit0 (WriteHp hp)
+  emit0 (Intrinsic SetHp [hp])
   lim <- emit1 (Arith Add w size)
-  emit0 (WriteHpLim lim)
+  emit0 (Intrinsic SetHpLim [lim])
   ret [w]
 
 ||| The runtime's `crash`: the message, `length` bytes at `message`, written
 ||| to the standard error, then the process ended with status 1.
-crashBody : Closed Run (InDirect [] False) False [W64, W64]
+crashBody : Closed Run (Direct [] False) False [W64, W64]
 crashBody = build $ \[message, length] => do
-  _ <- emit1 (SystemCall (W 1) [W 2, message, length, W 0, W 0, W 0])
-  _ <- emit1 (SystemCall (W 231) [W 1, W 0, W 0, W 0, W 0, W 0])
+  _ <- emit1 (Intrinsic (Syscall 6) [W 1, W 2, message, length, W 0, W 0, W 0])
+  _ <- emit1 (Intrinsic (Syscall 6) [W 231, W 1, W 0, W 0, W 0, W 0, W 0])
   ret []
 
 ||| Unbounded addition of two `Val`s: the fixnum fast path, and `slowAdd` when
@@ -209,7 +210,7 @@ sumFields p = do
   pure r
 
 ||| `pair a b = MkPair a b`: an object of constructor id 0 with two fields.
-pairBody : Closed Run InCPS False [Val, Val]
+pairBody : Closed Run CPS False [Val, Val]
 pairBody = build $ \[a, b] => do
   p <- emit1 (AllocObj (ConH 0 2) [a, b])
   w <- emit1 (WidenPtr p)
@@ -217,7 +218,7 @@ pairBody = build $ \[a, b] => do
 
 ||| 1 + 2 + … + n, by a loop, as the flat function
 ||| `sumTo : Bits64 -> Bits64` would be.
-sumToBody : Closed Run (InDirect [W64] False) False [W64]
+sumToBody : Closed Run (Direct [W64] False) False [W64]
 sumToBody = build $ \[n] =>
   loop [W64, W64] [n, W 0] $ \again, [i, acc] =>
     branch EqR i (W 0) (ret [acc]) $ do
@@ -228,7 +229,7 @@ sumToBody = build $ \[n] =>
 ||| Stands in for the runtime's Integer addition: the test reaches it with a
 ||| fixnum and a pointer, and it doubles the fixnum, which tells the slow path
 ||| ran.
-slowAddBody : Closed Run (InDirect [Val] False) False [Val, Val]
+slowAddBody : Closed Run (Direct [Val] False) False [Val, Val]
 slowAddBody = build $ \[a, _] =>
   ifFixnums [a]
     (\[f] => arithOv OvAdd f f (\r => do w <- emit1 (WidenFix r); ret [w]) (crash "slowAdd: overflow"))
@@ -236,18 +237,18 @@ slowAddBody = build $ \[a, _] =>
 
 ||| A closure's code: the sum of its two arguments, through a tail call, as
 ||| `addTo a b = same (a + b)`.
-addToBody : Closed Run InCPS False [Val, Val]
+addToBody : Closed Run CPS False [Val, Val]
 addToBody = build $ \[a, b] => do
   s <- addInteger a b
   tailCall sameRef [s]
 
 ||| `same x = x`.
-sameBody : Closed Run InCPS False [Val]
+sameBody : Closed Run CPS False [Val]
 sameBody = build $ \[x] => return x
 
 ||| Two results, as a flat function returning `(div a b, mod a b)` at
 ||| `Bits64` would.
-divModBody : Closed Run (InDirect [W64, W64] False) False [W64, W64]
+divModBody : Closed Run (Direct [W64, W64] False) False [W64, W64]
 divModBody = build $ \[a, b] => do
   q <- emit1 (Arith DivS a b)
   r <- emit1 (Arith RemS a b)
@@ -265,7 +266,7 @@ total' (x :: xs) = do t <- total' xs; emit1 (Arith Add x t)
 
 ||| Double arithmetic, negation, constants and every comparison, a NaN's
 ||| among them, on 1.5 and 0.25: the number of checks that fail.
-floatsBody : Closed Run (InDirect [W64] False) False [F64, F64]
+floatsBody : Closed Run (Direct [W64] False) False [F64, F64]
 floatsBody = build $ \[a, b] => do
   s <- emit1 (FArith FAdd a b)                         -- 1.75
   d <- emit1 (FArith FSub a b)                         -- 1.25
@@ -309,7 +310,7 @@ floatsBody = build $ \[a, b] => do
 
 ||| Narrow stores and loads, signed and not, into a string's bytes: the
 ||| number of checks that fail.
-bytesBody : Closed Run (InDirect [W64] False) False []
+bytesBody : Closed Run (Direct [W64] False) False []
 bytesBody = build $ \[] => do
   str <- emit1 (AllocSized StringBytes (W 8) ())
   emit0 (StoreN Sub16 (MkMem (AtPtr str) (Just (W 0)) 8) (W 0x1FFFE))
@@ -331,7 +332,7 @@ bytesBody = build $ \[] => do
 ||| words and doubles, once the doubles' and the narrow accesses' checks
 ||| pass. The closure is as `addTo w`, `addTo` with one of its two arguments
 ||| filled, and applying it to `z` fills the second and calls `addTo`.
-mainBody : Closed Run InCPS False []
+mainBody : Closed Run CPS False []
 mainBody = build $ \[] => do
   emit0 (Comment "a value live across a call")
   emit0 (Loc EmptyFC)
@@ -382,27 +383,27 @@ mainBody = build $ \[] => do
 
 Cover : Decls TestEnc
 Cover = MkDecls
-  [ MkSig (nm "cmain") InCPS [] False
-  , MkSig (NS (mkNamespace "Main.Memory") (UN (Basic "roundTrip"))) (InDirect [W64] False) [W64] True
-  , MkSig (UN (Basic "idris_routine")) (InDirect [] True) [] False ]
+  [ MkSig (nm "cmain") CPS [] False
+  , MkSig (NS (mkNamespace "Main.Memory") (UN (Basic "roundTrip"))) (Direct [W64] False) [W64] True
+  , MkSig (UN (Basic "idris_routine")) (Direct [] True) [] False ]
   []
 
-roundTripRef : Var (sigs Cover) (MkSig (NS (mkNamespace "Main.Memory") (UN (Basic "roundTrip"))) (InDirect [W64] False) [W64] True)
+roundTripRef : Var (sigs Cover) (MkSig (NS (mkNamespace "Main.Memory") (UN (Basic "roundTrip"))) (Direct [W64] False) [W64] True)
 roundTripRef = later here
 
-routineRef : Var (sigs Cover) (MkSig (UN (Basic "idris_routine")) (InDirect [] True) [] False)
+routineRef : Var (sigs Cover) (MkSig (UN (Basic "idris_routine")) (Direct [] True) [] False)
 routineRef = later (later here)
 
 ||| The word/address conversions, in a function that may make them. Only the
 ||| runtime's own code may turn a word into an address, and the producer
 ||| decides which functions those are by their module, here `Main.Memory`.
-roundTripBody : Closed Cover (InDirect [W64] False) True [W64]
+roundTripBody : Closed Cover (Direct [W64] False) True [W64]
 roundTripBody = build $ \[w] => do
   p <- emit1 (WordToAddr CON w)
   w' <- emit1 (AddrToWord p)
   ret [w']
 
-coverBody : Closed Cover InCPS False []
+coverBody : Closed Cover CPS False []
 coverBody = build $ \[] => do
   one <- emit1 (FConst 1.5)
   two <- emit1 (FArith FAdd one one)
@@ -413,15 +414,13 @@ coverBody = build $ \[] => do
   scratch <- emit1 (AreaAddr SCRATCH)
   byte <- emit1 (LoadN Sub8 False (MkMem (AtWord scratch) Nothing 0))
   emit0 (StoreN Sub16 (MkMem (AtWord scratch) (Just (W 1)) 0) byte)
-  hp <- emit1 ReadHp
-  emit0 (WriteHp hp)
-  lim <- emit1 ReadHpLim
-  emit0 (WriteHpLim lim)
-  k <- emit1 ReadK
-  emit0 (WriteK k)
-  sp <- emit1 ReadStackPointer
-  emit0 (WriteStackPointer sp)
-  pid <- emit1 (SystemCall (W 39) [])
+  hp <- emit1 (Intrinsic GetHp [])
+  emit0 (Intrinsic SetHp [hp])
+  lim <- emit1 (Intrinsic GetHpLim [])
+  emit0 (Intrinsic SetHpLim [lim])
+  k <- emit1 (Intrinsic GetK [])
+  emit0 (Intrinsic SetK [k])
+  pid <- emit1 (Intrinsic (Syscall 0) [W 39])
   str <- emit1 (AllocSized StringBytes (W 5) ())
   hdr <- emit1 (LoadHeader str)
   i64 <- emit1 (AllocObj Int64H [W 5])

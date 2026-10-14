@@ -44,8 +44,8 @@ module Compiler.Native.TermIR.Program
 
 import Compiler.Native.HeapObject.Enc
 import Compiler.Native.IRCommon.ConIds
+import Compiler.Native.IRCommon.Conv
 import Compiler.Native.IRCommon.Ty
-import Compiler.Native.TermIR.Conv
 import Compiler.Native.TermIR.Decls
 import Compiler.Native.TermIR.Def
 import Compiler.Native.TermIR.Sig
@@ -63,7 +63,7 @@ import Data.Vect
 ||| The entry: a CPS function of the program, of no parameters.
 public export
 data Entry : Decls enc -> Type where
-  MkEntry : Var d.sigs (MkSig n InCPS [] cv) -> Entry d
+  MkEntry : Var d.sigs (MkSig n CPS [] cv) -> Entry d
 
 ||| A program: a definition for every function and static, under distinct
 ||| names, its entry, and the link-time numbering of its constructors.

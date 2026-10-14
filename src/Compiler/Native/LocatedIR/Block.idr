@@ -5,10 +5,10 @@
 module Compiler.Native.LocatedIR.Block
 
 import Compiler.Native.HeapObject.Enc
-import Compiler.Native.LocatedIR.BlockLabel
-import Compiler.Native.LocatedIR.BlockTerminator
 import Compiler.Native.LocatedIR.Instr
+import Compiler.Native.LocatedIR.Label
 import Compiler.Native.LocatedIR.Reg
+import Compiler.Native.LocatedIR.Terminator
 
 %default total
 
@@ -19,7 +19,7 @@ import Compiler.Native.LocatedIR.Reg
 public export
 record Block (enc : Enc) where
   constructor MkBlock
-  label : BlockLabel
+  label : Label
   params : List (Reg enc)
   body : List (Instr enc)
-  term : BlockTerminator enc
+  term : Terminator enc

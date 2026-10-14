@@ -1,8 +1,8 @@
 function Main.sumTo CPS [slot0:Val, slot1:Val] entry 0
   0:
-    IsFixnum [slot0:Val] 2 3
+    IfFixnums [slot0:Val] 2 3
   1:
-    IsFixnum [slot1:Val] 5 6
+    IfFixnums [slot1:Val] 5 6
   2:
     slot3:Fix := Narrow Fix slot0:Val
     slot4:W64 := Untag slot3:Fix
@@ -61,10 +61,10 @@ function Main.side CPS [slot0:Val] entry 0
   3:
     slot11:Ptr CON := Narrow Ptr CON slot0:Val
     slot12:Val := Load Val [slot11:Ptr CON + 8]
-    IsFixnum [slot12:Val] 5 6
+    IfFixnums [slot12:Val] 5 6
   4:
     slot18:Val := Load Val [slot11:Ptr CON + 16]
-    IsFixnum [slot18:Val] 8 9
+    IfFixnums [slot18:Val] 8 9
   5:
     slot14:Fix := Narrow Fix slot12:Val
     slot15:W64 := Untag slot14:Fix
@@ -130,10 +130,10 @@ function Main.grow CPS [slot0:Val] entry 0
   3:
     slot11:Ptr CON := Narrow Ptr CON slot0:Val
     slot12:Val := Load Val [slot11:Ptr CON + 8]
-    IsFixnum [slot12:Val] 5 6
+    IfFixnums [slot12:Val] 5 6
   4:
     slot18:Val := Load Val [slot11:Ptr CON + 16]
-    IsFixnum [slot18:Val] 8 9
+    IfFixnums [slot18:Val] 8 9
   5:
     slot14:Fix := Narrow Fix slot12:Val
     slot15:W64 := Untag slot14:Fix

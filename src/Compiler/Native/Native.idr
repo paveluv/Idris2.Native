@@ -25,7 +25,7 @@ import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.Ty
 import Compiler.Native.Link
 import Compiler.Native.Linkage.ForeignFunctions
-import Compiler.Native.Linkage.Intrinsic
+import Compiler.Native.Linkage.InlineExtern
 import Compiler.Native.Linkage.OSService
 import Compiler.Native.Linkage.Routine
 import Compiler.Native.LocatedIR.Dump
@@ -229,16 +229,16 @@ pipeline enc settings table defs = do
     | Left problems => throw (InternalError ("native: the image cannot be assembled: " ++ show problems))
   pure image
 
-||| The intrinsics and the OS services the loaded runtime declares, each
-||| checked against the contract (`intrinsics` in
-||| `Compiler.Native.Linkage.Intrinsic`, `osServices` in
+||| The inline externs and the OS services the loaded runtime declares, each
+||| checked against the contract (`inlineExterns` in
+||| `Compiler.Native.Linkage.InlineExtern`, `osServices` in
 ||| `Compiler.Native.Linkage.OSService`): an `%extern` whose arguments lay out as the declared
 ||| registers, the token among them taking none, and whose result lays out
 ||| as the declared ones. What differs is reported; one the runtime does not
 ||| declare is not missed.
-checkIntrinsics : {auto c : Ref Ctxt Defs} -> (enc : Enc) -> Core (List String)
-checkIntrinsics enc
-    = catMaybes <$> traverse one ([(i.name, "an intrinsic", i.params, i.results) | i <- intrinsics {enc}]
+checkExterns : {auto c : Ref Ctxt Defs} -> (enc : Enc) -> Core (List String)
+checkExterns enc
+    = catMaybes <$> traverse one ([(i.name, "an inline extern", i.params, i.results) | i <- inlineExterns {enc}]
                                   ++ [(serviceExtern s, "an OS service", s.params, s.results) | s <- osServices {enc}])
   where
     -- the registers of the arguments, then of the result
@@ -289,7 +289,7 @@ loadRuntime platform enc = do
 ||| The foreign functions and externs of the libraries in the context, each
 ||| with how this backend implements it: by the runtime (`runtime`), by the
 ||| lowering inline (`lowered`), or not yet (`missing`). The runtime's own
-||| externs are its intrinsics and services, not the libraries', and are left
+||| externs are its inline externs and services, not the libraries', and are left
 ||| out.
 dumpForeign : {auto c : Ref Ctxt Defs} -> Enc -> String -> Core ()
 dumpForeign enc path = do
@@ -332,7 +332,7 @@ compileExpr c s _ outputDir tm outfile = do
     | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
   Just table <- phase "the runtime loaded" (markedForms (loadRuntime settings.platform settings.encodings))
     | Nothing => pure Nothing
-  [] <- phase "the contract checked" (checkIntrinsics settings.encodings)
+  [] <- phase "the contract checked" (checkExterns settings.encodings)
     | errs => throw (GenericMsg EmptyFC ("native: " ++ fastConcat (intersperse "\n" errs)))
   whenJust settings.dumpFlat $ \f => dumpFlat f table
   whenJust settings.dumpForeign $ \f => dumpForeign settings.encodings f

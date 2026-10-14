@@ -24,16 +24,16 @@ function Main.first CPS [slot0:Val] entry 0
 
 function Main.count CPS [slot0:Val, slot1:Val] entry 0
   0:
-    IsFixnum [slot0:Val] 3 2
+    IfFixnums [slot0:Val] 3 2
   1:
     Return slot1:Val
   2:
-    IsFixnum [slot0:Val] 6 8
+    IfFixnums [slot0:Val] 6 8
   3:
     slot2:Fix := Narrow Fix slot0:Val
     Switch slot2:Fix [0 -> 1] else 2
   4:
-    IsFixnum [slot1:Val] 16 18
+    IfFixnums [slot1:Val] 16 18
   5:
     slot15:W64 := Sub slot4:W64, slot5:W64
     slot17:Fix := TagOv slot15:W64 overflow 13
@@ -52,7 +52,7 @@ function Main.count CPS [slot0:Val, slot1:Val] entry 0
     slot5:W64 := Const 1
     Jump 5
   8:
-    IsFixnum [slot0:Val] 10 11
+    IfFixnums [slot0:Val] 10 11
   9:
     slot4:W64 := slot10:W64
     slot5:W64 := Const 1
@@ -95,7 +95,7 @@ function Main.count CPS [slot0:Val, slot1:Val] entry 0
     slot23:W64 := Const 1
     Jump 15
   18:
-    IsFixnum [slot1:Val] 20 21
+    IfFixnums [slot1:Val] 20 21
   19:
     slot22:W64 := slot28:W64
     slot23:W64 := Const 1

@@ -13,14 +13,15 @@ import Compiler.Native.HeapObject.Enc
 import Compiler.Native.HeapObject.Header
 import Compiler.Native.HeapObject.Kind
 import Compiler.Native.HeapObject.ValEnc
+import Compiler.Native.IRCommon.Conv
 import Compiler.Native.IRCommon.Intrinsic
 import Compiler.Native.IRCommon.Operators.ArithOp
 import Compiler.Native.IRCommon.Ty
 import Compiler.Native.Linkage.Sym
-import Compiler.Native.LocatedIR.CallingConvention
 import Compiler.Native.Platform
 import Compiler.Native.Target
 import Compiler.Native.X86.Asm
+import Data.Fin
 import Data.List
 import Language.Reflection
 import System
@@ -38,6 +39,15 @@ interface Sample a where
 
 Sample Nat where
   sample = 0
+
+Sample (Fin (S n)) where
+  sample = FZ
+
+Sample Bool where
+  sample = False
+
+Sample (List a) where
+  sample = []
 
 Sample Kind where
   sample = CON
@@ -164,8 +174,8 @@ TestEnc = { val := FixnumTag1 } defaultEnc
 tys : List (String, Ty TestEnc)
 tys = %runElab enumerate `{Ty}
 
-convs : List (String, CallingConvention)
-convs = %runElab enumerate `{CallingConvention}
+convs : List (String, Conv TestEnc)
+convs = %runElab enumerate `{Conv}
 
 lowerings : List (String, Lowering)
 lowerings = %runElab enumerate `{Lowering}
@@ -223,11 +233,11 @@ platforms = [ (show a ++ "-" ++ show o, MkPlatform a o) | (_, a) <- arches, (_, 
 ||| The types whose hand-written `Eq` the gate checks. The test's `run`
 ||| compares this list with the `Eq` instances in the backend's source.
 gatedEq : List String
-gatedEq = ["Arch", "CallingConvention", "Kind", "Lowering", "OS", "Platform", "Reg64", "Ty", "ValEnc"]
+gatedEq = ["Arch", "Conv", "Kind", "Lowering", "OS", "Platform", "Reg64", "Ty", "ValEnc"]
 
 failures : List String
 failures = concat
-  [ nonEmpty "Kind" kinds, nonEmpty "Ty" tys, nonEmpty "CallingConvention" convs
+  [ nonEmpty "Kind" kinds, nonEmpty "Ty" tys, nonEmpty "Conv" convs
   , nonEmpty "Lowering" lowerings, nonEmpty "ArithOp" arithOps, nonEmpty "Intrinsic" intrinsicNames
   , nonEmpty "HeaderPart" parts, nonEmpty "Reg64" regs, nonEmpty "Xmm" xmms, nonEmpty "Cond" conds
   , nonEmpty "AluOp" aluOps, nonEmpty "ShiftOp" shiftOps, nonEmpty "SseOp" sseOps
@@ -237,10 +247,10 @@ failures = concat
   , showFailures "Arch" arches, showFailures "OS" oses, showFailures "Platform" platforms
   , inverseFailures "parsePlatform" show parsePlatform platforms
   , eqFailures "Kind" kinds, eqFailures "Ty" tys
-  , eqFailures "CallingConvention" convs, eqFailures "Lowering" lowerings, eqFailures "Reg64" regs
+  , eqFailures "Conv" convs, eqFailures "Lowering" lowerings, eqFailures "Reg64" regs
   , eqFailures "ValEnc" encodings, showFailures "ValEnc" encodings
   , showFailures "Kind" kinds, distinct "HeaderPart" "both show as" parts
-  , showFailures "ArithOp" arithOps, showFailures "CallingConvention" convs, showFailures "Ty" tys
+  , showFailures "ArithOp" arithOps, showFailures "Conv" convs, showFailures "Ty" tys
   , showFailures "Intrinsic" intrinsicNames, showFailures "Reg64" regs
   , showFailures "Xmm" xmms, showFailures "Cond" conds, showFailures "AluOp" aluOps
   , showFailures "ShiftOp" shiftOps, showFailures "SseOp" sseOps, showFailures "Width" widths

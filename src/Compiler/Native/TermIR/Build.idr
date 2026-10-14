@@ -17,10 +17,10 @@ module Compiler.Native.TermIR.Build
 
 import Compiler.Native.HeapObject.Enc
 import Compiler.Native.HeapObject.ValEnc
+import Compiler.Native.IRCommon.Conv
 import Compiler.Native.IRCommon.Operators.Rel
 import Compiler.Native.IRCommon.Ty
 import Compiler.Native.TermIR.Body as TermIR
-import Compiler.Native.TermIR.Conv as TermIR
 import Compiler.Native.TermIR.Decls as TermIR
 import Compiler.Native.TermIR.Instr as TermIR
 import Compiler.Native.TermIR.IsInt as TermIR
@@ -59,14 +59,14 @@ data PBody : Decls enc -> Conv enc -> Bool -> (v : Ty enc -> Type) -> (l : List 
   PSwitch : {auto 0 int : IsInt t} -> Opnd v t -> (keys : List Int64) ->
             {auto 0 ok : So (distinct keys && keysFit t keys)} ->
             All (\_ => PBody d c m v l) keys -> PBody d c m v l -> PBody d c m v l
-  PCall : Var d.sigs (MkSig n InCPS ps cv) -> All (Opnd v) ps -> (v Val -> PBody d InCPS m v l) ->
-          PBody d InCPS m v l
-  PTailCall : Var d.sigs (MkSig n InCPS ps cv) -> All (Opnd v) ps -> PBody d InCPS m v l
-  PApply : (fn, arg : Opnd v Val) -> (v Val -> PBody d InCPS m v l) -> PBody d InCPS m v l
-  PTailApply : (fn, arg : Opnd v Val) -> PBody d InCPS m v l
-  PReturn : Opnd v Val -> PBody d InCPS m v l
+  PCall : Var d.sigs (MkSig n CPS ps cv) -> All (Opnd v) ps -> (v Val -> PBody d CPS m v l) ->
+          PBody d CPS m v l
+  PTailCall : Var d.sigs (MkSig n CPS ps cv) -> All (Opnd v) ps -> PBody d CPS m v l
+  PApply : (fn, arg : Opnd v Val) -> (v Val -> PBody d CPS m v l) -> PBody d CPS m v l
+  PTailApply : (fn, arg : Opnd v Val) -> PBody d CPS m v l
+  PReturn : Opnd v Val -> PBody d CPS m v l
   PEnter : Opnd v W64 -> List (Opnd v Val) -> PBody d c m v l
-  PRet : All (Opnd v) rs -> PBody d (InDirect rs col) m v l
+  PRet : All (Opnd v) rs -> PBody d (Direct rs col) m v l
   PCrash : String -> PBody d c m v l
   PUnsupported : String -> PBody d c m v l
 
@@ -135,35 +135,35 @@ emit0 i = MkBuild (\k => PBind i (\[] => k ()))
 
 ||| A Direct call, binding its results.
 export
-directCall : {rs : List (Ty enc)} -> Var d.sigs (MkSig n (InDirect rs col) ps cv) -> All (Opnd v) ps ->
+directCall : {rs : List (Ty enc)} -> Var d.sigs (MkSig n (Direct rs col) ps cv) -> All (Opnd v) ps ->
              Build d c m v l (All (Opnd v) rs)
 directCall f xs = vars <$> emit (DirectCall f xs)
 
 ||| A CPS call: the rest of the code is its continuation.
 export
-call : Var d.sigs (MkSig n InCPS ps cv) -> All (Opnd v) ps -> Build d InCPS m v l (Opnd v Val)
+call : Var d.sigs (MkSig n CPS ps cv) -> All (Opnd v) ps -> Build d CPS m v l (Opnd v Val)
 call f xs = MkBuild (\k => PCall f xs (k . V))
 
 ||| A closure applied to one argument: the rest of the code is its
 ||| continuation.
 export
-apply : (fn, arg : Opnd v Val) -> Build d InCPS m v l (Opnd v Val)
+apply : (fn, arg : Opnd v Val) -> Build d CPS m v l (Opnd v Val)
 apply f x = MkBuild (\k => PApply f x (k . V))
 
 export
-tailCall : Var d.sigs (MkSig n InCPS ps cv) -> All (Opnd v) ps -> End d InCPS m v l
+tailCall : Var d.sigs (MkSig n CPS ps cv) -> All (Opnd v) ps -> End d CPS m v l
 tailCall f xs = MkBuild (\_ => PTailCall f xs)
 
 export
-tailApply : (fn, arg : Opnd v Val) -> End d InCPS m v l
+tailApply : (fn, arg : Opnd v Val) -> End d CPS m v l
 tailApply f x = MkBuild (\_ => PTailApply f x)
 
 export
-return : Opnd v Val -> End d InCPS m v l
+return : Opnd v Val -> End d CPS m v l
 return x = MkBuild (\_ => PReturn x)
 
 export
-ret : All (Opnd v) rs -> End d (InDirect rs col) m v l
+ret : All (Opnd v) rs -> End d (Direct rs col) m v l
 ret xs = MkBuild (\_ => PRet xs)
 
 export

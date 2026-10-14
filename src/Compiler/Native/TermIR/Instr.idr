@@ -8,6 +8,8 @@ import Compiler.Native.HeapObject.Header
 import Compiler.Native.HeapObject.Kind
 import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.Area
+import Compiler.Native.IRCommon.Conv
+import Compiler.Native.IRCommon.Intrinsic
 import Compiler.Native.IRCommon.Operators.ArithOp
 import Compiler.Native.IRCommon.Operators.ConvOp
 import Compiler.Native.IRCommon.Operators.FOp
@@ -15,7 +17,6 @@ import Compiler.Native.IRCommon.Operators.Rel
 import Compiler.Native.IRCommon.Operators.SubWord
 import Compiler.Native.IRCommon.Operators.UnOp
 import Compiler.Native.IRCommon.Ty
-import Compiler.Native.TermIR.Conv
 import Compiler.Native.TermIR.Decls
 import Compiler.Native.TermIR.FieldTys
 import Compiler.Native.TermIR.IsInt
@@ -29,7 +30,6 @@ import Core.FC
 import Core.Name
 import Data.List.Quantifiers
 import Data.So
-import Data.Vect
 
 %default total
 
@@ -55,7 +55,7 @@ public export
 data Instr : Decls enc -> Bool -> (var : Ty enc -> Type) -> List (Ty enc) -> Type where
   FConst : Double -> Instr d m var [F64]
   ||| The entry address of a CPS function of the program: a closure's code.
-  CodeAddr : Var d.sigs (MkSig n InCPS ps cv) -> Instr d m var [W64]
+  CodeAddr : Var d.sigs (MkSig n CPS ps cv) -> Instr d m var [W64]
   ||| The address of a static object, as a pointer to its kind.
   StaticAddr : Var d.statics (MkStaticSig s k) -> Instr d m var [PtrTo k]
   AreaAddr : Area -> Instr d m var [W64]
@@ -100,17 +100,9 @@ data Instr : Decls enc -> Bool -> (var : Ty enc -> Type) -> List (Ty enc) -> Typ
   AllocSized : {k : Kind} -> (p : HeaderPart k) -> {auto 0 sizes : Sizes p} -> (count : Opnd var W64) ->
                Fill var p -> Instr d m var [PtrTo k]
   ||| A machine call of a Direct function, binding its results.
-  DirectCall : Var d.sigs (MkSig n (InDirect rs col) ps cv) -> All (Opnd var) ps -> Instr d m var rs
-  ReadHp : Instr d m var [W64]
-  WriteHp : Opnd var W64 -> Instr d m var []
-  ReadHpLim : Instr d m var [W64]
-  WriteHpLim : Opnd var W64 -> Instr d m var []
-  ReadK : Instr d m var [PtrTo CONT]
-  WriteK : Opnd var (PtrTo CONT) -> Instr d m var []
-  ReadStackPointer : Instr d m var [W64]
-  WriteStackPointer : Opnd var W64 -> Instr d m var []
-  ||| A system call: a number and up to six arguments.
-  SystemCall : Opnd var W64 -> (args : Vect a (Opnd var W64)) -> {auto 0 ok : LTE a 6} -> Instr d m var [W64]
+  DirectCall : Var d.sigs (MkSig n (Direct rs col) ps cv) -> All (Opnd var) ps -> Instr d m var rs
+  ||| An intrinsic, on what it takes, binding what it gives.
+  Intrinsic : (i : Intrinsic) -> All (Opnd var) (params i) -> Instr d m var (results i)
   ||| The source location of what follows.
   Loc : FC -> Instr d m var []
   Comment : String -> Instr d m var []
@@ -158,14 +150,6 @@ traverseInstr g (AllocSized ClosureFilled {sizes} c f) = (\c' => AllocSized Clos
 traverseInstr g (AllocSized BignumNegative {sizes} c f) = (\c' => AllocSized BignumNegative {sizes} c' f) <$> g c
 traverseInstr g (AllocSized BignumWords {sizes} c f) = (\c' => AllocSized BignumWords {sizes} c' f) <$> g c
 traverseInstr g (DirectCall r xs) = DirectCall r <$> traverseAll g xs
-traverseInstr g ReadHp = pure ReadHp
-traverseInstr g (WriteHp x) = WriteHp <$> g x
-traverseInstr g ReadHpLim = pure ReadHpLim
-traverseInstr g (WriteHpLim x) = WriteHpLim <$> g x
-traverseInstr g ReadK = pure ReadK
-traverseInstr g (WriteK x) = WriteK <$> g x
-traverseInstr g ReadStackPointer = pure ReadStackPointer
-traverseInstr g (WriteStackPointer x) = WriteStackPointer <$> g x
-traverseInstr g (SystemCall {ok} n xs) = [| (\n', xs' => SystemCall {ok} n' xs') (g n) (traverse g xs) |]
+traverseInstr g (Intrinsic i xs) = Intrinsic i <$> traverseAll g xs
 traverseInstr g (Loc fc) = pure (Loc fc)
 traverseInstr g (Comment s) = pure (Comment s)

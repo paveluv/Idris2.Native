@@ -4,8 +4,8 @@
 module Compiler.Native.TermIR.Sig
 
 import Compiler.Native.HeapObject.Enc
+import Compiler.Native.IRCommon.Conv
 import Compiler.Native.IRCommon.Ty
-import Compiler.Native.TermIR.Conv
 import Core.Name
 
 %default total

@@ -1,5 +1,5 @@
 -- The probe's failures as the exit status: 0 when every check holds. The
--- program runs only natively: the runtime's intrinsics are instructions of
+-- program runs only natively: the runtime's inline externs are instructions of
 -- the native code generator, and no other code generator has them.
 module Main
 

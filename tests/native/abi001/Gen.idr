@@ -24,6 +24,8 @@ import Compiler.Native.HeapObject.Enc
 import Compiler.Native.HeapObject.StringEnc
 import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.ConIds
+import Compiler.Native.IRCommon.Conv
+import Compiler.Native.IRCommon.Intrinsic
 import Compiler.Native.IRCommon.Operators.ArithOp
 import Compiler.Native.IRCommon.Operators.ConvOp
 import Compiler.Native.IRCommon.Operators.Rel
@@ -36,7 +38,6 @@ import Compiler.Native.RegAlloc
 import Compiler.Native.Target
 import Compiler.Native.TermIR.Body
 import Compiler.Native.TermIR.Build
-import Compiler.Native.TermIR.Conv
 import Compiler.Native.TermIR.Decls
 import Compiler.Native.TermIR.Def
 import Compiler.Native.TermIR.Instr
@@ -95,58 +96,58 @@ Results : List (Ty TestEnc)
 Results = map (tyOf . source) indices
 
 D : Decls TestEnc
-D = MkDecls [ MkSig (nm "main") InCPS [] False
-            , MkSig (nm "spread") (InDirect Results False) Params False
-            , MkSig (nm "exit") (InDirect [] False) [W64] False
-            , MkSig (flatName runtimeCrash) (InDirect [] False) [W64, W64] False
-            , MkSig (flatName runtimeStart) (InDirect [] False) [W64, W64] False
-            , MkSig (flatName runtimeAllocSlow) (InDirect [W64] False) [W64] False ]
+D = MkDecls [ MkSig (nm "main") CPS [] False
+            , MkSig (nm "spread") (Direct Results False) Params False
+            , MkSig (nm "exit") (Direct [] False) [W64] False
+            , MkSig (flatName runtimeCrash) (Direct [] False) [W64, W64] False
+            , MkSig (flatName runtimeStart) (Direct [] False) [W64, W64] False
+            , MkSig (flatName runtimeAllocSlow) (Direct [W64] False) [W64] False ]
             []
 
-spreadRef : Var (sigs D) (MkSig (nm "spread") (InDirect Results False) Params False)
+spreadRef : Var (sigs D) (MkSig (nm "spread") (Direct Results False) Params False)
 spreadRef = later here
 
-exitRef : Var (sigs D) (MkSig (nm "exit") (InDirect [] False) [W64] False)
+exitRef : Var (sigs D) (MkSig (nm "exit") (Direct [] False) [W64] False)
 exitRef = later (later here)
 
 ||| The runtime's `start`, reduced to what this program needs: the first
 ||| allocation window, mapped, of `window` bytes, as the allocation pointer
 ||| and its limit. The stack limit stays 0, so the stack is not checked.
-startBody : Closed D (InDirect [] False) False [W64, W64]
+startBody : Closed D (Direct [] False) False [W64, W64]
 startBody = build $ \[entry, window] => do
   -- mmap(NULL, window, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)
-  w <- emit1 (SystemCall (W 9) [W 0, window, W 3, W 0x22, W (-1), W 0])
-  emit0 (WriteHp w)
+  w <- emit1 (Intrinsic (Syscall 6) [W 9, W 0, window, W 3, W 0x22, W (-1), W 0])
+  emit0 (Intrinsic SetHp [w])
   lim <- emit1 (Arith Add w window)
-  emit0 (WriteHpLim lim)
+  emit0 (Intrinsic SetHpLim [lim])
   ret []
 
 ||| The runtime's allocation slow path, reduced to what this program needs:
 ||| a fresh megabyte and `bytes` more from the system, the object at its
 ||| start, and the rest the allocation window. Nothing is collected.
-allocSlowBody : Closed D (InDirect [W64] False) False [W64]
+allocSlowBody : Closed D (Direct [W64] False) False [W64]
 allocSlowBody = build $ \[bytes] => do
   size <- emit1 (Arith Add bytes (W 1048576))
   -- mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)
-  w <- emit1 (SystemCall (W 9) [W 0, size, W 3, W 0x22, W (-1), W 0])
+  w <- emit1 (Intrinsic (Syscall 6) [W 9, W 0, size, W 3, W 0x22, W (-1), W 0])
   hp <- emit1 (Arith Add w bytes)
-  emit0 (WriteHp hp)
+  emit0 (Intrinsic SetHp [hp])
   lim <- emit1 (Arith Add w size)
-  emit0 (WriteHpLim lim)
+  emit0 (Intrinsic SetHpLim [lim])
   ret [w]
 
 ||| The runtime's `crash`: the message, `length` bytes at `message`, written
 ||| to the standard error, then the process ended with status 1.
-crashBody : Closed D (InDirect [] False) False [W64, W64]
+crashBody : Closed D (Direct [] False) False [W64, W64]
 crashBody = build $ \[message, length] => do
-  _ <- emit1 (SystemCall (W 1) [W 2, message, length, W 0, W 0, W 0])
-  _ <- emit1 (SystemCall (W 231) [W 1, W 0, W 0, W 0, W 0, W 0])
+  _ <- emit1 (Intrinsic (Syscall 6) [W 1, W 2, message, length, W 0, W 0, W 0])
+  _ <- emit1 (Intrinsic (Syscall 6) [W 231, W 1, W 0, W 0, W 0, W 0, W 0])
   ret []
 
 ||| The system call exit_group with the status.
-exitBody : Closed D (InDirect [] False) False [W64]
+exitBody : Closed D (Direct [] False) False [W64]
 exitBody = build $ \[status] => do
-  _ <- emit1 (SystemCall (W 231) [status, W 0, W 0, W 0, W 0, W 0])
+  _ <- emit1 (Intrinsic (Syscall 6) [W 231, status, W 0, W 0, W 0, W 0, W 0])
   ret []
 
 ||| The arguments, rotated by one: what `spread` returns.
@@ -157,38 +158,38 @@ rotate (y :: ys) = go ys y
     go [] z = [z]
     go (w :: ws) z = w :: go ws z
 
-spreadBody : Closed D (InDirect Results False) False Params
+spreadBody : Closed D (Direct Results False) False Params
 spreadBody = build $ \args => ret (rotate args)
 
 ||| Argument i: a word, or a double converted from one.
-argument : (i : Nat) -> Build D InCPS False v l (Opnd v (tyOf i))
+argument : (i : Nat) -> Build D CPS False v l (Opnd v (tyOf i))
 argument i with (isWord i)
   _ | True = pure (W (value i))
   _ | False = emit1 (Convert I2F (W (value i)))
 
-arguments : (is : List Nat) -> Build D InCPS False v l (All (Opnd v) (map Main.tyOf is))
+arguments : (is : List Nat) -> Build D CPS False v l (All (Opnd v) (map Main.tyOf is))
 arguments [] = pure []
 arguments (i :: is) = [| argument i :: arguments is |]
 
-exitWith : Int64 -> End D InCPS False v l
+exitWith : Int64 -> End D CPS False v l
 exitWith status = do
   _ <- directCall exitRef [W status]
   crash "exit returned"
 
 ||| Result j checked against the argument it should be: a double through
 ||| its conversion back to a word.
-result : (j : Nat) -> Opnd v (tyOf (source j)) -> End D InCPS False v l -> End D InCPS False v l
+result : (j : Nat) -> Opnd v (tyOf (source j)) -> End D CPS False v l -> End D CPS False v l
 result j r next with (isWord (source j))
   _ | True = branch EqR r (W (value (source j))) next (exitWith (cast (1 + j)))
   _ | False = do
     w <- emit1 (Convert F2I r)
     branch EqR w (W (value (source j))) next (exitWith (cast (1 + j)))
 
-results : (js : List Nat) -> All (Opnd v) (map (Main.tyOf . Main.source) js) -> End D InCPS False v l
+results : (js : List Nat) -> All (Opnd v) (map (Main.tyOf . Main.source) js) -> End D CPS False v l
 results [] [] = exitWith 42
 results (j :: js) (r :: rs) = result j r (results js rs)
 
-mainBody : Closed D InCPS False []
+mainBody : Closed D CPS False []
 mainBody = build $ \[] => do
   args <- arguments indices
   rs <- directCall spreadRef args
