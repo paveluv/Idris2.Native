@@ -54,6 +54,9 @@
 ||| collection can see a partial one.
 module Compiler.Native.X86.Render
 
+import Compiler.Native.X86.Asm as X86
+import Compiler.Native.X86.Target
+
 import Compiler.Native.Bytes
 import Compiler.Native.HeapObject.Enc
 import Compiler.Native.HeapObject.Header as HeapObject
@@ -85,8 +88,6 @@ import Compiler.Native.LocatedIR.Reg
 import Compiler.Native.LocatedIR.Static
 import Compiler.Native.LocatedIR.Terminator as LocatedIR
 import Compiler.Native.Target as Native
-import Compiler.Native.X86.Asm as X86
-import Compiler.Native.X86.Target
 import Control.Monad.State.Interface
 import Control.Monad.State.State
 import Control.Monad.Trans

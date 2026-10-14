@@ -3,15 +3,16 @@
 ||| it starts at.
 module Lint.Refactor.Extent
 
+import Lint.Refactor.Edit
+import Lint.Refactor.Span
+import Lint.Refactor.Subject
+
 import Core.FC
 import Core.WithData
 import Data.List
 import Data.String
 import Idris.Syntax
 import Libraries.Data.WithData
-import Lint.Refactor.Edit
-import Lint.Refactor.Span
-import Lint.Refactor.Subject
 import Lint.Rules
 import Lint.Source
 
@@ -31,16 +32,21 @@ record Extent where
   ||| The source lines the text is made of, in ranges, both ends included.
   segments : List (Int, Int)
 
-||| The first line of what is attached above a line: the comments, pragmas
-||| and totality modifiers written just above it, with no blank line
-||| between, which move with the declaration below them.
+||| The first line of what is attached above a line: the comments, pragmas,
+||| totality modifiers and visibility written just above it, with no blank
+||| line between, which move with the declaration below them.
 export
 attachedFrom : List String -> (line : Int) -> Int
 attachedFrom ls l = if l > 0 && maybe False attached (head' (drop (cast (l - 1)) ls)) then attachedFrom ls (l - 1) else l
   where
+    -- a line of nothing but visibility and totality: `public export`,
+    -- `export covering`, `total`
+    modifiers : String -> Bool
+    modifiers t = t /= "" && all (`elem` the (List String) ["export", "public", "private", "total", "covering", "partial"]) (words t)
+
     attached : String -> Bool
     attached x = let t = trim x in
-      isPrefixOf "|||" t || isPrefixOf "--" t || isPrefixOf "%" t || (t `elem` the (List String) ["total", "covering", "partial"])
+      isPrefixOf "|||" t || isPrefixOf "--" t || isPrefixOf "%" t || modifiers t
 
 ||| The definitions of the names a claim declares, in the order written.
 export

@@ -4,8 +4,9 @@
 ||| is).
 module Compiler.Native.LocatedIR.Mem
 
-import Compiler.Native.HeapObject.Enc
 import Compiler.Native.LocatedIR.Reg
+
+import Compiler.Native.HeapObject.Enc
 
 %default total
 

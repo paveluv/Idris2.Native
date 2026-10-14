@@ -15,11 +15,6 @@
 ||| has to say what it does then, which is to return `Nothing`.
 module Compiler.Native.TermIR.Build
 
-import Compiler.Native.HeapObject.Enc
-import Compiler.Native.HeapObject.ValEnc
-import Compiler.Native.IRCommon.Conv
-import Compiler.Native.IRCommon.Operators.Rel
-import Compiler.Native.IRCommon.Ty
 import Compiler.Native.TermIR.Body as TermIR
 import Compiler.Native.TermIR.Decls as TermIR
 import Compiler.Native.TermIR.Instr as TermIR
@@ -28,6 +23,12 @@ import Compiler.Native.TermIR.Opnd as TermIR
 import Compiler.Native.TermIR.OvOp as TermIR
 import Compiler.Native.TermIR.Sig as TermIR
 import Compiler.Native.TermIR.Var as TermIR
+
+import Compiler.Native.HeapObject.Enc
+import Compiler.Native.HeapObject.ValEnc
+import Compiler.Native.IRCommon.Conv
+import Compiler.Native.IRCommon.Operators.Rel
+import Compiler.Native.IRCommon.Ty
 import Core.Name
 import Data.Distinct
 import Data.List

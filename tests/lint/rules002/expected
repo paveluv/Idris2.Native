@@ -1,3 +1,6 @@
 ./Cat.idr:12:1 same-name: `speak` is also defined in `Dog`; they meet bare in `Pets`, `Zoo`, each of which qualifies one by its group
 ./Dog.idr:10:1 same-name: `speak` is also defined in `Cat`; they meet bare in `Pets`, `Zoo`, each of which qualifies one by its group
 ./Elsewhere.idr:1:1 module-name: `Elsewhere` is named after nothing it defines: a reader looks a symbol up by its module's name
+./Farm/FarmHand.idr:1:1 group-prefix: `FarmHand` begins with its group's name, `Farm`, which qualifies it already: `Farm.Hand`
+./Farm/FarmHand.idr:1:1 module-name: `Farm.FarmHand` is named after nothing it defines: a reader looks a symbol up by its module's name
+./Farm/FarmHand.idr:9:1 group-prefix: `farmTool` begins with its group's name, `Farm`, which qualifies it already: `Farm.tool`

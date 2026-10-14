@@ -1,0 +1,10 @@
+package fixtures
+
+depends = idris2-native
+
+modules =
+    Both,
+    Dump,
+    Heap.Header,
+    Heap.Ring,
+    Places

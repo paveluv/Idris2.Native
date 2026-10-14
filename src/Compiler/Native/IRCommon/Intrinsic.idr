@@ -5,9 +5,10 @@
 ||| (`Compiler.Native.IRCommon.Ty` says what it is).
 module Compiler.Native.IRCommon.Intrinsic
 
+import Compiler.Native.IRCommon.Ty
+
 import Compiler.Native.HeapObject.Enc
 import Compiler.Native.HeapObject.Kind
-import Compiler.Native.IRCommon.Ty
 import Data.Fin
 import Data.List
 

@@ -14,18 +14,19 @@
 ||| (`-- lint: exclude precision: ...`).
 module Lint.Precision
 
-import Core.Name.Namespace
-import Data.List
-import Data.Maybe
-import Data.SortedMap
-import Data.SortedSet
-import Idris.Syntax
 import Lint.Concept
 import Lint.Finding
 import Lint.Graph
 import Lint.Resolution
 import Lint.Rules
 import Lint.Source
+
+import Core.Name.Namespace
+import Data.List
+import Data.Maybe
+import Data.SortedMap
+import Data.SortedSet
+import Idris.Syntax
 
 %default covering
 
@@ -39,11 +40,10 @@ record ImportEdge where
   offered : Nat
   used : Nat
 
-||| The modules left out of precision as imported ones, each by a comment
-||| with its reason.
+||| The modules left out of a component, each by a comment with its reason.
 export
-excludedModules : List SourceFile -> List String
-excludedModules fs = [ show f.mod.moduleNS | f <- fs, any (\e => e.componentName == "precision" && e.reason /= "") (exclusions f) ]
+excludedFrom : (component : String) -> List SourceFile -> List String
+excludedFrom c fs = [ show f.mod.moduleNS | f <- fs, any (\e => e.componentName == c && e.reason /= "") (exclusions f) ]
 
 ||| The concepts of each of our modules, by module.
 export
@@ -64,7 +64,7 @@ export
 precision : List (SourceFile, List Declared) -> Resolution -> Component
 precision fds r =
   let byModule = conceptsByModule fds
-      out = excludedModules (map fst fds)
+      out = excludedFrom "precision" (map fst fds)
       ours = the (SortedSet String) (fromList (keys byModule))
       edges = joined [ mapMaybe (edge byModule ours out rm) (map fst rm.imports) | rm <- r.modules ]
       usedNames = sum (map (.used) edges)

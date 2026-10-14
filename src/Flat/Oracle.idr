@@ -8,6 +8,10 @@
 ||| the flat forms and the shapes of their data types to the file.
 module Flat.Oracle
 
+import Flat.Exp
+import Flat.Marked
+import Flat.Translate
+
 import Compiler.Common
 import Compiler.Scheme.Chez
 import Core.Context
@@ -17,9 +21,6 @@ import Core.Options
 import Core.TT.Term
 import Data.List1
 import Data.String
-import Flat.Exp
-import Flat.Marked
-import Flat.Translate
 import Idris.Syntax
 import Libraries.Data.NameMap
 

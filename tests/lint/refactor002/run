@@ -1,0 +1,30 @@
+. ../../testutils.sh
+
+# split-module moves concepts of a module into a module of its own, given
+# its name and theirs, and rewrites the modules that use them; then
+# prune-imports takes out, one at a time, each import a module checks
+# without, and order-imports puts the rest in order. The check is the type
+# checker's, on each file a change touches.
+rm -rf work
+mkdir work
+cp -r Heap Places.idr Both.idr Dump.idr fixtures.ipkg work
+cd work
+lint=../../../../tools/lint/build/exec/idris2-native-lint
+check='idris2 --check {} > /dev/null 2>&1'
+
+# `Part` and `place` into `Heap.Part`; `Heap.Header` then imports it, as
+# `parts` names `Part`. The two concepts of `Heap.Ring` refer to each other
+# and stay.
+$lint --refactor split-module --arg Heap.Part --arg Part --check "$check" .
+$lint --refactor split-module --arg Heap.Ring.B --arg B --check "$check" .
+$lint --refactor prune-imports --check "$check" Heap/Part.idr
+$lint --refactor order-imports .
+for f in Heap/Part.idr Heap/Header.idr Places.idr Both.idr Dump.idr fixtures.ipkg; do
+  echo "--- $f"
+  cat $f
+done
+for f in Heap/Part.idr Heap/Header.idr Places.idr Both.idr Dump.idr; do
+  idris2 --check $f > /dev/null && echo "$f checks"
+done
+cd ..
+rm -rf work

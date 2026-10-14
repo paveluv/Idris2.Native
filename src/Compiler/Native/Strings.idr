@@ -13,6 +13,7 @@ import Compiler.Native.HeapObject.Header
 import Compiler.Native.HeapObject.Kind
 import Compiler.Native.HeapObject.StringEnc
 import Compiler.Native.HeapObject.ValEnc
+
 import Data.List
 import Data.Vect
 

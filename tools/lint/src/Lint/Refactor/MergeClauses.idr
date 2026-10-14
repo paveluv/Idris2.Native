@@ -21,6 +21,15 @@
 ||| only the type checker can.
 module Lint.Refactor.MergeClauses
 
+import Lint.Refactor.Change
+import Lint.Refactor.Edit
+import Lint.Refactor.Extent
+import Lint.Refactor.Free
+import Lint.Refactor.Refactoring
+import Lint.Refactor.Reindent
+import Lint.Refactor.Span
+import Lint.Refactor.Subject
+
 import Core.FC
 import Core.Name
 import Core.TT
@@ -34,14 +43,6 @@ import Data.String
 import Data.Zippable
 import Idris.Syntax
 import Libraries.Data.WithData
-import Lint.Refactor.Change
-import Lint.Refactor.Edit
-import Lint.Refactor.Extent
-import Lint.Refactor.Free
-import Lint.Refactor.Refactoring
-import Lint.Refactor.Reindent
-import Lint.Refactor.Span
-import Lint.Refactor.Subject
 import Lint.Rules
 import Lint.Source
 
@@ -80,7 +81,7 @@ data Position = Kept String | Matched | Fixed String
 ||| only it uses, written as one clause with a `case`.
 export
 mergeClauses : Refactoring
-mergeClauses = MkRefactoring "merge-clauses"
+mergeClauses = fileRefactoring "merge-clauses"
   "write as one clause with a `case` each function several clauses of which use a helper only it uses"
   candidates
   where

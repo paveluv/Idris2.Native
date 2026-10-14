@@ -4,11 +4,6 @@
 ||| Part of the term IR (`Compiler.Native.TermIR.Program` says what it is).
 module Compiler.Native.TermIR.Body
 
-import Compiler.Native.HeapObject.Enc
-import Compiler.Native.HeapObject.ValEnc
-import Compiler.Native.IRCommon.Conv
-import Compiler.Native.IRCommon.Operators.Rel
-import Compiler.Native.IRCommon.Ty
 import Compiler.Native.TermIR.Decls
 import Compiler.Native.TermIR.Instr
 import Compiler.Native.TermIR.IsInt
@@ -16,6 +11,12 @@ import Compiler.Native.TermIR.Opnd
 import Compiler.Native.TermIR.OvOp
 import Compiler.Native.TermIR.Sig
 import Compiler.Native.TermIR.Var
+
+import Compiler.Native.HeapObject.Enc
+import Compiler.Native.HeapObject.ValEnc
+import Compiler.Native.IRCommon.Conv
+import Compiler.Native.IRCommon.Operators.Rel
+import Compiler.Native.IRCommon.Ty
 import Core.Name
 import Data.Distinct
 import Data.List

@@ -5,8 +5,9 @@
 ||| is).
 module Compiler.Native.LocatedIR.Opnd
 
-import Compiler.Native.HeapObject.Enc
 import Compiler.Native.LocatedIR.Reg
+
+import Compiler.Native.HeapObject.Enc
 import Core.Name
 
 %default total

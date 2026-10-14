@@ -42,16 +42,17 @@
 ||| `Compiler.Native.TermIR.Build`.
 module Compiler.Native.TermIR.Program
 
-import Compiler.Native.HeapObject.Enc
-import Compiler.Native.IRCommon.ConIds
-import Compiler.Native.IRCommon.Conv
-import Compiler.Native.IRCommon.Ty
 import Compiler.Native.TermIR.Decls
 import Compiler.Native.TermIR.Def
 import Compiler.Native.TermIR.Sig
 import Compiler.Native.TermIR.StaticDef
 import Compiler.Native.TermIR.StaticSig
 import Compiler.Native.TermIR.Var
+
+import Compiler.Native.HeapObject.Enc
+import Compiler.Native.IRCommon.ConIds
+import Compiler.Native.IRCommon.Conv
+import Compiler.Native.IRCommon.Ty
 import Core.Name
 import Data.Distinct
 import Data.List.Quantifiers

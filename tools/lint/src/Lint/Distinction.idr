@@ -3,15 +3,24 @@
 ||| a group most of whose members could be joined so is oversplit.
 |||
 ||| A group is the modules under one parent (`Compiler.Native.IRCommon.
-||| Operators`' `ConvOp`, `FOp`, ...); modules at the top are in none. Two
+||| Operators`' `ConvOp`, `FOp`, ...); modules at the top are in none, and a
+||| module alone under its parent has no sibling to join. Two
 ||| members with the same importers, at least two, are imported together
 ||| every time: no importer takes one without the other, so joining them
 ||| would cost none of them precision. One importer is no evidence: a module
 ||| imported once is imported with whatever else its importer needs. A
-||| group's share of members that could be joined so says how oversplit it
-||| is; at four in five or more, the group is a candidate to collapse into
-||| one module.
+||| member too small to stand alone, its concepts shorter than a piece is
+||| worth (`pieceLines`), could be joined to a sibling too: the rule that
+||| keeps a small piece in its module, read backwards. A group's share of
+||| members that could be joined says how oversplit it is; at four in five
+||| or more, the group is a candidate to collapse into one module.
 module Lint.Distinction
+
+import Lint.Concept
+import Lint.Finding
+import Lint.Graph
+import Lint.Rules
+import Lint.Source
 
 import Core.Name.Namespace
 import Data.List
@@ -21,9 +30,6 @@ import Data.SortedMap
 import Data.SortedSet
 import Data.String
 import Idris.Syntax
-import Lint.Finding
-import Lint.Graph
-import Lint.Source
 
 %default covering
 
@@ -32,17 +38,23 @@ import Lint.Source
 ||| be joined, by the modules joining would remove: what share of the group
 ||| that is, and which siblings are always imported together, by whom.
 export
-distinction : List SourceFile -> Component
-distinction fs =
-  let members = filter (\m => groupOf m /= "") (map name fs)
+distinction : List (SourceFile, List Declared) -> Component
+distinction fds =
+  let grouped = filter (\m => groupOf m /= "") (map name fs)
+      members = filter (\m => length (filter (\o => groupOf o == groupOf m) grouped) >= 2) grouped
       classes = twinClasses importedTwice
-      joinable = length (joined classes)
+      small = filter (\(m, _) => m `elem` members) smallMembers
+      joinable = length (nub (joined classes ++ map fst small))
   in MkComponent "structure" "distinction" (percent (minus (length members) joinable) (length members))
-       ("group members imported apart from their siblings: " ++ show (minus (length members) joinable) ++ " of " ++ show (length members))
-       (mapMaybe (groupOffender members classes) (nub (map groupOf members)))
+       ("group members that stand apart from their siblings: " ++ show (minus (length members) joinable) ++ " of " ++ show (length members))
+       (mapMaybe (groupOffender members classes small) (nub (map groupOf members)))
   where
+    fs : List SourceFile
+    fs = map fst fds
+
     name : SourceFile -> String
     name f = show f.mod.moduleNS
+
 
     addImporter : SortedMap String (List String) -> (String, String) -> SortedMap String (List String)
     addImporter acc (i, m) = insert i (m :: fromMaybe [] (lookup i acc)) acc
@@ -59,6 +71,11 @@ distinction fs =
     groupOf m = case reverse (List1.forget (Data.String.split (== '.') m)) of
       (_ :: rest@(_ :: _)) => fastConcat (intersperse "." (reverse rest))
       _ => ""
+
+    -- the members of groups too small to stand alone, with their sizes
+    smallMembers : List (String, Nat)
+    smallMembers =
+      [ (name f, size) | (f, ds) <- fds, groupOf (name f) /= "", let size = sum (map (.size) (conceptsOf f ds)), size < pieceLines ]
 
     key : (String, List String) -> (String, List String)
     key (m, is) = (groupOf m, is)
@@ -88,14 +105,19 @@ distinction fs =
 
     -- a group with members that could be joined: what share they are, and
     -- which, at four in five or more a candidate to collapse
-    groupOffender : List String -> List (List String) -> String -> Maybe Offender
-    groupOffender members classes g =
+    groupOffender : List String -> List (List String) -> List (String, Nat) -> String -> Maybe Offender
+    groupOffender members classes small g =
       let mine = filter (\c => maybe False (\m => groupOf m == g) (head' c)) classes
+          tiny = filter (\(m, _) => groupOf m == g) small
           size = length (filter (\m => groupOf m == g) members)
-          joinable = length (joined mine)
-          share = percent joinable size
-      in if null mine then Nothing else
-           Just (MkOffender g (minus joinable (length mine))
-                   (show joinable ++ " of its " ++ show size ++ " members (" ++ show share ++ "%) could be joined without costing precision"
+          joinable = nub (joined mine ++ map fst tiny)
+          share = percent (length joinable) size
+      in if null joinable || size < 2 then Nothing else
+           Just (MkOffender g (minus (length joinable) (length mine))
+                   (show (length joinable) ++ " of its " ++ show size ++ " members (" ++ show share ++ "%) could be joined"
                     ++ (if share >= 80 then ", a candidate to collapse into one module" else "")
-                    ++ ": " ++ fastConcat (intersperse "; " (map together mine))))
+                    ++ ": " ++ fastConcat (intersperse "; " (map together mine ++ smallOnes tiny))))
+      where
+        smallOnes : List (String, Nat) -> List String
+        smallOnes [] = []
+        smallOnes ts = ["too small to stand alone: " ++ joinBy ", " (map (\(m, n) => "`" ++ lastName m ++ "` (" ++ show n ++ " lines)") ts)]

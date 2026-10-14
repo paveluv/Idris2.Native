@@ -14,6 +14,11 @@
 ||| module's interface for another's type.
 module Lint.Concept
 
+import Lint.Finding
+import Lint.Refactor.Span
+import Lint.Rules
+import Lint.Source
+
 import Core.Name
 import Core.Name.Namespace
 import Core.TT
@@ -22,20 +27,18 @@ import Data.List
 import Data.List1
 import Data.Maybe
 import Data.SortedMap
+import Data.SortedSet
 import Data.String
 import Idris.Syntax
 import Libraries.Data.WithData
-import Lint.Finding
-import Lint.Rules
-import Lint.Source
 
 %default covering
 
 ||| A concept of a module: what it is called (its type's name, or its
 ||| definition's), the names that are it (as a use names them, an
 ||| implementation by what it implements, `Show Header`), whether an
-||| importer sees it (one of its definitions is exported), and the other
-||| concepts of the module its definitions refer to.
+||| importer sees it (one of its definitions is exported), the other
+||| concepts of the module its definitions refer to, and its size.
 public export
 record Concept where
   constructor MkConcept
@@ -43,19 +46,27 @@ record Concept where
   members : List String
   offered : Bool
   refers : List String
+  ||| The lines its declarations take, their documentation included.
+  size : Nat
 
-||| A module's concepts, in the order their first declarations are written.
+||| The lines a piece of a module holds at least to be worth a module of its
+||| own: a module costs its preamble, its documentation, imports and
+||| `%default`, ten lines or so, and a piece of less than twice that would
+||| cost more as a file than it saves its importers. Below it, a piece stays
+||| where it is, and a module is too small to stand alone.
 export
-conceptsOf : SourceFile -> List Declared -> List Concept
-conceptsOf f ds =
+pieceLines : Nat
+pieceLines = 20
+
+||| The concept each of a module's declarations belongs to, by its name.
+export
+ownerIn : SourceFile -> List Declared -> Declared -> String
+ownerIn f ds =
   let types = joined (map typeNames ds)
       interfaces = joined (map interfaceNames ds)
       placed = belongsTo (keyOf f types) types interfaces
       claimed = the (SortedMap String String) (fromList [ (n, placed d) | d <- ds, isClaim d, n <- d.defines ])
-      owner = ownerBy placed claimed
-      names = nub (map owner ds)
-      memberOf = the (SortedMap String String) (fromList [ (m, owner d) | d <- ds, m <- membersOf d ])
-  in map (concept owner memberOf) names
+  in ownerBy placed claimed
   where
     ||| Whether a type is that of a type: one that, past its binders, is `Type`,
     ||| as a synonym's or a type family's is (`Op : Type -> Type -> Type`).
@@ -90,33 +101,6 @@ conceptsOf f ds =
       PDef _ => fromMaybe (placed d) (head' d.defines >>= \n => lookup n claimed)
       _ => placed d
 
-    ||| The names a declaration contributes to its concept: those it defines,
-    ||| and a type's constructors, fields and methods; an implementation, by
-    ||| what it implements.
-    membersOf : Declared -> List String
-    membersOf d = case d.decl.val of
-      PData _ _ _ (MkPData _ n _ _ cons) => nameRoot n :: foldr (\c, rest => map (nameRoot . (.val) . snd) (forget c.val.names) ++ rest) [] cons
-      PRecord _ _ _ (MkPRecord n _ _ con fields) =>
-        nameRoot n :: maybe [] (\c => [nameRoot c.val]) con ++ foldr (\f, rest => map (nameRoot . (.val)) f.names ++ rest) [] fields
-      PInterface _ _ n _ _ _ _ body =>
-        nameRoot n :: foldr (\m, rest => case m.val of
-                                           PClaim c => map (nameRoot . (.val) . snd) (forget c.type.val.names) ++ rest
-                                           _ => rest) [] body
-      PImplementation {} => maybe [] (\ip => [unwords (fst ip :: snd ip)]) d.implementing
-      _ => d.defines
-
-    ||| Whether a declaration makes its concept visible to an importer.
-    exportedHere : Declared -> Bool
-    exportedHere d = case d.decl.val of
-      PImplementation v _ _ _ _ _ _ _ _ _ => v /= Private
-      _ => not (null d.visible)
-
-    concept : (Declared -> String) -> SortedMap String String -> String -> Concept
-    concept owner memberOf n =
-      let mine = filter (\d => owner d == n) ds
-          refs = nub (filter (/= n) (mapMaybe (\m => lookup m memberOf) (joined (map (.mentions) mine))))
-      in MkConcept n (nub (joined (map membersOf mine))) (any exportedHere mine) refs
-
     ||| What each of a module's declarations belongs to, by the concept's name.
     belongsTo : (key : Maybe String) -> (types : List String) -> (interfaces : List String) -> Declared -> String
     belongsTo key types interfaces d = case d.decl.val of
@@ -140,6 +124,45 @@ conceptsOf f ds =
     keyOf : SourceFile -> List String -> Maybe String
     keyOf f types = find (\t => toLower t == toLower (lastPart (show f.mod.moduleNS))) types
 
+||| A module's concepts, in the order their first declarations are written.
+export
+conceptsOf : SourceFile -> List Declared -> List Concept
+conceptsOf f ds =
+  let owner = ownerIn f ds
+      names = nub (map owner ds)
+      memberOf = the (SortedMap String String) (fromList [ (m, owner d) | d <- ds, m <- membersOf d ])
+  in map (concept owner memberOf) names
+  where
+    ||| The names a declaration contributes to its concept: those it defines,
+    ||| and a type's constructors, fields and methods; an implementation, by
+    ||| what it implements.
+    membersOf : Declared -> List String
+    membersOf d = case d.decl.val of
+      PData _ _ _ (MkPData _ n _ _ cons) => nameRoot n :: foldr (\c, rest => map (nameRoot . (.val) . snd) (forget c.val.names) ++ rest) [] cons
+      PRecord _ _ _ (MkPRecord n _ _ con fields) =>
+        nameRoot n :: maybe [] (\c => [nameRoot c.val]) con ++ foldr (\f, rest => map (nameRoot . (.val)) f.names ++ rest) [] fields
+      PInterface _ _ n _ _ _ _ body =>
+        nameRoot n :: foldr (\m, rest => case m.val of
+                                           PClaim c => map (nameRoot . (.val) . snd) (forget c.type.val.names) ++ rest
+                                           _ => rest) [] body
+      PImplementation {} => maybe [] (\ip => [unwords (fst ip :: snd ip)]) d.implementing
+      _ => d.defines
+
+    ||| Whether a declaration makes its concept visible to an importer.
+    exportedHere : Declared -> Bool
+    exportedHere d = case d.decl.val of
+      PImplementation v _ _ _ _ _ _ _ _ _ => v /= Private
+      _ => not (null d.visible)
+
+    linesOf : Declared -> Nat
+    linesOf d = let (a, b) = lineSpan d.decl.fc in cast (b - a + 1)
+
+    concept : (Declared -> String) -> SortedMap String String -> String -> Concept
+    concept owner memberOf n =
+      let mine = filter (\d => owner d == n) ds
+          refs = nub (filter (/= n) (mapMaybe (\m => lookup m memberOf) (joined (map (.mentions) mine))))
+      in MkConcept n (nub (joined (map membersOf mine))) (any exportedHere mine) refs (sum (map linesOf mine))
+
 ||| The concept a use of a module's name is of: the one the name is a
 ||| member of; for an implementation found by search, named by what it
 ||| implements (`Show Header`), the concept of the first type it names that
@@ -152,3 +175,17 @@ conceptOfUse cs n True = case words n of
     Just h => Just h
     Nothing => if any (\c => c.name == iface) cs then Just iface else Nothing
   [] => Nothing
+
+||| The concepts a module's concept reaches by its references, through any
+||| of the module's concepts, itself not among them unless a cycle leads
+||| back to it.
+export
+reachable : List Concept -> String -> SortedSet String
+reachable cs n = go empty (refersOf n)
+  where
+    refersOf : String -> List String
+    refersOf c = maybe [] (.refers) (find (\x => x.name == c) cs)
+
+    go : SortedSet String -> List String -> SortedSet String
+    go seen [] = seen
+    go seen (c :: rest) = if contains c seen then go seen rest else go (insert c seen) (refersOf c ++ rest)

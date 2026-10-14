@@ -87,6 +87,7 @@ import Compiler.Native.TermIR.StaticDef
 import Compiler.Native.TermIR.StaticSig
 import Compiler.Native.TermIR.Var
 import Compiler.Native.Words
+
 import Compiler.VMCode
 import Core.CompileExpr
 import Core.Name

@@ -8,8 +8,9 @@
 ||| displacements. Alignment padding is `int3`, never executed.
 module Compiler.Native.X86.Encode
 
-import Compiler.Native.Bytes
 import Compiler.Native.X86.Asm
+
+import Compiler.Native.Bytes
 import Data.Bits
 import Data.List
 import Data.SortedMap

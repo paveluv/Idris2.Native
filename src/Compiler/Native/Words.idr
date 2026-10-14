@@ -15,6 +15,7 @@ import Compiler.Native.TermIR.Decls
 import Compiler.Native.TermIR.Instr
 import Compiler.Native.TermIR.IsInt
 import Compiler.Native.TermIR.Opnd
+
 import Data.List.Quantifiers
 %default total
 

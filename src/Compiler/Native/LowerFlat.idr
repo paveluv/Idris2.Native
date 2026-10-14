@@ -55,6 +55,7 @@ import Compiler.Native.TermIR.Opnd
 import Compiler.Native.TermIR.Sig
 import Compiler.Native.TermIR.Var
 import Compiler.Native.Words
+
 import Core.Name
 import Core.TT
 import Core.TT.Primitive

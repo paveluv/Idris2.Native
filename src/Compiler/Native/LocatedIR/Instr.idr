@@ -4,6 +4,11 @@
 ||| is).
 module Compiler.Native.LocatedIR.Instr
 
+import Compiler.Native.LocatedIR.Label
+import Compiler.Native.LocatedIR.Mem
+import Compiler.Native.LocatedIR.Opnd
+import Compiler.Native.LocatedIR.Reg
+
 import Compiler.Native.HeapObject.Enc
 import Compiler.Native.HeapObject.Header
 import Compiler.Native.HeapObject.Kind
@@ -17,10 +22,6 @@ import Compiler.Native.IRCommon.Operators.Rel
 import Compiler.Native.IRCommon.Operators.SubWord
 import Compiler.Native.IRCommon.Operators.UnOp
 import Compiler.Native.IRCommon.Ty
-import Compiler.Native.LocatedIR.Label
-import Compiler.Native.LocatedIR.Mem
-import Compiler.Native.LocatedIR.Opnd
-import Compiler.Native.LocatedIR.Reg
 import Core.FC
 import Core.Name
 

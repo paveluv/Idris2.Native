@@ -12,15 +12,16 @@
 ||| or `%extern` is never one of them.
 module Lint.Refactor.RemoveUnused
 
-import Data.SortedSet
-import Idris.Syntax
-import Libraries.Data.WithData
 import Lint.Refactor.Change
 import Lint.Refactor.Edit
 import Lint.Refactor.Extent
 import Lint.Refactor.Free
 import Lint.Refactor.Refactoring
 import Lint.Refactor.Subject
+
+import Data.SortedSet
+import Idris.Syntax
+import Libraries.Data.WithData
 import Lint.Rules
 import Lint.Source
 import TTImp.TTImp
@@ -31,7 +32,7 @@ import TTImp.TTImp
 ||| other declaration uses, deleted.
 export
 removeUnused : Refactoring
-removeUnused = MkRefactoring "remove-unused" "delete each private function at the top of a module that nothing uses" candidates
+removeUnused = fileRefactoring "remove-unused" "delete each private function at the top of a module that nothing uses" candidates
   where
     -- whether a declaration, not one of the function's own, uses it
     uses : Declared -> Declared -> Bool

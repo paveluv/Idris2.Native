@@ -7,6 +7,10 @@
 ||| shares with the compiler.
 module Lint.Graph
 
+import Lint.Finding
+import Lint.Rules
+import Lint.Source
+
 import Core.FC
 import Core.Name
 import Core.Name.Namespace
@@ -19,9 +23,6 @@ import Data.SortedSet
 import Data.String
 import Idris.Syntax
 import Libraries.Data.WithData
-import Lint.Finding
-import Lint.Rules
-import Lint.Source
 
 %default covering
 
@@ -317,9 +318,10 @@ record Component where
 
 ||| A module left out of a component of the score, by a comment of its own,
 ||| `-- lint: exclude <component>: <reason>`: the component, the reason, and
-||| where the comment is. Only precision leaves modules out, as imported
-||| ones: a module whose names are offered in bulk until its importers are
-||| reshaped. The score names what it leaves out.
+||| where the comment is. Precision leaves modules out as imported ones: a
+||| module whose names are offered in bulk until its importers are
+||| reshaped; separation, a module that stays one though its pieces could
+||| part, which a person judges. The score names what it leaves out.
 public export
 record Exclusion where
   constructor MkExclusion
@@ -331,7 +333,7 @@ record Exclusion where
 ||| The components a module may be left out of.
 export
 excludable : List String
-excludable = ["precision"]
+excludable = ["precision", "separation"]
 
 ||| A file's exclusions, as its comments write them.
 export

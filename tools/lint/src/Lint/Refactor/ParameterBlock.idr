@@ -7,6 +7,11 @@
 ||| implicit, stay as they are.
 module Lint.Refactor.ParameterBlock
 
+import Lint.Refactor.Binders
+import Lint.Refactor.Extent
+import Lint.Refactor.Free
+import Lint.Refactor.Span
+
 import Core.Name
 import Core.WithData
 import Data.List
@@ -15,10 +20,6 @@ import Data.SortedSet
 import Data.String
 import Idris.Syntax
 import Libraries.Data.WithData
-import Lint.Refactor.Binders
-import Lint.Refactor.Extent
-import Lint.Refactor.Free
-import Lint.Refactor.Span
 
 %default covering
 

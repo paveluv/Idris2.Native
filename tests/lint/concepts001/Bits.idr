@@ -2,10 +2,11 @@
 ||| `Heap.Header`, and `Header` the other.
 module Bits
 
+import Heap.Glued
 import Heap.Header
 
 %default total
 
 export
 countBits : Nat
-countBits = minus wordBits (place Count)
+countBits = minus wordBits (spanOf (place Count))

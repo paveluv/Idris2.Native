@@ -4,13 +4,14 @@
 ||| is).
 module Compiler.Native.LocatedIR.Terminator
 
-import Compiler.Native.HeapObject.Enc
-import Compiler.Native.HeapObject.ValEnc
-import Compiler.Native.IRCommon.Operators.Rel
 import Compiler.Native.LocatedIR.Cont
 import Compiler.Native.LocatedIR.Label
 import Compiler.Native.LocatedIR.Opnd
 import Compiler.Native.LocatedIR.Reg
+
+import Compiler.Native.HeapObject.Enc
+import Compiler.Native.HeapObject.ValEnc
+import Compiler.Native.IRCommon.Operators.Rel
 import Core.Name
 
 %default total

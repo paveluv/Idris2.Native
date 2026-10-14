@@ -7,6 +7,7 @@ modules =
     Bulk,
     Dump,
     Geo.Point,
+    Heap.Glued,
     Heap.Header,
     Heap.Left,
     Heap.Right,

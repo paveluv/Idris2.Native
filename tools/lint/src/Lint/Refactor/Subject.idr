@@ -2,6 +2,7 @@
 ||| with what each defines and mentions, and its text.
 module Lint.Refactor.Subject
 
+import Data.List
 import Data.String
 import Lint.Rules
 import Lint.Source
@@ -22,6 +23,18 @@ record Subject where
 export
 linesOf : Subject -> List String
 linesOf s = lines s.text
+
+||| A line of the file, or an empty one past its end.
+export
+lineOf : Subject -> Int -> String
+lineOf s l = case drop (cast l) (linesOf s) of
+  (x :: _) => x
+  [] => ""
+
+||| The file's lines from `a` to `b`, both included.
+export
+linesBetween : Subject -> (a, b : Int) -> List String
+linesBetween s a b = take (cast (b - a + 1)) (drop (cast a) (linesOf s))
 
 ||| The file at the path, parsed, or what stopped it.
 export

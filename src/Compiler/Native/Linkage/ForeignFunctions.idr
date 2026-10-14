@@ -5,8 +5,9 @@
 ||| (`Compiler.Native.Linkage.Routine` says what it is).
 module Compiler.Native.Linkage.ForeignFunctions
 
-import Compiler.Native.HeapObject.Enc
 import Compiler.Native.Linkage.Routine
+
+import Compiler.Native.HeapObject.Enc
 import Core.Name
 import Core.Name.Namespace
 

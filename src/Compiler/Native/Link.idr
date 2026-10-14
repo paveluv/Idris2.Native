@@ -14,6 +14,7 @@ import Compiler.Native.Platform
 import Compiler.Native.Seed
 import Compiler.Native.X86.Asm
 import Compiler.Native.X86.Encode
+
 import Data.Maybe
 import Data.SortedMap
 

@@ -4,8 +4,9 @@
 ||| (`Compiler.Native.IRCommon.Ty` says what it is).
 module Compiler.Native.IRCommon.Conv
 
-import Compiler.Native.HeapObject.Enc
 import Compiler.Native.IRCommon.Ty
+
+import Compiler.Native.HeapObject.Enc
 
 %default total
 

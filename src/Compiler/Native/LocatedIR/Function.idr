@@ -4,11 +4,12 @@
 ||| is).
 module Compiler.Native.LocatedIR.Function
 
-import Compiler.Native.HeapObject.Enc
-import Compiler.Native.IRCommon.Conv
 import Compiler.Native.LocatedIR.Block
 import Compiler.Native.LocatedIR.Label
 import Compiler.Native.LocatedIR.Reg
+
+import Compiler.Native.HeapObject.Enc
+import Compiler.Native.IRCommon.Conv
 import Core.FC
 import Core.Name
 

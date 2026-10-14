@@ -17,16 +17,6 @@
 ||| end, each part into the one that uses it.
 module Lint.Refactor.ScopeHelpers
 
-import Core.FC
-import Core.Name
-import Core.WithData
-import Data.List
-import Data.Maybe
-import Data.SortedMap
-import Data.SortedSet
-import Data.String
-import Idris.Syntax
-import Libraries.Data.WithData
 import Lint.Refactor.Binders
 import Lint.Refactor.Change
 import Lint.Refactor.Edit
@@ -38,6 +28,17 @@ import Lint.Refactor.Refactoring
 import Lint.Refactor.Span
 import Lint.Refactor.Subject
 import Lint.Refactor.Where
+
+import Core.FC
+import Core.Name
+import Core.WithData
+import Data.List
+import Data.Maybe
+import Data.SortedMap
+import Data.SortedSet
+import Data.String
+import Idris.Syntax
+import Libraries.Data.WithData
 import Lint.Rules
 import Lint.Source
 
@@ -48,7 +49,7 @@ import Lint.Source
 ||| moved into its user's `where` block, its own helpers first.
 export
 scopeHelpers : Refactoring
-scopeHelpers = MkRefactoring "scope-helpers"
+scopeHelpers = fileRefactoring "scope-helpers"
   "move each private function one other declaration uses into that one's `where` block"
   candidates
   where

@@ -4,6 +4,7 @@
 module Data.WriteBuilder
 
 import Data.Builder
+
 import System.File.Error
 import System.File.Handle
 import System.File.Mode

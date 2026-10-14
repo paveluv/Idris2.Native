@@ -16,9 +16,6 @@
 ||| compiled into every program with the program's own forms.
 module Compiler.Native.Native
 
-import Algebra.Semiring
-import Algebra.ZeroOneOmega
-import Compiler.Common
 import Compiler.Native.ELF
 import Compiler.Native.HeapObject.BignumEnc
 import Compiler.Native.HeapObject.Enc
@@ -42,6 +39,10 @@ import Compiler.Native.X86.Asm
 import Compiler.Native.X86.Encode
 import Compiler.Native.X86.Render
 import Compiler.Native.X86.Target
+
+import Algebra.Semiring
+import Algebra.ZeroOneOmega
+import Compiler.Common
 import Compiler.VMCode
 import Core.Context
 import Core.Context.Context

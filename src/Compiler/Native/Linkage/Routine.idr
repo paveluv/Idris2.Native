@@ -27,10 +27,11 @@
 ||| already built depends on the contract alone.
 module Compiler.Native.Linkage.Routine
 
+import Compiler.Native.Linkage.Sym
+
 import Compiler.Native.HeapObject.Enc
 import Compiler.Native.HeapObject.StringEnc
 import Compiler.Native.IRCommon.Ty
-import Compiler.Native.Linkage.Sym
 import Core.Name
 import Core.Name.Namespace
 import Data.List

@@ -17,6 +17,8 @@
 ||| recognises it by. The judgement of a type (`Flat.Judgement`) computes both.
 module Flat.Exp
 
+import Flat.ConstType
+
 import Core.FC
 import Core.Name
 import Core.Name.Namespace
@@ -24,7 +26,6 @@ import Core.TT.Primitive
 import Data.Builder
 import Data.List
 import Data.Vect
-import Flat.ConstType
 
 %default covering
 

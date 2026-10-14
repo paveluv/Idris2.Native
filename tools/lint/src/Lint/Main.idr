@@ -1,7 +1,7 @@
 ||| `idris2-native-lint`: the rules of the product's code, checked on Idris's
 ||| own parse of each file.
 |||
-|||   idris2-native-lint [--golden | --fix | --warnings] [--health [--minimum N] [--offenders N]] [--helpers] [--refactor NAME [--dry-run] [--check COMMAND]] [--resolved] PATH... [--programs PATH...]
+|||   idris2-native-lint [--golden | --fix | --warnings] [--health [--minimum N] [--offenders N]] [--helpers] [--refactor NAME [--arg VALUE]... [--dry-run] [--check COMMAND]] [--resolved] PATH... [--programs PATH...]
 |||
 ||| Each path is a `.idr` file or a directory, walked for `.idr` files, its
 ||| `build` directories left out. The paths after `--programs` are programs
@@ -22,7 +22,11 @@
 ||| file's changes and what stays, with why; with `--dry-run` it prints the
 ||| changes and puts every file back; with `--check` it undoes a change
 ||| after which the command fails on a file the change touched, the file's
-||| path in the place of `{}` (`make check-source SOURCE={}`). `--fix`
+||| path in the place of `{}` (`make check-source SOURCE={}`). A
+||| refactoring may take arguments, each by `--arg` (`split-module`: the
+||| module to make, then the concepts to move into it), and one whose
+||| changes only the type checker can judge runs only with `--check`
+||| (`prune-imports`). `--fix`
 ||| puts each file's imports in order first: the refactoring
 ||| `order-imports`, the one rule the linter fixes by itself. A rule's findings are errors or, for advice, warnings:
 ||| `--warnings` prints those too, and they fail nothing. The exit status is
@@ -42,28 +46,33 @@
 ||| `-- lint: exclude <component>: <reason>` (`Exclusion`).
 module Lint.Main
 
+import Lint.Distinction
+import Lint.Finding
+import Lint.Graph
+import Lint.Refactor.MergeClauses
+import Lint.Refactor.OrderImports
+import Lint.Refactor.Project
+import Lint.Refactor.PruneImports
+import Lint.Refactor.Refactoring
+import Lint.Refactor.RemoveUnused
+import Lint.Refactor.ScopeHelpers
+import Lint.Refactor.SplitModule
+import Lint.Resolution
+import Lint.ResolvedRules
+import Lint.Rules
+import Lint.Source
+
 import Core.FC
 import Core.Name.Namespace
 import Core.WithData
 import Data.Either
+import Data.IORef
 import Data.List
 import Data.Maybe
 import Data.SortedSet
 import Data.String
 import Data.Zippable
 import Idris.Syntax
-import Lint.Distinction
-import Lint.Finding
-import Lint.Graph
-import Lint.Refactor.MergeClauses
-import Lint.Refactor.OrderImports
-import Lint.Refactor.Refactoring
-import Lint.Refactor.RemoveUnused
-import Lint.Refactor.ScopeHelpers
-import Lint.Resolution
-import Lint.ResolvedRules
-import Lint.Rules
-import Lint.Source
 import System
 import System.Directory
 import System.File.Error
@@ -100,6 +109,7 @@ record Request where
   refactoring : Maybe String
   dryRun : Bool
   checkCommand : Maybe String
+  arguments : List String
   paths : List String
   programs : List String
   inPrograms : Bool
@@ -110,15 +120,18 @@ main = do
     | [] => exitWith (ExitFailure 2)
   let o = request args
   when (null o.paths && null o.programs) $ do
-    putStrLn "usage: idris2-native-lint [--golden | --fix | --warnings] [--health [--minimum N] [--offenders N]] [--helpers] [--refactor NAME [--dry-run] [--check COMMAND]] [--resolved] PATH... [--programs PATH...]"
+    putStrLn "usage: idris2-native-lint [--golden | --fix | --warnings] [--health [--minimum N] [--offenders N]] [--helpers] [--refactor NAME [--arg VALUE]... [--dry-run] [--check COMMAND]] [--resolved] PATH... [--programs PATH...]"
     exitWith (ExitFailure 2)
   when o.fix $ runRefactoring True False Nothing orderImports (o.paths ++ o.programs)
   whenJust o.refactoring $ \n => do
-    case find (\r => r.name == n) refactorings of
+    case find (\r => r.name == n) (refactorings o.arguments) of
       Nothing => do
-        putStrLn ("no refactoring `" ++ n ++ "`; there are " ++ fastConcat (intersperse ", " (map (.name) refactorings)))
+        putStrLn ("no refactoring `" ++ n ++ "`; there are " ++ fastConcat (intersperse ", " (map (.name) (refactorings []))))
         exitWith (ExitFailure 2)
       Just r => do
+        when (r.needsCheck && isNothing o.checkCommand) $ do
+          putStrLn ("`" ++ n ++ "` runs only with `--check`: only the type checker can judge its changes")
+          exitWith (ExitFailure 2)
         runRefactoring False o.dryRun o.checkCommand r (o.paths ++ o.programs)
         exitWith ExitSuccess
   (fs, failed) <- parsed o.paths
@@ -137,7 +150,7 @@ main = do
           exitWith (ExitFailure 2)
         Just (Right r) => pure (Just r)
         Nothing => pure Nothing
-      let cs = health fds ++ [distinction (map fst fds)] ++ maybe [] (resolvedHealth fdms) r
+      let cs = health fds ++ [distinction fds] ++ maybe [] (resolvedHealth fdms) r
           overall = score cs
       putStrLn ("architectural health: " ++ show overall)
       for_ (groups cs) $ \g => do
@@ -154,7 +167,7 @@ main = do
       when (not (null errors) && not o.golden) $ exitWith (ExitFailure 1)
   where
     request : List String -> Request
-    request = go (MkRequest False False False False Nothing 0 False False Nothing False Nothing [] [] False)
+    request = go (MkRequest False False False False Nothing 0 False False Nothing False Nothing [] [] [] False)
       where
         go : Request -> List String -> Request
         go o [] = o
@@ -168,6 +181,7 @@ main = do
         go o ("--refactor" :: n :: as) = go ({ refactoring := Just n } o) as
         go o ("--dry-run" :: as) = go ({ dryRun := True } o) as
         go o ("--check" :: c :: as) = go ({ checkCommand := Just c } o) as
+        go o ("--arg" :: a :: as) = go ({ arguments $= (++ [a]) } o) as
         go o ("--offenders" :: k :: as) = go ({ offenders := cast k } o) as
         go o ("--programs" :: as) = go ({ inPrograms := True } o) as
         go o (p :: as) = go (if o.inPrograms then { programs $= (++ [p]) } o else { paths $= (++ [p]) } o) as
@@ -238,17 +252,30 @@ main = do
       let failures = mapMaybe (\(p, r) => either (\e => Just (MkFinding "parse" p 0 0 "" e)) (const Nothing) r) (zip paths results)
       pure (rights results, failures)
 
-    ||| The refactorings, by name.
-    refactorings : List Refactoring
-    refactorings = [mergeClauses, orderImports, removeUnused, scopeHelpers]
+    ||| The refactorings, by name, given the run's arguments (`--arg`), which
+    ||| those that take them read: `split-module` the module to make and the
+    ||| concepts to move to it.
+    refactorings : List String -> List Refactoring
+    refactorings args = [mergeClauses, orderImports, pruneImports, removeUnused, scopeHelpers, splitModule args]
+
+    ||| The files of a run parsed once, and again only after a change: a wide
+    ||| refactoring asks for them at every file it looks at.
+    projectOnce : IORef (Maybe Project) -> (roots, paths : List String) -> IO Project
+    projectOnce cache roots paths = do
+      Nothing <- readIORef cache
+        | Just p => pure p
+      p <- loadProject roots paths
+      writeIORef cache (Just p)
+      pure p
 
     ||| The refactoring run over every file under the paths, each to a fixed
     ||| point, with what it changed and what stays printed unless `quiet`.
     runRefactoring : (quiet, dryRun : Bool) -> (check : Maybe String) -> Refactoring -> List String -> IO ()
     runRefactoring quiet dryRun check r roots = do
       paths <- joined <$> traverse files roots
+      cache <- newIORef Nothing
       for_ paths $ \p => do
-        rep <- refactor dryRun check r p
+        rep <- refactor dryRun check r (projectOnce cache roots paths) (writeIORef cache Nothing) p
         when (not quiet || not (null rep.changed)) $
           when (not (null rep.changed) || not (null rep.stays)) $ do
             putStrLn (p ++ ": " ++ show (length rep.changed) ++ " changed, " ++ show (length rep.stays) ++ " stay")

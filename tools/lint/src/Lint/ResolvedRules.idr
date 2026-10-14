@@ -8,6 +8,14 @@
 ||| module nothing it does not import directly is a finding.
 module Lint.ResolvedRules
 
+import Lint.Finding
+import Lint.Graph
+import Lint.Precision
+import Lint.Resolution
+import Lint.Rules
+import Lint.Separation
+import Lint.Source
+
 import Core.FC
 import Core.Name
 import Core.Name.Namespace
@@ -17,13 +25,6 @@ import Data.SortedMap
 import Data.SortedSet
 import Data.String
 import Idris.Syntax
-import Lint.Finding
-import Lint.Graph
-import Lint.Precision
-import Lint.Resolution
-import Lint.Rules
-import Lint.Separation
-import Lint.Source
 
 %default covering
 

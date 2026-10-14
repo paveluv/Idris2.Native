@@ -3,16 +3,17 @@
 ||| Part of the term IR (`Compiler.Native.TermIR.Program` says what it is).
 module Compiler.Native.TermIR.StaticDef
 
-import Compiler.Native.HeapObject.Enc
-import Compiler.Native.HeapObject.Header
-import Compiler.Native.HeapObject.Kind
-import Compiler.Native.IRCommon.Conv
-import Compiler.Native.IRCommon.Ty
 import Compiler.Native.TermIR.Decls
 import Compiler.Native.TermIR.FieldTys
 import Compiler.Native.TermIR.Sig
 import Compiler.Native.TermIR.StaticSig
 import Compiler.Native.TermIR.Var
+
+import Compiler.Native.HeapObject.Enc
+import Compiler.Native.HeapObject.Header
+import Compiler.Native.HeapObject.Kind
+import Compiler.Native.IRCommon.Conv
+import Compiler.Native.IRCommon.Ty
 import Core.Name
 import Data.So
 import Data.Vect

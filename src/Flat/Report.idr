@@ -2,6 +2,8 @@
 ||| its own: the message, rendered as the REPL renders one.
 module Flat.Report
 
+import Flat.Problem
+
 import Core.Context
 import Core.Context.Context
 import Core.Core
@@ -14,7 +16,6 @@ import Core.TT.Primitive
 import Core.TT.Term
 import Data.List
 import Data.String
-import Flat.Problem
 import Idris.Pretty
 import Idris.Resugar
 import Idris.Syntax

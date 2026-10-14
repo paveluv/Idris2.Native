@@ -1,8 +1,9 @@
-    distinction    33  group members imported apart from their siblings: 2 of 6
-          1  Heap: 2 of its 3 members (67%) could be joined without costing precision: `Left`, `Right` by 2 modules: `Dump`, `Sizes`
-          1  Ops: 2 of its 2 members (100%) could be joined without costing precision, a candidate to collapse into one module: `Add`, `Sub` by 2 modules: `Dump`, `Sizes`
-    precision      64  imported concepts a module uses: 14 of 22; left out: `Bulk`
+    distinction    33  group members that stand apart from their siblings: 2 of 6
+          1  Heap: 2 of its 4 members (50%) could be joined: `Left`, `Right` by 2 modules: `Dump`, `Sizes`; too small to stand alone: `Left` (4 lines), `Right` (4 lines)
+          1  Ops: 2 of its 2 members (100%) could be joined, a candidate to collapse into one module: `Add`, `Sub` by 2 modules: `Dump`, `Sizes`; too small to stand alone: `Add` (4 lines), `Sub` (4 lines)
+    precision      62  imported concepts a module uses: 16 of 26; left out: `Bulk`
           7  Heap.Header: 4 importers of its 3 concepts (`Header`, `Part`, `wordBits`); fewest used: Sizes 1, Places 1, Dump 1, Bits 2
+          2  Heap.Glued: 2 importers of its 2 concepts (`offsetOf`, `spanOf`); fewest used: Places 1, Bits 1
           1  Geo.Point: 1 importer of its 2 concepts (`Point`, `twice`); fewest used: Norms 1
-    separation     88  modules that are one piece, of the pieces their importers use: 7 modules, 8 pieces
-          1  Heap.Header: 2 pieces: `Header` used by `Dump`, `Sizes`; `Part`, `wordBits` used by `Bits`, `Places`
+    separation     89  modules that are one piece, of the pieces of 20 lines or more their importers use: 8 modules, 9 pieces
+          1  Heap.Header: 2 pieces: `Header` (29 lines) used by `Dump`, `Sizes`; `Part`, `wordBits` (28 lines) used by `Bits`, `Places`

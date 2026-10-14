@@ -29,6 +29,9 @@
 ||| layouts in turn, sharing no register between constructors.
 module Flat.Judgement
 
+import Flat.Exp
+import Flat.Problem
+
 import Algebra.Semiring
 import Algebra.ZeroOneOmega
 import Core.CompileExpr
@@ -50,8 +53,6 @@ import Data.Builder
 import Data.List
 import Data.Maybe
 import Data.Zippable
-import Flat.Exp
-import Flat.Problem
 import Libraries.Data.NameMap
 
 %default covering

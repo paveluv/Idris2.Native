@@ -3,6 +3,16 @@
 ||| Part of the term IR (`Compiler.Native.TermIR.Program` says what it is).
 module Compiler.Native.TermIR.Instr
 
+import Compiler.Native.TermIR.Decls
+import Compiler.Native.TermIR.FieldTys
+import Compiler.Native.TermIR.IsInt
+import Compiler.Native.TermIR.Mem
+import Compiler.Native.TermIR.Opnd
+import Compiler.Native.TermIR.Sig
+import Compiler.Native.TermIR.Sizes
+import Compiler.Native.TermIR.StaticSig
+import Compiler.Native.TermIR.Var
+
 import Compiler.Native.HeapObject.Enc
 import Compiler.Native.HeapObject.Header
 import Compiler.Native.HeapObject.Kind
@@ -17,15 +27,6 @@ import Compiler.Native.IRCommon.Operators.Rel
 import Compiler.Native.IRCommon.Operators.SubWord
 import Compiler.Native.IRCommon.Operators.UnOp
 import Compiler.Native.IRCommon.Ty
-import Compiler.Native.TermIR.Decls
-import Compiler.Native.TermIR.FieldTys
-import Compiler.Native.TermIR.IsInt
-import Compiler.Native.TermIR.Mem
-import Compiler.Native.TermIR.Opnd
-import Compiler.Native.TermIR.Sig
-import Compiler.Native.TermIR.Sizes
-import Compiler.Native.TermIR.StaticSig
-import Compiler.Native.TermIR.Var
 import Core.FC
 import Core.Name
 import Data.List.Quantifiers

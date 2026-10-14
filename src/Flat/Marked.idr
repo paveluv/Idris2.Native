@@ -14,6 +14,11 @@
 ||| reports what no module's check did.
 module Flat.Marked
 
+import Flat.Exp
+import Flat.Problem
+import Flat.Report
+import Flat.Translate
+
 import Compiler.Common
 import Core.Context
 import Core.Context.Context
@@ -26,10 +31,6 @@ import Core.Options
 import Data.List
 import Data.Maybe
 import Data.Zippable
-import Flat.Exp
-import Flat.Problem
-import Flat.Report
-import Flat.Translate
 import Idris.Error
 import Idris.Pretty
 import Idris.REPL.Opts

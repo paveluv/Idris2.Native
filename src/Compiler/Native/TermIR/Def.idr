@@ -3,12 +3,13 @@
 ||| Part of the term IR (`Compiler.Native.TermIR.Program` says what it is).
 module Compiler.Native.TermIR.Def
 
-import Compiler.Native.HeapObject.Enc
-import Compiler.Native.IRCommon.Conv
-import Compiler.Native.IRCommon.Ty
 import Compiler.Native.TermIR.Body
 import Compiler.Native.TermIR.Decls
 import Compiler.Native.TermIR.Sig
+
+import Compiler.Native.HeapObject.Enc
+import Compiler.Native.IRCommon.Conv
+import Compiler.Native.IRCommon.Ty
 import Core.Name
 
 %default total

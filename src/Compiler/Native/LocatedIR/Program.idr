@@ -43,10 +43,11 @@
 ||| `Negate` and `Complement` from the Prelude's `Ptr`, `Neg` and `Not`.
 module Compiler.Native.LocatedIR.Program
 
-import Compiler.Native.HeapObject.Enc
-import Compiler.Native.IRCommon.ConIds
 import Compiler.Native.LocatedIR.Function
 import Compiler.Native.LocatedIR.Static
+
+import Compiler.Native.HeapObject.Enc
+import Compiler.Native.IRCommon.ConIds
 import Compiler.Native.Target
 import Core.Name
 

@@ -59,6 +59,10 @@
 ||| that asked for them.
 module Flat.Translate
 
+import Flat.Exp
+import Flat.Judgement
+import Flat.Problem
+
 import Algebra
 import Algebra.Preorder
 import Algebra.Semiring
@@ -94,9 +98,6 @@ import Data.String
 import Data.Vect
 import Data.WriteBuilder
 import Data.Zippable
-import Flat.Exp
-import Flat.Judgement
-import Flat.Problem
 import Libraries.Data.List.SizeOf
 import Libraries.Data.NameMap
 import Libraries.Data.WithDefault

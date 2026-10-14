@@ -1,0 +1,258 @@
+||| The refactoring `split-module` (`splitModule`): concepts of a module
+||| (`Lint.Concept`) moved into a module of their own, and every module that
+||| uses them made to import it.
+|||
+||| It is given the module to make and the concepts to move, and acts on the
+||| file whose module has them all. The private concepts only they reach
+||| move with them; one that what stays reaches too would have to be
+||| exported, and nothing moves. Their declarations move as written, with
+||| the comments, pragmas and visibility above them, into the new file,
+||| which takes the old module's imports and its `%default`, and imports the
+||| old module if what moves uses what stays. The old module imports the new
+||| one if what stays uses what moves; if each uses the other, the two would
+||| import each other, and nothing moves. Each importer of the old module
+||| that names what moves imports the new one too, beside it, and no longer
+||| imports the old one if it names nothing that stays there. The package
+||| that lists the old module lists the new one after it.
+|||
+||| What it leaves for after: the imports in order (`order-imports`), the
+||| imports a module no longer needs (`prune-imports`, with a check), and the
+||| new module's documentation, which only a person can write.
+module Lint.Refactor.SplitModule
+
+import Lint.Refactor.Change
+import Lint.Refactor.Edit
+import Lint.Refactor.Extent
+import Lint.Refactor.Project
+import Lint.Refactor.Refactoring
+import Lint.Refactor.Span
+import Lint.Refactor.Subject
+
+import Core.Name.Namespace
+import Core.WithData
+import Data.List
+import Data.List1
+import Data.SortedSet
+import Data.String
+import Data.Zippable
+import Idris.Syntax
+import Libraries.Data.WithData
+import Lint.Concept
+import Lint.Finding
+import Lint.Rules
+import Lint.Source
+
+%default covering
+
+||| Where a package lists a module, and the file the new module goes in: the
+||| package's path, the line of the old module in its list, whether that line
+||| ends the list, and the new file's path, under the package's `sourcedir`.
+record Listing where
+  constructor MkListing
+  package : String
+  line : Int
+  indent : String
+  lastInList : Bool
+  newPath : String
+
+||| A module's declarations, those that move and those that stay, with the
+||| names of each side's concepts: all of them, and those exported.
+record Split where
+  constructor MkSplit
+  moved : List Declared
+  kept : List Declared
+  movedMembers : List String
+  keptMembers : List String
+  keptOffered : List String
+
+||| `split-module`: given the module to make and the concepts to move, the
+||| file whose module has them all split.
+export
+splitModule : (arguments : List String) -> Refactoring
+splitModule args =
+  MkRefactoring "split-module" "move concepts of a module into a module of their own (--arg NEW --arg CONCEPT...), its importers rewritten"
+    True False candidates
+  where
+    ||| A file's line ranges, both ends included, joined where they touch,
+    ||| overlap, or have nothing but blank lines between them.
+    merged : Subject -> List (Int, Int) -> List (Int, Int)
+    merged s rs = go (sort rs)
+      where
+        between : Int -> Int -> Bool
+        between b c = all (\l => trim l == "") (linesBetween s (b + 1) (c - 1))
+
+        go : List (Int, Int) -> List (Int, Int)
+        go ((a, b) :: (c, d) :: rest) = if c <= b + 1 || between b c then go ((a, max b d) :: rest) else (a, b) :: go ((c, d) :: rest)
+        go rs = rs
+
+    ||| A list of names, each in backticks, joined by commas.
+    named : List String -> String
+    named ns = joinBy ", " (map (\n => "`" ++ n ++ "`") ns)
+
+    ||| The package that lists a module, and where the new module goes in it.
+    listingOf : List (String, String) -> (old, new : String) -> Either String Listing
+    listingOf packages old new = case mapMaybe listing packages of
+      (l :: _) => Right l
+      [] => Left ("no package lists `" ++ old ++ "`")
+      where
+        entry : String -> String
+        entry l = let t = trim l in if isSuffixOf "," t then trim (substr 0 (minus (length t) 1) t) else t
+
+        directoryOf : String -> String
+        directoryOf p = case reverse (List1.forget (split (== '/') p)) of
+          (_ :: rest@(_ :: _)) => joinBy "/" (reverse rest)
+          _ => ""
+
+        -- the package's `sourcedir`, `""` when it has none or it is `.`
+        sourceDir : List String -> String
+        sourceDir ls = case mapMaybe value ls of
+          (d :: _) => if d == "." then "" else d
+          [] => ""
+          where
+            value : String -> Maybe String
+            value l = case break (== '=') (unpack (trim l)) of
+              (k, '=' :: v) => if trim (pack k) == "sourcedir" then Just (pack (filter (/= '"') (unpack (trim (pack v))))) else Nothing
+              _ => Nothing
+
+        joinPath : List String -> String
+        joinPath ps = joinBy "/" (filter (/= "") ps)
+
+        listing : (String, String) -> Maybe Listing
+        listing (path, text) =
+          let ls = lines text
+              numbered = zip [0 .. length ls] ls
+          in case find (\(_, l) => entry l == old) numbered of
+               Nothing => Nothing
+               Just (i, l) =>
+                 Just (MkListing path (cast i) (pack (takeWhile (== ' ') (unpack l))) (not (isSuffixOf "," (trim l)))
+                         (joinPath [directoryOf path, sourceDir ls, joinBy "/" (List1.forget (split (== '.') new))] ++ ".idr"))
+
+    ||| The split of a module's declarations by the concepts named.
+    splitOf : Subject -> (names : List String) -> List Concept -> Split
+    splitOf s names cs =
+      MkSplit (filter moving s.declared) (filter (not . moving) s.declared)
+              (joined (map (.members) (filter named' cs))) (joined (map (.members) (filter (not . named') cs)))
+              (joined (map (.members) (filter (\c => c.offered && not (named' c)) cs)))
+      where
+        moving : Declared -> Bool
+        moving d = ownerIn s.file s.declared d `elem` names
+
+        named' : Concept -> Bool
+        named' c = c.name `elem` names
+
+    ||| Whether any of the declarations mentions any of the names.
+    mentionsAny : List String -> List Declared -> Bool
+    mentionsAny ns = any (\d => any (`elem` ns) d.mentions)
+
+    ||| The private concepts what moves reaches and what stays does not, which
+    ||| move with it, and those both reach, which keep a split from being made.
+    helpersOf : List Concept -> (names : List String) -> (List String, List String)
+    helpersOf cs names =
+      let privates = map (.name) (filter (\c => not c.offered && not (c.name `elem` names)) cs)
+          kept = map (.name) (filter (\c => c.offered && not (c.name `elem` names)) cs)
+          fromMoved = reachedFrom names
+          fromKept = reachedFrom kept
+      in (filter (\p => contains p fromMoved && not (contains p fromKept)) privates,
+          filter (\p => contains p fromMoved && contains p fromKept) privates)
+      where
+        reachedFrom : List String -> SortedSet String
+        reachedFrom ns = foldr (\n, acc => union (reachable cs n) acc) empty ns
+
+    candidates : Project -> Subject -> List Candidate
+    candidates p s = case args of
+      (into :: names@(_ :: _)) =>
+        let cs = conceptsOf s.file s.declared in
+        if all (\n => any (\c => c.name == n) cs) names
+          then [MkCandidate ("split " ++ joinBy ", " names ++ " into " ++ into) (plan p s into names cs)]
+          else []
+      _ => []
+      where
+        -- a declaration's lines, from what is attached above it
+        rangeOf : Subject -> Declared -> (Int, Int)
+        rangeOf s d = let (a, b) = lineSpan d.decl.fc in (attachedFrom (linesOf s) a, b)
+
+        -- a range taken out, with a blank line after it if one is before
+        -- it, or the blank lines before it if nothing but blank lines
+        -- follows it
+        deletion : Subject -> (Int, Int) -> Edit
+        deletion s (a, b) =
+          if all (\l => trim l == "") (drop (cast (b + 1)) (linesOf s)) then deleteLines (blankFrom a) b
+          else if trim (lineOf s (b + 1)) == "" && (a == 0 || trim (lineOf s (a - 1)) == "") then deleteLines a (b + 1)
+          else deleteLines a b
+          where
+            blankFrom : Int -> Int
+            blankFrom l = if l > 0 && trim (lineOf s (l - 1)) == "" then blankFrom (l - 1) else l
+
+        importLine : String -> String
+        importLine m = "import " ++ m
+
+        -- `import new` after a file's last import
+        importAfterLast : Subject -> String -> Edit
+        importAfterLast s new = case reverse (map (\i => snd (lineSpan i.loc)) s.file.mod.imports) of
+          (l :: _) => insertLines (l + 1) [importLine new]
+          [] => insertLines 0 [importLine new]
+
+        -- the package lists the new module after the old one, the old one
+        -- given a comma if it ended the list
+        packageEdit : Listing -> (old, new : String) -> Edit
+        packageEdit l old new =
+          if l.lastInList then MkEdit (l.line, 0) (l.line + 1, 0) (l.indent ++ old ++ ",\n" ++ l.indent ++ new ++ "\n")
+          else insertLines (l.line + 1) [l.indent ++ new ++ ","]
+
+        -- an importer of the old module that names what moves: it imports
+        -- the new one beside it, and no longer the old one if it names
+        -- nothing that stays and imports it privately
+        importerEdits : (old, new : String) -> (movedMembers, keptOffered : List String) -> Subject -> Maybe (String, List Edit)
+        importerEdits old new movedMembers keptOffered t =
+          let mentioned = joined (map (.mentions) t.declared) in
+          case find (\i => show i.path == old) t.file.mod.imports of
+            Nothing => Nothing
+            Just i =>
+              if not (any (`elem` movedMembers) mentioned) then Nothing else
+                let l = fst (lineSpan i.loc) in
+                if not i.reexport && not (any (`elem` keptOffered) mentioned)
+                  then Just (t.file.path, [MkEdit (l, 0) (l + 1, 0) (importLine new ++ "\n")])
+                  else Just (t.file.path, [insertLines (l + 1) [importLine new]])
+
+        -- the new module's text: a placeholder for its documentation, its
+        -- imports in order, the old module's `%default`, and what moves
+        newText : Subject -> (old, new : String) -> List String -> (needsOld : Bool) -> List (Int, Int) -> String
+        newText s old new names needsOld ranges =
+          let (publics, privates) = partition (isPrefixOf "import public") (sort (importsOf ++ (if needsOld then [importLine old] else [])))
+              defaults = filter (isPrefixOf "%default") (map trim (linesOf s))
+          in unlines (["||| " ++ named names ++ ", from `" ++ old ++ "`.", "module " ++ new, ""]
+                      ++ block publics ++ block privates
+                      ++ take 1 defaults ++ [""] ++ body)
+          where
+            -- lines, then a blank one, if there are any
+            block : List String -> List String
+            block [] = []
+            block ls = ls ++ [""]
+
+            importsOf : List String
+            importsOf = map (\i => trim (lineOf s (fst (lineSpan i.loc)))) s.file.mod.imports
+
+            piece : (Int, Int) -> List String
+            piece (a, b) = linesBetween s a b
+
+            body : List String
+            body = joined (intersperse [""] (map piece ranges))
+
+        -- the change that makes the module, or why nothing moves
+        plan : Project -> Subject -> (into : String) -> (names : List String) -> List Concept -> Either String Change
+        plan p s into names cs = do
+          let old = show s.file.mod.moduleNS
+              (helpers, shared) = helpersOf cs names
+          when (not (null shared)) $ Left ("both what moves and what stays use the private " ++ named shared ++ ", which the split would have to export")
+          let sp = splitOf s (names ++ helpers) cs
+              needsOld = mentionsAny sp.keptMembers sp.moved
+              needsNew = mentionsAny sp.movedMembers sp.kept
+          when (any (\d => startColumn d.decl.fc /= 0) sp.moved) $ Left "a declaration to move is inside a block"
+          when (needsOld && needsNew) $ Left "what moves and what stays refer to each other: the two modules would import each other"
+          l <- listingOf p.packages old into
+          let ranges = merged s (map (rangeOf s) sp.moved)
+          pure (MkChange
+                  ([ (s.file.path, map (deletion s) ranges ++ (if needsNew then [importAfterLast s into] else [])),
+                     (l.package, [packageEdit l old into]) ]
+                   ++ mapMaybe (importerEdits old into sp.movedMembers sp.keptOffered) p.files)
+                  [(l.newPath, newText s old into names needsOld ranges)])

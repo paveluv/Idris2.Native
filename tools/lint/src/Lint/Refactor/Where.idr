@@ -2,6 +2,12 @@
 ||| clause has none.
 module Lint.Refactor.Where
 
+import Lint.Refactor.Edit
+import Lint.Refactor.Extent
+import Lint.Refactor.Free
+import Lint.Refactor.Reindent
+import Lint.Refactor.Span
+
 import Core.FC
 import Core.WithData
 import Data.List
@@ -9,11 +15,6 @@ import Data.Maybe
 import Data.SortedSet
 import Idris.Syntax
 import Libraries.Data.WithData
-import Lint.Refactor.Edit
-import Lint.Refactor.Extent
-import Lint.Refactor.Free
-import Lint.Refactor.Reindent
-import Lint.Refactor.Span
 import Lint.Rules
 
 %default covering

@@ -3,14 +3,6 @@
 ||| its parameters.
 module Compiler.Native.LocatedIR.Dump
 
-import Compiler.Native.HeapObject.Enc
-import Compiler.Native.HeapObject.Header
-import Compiler.Native.HeapObject.Kind
-import Compiler.Native.IRCommon.Conv
-import Compiler.Native.IRCommon.Operators.ArithOp
-import Compiler.Native.IRCommon.Operators.Rel
-import Compiler.Native.IRCommon.Operators.SubWord
-import Compiler.Native.IRCommon.Ty
 import Compiler.Native.LocatedIR.Block
 import Compiler.Native.LocatedIR.Cont
 import Compiler.Native.LocatedIR.Function
@@ -22,6 +14,15 @@ import Compiler.Native.LocatedIR.Program
 import Compiler.Native.LocatedIR.Reg
 import Compiler.Native.LocatedIR.Static
 import Compiler.Native.LocatedIR.Terminator
+
+import Compiler.Native.HeapObject.Enc
+import Compiler.Native.HeapObject.Header
+import Compiler.Native.HeapObject.Kind
+import Compiler.Native.IRCommon.Conv
+import Compiler.Native.IRCommon.Operators.ArithOp
+import Compiler.Native.IRCommon.Operators.Rel
+import Compiler.Native.IRCommon.Operators.SubWord
+import Compiler.Native.IRCommon.Ty
 import Core.Name
 import Data.Builder
 import Data.String

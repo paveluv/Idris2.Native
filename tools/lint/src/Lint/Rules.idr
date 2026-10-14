@@ -4,6 +4,9 @@
 ||| names. The rules over the import graph are `Lint.Graph`'s.
 module Lint.Rules
 
+import Lint.Finding
+import Lint.Source
+
 import Core.Context.Context
 import Core.Core
 import Core.FC
@@ -21,8 +24,6 @@ import Idris.Syntax.Pragmas
 import Idris.Syntax.Traversals
 import Libraries.Data.WithData
 import Libraries.Data.WithDefault
-import Lint.Finding
-import Lint.Source
 import TTImp.TTImp
 
 %default covering
@@ -95,6 +96,24 @@ mentions ds = coreRun walk (\_ => pure (MkMentions [] [])) pure
 moduleName : ModuleIdent -> String
 moduleName = show
 
+||| The block of imports an import belongs in, in the order the blocks
+||| come: the public imports, then the private ones of the importer's own
+||| group, the modules under its parent, nearest to it, then the other
+||| private ones.
+export
+importBlock : (importer : String) -> Import -> Nat
+importBlock m i =
+  if i.reexport then 0 else
+    case reverse (forget (split (== '.') m)) of
+      (_ :: rest@(_ :: _)) => if isPrefixOf (joinBy "." (reverse rest) ++ ".") (moduleName i.path) then 1 else 2
+      _ => 2
+
+||| Where an import goes among a module's: its block, then alphabetically
+||| as a reader sorts.
+export
+importKey : (importer : String) -> Import -> (Nat, String, String)
+importKey m i = (importBlock m i, toLower (moduleName i.path), moduleName i.path)
+
 ||| `import-order`: the public imports first, then the private ones, each in
 ||| alphabetical order, as a reader sorts: letters before their case, so
 ||| `Runtime.Object` comes before `Runtime.OS`. The first import out of its
@@ -102,13 +121,13 @@ moduleName = show
 importOrder : SourceFile -> List Finding
 importOrder f =
   let is = f.mod.imports
-      key = \i => (not i.reexport, toLower (moduleName i.path), moduleName i.path)
+      key = importKey (show f.mod.moduleNS)
       want = sortBy (\a, b => compare (key a) (key b)) is
   in case find (\(a, b) => key a /= key b) (zip is want) of
        Nothing => []
        Just (a, b) =>
          [finding f "import-order" a.loc (moduleName a.path)
-            ("`" ++ moduleName b.path ++ "` comes here: the public imports first, then the private ones, each alphabetical")]
+            ("`" ++ moduleName b.path ++ "` comes here: the public imports first, then the module's own group's, then the others, each alphabetical")]
 
 ||| A façade: a module that declares nothing, only re-exports.
 export
@@ -516,7 +535,7 @@ fileRules : SourceFile -> Mentions -> List Declared -> List Finding
 fileRules f ms ds =
   importOrder f ++ publicImport f ++ defaultTotality f ++ elabReflection f ms
   ++ trustEscape f ms ++ citesPlan f ++ todo f ++ headerComment f
-  ++ implementationAdjacent f ds ++ moduleName' f ds
+  ++ implementationAdjacent f ds ++ moduleName' f ds ++ groupPrefix f ds
   where
     ||| `public-import`: a module imports what it uses, so a public import is for
     ||| a façade.
@@ -544,6 +563,38 @@ fileRules f ms ds =
           finding f "implementation-adjacent" a.impl.decl.fc (iface ++ " " ++ a.type)
             ("`" ++ iface ++ " " ++ a.type ++ "` stands apart from `" ++ a.type ++ "`: `" ++ intruderName d
              ++ "` is between them, neither one of its implementations nor something they use")
+
+    ||| `group-prefix`, a warning: a module's name, or a name it exports,
+    ||| begins with the name of its group as a word (`Flat.FlatExp`,
+    ||| `FlatDef` and `flatForms` under `Flat`). The group qualifies it
+    ||| already (`Flat.Def`), and the prefix only repeats it.
+    groupPrefix : SourceFile -> List Declared -> List Finding
+    groupPrefix f ds = case reverse (forget (split (== '.') (show f.mod.moduleNS))) of
+      (m :: g :: _) =>
+        (if spills g m then [finding f "group-prefix" f.mod.headerLoc m (message g m)] else [])
+        ++ [ finding f "group-prefix" d.decl.fc n (message g n) | d <- ds, n <- nub d.visible, spills g n ]
+      _ => []
+      where
+        -- whether a name begins with the group's as a word: the group's
+        -- letters, then a capital
+        spills : String -> String -> Bool
+        spills g n =
+          length n > length g && toLower (substr 0 (length g) n) == toLower g
+          && maybe False isUpper (index' (length g) (unpack n))
+          where
+            index' : Nat -> List Char -> Maybe Char
+            index' k cs = head' (drop k cs)
+
+        message : String -> String -> String
+        message g n = "`" ++ n ++ "` begins with its group's name, `" ++ g ++ "`, which qualifies it already: `"
+                      ++ g ++ "." ++ rest n (substr (length g) (length n) n) ++ "`"
+          where
+            -- the rest of the name, its first letter lower again if the
+            -- name's was
+            rest : String -> String -> String
+            rest n r = case (unpack n, unpack r) of
+              (c :: _, d :: ds) => if isLower c then pack (toLower d :: ds) else r
+              _ => r
 
     moduleName' : SourceFile -> List Declared -> List Finding
     moduleName' f ds =
@@ -599,7 +650,7 @@ fileRules f ms ds =
 ||| is advice, printed when asked for.
 export
 isWarning : (rule : String) -> Bool
-isWarning rule = rule == "module-name" || rule == "same-name" || rule == "list-accumulation"
+isWarning rule = rule == "module-name" || rule == "same-name" || rule == "list-accumulation" || rule == "group-prefix"
 
 ||| The names of every rule, those over the graph and over the resolution
 ||| included.

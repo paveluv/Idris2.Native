@@ -11,8 +11,9 @@ module Runtime.Object
 -- which use it, so it is loaded wherever this module is)
 import public Compiler.Native.HeapObject.Header
 
-import Compiler.Native.HeapObject.Kind
 import Runtime.Bits
+
+import Compiler.Native.HeapObject.Kind
 
 %default total
 

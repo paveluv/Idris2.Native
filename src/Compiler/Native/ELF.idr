@@ -9,6 +9,7 @@ module Compiler.Native.ELF
 
 import Compiler.Native.Bytes
 import Compiler.Native.Platform
+
 import Data.Buffer
 import System.File.Buffer
 import System.File.Error

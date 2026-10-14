@@ -4,11 +4,12 @@
 ||| is).
 module Compiler.Native.LocatedIR.Block
 
-import Compiler.Native.HeapObject.Enc
 import Compiler.Native.LocatedIR.Instr
 import Compiler.Native.LocatedIR.Label
 import Compiler.Native.LocatedIR.Reg
 import Compiler.Native.LocatedIR.Terminator
+
+import Compiler.Native.HeapObject.Enc
 
 %default total
 

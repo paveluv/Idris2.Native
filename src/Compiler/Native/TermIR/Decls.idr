@@ -3,9 +3,10 @@
 ||| Part of the term IR (`Compiler.Native.TermIR.Program` says what it is).
 module Compiler.Native.TermIR.Decls
 
-import Compiler.Native.HeapObject.Enc
 import Compiler.Native.TermIR.Sig
 import Compiler.Native.TermIR.StaticSig
+
+import Compiler.Native.HeapObject.Enc
 
 %default total
 

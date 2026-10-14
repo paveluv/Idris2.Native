@@ -22,4 +22,5 @@
 ./Runtime/Direct.idr:5:1 syscall: the raw system call outside `Runtime.OS`: the platform's services reach the system
 ./Shared/One/Item.idr:1:1 parent-unique: the group `One` is also `Spare.One`: a group's name qualifies one group
 ./Spare/One/Piece.idr:1:1 parent-unique: the group `One` is also `Shared.One`: a group's name qualifies one group
-./Unordered.idr:5:1 import-order: `Data.List` comes here: the public imports first, then the private ones, each alphabetical
+./Spare/One/Unsorted.idr:4:1 import-order: `Spare.One.Piece` comes here: the public imports first, then the module's own group's, then the others, each alphabetical
+./Unordered.idr:5:1 import-order: `Data.List` comes here: the public imports first, then the module's own group's, then the others, each alphabetical

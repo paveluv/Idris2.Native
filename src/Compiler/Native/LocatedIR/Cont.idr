@@ -5,9 +5,10 @@
 ||| is).
 module Compiler.Native.LocatedIR.Cont
 
-import Compiler.Native.HeapObject.Enc
 import Compiler.Native.LocatedIR.Label
 import Compiler.Native.LocatedIR.Reg
+
+import Compiler.Native.HeapObject.Enc
 
 %default total
 

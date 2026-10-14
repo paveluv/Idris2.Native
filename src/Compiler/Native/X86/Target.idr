@@ -4,8 +4,9 @@
 ||| agree on them by construction.
 module Compiler.Native.X86.Target
 
-import Compiler.Native.Target
 import Compiler.Native.X86.Asm
+
+import Compiler.Native.Target
 
 %default total
 

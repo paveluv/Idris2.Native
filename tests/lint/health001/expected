@@ -1,26 +1,27 @@
-architectural health: 98
+architectural health: 97
   structure        99
     encapsulation 100  private imports, façades exempt: 8 of 8
     layering      100  imports the layers allow: 0 of 0
-    coupling       94  module pairs a change cannot reach: 136 of 144
-    distinction   100  group members imported apart from their siblings: 0 of 0
-  readability      96
+    coupling       95  module pairs a change cannot reach: 161 of 169
+    distinction   100  group members that stand apart from their siblings: 0 of 0
+  readability      94
     cohesion      100  implementations next to their types: 0 of 0
-    names          92  modules named after a symbol they define: 11 of 12
-    uniqueness     92  exported names never written bare where another of the name is seen: 22 of 24
+    names          85  modules named after a symbol they define: 11 of 13
+    uniqueness     92  exported names never written bare where another of the name is seen: 24 of 26
     scoping       100  helpers local to a function or a namespace block, of those and the ones a single user leaves module-wide: 0 of 0
-architectural health: 98
+architectural health: 97
   structure        99
     encapsulation 100  private imports, façades exempt: 8 of 8
     layering      100  imports the layers allow: 0 of 0
-    coupling       94  module pairs a change cannot reach: 136 of 144
-          2  Canvas: its imports reach 2 of our 12 modules
-          2  Night: its imports reach 2 of our 12 modules
-    distinction   100  group members imported apart from their siblings: 0 of 0
-  readability      96
+    coupling       95  module pairs a change cannot reach: 161 of 169
+          2  Canvas: its imports reach 2 of our 13 modules
+          2  Night: its imports reach 2 of our 13 modules
+    distinction   100  group members that stand apart from their siblings: 0 of 0
+  readability      94
     cohesion      100  implementations next to their types: 0 of 0
-    names          92  modules named after a symbol they define: 11 of 12
+    names          85  modules named after a symbol they define: 11 of 13
           1  Elsewhere: defines `found`
-    uniqueness     92  exported names never written bare where another of the name is seen: 22 of 24
+          1  Farm.FarmHand: defines `farmTool`, `farmstead`
+    uniqueness     92  exported names never written bare where another of the name is seen: 24 of 26
           2  speak: defined in `Cat`, `Dog`; they meet bare in `Pets`, `Zoo`
     scoping       100  helpers local to a function or a namespace block, of those and the ones a single user leaves module-wide: 0 of 0

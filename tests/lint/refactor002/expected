@@ -1,0 +1,97 @@
+./Heap/Header.idr: 1 changed, 0 stay
+./Heap/Ring.idr: 0 changed, 1 stay
+  `split B into Heap.Ring.B` stays: what moves and what stays refer to each other: the two modules would import each other
+Heap/Part.idr: 1 changed, 0 stay
+./Heap/Header.idr: 1 changed, 0 stay
+--- Heap/Part.idr
+||| `Part`, from `Heap.Header`.
+module Heap.Part
+
+%default total
+
+||| A part of a header.
+public export
+data Part = Tag | Count
+
+||| Where a part sits in the header word.
+export
+place : Part -> Nat
+place Tag = 0
+place Count = 8
+--- Heap/Header.idr
+||| A header and its parts: two concepts, which `split-module` takes apart.
+module Heap.Header
+
+import Heap.Part
+
+import Data.List
+
+%default total
+
+||| An object's header.
+public export
+data Header = Con Nat | Str Nat
+
+||| A header's parts: what stays uses what moves, so `Heap.Header` imports
+||| `Heap.Part` after the split.
+export
+parts : Header -> List Part
+parts (Con _) = [Tag, Count]
+parts (Str _) = [Tag]
+
+||| The headers, a constructor's between each two: `Data.List`'s, which
+||| `Heap.Part` takes with the other imports and `prune-imports` removes.
+export
+spaced : List Header -> List Header
+spaced = intersperse (Con 0)
+--- Places.idr
+||| Names only a part: it imports `Heap.Part` in place of `Heap.Header`.
+module Places
+
+import Heap.Part
+
+%default total
+
+export
+tagPlace : Nat
+tagPlace = place Tag
+--- Both.idr
+||| Names a header and a part: it imports both modules.
+module Both
+
+import Heap.Header
+import Heap.Part
+
+%default total
+
+export
+partsOfCon : Nat
+partsOfCon = sum (map place (parts (Con 1)))
+--- Dump.idr
+||| Names only a header: its import stays as it is.
+module Dump
+
+import Heap.Header
+
+%default total
+
+export
+first : List Header
+first = [Con 1]
+--- fixtures.ipkg
+package fixtures
+
+depends = idris2-native
+
+modules =
+    Both,
+    Dump,
+    Heap.Header,
+    Heap.Part,
+    Heap.Ring,
+    Places
+Heap/Part.idr checks
+Heap/Header.idr checks
+Places.idr checks
+Both.idr checks
+Dump.idr checks

@@ -12,6 +12,9 @@
 ||| from the installed packages.
 module Lint.Resolution
 
+import Lint.Finding
+import Lint.Source
+
 import Core.Binary
 import Core.Binary.Prims
 import Core.Case.CaseTree
@@ -45,8 +48,6 @@ import Libraries.Data.NameMap
 import Libraries.Data.WithDefault
 import Libraries.Utils.Binary
 import Libraries.Utils.Path
-import Lint.Finding
-import Lint.Source
 import System
 import System.Directory
 import System.File
