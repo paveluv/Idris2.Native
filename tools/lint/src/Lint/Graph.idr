@@ -41,25 +41,6 @@ Eq Layer where
   LintLayer == LintLayer = True
   _ == _ = False
 
-layerOf : String -> Maybe Layer
-layerOf m =
-  if m == "Runtime" || isPrefixOf "Runtime." m then Just RuntimeLayer
-  else if isPrefixOf "Compiler.Native." m then Just NativeLayer
-  else if isPrefixOf "Flat." m then Just FlatLayer
-  else if isPrefixOf "Lint." m then Just LintLayer
-  else if isPrefixOf "Data." m then Just DataLayer
-  else Nothing
-
-||| The modules of other layers that a layer may import: a module of no layer
-||| among ours (a program) by none, and the runtime only what it shares with
-||| the compiler: the heap-object model's modules, and `Flat.Uniform`.
-mayImport : Layer -> String -> Bool
-mayImport DataLayer m = False
-mayImport FlatLayer m = layerOf m == Just DataLayer || layerOf m == Just FlatLayer
-mayImport NativeLayer m = maybe False (\l => l == DataLayer || l == FlatLayer || l == NativeLayer) (layerOf m)
-mayImport RuntimeLayer m = layerOf m == Just RuntimeLayer || isPrefixOf "Compiler.Native.HeapObject." m || m == "Flat.Uniform"
-mayImport LintLayer m = layerOf m == Just LintLayer
-
 ||| Whether an import is allowed by the layers, given the modules that are
 ||| ours. The runtime may import nothing that is not ours.
 allowed : SortedSet String -> (importer : String) -> (imported : String) -> Maybe Bool
@@ -67,6 +48,25 @@ allowed ours importer imported = case layerOf importer of
   Nothing => Nothing
   Just RuntimeLayer => Just (contains imported ours && mayImport RuntimeLayer imported)
   Just l => if contains imported ours then Just (mayImport l imported) else Nothing
+  where
+    layerOf : String -> Maybe Layer
+    layerOf m =
+      if m == "Runtime" || isPrefixOf "Runtime." m then Just RuntimeLayer
+      else if isPrefixOf "Compiler.Native." m then Just NativeLayer
+      else if isPrefixOf "Flat." m then Just FlatLayer
+      else if isPrefixOf "Lint." m then Just LintLayer
+      else if isPrefixOf "Data." m then Just DataLayer
+      else Nothing
+
+    ||| The modules of other layers that a layer may import: a module of no layer
+    ||| among ours (a program) by none, and the runtime only what it shares with
+    ||| the compiler: the heap-object model's modules, and `Flat.Uniform`.
+    mayImport : Layer -> String -> Bool
+    mayImport DataLayer m = False
+    mayImport FlatLayer m = layerOf m == Just DataLayer || layerOf m == Just FlatLayer
+    mayImport NativeLayer m = maybe False (\l => l == DataLayer || l == FlatLayer || l == NativeLayer) (layerOf m)
+    mayImport RuntimeLayer m = layerOf m == Just RuntimeLayer || isPrefixOf "Compiler.Native.HeapObject." m || m == "Flat.Uniform"
+    mayImport LintLayer m = layerOf m == Just LintLayer
 
 moduleOf : SourceFile -> String
 moduleOf f = show f.mod.moduleNS
@@ -313,16 +313,6 @@ record Component where
   counted : String
   offenders : List Offender
 
-||| The modules each module's imports reach, ours only.
-reaches : SortedMap String (List String) -> String -> SortedSet String
-reaches g m = go empty (fromMaybe [] (lookup m g))
-  where
-    go : SortedSet String -> List String -> SortedSet String
-    go seen [] = seen
-    go seen (n :: ns) =
-      if contains n seen then go seen ns
-      else go (insert n seen) (fromMaybe [] (lookup n g) ++ ns)
-
 ||| One import between our modules, by how much the importer uses: the names
 ||| the import makes visible (the module's own and its public re-exports')
 ||| that the importer mentions, and all of them.
@@ -333,33 +323,6 @@ record ImportEdge where
   imported : String
   used : Nat
   offered : Nat
-
-||| Of what our modules import from each other, how much they use, import
-||| by import. Weighted by size, so that a large bundle imported for a few
-||| names costs more than a small module.
-importEdges : List (SourceFile, List Declared) -> List ImportEdge
-importEdges fds =
-  let ours = ourModules (map fst fds)
-      visibleIn = the (SortedMap String (List String)) (fromList [ (moduleOf f, joined (map (.visible) ds)) | (f, ds) <- fds ])
-      reexports = the (SortedMap String (List String))
-                    (fromList [ (moduleOf f, filter (\i => contains i ours) (map (show . (.path)) (filter (.reexport) f.mod.imports))) | (f, _) <- fds ])
-      pairs = joined [ map (f, ds,) (filter (\i => contains i ours) (map (show . (.path)) f.mod.imports)) | (f, ds) <- fds ]
-  in map (edge visibleIn reexports) pairs
-  where
-    exposed : SortedMap String (List String) -> String -> SortedSet String
-    exposed reexports b = go (singleton b) (fromMaybe [] (lookup b reexports))
-      where
-        go : SortedSet String -> List String -> SortedSet String
-        go acc [] = acc
-        go acc (i :: is) = if contains i acc then go acc is else go (insert i acc) (fromMaybe [] (lookup i reexports) ++ is)
-
-    edge : SortedMap String (List String) -> SortedMap String (List String) ->
-           (SourceFile, List Declared, String) -> ImportEdge
-    edge visibleIn reexports (f, ds, b) =
-      let names = the (SortedSet String) (fromList (joined (map (\m => fromMaybe [] (lookup m visibleIn)) (Prelude.toList (exposed reexports b)))))
-          mentioned = the (SortedSet String) (fromList (joined (map (.mentions) ds)))
-          used = length (filter (\n => contains n mentioned) (Prelude.toList names))
-      in MkImportEdge (moduleOf f) b used (length (Prelude.toList names))
 
 ||| A module left out of a component of the score, by a comment of its own,
 ||| `-- lint: exclude <component>: <reason>`: the component, the reason, and
@@ -403,23 +366,6 @@ exclusionRules f = mapMaybe check (exclusions f)
       if not (e.componentName `elem` excludable) then Just (at ("no component `" ++ e.componentName ++ "` leaves modules out"))
       else if e.reason == "" then Just (at ("an exclusion from `" ++ e.componentName ++ "` says why"))
       else Nothing
-
-||| The offenders of precision: each imported module, by the names its
-||| importers leave unused, with the importers that use the fewest.
-precisionOffenders : List ImportEdge -> List Offender
-precisionOffenders edges =
-  let byImported = foldl (\acc, e => insert e.imported (e :: fromMaybe [] (lookup e.imported acc)) acc)
-                         (the (SortedMap String (List ImportEdge)) empty) edges
-  in map offender (SortedMap.toList byImported)
-  where
-    offender : (String, List ImportEdge) -> Offender
-    offender (b, importers) =
-      let offered = foldl (\m, e => max m e.offered) (the Nat 0) importers
-          unused = sum (map (\e => minus e.offered e.used) importers)
-          fewest = sortBy (\e, e' => compare e.used e'.used) importers
-      in MkOffender b unused
-           (show (length importers) ++ (if length importers == 1 then " importer" else " importers") ++ " of its " ++ show offered ++ " names; fewest used: "
-            ++ fastConcat (intersperse ", " (map (\e => e.importer ++ " " ++ show e.used) (take 4 fewest))))
 
 ||| The components of the architectural health of the files' modules, in
 ||| their groups: structure (the import graph), readability (what a reader
@@ -473,6 +419,16 @@ health fds =
     reaching : (ourCount : Nat) -> (String, List String) -> Offender
     reaching ourCount (m, r) = MkOffender m (length r) ("its imports reach " ++ show (length r) ++ " of our " ++ show ourCount ++ " modules")
 
+    ||| The modules each module's imports reach, ours only.
+    reaches : SortedMap String (List String) -> String -> SortedSet String
+    reaches g m = go empty (fromMaybe [] (lookup m g))
+      where
+        go : SortedSet String -> List String -> SortedSet String
+        go seen [] = seen
+        go seen (n :: ns) =
+          if contains n seen then go seen ns
+          else go (insert n seen) (fromMaybe [] (lookup n g) ++ ns)
+
     coupling : List SourceFile -> Component
     coupling fs =
       let ours = ourModules fs
@@ -487,6 +443,50 @@ health fds =
     -- modules left out of precision, as imported ones
     excluded : List SourceFile -> List String
     excluded fs = [ moduleOf f | f <- fs, any (\e => e.componentName == "precision" && e.reason /= "") (exclusions f) ]
+
+    ||| Of what our modules import from each other, how much they use, import
+    ||| by import. Weighted by size, so that a large bundle imported for a few
+    ||| names costs more than a small module.
+    importEdges : List (SourceFile, List Declared) -> List ImportEdge
+    importEdges fds =
+      let ours = ourModules (map fst fds)
+          visibleIn = the (SortedMap String (List String)) (fromList [ (moduleOf f, joined (map (.visible) ds)) | (f, ds) <- fds ])
+          reexports = the (SortedMap String (List String))
+                        (fromList [ (moduleOf f, filter (\i => contains i ours) (map (show . (.path)) (filter (.reexport) f.mod.imports))) | (f, _) <- fds ])
+          pairs = joined [ map (f, ds,) (filter (\i => contains i ours) (map (show . (.path)) f.mod.imports)) | (f, ds) <- fds ]
+      in map (edge visibleIn reexports) pairs
+      where
+        exposed : SortedMap String (List String) -> String -> SortedSet String
+        exposed reexports b = go (singleton b) (fromMaybe [] (lookup b reexports))
+          where
+            go : SortedSet String -> List String -> SortedSet String
+            go acc [] = acc
+            go acc (i :: is) = if contains i acc then go acc is else go (insert i acc) (fromMaybe [] (lookup i reexports) ++ is)
+
+        edge : SortedMap String (List String) -> SortedMap String (List String) ->
+               (SourceFile, List Declared, String) -> ImportEdge
+        edge visibleIn reexports (f, ds, b) =
+          let names = the (SortedSet String) (fromList (joined (map (\m => fromMaybe [] (lookup m visibleIn)) (Prelude.toList (exposed reexports b)))))
+              mentioned = the (SortedSet String) (fromList (joined (map (.mentions) ds)))
+              used = length (filter (\n => contains n mentioned) (Prelude.toList names))
+          in MkImportEdge (moduleOf f) b used (length (Prelude.toList names))
+
+    ||| The offenders of precision: each imported module, by the names its
+    ||| importers leave unused, with the importers that use the fewest.
+    precisionOffenders : List ImportEdge -> List Offender
+    precisionOffenders edges =
+      let byImported = foldl (\acc, e => insert e.imported (e :: fromMaybe [] (lookup e.imported acc)) acc)
+                             (the (SortedMap String (List ImportEdge)) empty) edges
+      in map offender (SortedMap.toList byImported)
+      where
+        offender : (String, List ImportEdge) -> Offender
+        offender (b, importers) =
+          let offered = foldl (\m, e => max m e.offered) (the Nat 0) importers
+              unused = sum (map (\e => minus e.offered e.used) importers)
+              fewest = sortBy (\e, e' => compare e.used e'.used) importers
+          in MkOffender b unused
+               (show (length importers) ++ (if length importers == 1 then " importer" else " importers") ++ " of its " ++ show offered ++ " names; fewest used: "
+                ++ fastConcat (intersperse ", " (map (\e => e.importer ++ " " ++ show e.used) (take 4 fewest))))
 
     precision : List SourceFile -> Component
     precision fs =

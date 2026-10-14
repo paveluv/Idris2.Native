@@ -96,92 +96,92 @@ modulesOf fms r =
 ------------------------------------------------------------------------------
 -- The rules
 
-||| `import-unused`: a private import that gives the module nothing it does
-||| not import directly: none of the names it makes visible used, neither
-||| the module's own nor any it re-exports, or only those of modules
-||| imported directly too. A façade's imports are for its importers, and so
-||| is a public import: neither is reported.
-importUnused : Linted -> List Finding
-importUnused m = if facade m.file then [] else mapMaybe report m.privateImports
-  where
-    report : (Import, Usage) -> Maybe Finding
-    report (_, Needed) = Nothing
-    report (i, Redundant vs) =
-      Just (finding m.file "import-unused" i.loc (show i.path)
-              ("`" ++ show i.path ++ "` is imported, and of what it makes visible only "
-               ++ listed vs ++ " is used, which the module imports directly"))
-    report (i, Unused) =
-      Just (finding m.file "import-unused" i.loc (show i.path)
-              ("`" ++ show i.path ++ "` is imported, and nothing it makes visible is used"))
-
-||| `import-indirect`: a module whose names the module writes, or whose
-||| implementations it uses, reached only through another module
-||| re-exporting it. Search finds an implementation only where its module
-||| is visible, so a module that uses one imports its module, as it does
-||| one whose names it writes.
-importIndirect : Resolution -> Linted -> List Finding
-importIndirect r m = mapMaybe report (SortedMap.toList m.writtenUses)
-  where
-    through : String -> Maybe Import
-    through u = find (\i => contains u (visibleThrough r.importsOf (const True) (show i.path))) m.file.mod.imports
-
-    report : (String, List String) -> Maybe Finding
-    report (u, ns) =
-      if contains u m.reached then Nothing else
-        let names = fastConcat (intersperse ", " (map (\n => "`" ++ n ++ "`") (take 3 (nub ns))))
-            via = through u
-            how = maybe "without importing it" (\i => "only through `" ++ show i.path ++ "`") via
-        in Just (finding m.file "import-indirect" (maybe EmptyFC (.loc) via) u
-                   ("`" ++ u ++ "` is used (" ++ names ++ ") " ++ how ++ ": import it"))
-
-||| `list-accumulation`, a warning: a definition that grows a list at its
-||| end with `++`, copying what it has grown at every step, where a
-||| `SnocList` grows in constant time; or joins lists by a left fold, which
-||| copies what it has joined at every step, where `joinMap` (a `Builder`)
-||| joins in linear time.
-listAccumulation : Linted -> List Finding
-listAccumulation m =
-  [ MkFinding "list-accumulation" m.file.path a.line a.col a.subject (message a)
-  | a <- m.resolved.accumulations, a.atEnd + a.leftFolds > 0 ]
-  where
-    times : Nat -> String
-    times 1 = "once"
-    times 2 = "twice"
-    times k = show k ++ " times"
-
-    message : Accumulations -> String
-    message a =
-      let atEnd = if a.atEnd == 0 then [] else
-                    ["grows a list at its end with `++` " ++ times a.atEnd ++ ": a `SnocList` grows there in constant time (`:<`, `<><`)"]
-          folds = if a.leftFolds == 0 then [] else
-                    ["joins lists by a left fold " ++ times a.leftFolds ++ ": `joinMap` joins them in linear time"]
-      in "`" ++ a.subject ++ "` " ++ fastConcat (intersperse "; " (atEnd ++ folds))
-
-||| `generic-export`: in a module named after a type it defines,
-||| an exported function whose type and body refer to nothing of ours, its
-||| own recursion aside, and write no string, is a generic helper. (A string
-||| names something, a namespace or a symbol: a function that writes one,
-||| such as a routine's name, is a fact of its module.) A reader who wants it looks
-||| for it among helpers, not in a module about a type, and writes it again
-||| when it is not there: it belongs private to the module, or in a module
-||| of helpers. A constant, which takes no arguments, is a fact of its
-||| module, and is left out.
-genericExport : Linted -> List Finding
-genericExport m =
-  if not aboutAType then [] else
-    [ MkFinding "generic-export" m.file.path line col name
-        ("`" ++ name ++ "` is exported from `" ++ m.resolved.name ++ "`, a module about its type, and refers to nothing of ours: a generic helper, private to the module or in a module of helpers")
-    | (name, line, col) <- m.resolved.generics ]
-  where
-    -- whether the module is named after a type it defines
-    aboutAType : Bool
-    aboutAType = any (\t => toLower t == toLower (lastPart (show m.file.mod.moduleNS))) m.types
-
 ||| The rules over the program resolved.
 export
 resolvedRules : List (SourceFile, List Declared, Mentions) -> Resolution -> List Finding
 resolvedRules fms r =
   joined [ importUnused m ++ importIndirect r m ++ listAccumulation m ++ genericExport m | m <- modulesOf fms r ]
+  where
+    ||| `import-unused`: a private import that gives the module nothing it does
+    ||| not import directly: none of the names it makes visible used, neither
+    ||| the module's own nor any it re-exports, or only those of modules
+    ||| imported directly too. A façade's imports are for its importers, and so
+    ||| is a public import: neither is reported.
+    importUnused : Linted -> List Finding
+    importUnused m = if facade m.file then [] else mapMaybe report m.privateImports
+      where
+        report : (Import, Usage) -> Maybe Finding
+        report (_, Needed) = Nothing
+        report (i, Redundant vs) =
+          Just (finding m.file "import-unused" i.loc (show i.path)
+                  ("`" ++ show i.path ++ "` is imported, and of what it makes visible only "
+                   ++ listed vs ++ " is used, which the module imports directly"))
+        report (i, Unused) =
+          Just (finding m.file "import-unused" i.loc (show i.path)
+                  ("`" ++ show i.path ++ "` is imported, and nothing it makes visible is used"))
+
+    ||| `import-indirect`: a module whose names the module writes, or whose
+    ||| implementations it uses, reached only through another module
+    ||| re-exporting it. Search finds an implementation only where its module
+    ||| is visible, so a module that uses one imports its module, as it does
+    ||| one whose names it writes.
+    importIndirect : Resolution -> Linted -> List Finding
+    importIndirect r m = mapMaybe report (SortedMap.toList m.writtenUses)
+      where
+        through : String -> Maybe Import
+        through u = find (\i => contains u (visibleThrough r.importsOf (const True) (show i.path))) m.file.mod.imports
+
+        report : (String, List String) -> Maybe Finding
+        report (u, ns) =
+          if contains u m.reached then Nothing else
+            let names = fastConcat (intersperse ", " (map (\n => "`" ++ n ++ "`") (take 3 (nub ns))))
+                via = through u
+                how = maybe "without importing it" (\i => "only through `" ++ show i.path ++ "`") via
+            in Just (finding m.file "import-indirect" (maybe EmptyFC (.loc) via) u
+                       ("`" ++ u ++ "` is used (" ++ names ++ ") " ++ how ++ ": import it"))
+
+    ||| `list-accumulation`, a warning: a definition that grows a list at its
+    ||| end with `++`, copying what it has grown at every step, where a
+    ||| `SnocList` grows in constant time; or joins lists by a left fold, which
+    ||| copies what it has joined at every step, where `joinMap` (a `Builder`)
+    ||| joins in linear time.
+    listAccumulation : Linted -> List Finding
+    listAccumulation m =
+      [ MkFinding "list-accumulation" m.file.path a.line a.col a.subject (message a)
+      | a <- m.resolved.accumulations, a.atEnd + a.leftFolds > 0 ]
+      where
+        times : Nat -> String
+        times 1 = "once"
+        times 2 = "twice"
+        times k = show k ++ " times"
+
+        message : Accumulations -> String
+        message a =
+          let atEnd = if a.atEnd == 0 then [] else
+                        ["grows a list at its end with `++` " ++ times a.atEnd ++ ": a `SnocList` grows there in constant time (`:<`, `<><`)"]
+              folds = if a.leftFolds == 0 then [] else
+                        ["joins lists by a left fold " ++ times a.leftFolds ++ ": `joinMap` joins them in linear time"]
+          in "`" ++ a.subject ++ "` " ++ fastConcat (intersperse "; " (atEnd ++ folds))
+
+    ||| `generic-export`: in a module named after a type it defines,
+    ||| an exported function whose type and body refer to nothing of ours, its
+    ||| own recursion aside, and write no string, is a generic helper. (A string
+    ||| names something, a namespace or a symbol: a function that writes one,
+    ||| such as a routine's name, is a fact of its module.) A reader who wants it looks
+    ||| for it among helpers, not in a module about a type, and writes it again
+    ||| when it is not there: it belongs private to the module, or in a module
+    ||| of helpers. A constant, which takes no arguments, is a fact of its
+    ||| module, and is left out.
+    genericExport : Linted -> List Finding
+    genericExport m =
+      if not aboutAType then [] else
+        [ MkFinding "generic-export" m.file.path line col name
+            ("`" ++ name ++ "` is exported from `" ++ m.resolved.name ++ "`, a module about its type, and refers to nothing of ours: a generic helper, private to the module or in a module of helpers")
+        | (name, line, col) <- m.resolved.generics ]
+      where
+        -- whether the module is named after a type it defines
+        aboutAType : Bool
+        aboutAType = any (\t => toLower t == toLower (lastPart (show m.file.mod.moduleNS))) m.types
 
 ------------------------------------------------------------------------------
 -- Health

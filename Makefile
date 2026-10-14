@@ -28,7 +28,7 @@ threads ?= $(shell nproc 2>/dev/null || echo 1)
 # after uses the pinned Idris 2's, in the prefix.
 WITH_PREFIX := IDRIS2_PREFIX=$(PREFIX)
 
-.PHONY: all upstream native linter testbin test lint health scaling clean
+.PHONY: all upstream native linter testbin test lint health check-source scaling clean
 
 all: native
 
@@ -68,6 +68,18 @@ lint: native linter
 offenders ?= 10
 health: native linter
 	$(WITH_PREFIX) $(LINTER) --resolved --health --offenders $(offenders) src runtime
+
+# One source file type checked as its package builds it, quietly, failing
+# if it does not check: `SOURCE=src/...`, `runtime/...` (by idris2-native,
+# which checks the flat functions) or `tools/lint/src/...`. What a
+# refactoring checks each change by: `--check 'make -s check-source
+# SOURCE={}'`. Ten minutes at most, against a runaway elaboration.
+check-source:
+	@case "$(SOURCE)" in \
+	  runtime/*) cd runtime && $(WITH_PREFIX) timeout 600 $(TARGET) --find-ipkg --check $(SOURCE:runtime/%=%) ;; \
+	  tools/lint/*) cd tools/lint && $(WITH_PREFIX) timeout 600 $(UPSTREAM_IDRIS2) --find-ipkg --check $(SOURCE:tools/lint/%=%) ;; \
+	  *) $(WITH_PREFIX) timeout 600 $(UPSTREAM_IDRIS2) --find-ipkg --check $(SOURCE) ;; \
+	esac > /dev/null 2>&1
 
 # The backend's phases against the size of the program: fails when one
 # grows faster than the program (tests/scaling/scaling.sh). On demand, not

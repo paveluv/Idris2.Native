@@ -45,22 +45,23 @@ finding f rule fc subject message =
 ||| The label of the references being collected.
 data Collected : Type where
 
-||| An operator where it is written, as symbols or between backticks.
-operator : WithFC (OpStr' Name) -> (FC, Name)
-operator o = (o.fc, either id id (opNameToEither o.val))
-
 ||| The names a term writes where it stands: a reference, an operator, a
 ||| field projected. Idris's parse holds an operator, and a projection's
 ||| field, apart from its references; to a reader they are names written.
 writes : PTerm -> List (FC, Name)
-writes (PRef fc n) = [(fc, n)]
-writes (POp _ _ op _) = [operator op]
-writes (PPrefixOp _ op _) = [operator op]
-writes (PSectionL _ op _) = [operator op]
-writes (PSectionR _ _ op) = [operator op]
-writes (PPostfixApp _ _ fields) = fields
-writes (PPostfixAppPartial _ fields) = fields
-writes _ = []
+writes term = case term of
+  PRef fc n => [(fc, n)]
+  POp _ _ op _ => [operator op]
+  PPrefixOp _ op _ => [operator op]
+  PSectionL _ op _ => [operator op]
+  PSectionR _ _ op => [operator op]
+  PPostfixApp _ _ fields => fields
+  PPostfixAppPartial _ fields => fields
+  _ => []
+  where
+    ||| An operator where it is written, as symbols or between backticks.
+    operator : WithFC (OpStr' Name) -> (FC, Name)
+    operator o = (o.fc, either id id (opNameToEither o.val))
 
 ||| What the terms of a file mention: every name it writes, with where, and
 ||| every `%runElab` in a term.
@@ -114,15 +115,6 @@ export
 facade : SourceFile -> Bool
 facade f = all (\d => case d.val of PDirective _ => True; _ => False) f.mod.decls
 
-||| `public-import`: a module imports what it uses, so a public import is for
-||| a façade.
-publicImport : SourceFile -> List Finding
-publicImport f =
-  if facade f then [] else
-    [ finding f "public-import" i.loc (moduleName i.path)
-        ("`" ++ moduleName i.path ++ "` imported publicly: a module that uses it imports it")
-    | i <- f.mod.imports, i.reexport ]
-
 ------------------------------------------------------------------------------
 -- Declarations
 
@@ -165,7 +157,15 @@ record Declared where
   ||| name, if it is in one.
   namespaced : Maybe String
 
+||| A clause's left-hand side.
+export
+lhsOf : PClause -> PTerm
+lhsOf (MkPatClause _ lhs _ _) = lhs
+lhsOf (MkWithClause _ lhs _ _ _) = lhs
+lhsOf (MkImpossible _ lhs) = lhs
+
 ||| The name a clause defines: the head of its left-hand side.
+export
 clauseName : PTerm -> Maybe Name
 clauseName (PRef _ n) = Just n
 clauseName (PApp _ f _) = clauseName f
@@ -174,12 +174,13 @@ clauseName (PNamedApp _ f _ _) = clauseName f
 clauseName (PWithApp _ f _) = clauseName f
 clauseName _ = Nothing
 
+export
 definesOf : PDecl -> List String
 definesOf d = case d.val of
   PClaim c => map (nameRoot . (.val) . snd) (forget c.type.val.names)
-  PDef (MkPatClause _ lhs _ _ :: _) => maybe [] (\n => [nameRoot n]) (clauseName lhs)
-  PDef (MkWithClause _ lhs _ _ _ :: _) => maybe [] (\n => [nameRoot n]) (clauseName lhs)
-  PDef (MkImpossible _ lhs :: _) => maybe [] (\n => [nameRoot n]) (clauseName lhs)
+  -- the parser keeps clauses written one after another together, whatever
+  -- they define: `x = 1` then `y = 2` is one definition of both
+  PDef cls => nub (mapMaybe (map nameRoot . clauseName . lhsOf) cls)
   PData _ _ _ (MkPData _ n _ _ _) => [nameRoot n]
   PData _ _ _ (MkPLater _ n _) => [nameRoot n]
   PRecord _ _ _ (MkPRecord n _ _ _ _) => [nameRoot n]
@@ -188,6 +189,7 @@ definesOf d = case d.val of
   _ => []
 
 ||| The names the terms mention, as written, by Idris's own traversal.
+export
 namesWritten : PTerm -> Core (List Name)
 namesWritten t = do
   r <- newRef Collected (MkMentions [] [])
@@ -198,55 +200,34 @@ namesWritten t = do
     note : {auto r : Ref Collected Mentions} -> PTerm -> Core ()
     note t = update Collected { refs $= (reverse (writes t) ++) }
 
-||| The names the terms mention, without their namespaces.
-namesIn : PTerm -> Core (List String)
-namesIn t = map nameRoot <$> namesWritten t
-
-||| Whether a name is written without a namespace.
-unqualified : Name -> Bool
-unqualified (NS _ _) = False
-unqualified _ = True
-
 exported : Visibility -> Bool
 exported Private = False
 exported _ = True
-
-visibleOf : PDecl -> List String
-visibleOf d = case d.val of
-  PClaim c => if exported c.vis then map (nameRoot . (.val) . snd) (forget c.type.val.names) else []
-  PData _ v _ (MkPData _ n _ _ cons) =>
-    if exported (collapseDefault v)
-       then nameRoot n :: (if collapseDefault v == Public then foldr (\c, rest => map (nameRoot . (.val) . snd) (forget c.val.names) ++ rest) [] cons else [])
-       else []
-  PData _ v _ (MkPLater _ n _) => if exported (collapseDefault v) then [nameRoot n] else []
-  PRecord _ v _ (MkPRecord n _ _ con _) =>
-    if exported (collapseDefault v)
-       then nameRoot n :: (if collapseDefault v == Public then maybe [] (\c => [nameRoot c.val]) con else [])
-       else []
-  PRecord _ v _ (MkPRecordLater n _) => if exported (collapseDefault v) then [nameRoot n] else []
-  PInterface v _ n _ _ _ _ body =>
-    if exported (collapseDefault v)
-       then nameRoot n :: foldr (\m, rest => case m.val of
-                                                PClaim c => map (nameRoot . (.val) . snd) (forget c.type.val.names) ++ rest
-                                                _ => rest) [] body
-       else []
-  _ => []
-
-isBlock : PDecl -> Bool
-isBlock d = case d.val of
-  PMutual _ => True
-  PNamespace _ _ => True
-  PParameters _ _ => True
-  PUsing _ _ => True
-  _ => False
-
-startLine : PDecl -> Int
-startLine d = fst (position d.fc)
 
 ||| The last part of a dotted name.
 export
 lastPart : String -> String
 lastPart m = maybe m id (last' (forget (split (== '.') m)))
+
+||| A definition as one per function: the parser keeps clauses written one
+||| after another together, whatever they define, so `x = 1` then `y = 2`,
+||| or one function's clauses followed by another's whose claim came first,
+||| arrive as one; each function's run of clauses becomes a definition of
+||| its own, spanning its clauses.
+export
+byFunction : PDecl -> List PDecl
+byFunction d = case d.val of
+  PDef cls => case groupBy (\a, b => clauseName (lhsOf a) == clauseName (lhsOf b)) cls of
+    [_] => [d]
+    runs => map (\run => MkFCVal (spanning (forget run)) (PDef (forget run))) runs
+  _ => [d]
+  where
+    spanning : List PClause -> FC
+    spanning run = case (map getPClauseLoc run, d.fc) of
+      ((MkFC o s _ :: _), _) => case last' (map getPClauseLoc run) of
+        Just (MkFC _ _ e) => MkFC o s e
+        _ => d.fc
+      _ => d.fc
 
 ||| The declarations of a file that are not blocks of others, in the order
 ||| they are written, each with what it defines and mentions.
@@ -254,6 +235,7 @@ export
 declared : SourceFile -> IO (List Declared)
 declared f = coreRun (traverse one leaves) (\_ => pure []) pure
   where
+
     -- each declaration that is not a block of others, with the namespace
     -- block it is in
     leavesIn : Maybe String -> List PDecl -> List (Maybe String, PDecl)
@@ -265,10 +247,43 @@ declared f = coreRun (traverse one leaves) (\_ => pure []) pure
           PMutual ds => leavesIn ns ds
           PParameters _ ds => leavesIn ns ds
           PUsing _ ds => leavesIn ns ds
-          _ => [(ns, d)]
+          _ => map (ns,) (byFunction d)
+
+    startLine : PDecl -> Int
+    startLine d = fst (position d.fc)
 
     leaves : List (Maybe String, PDecl)
     leaves = sortBy (\a, b => compare (startLine (snd a)) (startLine (snd b))) (leavesIn Nothing f.mod.decls)
+
+    ||| The names the terms mention, without their namespaces.
+    namesIn : PTerm -> Core (List String)
+    namesIn t = map nameRoot <$> namesWritten t
+
+    ||| Whether a name is written without a namespace.
+    unqualified : Name -> Bool
+    unqualified (NS _ _) = False
+    unqualified _ = True
+
+    visibleOf : PDecl -> List String
+    visibleOf d = case d.val of
+      PClaim c => if exported c.vis then map (nameRoot . (.val) . snd) (forget c.type.val.names) else []
+      PData _ v _ (MkPData _ n _ _ cons) =>
+        if exported (collapseDefault v)
+           then nameRoot n :: (if collapseDefault v == Public then foldr (\c, rest => map (nameRoot . (.val) . snd) (forget c.val.names) ++ rest) [] cons else [])
+           else []
+      PData _ v _ (MkPLater _ n _) => if exported (collapseDefault v) then [nameRoot n] else []
+      PRecord _ v _ (MkPRecord n _ _ con _) =>
+        if exported (collapseDefault v)
+           then nameRoot n :: (if collapseDefault v == Public then maybe [] (\c => [nameRoot c.val]) con else [])
+           else []
+      PRecord _ v _ (MkPRecordLater n _) => if exported (collapseDefault v) then [nameRoot n] else []
+      PInterface v _ n _ _ _ _ body =>
+        if exported (collapseDefault v)
+           then nameRoot n :: foldr (\m, rest => case m.val of
+                                                    PClaim c => map (nameRoot . (.val) . snd) (forget c.type.val.names) ++ rest
+                                                    _ => rest) [] body
+           else []
+      _ => []
 
     one : (Maybe String, PDecl) -> Core Declared
     one (ns, d) = do
@@ -372,24 +387,6 @@ adjacency ds =
                         || maybe False (\ip => any (`elem` names) (snd ip)) d.implementing
       in find (not . family) between
 
-implementationAdjacent : SourceFile -> List Declared -> List Finding
-implementationAdjacent f ds =
-  mapMaybe one (adjacency ds)
-  where
-    intruderName : Declared -> String
-    intruderName d = case d.defines of
-      (n :: _) => n
-      [] => case d.implementing of
-        Just (i, ps) => i ++ " " ++ fastConcat (intersperse " " (take 1 ps))
-        Nothing => "a declaration"
-
-    one : Adjacency -> Maybe Finding
-    one a = flip map a.intruder $ \d =>
-      let iface = maybe "" fst a.impl.implementing in
-      finding f "implementation-adjacent" a.impl.decl.fc (iface ++ " " ++ a.type)
-        ("`" ++ iface ++ " " ++ a.type ++ "` stands apart from `" ++ a.type ++ "`: `" ++ intruderName d
-         ++ "` is between them, neither one of its implementations nor something they use")
-
 ||| `module-name`, a warning: a module is named after a key symbol it
 ||| defines (a type, a function), so that a reader looking for `Enc` opens
 ||| `Enc.idr`. A façade, which defines nothing, is exempt.
@@ -409,6 +406,7 @@ typedOverload d = maybe False (\ns => ns `elem` d.mentions) d.namespaced
 ||| Whether a declaration is a private function at the top of its module,
 ||| not in a namespace block, that could be anywhere else: a function
 ||| declared `%extern` or `%foreign` can only be at the top.
+export
 privateAtTop : Declared -> Bool
 privateAtTop d = isNothing d.namespaced && case d.decl.val of
   PClaim c => not (exported c.vis) && not (any foreignOpt c.opts)
@@ -418,21 +416,6 @@ privateAtTop d = isNothing d.namespaced && case d.decl.val of
     foreignOpt (PForeign _) = True
     foreignOpt (IFnOpt ExternFn) = True
     foreignOpt _ = False
-
-||| How many functions a declaration keeps local: those declared in the
-||| `where` blocks of its clauses, at any depth.
-localFunctions : PDecl -> Nat
-localFunctions d = case d.val of
-  PDef cls => sum (map clause cls)
-  _ => 0
-  where
-    inWhere : PDecl -> Nat
-    inWhere w = (case w.val of PClaim _ => 1; _ => 0) + localFunctions w
-
-    clause : PClause -> Nat
-    clause (MkPatClause _ _ _ wh) = sum (map inWhere wh)
-    clause (MkWithClause _ _ _ _ cs) = sum (map clause cs)
-    clause (MkImpossible _ _) = 0
 
 ||| The private functions of a module, for the score: those at its top used
 ||| by exactly one other declaration, with that one, which a reader carries
@@ -457,55 +440,20 @@ helpers ds =
     users : Declared -> List Declared
     users h = filter (\d => not (any (`elem` h.defines) d.defines) && any (`elem` h.defines) d.mentions) ds
 
-moduleName' : SourceFile -> List Declared -> List Finding
-moduleName' f ds =
-  if namedAfterSymbol f ds then [] else
-    [finding f "module-name" f.mod.headerLoc (show f.mod.moduleNS)
-       ("`" ++ show f.mod.moduleNS ++ "` is named after nothing it defines: a reader looks a symbol up by its module's name")]
+    ||| How many functions a declaration keeps local: those declared in the
+    ||| `where` blocks of its clauses, at any depth.
+    localFunctions : PDecl -> Nat
+    localFunctions d = case d.val of
+      PDef cls => sum (map clause cls)
+      _ => 0
+      where
+        inWhere : PDecl -> Nat
+        inWhere w = (case w.val of PClaim _ => 1; _ => 0) + localFunctions w
 
-||| `default-totality`: every module says how total its functions are by
-||| default.
-defaultTotality : SourceFile -> List Finding
-defaultTotality f =
-  if any isDefault f.mod.decls then [] else
-    [finding f "default-totality" f.mod.headerLoc (show f.mod.moduleNS) "no `%default` directive"]
-  where
-    isDefault : PDecl -> Bool
-    isDefault d = case d.val of
-      PDirective (DefaultTotality _) => True
-      _ => False
-
-||| `elab-reflection`: no elaborator reflection until the compiler compiles
-||| itself natively: no `%runElab`, no `%macro`, no extension.
-elabReflection : SourceFile -> Mentions -> List Finding
-elabReflection f ms =
-  mapMaybe decl (declarations f.mod.decls)
-  ++ [ finding f "elab-reflection" fc "%runElab" "`%runElab`" | fc <- ms.runElabs ]
-  where
-    isMacro : PFnOpt -> Bool
-    isMacro (IFnOpt TTImp.TTImp.Macro) = True
-    isMacro _ = False
-
-    decl : PDecl -> Maybe Finding
-    decl d = case d.val of
-      PDirective (Extension ElabReflection) => Just (finding f "elab-reflection" d.fc "%language" "`%language ElabReflection`")
-      PRunElabDecl _ => Just (finding f "elab-reflection" d.fc "%runElab" "`%runElab` declaration")
-      PClaim c => if any isMacro c.opts
-                    then Just (finding f "elab-reflection" d.fc "%macro" "`%macro` function")
-                    else Nothing
-      _ => Nothing
-
-||| The functions that leave what the typechecker proves: each use says why
-||| it is sound.
-escapes : List String
-escapes = ["assert_total", "assert_smaller", "believe_me", "really_believe_me", "idris_crash", "unsafePerformIO"]
-
-||| `trust-escape`: a use of one of `escapes`, each to be suppressed with its
-||| reason.
-trustEscape : SourceFile -> Mentions -> List Finding
-trustEscape f ms =
-  [ finding f "trust-escape" fc (nameRoot n) ("`" ++ nameRoot n ++ "`: say why it is sound")
-  | (fc, n) <- ms.refs, nameRoot n `elem` escapes ]
+        clause : PClause -> Nat
+        clause (MkPatClause _ _ _ wh) = sum (map inWhere wh)
+        clause (MkWithClause _ _ _ _ cs) = sum (map clause cs)
+        clause (MkImpossible _ _) = 0
 
 ------------------------------------------------------------------------------
 -- Comments
@@ -514,35 +462,35 @@ trustEscape f ms =
 words' : String -> List String
 words' s = forget (split (\c => not (isAlphaNum c || c == '-' || c == '_' || c == '/' || c == '.')) s)
 
-||| The prefixes of the plans' items: the queue's, the Idris ledger's, the
-||| fork's ledger's.
-planPrefixes : List String
-planPrefixes = ["PQ-", "IL-", "FL-"]
-
-||| A plan cited: `PQ-`, `IL-` or `FL-` and three digits, or a document of
-||| the plans (a path under `docs/`, a `.md` file).
-citation : String -> Maybe String
-citation w =
-  if any (\p => isPrefixOf p w && length w >= 6 && all isDigit (unpack (substr 3 3 w))) planPrefixes
-     then Just (substr 0 6 w)
-  else if (isInfixOf "docs/" w && not (isSuffixOf "docs/" w)) || (isSuffixOf ".md" w && length w > 3) then Just w
-  else Nothing
-
 ||| `cites-plan`: the code is the specification, so it cites no plan.
 citesPlan : SourceFile -> List Finding
 citesPlan f =
   [ MkFinding "cites-plan" f.path c.line c.col w ("cites `" ++ w ++ "`: the code states what it needs")
   | c <- f.comments, w <- mapMaybe citation (words' c.text) ]
-
-||| The words that mark work left open.
-openWork : List String
-openWork = ["TODO", "FIXME", "XXX"]
+  where
+    ||| A plan cited: `PQ-`, `IL-` or `FL-` and three digits, or a document of
+    ||| the plans (a path under `docs/`, a `.md` file).
+    citation : String -> Maybe String
+    citation w =
+      if any (\p => isPrefixOf p w && length w >= 6 && all isDigit (unpack (substr 3 3 w))) planPrefixes
+         then Just (substr 0 6 w)
+      else if (isInfixOf "docs/" w && not (isSuffixOf "docs/" w)) || (isSuffixOf ".md" w && length w > 3) then Just w
+      else Nothing
+      where
+        ||| The prefixes of the plans' items: the queue's, the Idris ledger's, the
+        ||| fork's ledger's.
+        planPrefixes : List String
+        planPrefixes = ["PQ-", "IL-", "FL-"]
 
 ||| `todo`: open work is planned, not left in the code.
 todo : SourceFile -> List Finding
 todo f =
   [ MkFinding "todo" f.path c.line c.col w ("`" ++ w ++ "`: open work belongs in the plans")
   | c <- f.comments, w <- words' c.text, w `elem` openWork ]
+  where
+    ||| The words that mark work left open.
+    openWork : List String
+    openWork = ["TODO", "FIXME", "XXX"]
 
 ||| `header-comment`: a file says what it is before its first import or
 ||| declaration: in the module's documentation, or in a comment.
@@ -569,6 +517,83 @@ fileRules f ms ds =
   importOrder f ++ publicImport f ++ defaultTotality f ++ elabReflection f ms
   ++ trustEscape f ms ++ citesPlan f ++ todo f ++ headerComment f
   ++ implementationAdjacent f ds ++ moduleName' f ds
+  where
+    ||| `public-import`: a module imports what it uses, so a public import is for
+    ||| a façade.
+    publicImport : SourceFile -> List Finding
+    publicImport f =
+      if facade f then [] else
+        [ finding f "public-import" i.loc (moduleName i.path)
+            ("`" ++ moduleName i.path ++ "` imported publicly: a module that uses it imports it")
+        | i <- f.mod.imports, i.reexport ]
+
+    implementationAdjacent : SourceFile -> List Declared -> List Finding
+    implementationAdjacent f ds =
+      mapMaybe one (adjacency ds)
+      where
+        intruderName : Declared -> String
+        intruderName d = case d.defines of
+          (n :: _) => n
+          [] => case d.implementing of
+            Just (i, ps) => i ++ " " ++ fastConcat (intersperse " " (take 1 ps))
+            Nothing => "a declaration"
+
+        one : Adjacency -> Maybe Finding
+        one a = flip map a.intruder $ \d =>
+          let iface = maybe "" fst a.impl.implementing in
+          finding f "implementation-adjacent" a.impl.decl.fc (iface ++ " " ++ a.type)
+            ("`" ++ iface ++ " " ++ a.type ++ "` stands apart from `" ++ a.type ++ "`: `" ++ intruderName d
+             ++ "` is between them, neither one of its implementations nor something they use")
+
+    moduleName' : SourceFile -> List Declared -> List Finding
+    moduleName' f ds =
+      if namedAfterSymbol f ds then [] else
+        [finding f "module-name" f.mod.headerLoc (show f.mod.moduleNS)
+           ("`" ++ show f.mod.moduleNS ++ "` is named after nothing it defines: a reader looks a symbol up by its module's name")]
+
+    ||| `default-totality`: every module says how total its functions are by
+    ||| default.
+    defaultTotality : SourceFile -> List Finding
+    defaultTotality f =
+      if any isDefault f.mod.decls then [] else
+        [finding f "default-totality" f.mod.headerLoc (show f.mod.moduleNS) "no `%default` directive"]
+      where
+        isDefault : PDecl -> Bool
+        isDefault d = case d.val of
+          PDirective (DefaultTotality _) => True
+          _ => False
+
+    ||| `elab-reflection`: no elaborator reflection until the compiler compiles
+    ||| itself natively: no `%runElab`, no `%macro`, no extension.
+    elabReflection : SourceFile -> Mentions -> List Finding
+    elabReflection f ms =
+      mapMaybe decl (declarations f.mod.decls)
+      ++ [ finding f "elab-reflection" fc "%runElab" "`%runElab`" | fc <- ms.runElabs ]
+      where
+        isMacro : PFnOpt -> Bool
+        isMacro (IFnOpt TTImp.TTImp.Macro) = True
+        isMacro _ = False
+
+        decl : PDecl -> Maybe Finding
+        decl d = case d.val of
+          PDirective (Extension ElabReflection) => Just (finding f "elab-reflection" d.fc "%language" "`%language ElabReflection`")
+          PRunElabDecl _ => Just (finding f "elab-reflection" d.fc "%runElab" "`%runElab` declaration")
+          PClaim c => if any isMacro c.opts
+                        then Just (finding f "elab-reflection" d.fc "%macro" "`%macro` function")
+                        else Nothing
+          _ => Nothing
+
+    ||| `trust-escape`: a use of one of `escapes`, each to be suppressed with its
+    ||| reason.
+    trustEscape : SourceFile -> Mentions -> List Finding
+    trustEscape f ms =
+      [ finding f "trust-escape" fc (nameRoot n) ("`" ++ nameRoot n ++ "`: say why it is sound")
+      | (fc, n) <- ms.refs, nameRoot n `elem` escapes ]
+      where
+        ||| The functions that leave what the typechecker proves: each use says why
+        ||| it is sound.
+        escapes : List String
+        escapes = ["assert_total", "assert_smaller", "believe_me", "really_believe_me", "idris_crash", "unsafePerformIO"]
 
 ||| How a finding of each rule counts: an error fails the gate, a warning
 ||| is advice, printed when asked for.

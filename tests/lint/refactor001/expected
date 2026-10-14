@@ -1,0 +1,348 @@
+scope-helpers: double
+  Moves.idr
+    @@ line 21
+    +   where
+    +     ||| Twice a number.
+    +     double : Nat -> Nat
+    +     double n = n + n
+    @@ line 14
+    - ||| Twice a number.
+    - double : Nat -> Nat
+    - double n = n + n
+    -
+scope-helpers: square
+  Moves.idr
+    @@ line 33
+    +     square : Nat -> Nat
+    +     square n = n * n
+    +
+    @@ line 26
+    - square : Nat -> Nat
+    - square n = n * n
+    -
+scope-helpers: inc
+  Moves.idr
+    @@ line 45
+    +   where
+    +     inc : Nat -> Nat
+    +     inc = S
+    @@ line 40
+    - inc : Nat -> Nat
+    - inc = S
+    -
+scope-helpers: incTwice
+  Moves.idr
+    @@ line 49
+    +   where
+    +     incTwice : Nat -> Nat
+    +     incTwice n = inc (inc n)
+    +       where
+    +         inc : Nat -> Nat
+    +         inc = S
+    @@ line 40
+    - incTwice : Nat -> Nat
+    - incTwice n = inc (inc n)
+    -   where
+    -     inc : Nat -> Nat
+    -     inc = S
+    -
+scope-helpers: pairUp
+  Moves.idr
+    @@ line 62
+    +   where
+    +     -- the same value, twice
+    +     pairUp : a' -> (a', a')
+    +     pairUp x = (x, x)
+    @@ line 55
+    - -- the same value, twice
+    - pairUp : a -> (a, a)
+    - pairUp x = (x, x)
+    -
+scope-helpers: lengthOf
+  Moves.idr
+    @@ line 75
+    +   where
+    +     lengthOf : {n' : Nat} -> Vect n' e' -> Nat
+    +     lengthOf _ = n'
+    @@ line 69
+    - lengthOf : {n : Nat} -> Vect n e -> Nat
+    - lengthOf _ = n
+    -
+    @@ line 74
+    - n
+    + n' = n
+scope-helpers: twice
+  Moves.idr
+    @@ line 87
+    +   where
+    +     twice : {0 t : Type} -> (t -> t) -> t -> t
+    +     twice f = f . f
+    @@ line 80
+    - parameters {0 t : Type}
+    -   twice : (t -> t) -> t -> t
+    -   twice f = f . f
+    -
+Moves.idr: 7 changed, 0 stay
+Moves.idr as it was
+Moves.idr: 7 changed, 0 stay
+Stays.idr: 0 changed, 3 stay
+  `half` stays: 2 clauses of `halfOr` use it
+  `capped` stays: it would be captured in `clamp` by `limit`
+  `offset` stays: it would leave a `parameters` block whose explicit parameters its calls pass
+Merges.idr: 3 changed, 2 stay
+  `area` stays: the `where` block of its clause at line 64 uses what the clause's patterns bind
+  `headOr` stays: the change leaves Merges.idr not checking
+Merges.idr: 3 changed, 2 stay
+  `square` stays: 2 clauses of `area` use it
+  `pick` stays: 2 clauses of `headOr` use it
+Unused.idr: 1 changed, 0 stay
+Imports.idr: 1 changed, 0 stay
+--- Moves.idr
+||| Helpers that `scope-helpers` moves into the `where` block of the one
+||| function using them. The comments between the cases are about the case,
+||| and stay where they are; those directly above a helper are its own, and
+||| move with it.
+module Moves
+
+import Data.Vect
+
+%default total
+
+-- A user with no `where` block gets one, two columns in from its clause,
+-- and the helper goes four in, its documentation with it.
+
+export
+quadruple : Nat -> Nat
+quadruple n = double (double n)
+  where
+    ||| Twice a number.
+    double : Nat -> Nat
+    double n = n + n
+
+-- A user with a `where` block already: the helper goes in before the first
+-- of the block's functions that uses it, since a block, like a module,
+-- defines a name before its use.
+
+export
+sumOfSquares : Nat -> Nat -> Nat
+sumOfSquares a b = both a b
+  where
+    square : Nat -> Nat
+    square n = n * n
+
+    both : Nat -> Nat -> Nat
+    both x y = square x + square y
+
+-- A chain: `inc` is used only by `incTwice`, and `incTwice` only by
+-- `incFour`. `inc` goes first, into `incTwice`'s block, and `incTwice`
+-- then takes its block with it into `incFour`'s.
+
+export
+incFour : Nat -> Nat
+incFour n = incTwice (incTwice n)
+  where
+    incTwice : Nat -> Nat
+    incTwice n = inc (inc n)
+      where
+        inc : Nat -> Nat
+        inc = S
+
+-- A type variable the user's type binds too: in the user's block `a` is
+-- the user's `a`, one type, and `pairUp y` would not check, so the
+-- helper's own is renamed where it is free, to `a'`, and the helper stays
+-- generic.
+
+export
+twins : (a, b) -> ((a, a), (b, b))
+twins (x, y) = (pairUp x, pairUp y)
+  where
+    -- the same value, twice
+    pairUp : a' -> (a', a')
+    pairUp x = (x, x)
+
+-- A helper whose type binds `{n : Nat}`, which its user's binds too: in
+-- the user's block Idris would confuse the two, so the helper's binder is
+-- renamed, `n'`, with what refers to it, and the user's call that names
+-- it, `{n}` for `{n = n}`, names the new one: `{n' = n}`. Its `e`, a
+-- variable the user's type binds too, is renamed as `a` is above.
+
+export
+longer : {n : Nat} -> Vect n e -> Nat -> Bool
+longer v m = lengthOf {n' = n} v > m
+  where
+    lengthOf : {n' : Nat} -> Vect n' e' -> Nat
+    lengthOf _ = n'
+
+-- A helper in a block of implicit parameters, all it is in the block: the
+-- block's header goes, and the helper takes the parameters in its own
+-- type. Its calls pass no implicit, so they stay as they are.
+
+export
+plusFour : Nat -> Nat
+plusFour = twice (twice S)
+  where
+    twice : {0 t : Type} -> (t -> t) -> t -> t
+    twice f = f . f
+--- Stays.idr
+||| Helpers that `scope-helpers` leaves where they are, each with why.
+module Stays
+
+%default total
+
+-- Used by two clauses of its user: a `where` block belongs to one clause,
+-- so the helper would be written twice.
+
+half : Integer -> Integer
+half n = div n 2
+
+export
+halfOr : Integer -> Maybe Integer -> Integer
+halfOr d Nothing = half d
+halfOr _ (Just n) = half n
+
+-- A helper using a name that its user's clause binds as a variable: in the
+-- user's block, `limit` would be the variable, not the function.
+
+export
+limit : Nat
+limit = 10
+
+capped : Nat -> Nat
+capped n = min n limit
+
+export
+clamp : (limit : Nat) -> Nat -> Nat
+clamp limit n = if n > limit then capped limit else capped n
+
+-- A helper in a block of explicit parameters, used outside it: each call
+-- passes the parameter, and moved out of the block it would take one more
+-- argument.
+
+parameters (base : Nat)
+  offset : Nat -> Nat
+  offset n = base + n
+
+export
+shifted : Nat -> Nat
+shifted n = offset 5 n
+--- Merges.idr
+||| What `merge-clauses` changes: a function several of whose clauses use a
+||| helper only it uses becomes one clause with a `case`, so that
+||| `scope-helpers` can then move the helper into its `where` block, which a
+||| clause of its own would not hold for the others.
+module Merges
+
+import Data.Vect
+
+%default total
+
+public export
+data Shape = Circle Nat | Square Nat | Dot
+
+-- One argument matched: the case is on it, named after its type, `shape`.
+-- The argument every clause names alike, or leaves `_`, `scale`, stays an
+-- argument. Each clause keeps its lines, two columns in.
+
+export
+size : Nat -> Shape -> Nat
+size scale shape = case shape of
+  Circle r => scale * twice r
+  Square s => scale * twice s
+  Dot => 0
+  where
+    twice : Nat -> Nat
+    twice n = n + n
+
+-- Two arguments matched: the case is on a tuple of them, the second name
+-- after the type taken by the first, so primed.
+
+export
+nand : Bool -> Bool -> Bool
+nand bool bool' = case (bool, bool') of
+  (True, True) => flipped True
+  (x, y) => flipped x || flipped y
+  where
+    flipped : Bool -> Bool
+    flipped b = not b
+
+-- A clause's own `where` block joins the one clause's, after the case.
+
+export
+describe : Shape -> String
+describe shape = case shape of
+  Circle r => "circle of " ++ showNat r
+  Square s => "square of " ++ showNat s
+  Dot => dot
+  where
+    dot : String
+    dot = "a dot"
+
+    showNat : Nat -> String
+    showNat = show
+
+-- A `where` block using what its clause's pattern binds, `s`, could not
+-- join: in the one clause's block `s` would be bound by nothing.
+
+square : Nat -> Nat
+square n = n * n
+
+export
+area : Shape -> Nat
+area (Circle r) = 3 * square r
+area (Square s) = squared
+  where
+    squared : Nat
+    squared = square s
+area Dot = 0
+
+-- Arguments whose types depend on each other: as a case on a tuple, the
+-- match of `x :: _` no longer tells the first is `S k`, and the case does
+-- not cover. Only the type checker knows: the run's check finds it, and
+-- the change is undone.
+
+pick : a -> a
+pick x = x
+
+export
+headOr : (n : Nat) -> Vect n a -> a -> a
+headOr (S k) (x :: _) _ = pick x
+headOr Z [] d = pick d
+--- Unused.idr
+||| What `remove-unused` takes out: the private functions nothing uses.
+module Unused
+
+%default total
+
+-- A private function something uses stays, and so does one exported.
+
+used : Nat
+used = 1
+
+export
+answer : Nat
+answer = used
+
+-- `main` is what a program starts at: nothing in it calls it, and it stays.
+
+main : IO ()
+main = printLn answer
+--- Imports.idr
+||| What `order-imports` changes: the public imports first, then the private
+||| ones, each alphabetical.
+module Imports
+
+import public Data.Maybe
+
+import Data.List
+import Data.String
+
+%default total
+
+export
+joined : List String -> String
+joined = fastConcat . intersperse ", " . map trim . catMaybes . map Just
+Moves.idr checks
+Stays.idr checks
+Merges.idr checks
+Unused.idr checks
+Imports.idr checks

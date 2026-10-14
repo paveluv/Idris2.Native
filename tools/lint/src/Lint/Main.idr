@@ -1,7 +1,7 @@
 ||| `idris2-native-lint`: the rules of the product's code, checked on Idris's
 ||| own parse of each file.
 |||
-|||   idris2-native-lint [--golden | --fix | --warnings] [--health [--minimum N] [--offenders N]] [--resolved] PATH... [--programs PATH...]
+|||   idris2-native-lint [--golden | --fix | --warnings] [--health [--minimum N] [--offenders N]] [--helpers] [--refactor NAME [--dry-run] [--check COMMAND]] [--resolved] PATH... [--programs PATH...]
 |||
 ||| Each path is a `.idr` file or a directory, walked for `.idr` files, its
 ||| `build` directories left out. The paths after `--programs` are programs
@@ -13,8 +13,18 @@
 ||| `--offenders N` lists under each component short of 100 the `N` that
 ||| cost it most: what each is about, its cost in the units the component
 ||| counts, and what the cost is made of.
-||| `--fix` puts each file's imports in order first, the one rule the linter
-||| fixes by itself. A rule's findings are errors or, for advice, warnings:
+||| `--helpers` lists instead the private functions each used by one other
+||| declaration and left module-wide, with their positions and that one:
+||| what the scoping component counts against, each to move into its user's
+||| `where` block.
+||| `--refactor NAME` changes the code instead, by the refactoring of that
+||| name (`refactorings`), each file to a fixed point, and reports each
+||| file's changes and what stays, with why; with `--dry-run` it prints the
+||| changes and puts every file back; with `--check` it undoes a change
+||| after which the command fails on a file the change touched, the file's
+||| path in the place of `{}` (`make check-source SOURCE={}`). `--fix`
+||| puts each file's imports in order first: the refactoring
+||| `order-imports`, the one rule the linter fixes by itself. A rule's findings are errors or, for advice, warnings:
 ||| `--warnings` prints those too, and they fail nothing. The exit status is
 ||| 1 when there are errors or the score is too low.
 |||
@@ -32,16 +42,23 @@
 ||| `-- lint: exclude <component>: <reason>` (`Exclusion`).
 module Lint.Main
 
+import Core.FC
 import Core.Name.Namespace
+import Core.WithData
 import Data.Either
 import Data.List
+import Data.Maybe
 import Data.SortedSet
 import Data.String
 import Data.Zippable
 import Idris.Syntax
 import Lint.Finding
-import Lint.Fix
 import Lint.Graph
+import Lint.Refactor.MergeClauses
+import Lint.Refactor.OrderImports
+import Lint.Refactor.Refactoring
+import Lint.Refactor.RemoveUnused
+import Lint.Refactor.ScopeHelpers
 import Lint.Resolution
 import Lint.ResolvedRules
 import Lint.Rules
@@ -49,21 +66,8 @@ import Lint.Source
 import System
 import System.Directory
 import System.File.Error
-import System.File.ReadWrite
 
 %default covering
-
-------------------------------------------------------------------------------
--- Files
-
-||| The `.idr` files under a path, in order.
-files : String -> IO (List String)
-files path =
-  if isSuffixOf ".idr" path then pure [path] else do
-    Right entries <- listDir path
-      | Left _ => pure []
-    let children = sort [ path ++ "/" ++ e | e <- entries, e /= ".", e /= "..", e /= "build" ]
-    joined <$> traverse files children
 
 ------------------------------------------------------------------------------
 -- Suppressions
@@ -78,37 +82,6 @@ record Suppression where
   col : Int
   through : Int
 
-suppressions : SourceFile -> List Suppression
-suppressions f = mapMaybe one f.comments
-  where
-    one : SourceComment -> Maybe Suppression
-    one c =
-      if c.isDoc || not (isPrefixOf "lint: allow " c.text) then Nothing else
-        let rest = substr 12 (length c.text) c.text
-            (r, why) = break (== ':') rest
-            -- to the line before the next blank one
-            through = maybe 2147483647 (\b => b - 1) (find (> c.line) f.blankLines)
-        in Just (MkSuppression (trim r) (trim (substr 1 (length why) why)) c.line c.col through)
-
-covers : Suppression -> Finding -> Bool
-covers s fi = fi.rule == s.rule && fi.line >= s.line && fi.line <= s.through
-
-||| The findings a file's suppressions leave, and the findings about the
-||| suppressions themselves.
-suppress : SourceFile -> List Finding -> List Finding
-suppress f fs =
-  let ss = suppressions f
-      kept = filter (\fi => fi.path /= f.path || not (any (\s => covers s fi) ss)) fs
-  in kept ++ joined (map (check fs) ss)
-  where
-    check : List Finding -> Suppression -> List Finding
-    check fs s =
-      let at = MkFinding "suppression" f.path s.line s.col s.rule in
-      if not (s.rule `elem` ruleNames) then [at ("no rule `" ++ s.rule ++ "`")]
-      else if s.reason == "" then [at ("a suppression of `" ++ s.rule ++ "` says why")]
-      else if not (any (\fi => fi.path == f.path && covers s fi) fs) then [at ("the suppression of `" ++ s.rule ++ "` suppresses nothing")]
-      else []
-
 ------------------------------------------------------------------------------
 -- Running
 
@@ -122,85 +95,13 @@ record Request where
   minimum : Maybe Nat
   offenders : Nat
   resolved : Bool
+  listHelpers : Bool
+  refactoring : Maybe String
+  dryRun : Bool
+  checkCommand : Maybe String
   paths : List String
   programs : List String
   inPrograms : Bool
-
-request : List String -> Request
-request = go (MkRequest False False False False Nothing 0 False [] [] False)
-  where
-    go : Request -> List String -> Request
-    go o [] = o
-    go o ("--golden" :: as) = go ({ golden := True } o) as
-    go o ("--fix" :: as) = go ({ fix := True } o) as
-    go o ("--warnings" :: as) = go ({ warnings := True } o) as
-    go o ("--health" :: as) = go ({ health := True } o) as
-    go o ("--minimum" :: n :: as) = go ({ minimum := Just (cast n) } o) as
-    go o ("--resolved" :: as) = go ({ resolved := True } o) as
-    go o ("--offenders" :: k :: as) = go ({ offenders := cast k } o) as
-    go o ("--programs" :: as) = go ({ inPrograms := True } o) as
-    go o (p :: as) = go (if o.inPrograms then { programs $= (++ [p]) } o else { paths $= (++ [p]) } o) as
-
-||| The findings of the product's files and of the programs, suppressions
-||| applied: those of the resolved rules too, given the resolution, or the
-||| findings that kept it from being made.
-lint : List (SourceFile, List Declared, Mentions) -> List SourceFile -> Maybe (Either (List Finding) Resolution) -> List Finding
-lint fdms ps res =
-  let fs = map (\(f, _, _) => f) fdms
-      fds = map (\(f, ds, _) => (f, ds)) fdms
-      resolved = case res of
-        Nothing => []
-        Just (Left problems) => problems
-        Just (Right r) => resolvedRules fdms r
-      ours = the (SortedSet String) (fromList (map (\f => show f.mod.moduleNS) fs))
-      aliases = joined (map (\(f, _, ms) => importAlias ours f ms.refs) fdms)
-      all = joined (map (\(f, ds, ms) => fileRules f ms ds) fdms) ++ joined (map programRules ps) ++ graphRules fs ++ sameName fds
-            ++ parentUnique fs ++ aliases ++ joined (map exclusionRules fs) ++ resolved
-  in sort (foldl (\acc, f => suppress f acc) all (fs ++ ps))
-
-||| The files under the paths, parsed, and a finding for each that does not
-||| parse.
-parsed : List String -> IO (List SourceFile, List Finding)
-parsed roots = do
-  paths <- joined <$> traverse files roots
-  results <- traverse parse paths
-  let failures = mapMaybe (\(p, r) => either (\e => Just (MkFinding "parse" p 0 0 "" e)) (const Nothing) r) (zip paths results)
-  pure (rights results, failures)
-
-||| The files under a path with their imports put in order, where they were
-||| not.
-fixImports : String -> IO ()
-fixImports root = do
-  paths <- files root
-  for_ paths $ \p => do
-    Right f <- parse p
-      | Left _ => pure ()
-    Right text <- readFile p
-      | Left _ => pure ()
-    let ls = lines text
-        fixed = orderImports f ls
-    when (fixed /= ls) $ do
-      Right () <- writeFile p (unlines fixed)
-        | Left err => putStrLn (p ++ ": " ++ show err)
-      putStrLn ("imports put in order: " ++ p)
-
-||| A component's offenders that cost it most, the first `n`, the costliest
-||| first, and among equal costs in the order of their subjects.
-worst : Nat -> List Offender -> List Offender
-worst n os = take n (sortBy (\a, b => compare (negate (cast {to = Integer} a.cost), a.subject) (negate (cast b.cost), b.subject)) os)
-
-offender : Offender -> IO ()
-offender x = putStrLn ("      " ++ padLeft 5 ' ' (show x.cost) ++ "  " ++ x.subject ++ ": " ++ x.detail)
-
-||| The components of a group.
-inGroup : String -> List Component -> List Component
-inGroup g = filter (\c => c.group == g)
-
-||| A component's line, and under it, short of 100, its worst `n` offenders.
-component : (n : Nat) -> Component -> IO ()
-component n c = do
-  putStrLn ("    " ++ padRight 14 ' ' c.name ++ padLeft 3 ' ' (show c.value) ++ "  " ++ c.counted)
-  when (c.value /= 100) $ traverse_ offender (worst n c.offenders)
 
 main : IO ()
 main = do
@@ -208,13 +109,24 @@ main = do
     | [] => exitWith (ExitFailure 2)
   let o = request args
   when (null o.paths && null o.programs) $ do
-    putStrLn "usage: idris2-native-lint [--golden | --fix | --warnings] [--health [--minimum N] [--offenders N]] [--resolved] PATH... [--programs PATH...]"
+    putStrLn "usage: idris2-native-lint [--golden | --fix | --warnings] [--health [--minimum N] [--offenders N]] [--helpers] [--refactor NAME [--dry-run] [--check COMMAND]] [--resolved] PATH... [--programs PATH...]"
     exitWith (ExitFailure 2)
-  when o.fix $ traverse_ fixImports (o.paths ++ o.programs)
+  when o.fix $ runRefactoring True False Nothing orderImports (o.paths ++ o.programs)
+  whenJust o.refactoring $ \n => do
+    case find (\r => r.name == n) refactorings of
+      Nothing => do
+        putStrLn ("no refactoring `" ++ n ++ "`; there are " ++ fastConcat (intersperse ", " (map (.name) refactorings)))
+        exitWith (ExitFailure 2)
+      Just r => do
+        runRefactoring False o.dryRun o.checkCommand r (o.paths ++ o.programs)
+        exitWith ExitSuccess
   (fs, failed) <- parsed o.paths
   (ps, failedPrograms) <- parsed o.programs
   fdms <- traverse (\f => do ds <- declared f; ms <- mentions f.mod.decls; pure (f, ds, ms)) fs
   let fds = map (\(f, ds, _) => (f, ds)) fdms
+  when o.listHelpers $ do
+    traverse_ (\(f, ds) => traverse_ (putStrLn . singleUse f) (fst (helpers ds))) fds
+    exitWith ExitSuccess
   res <- if o.resolved then Just <$> resolve fs else pure Nothing
   if o.health
     then do
@@ -239,3 +151,137 @@ main = do
           shown = if o.warnings && not o.golden then findings else errors
       traverse_ (putStrLn . if o.golden then withoutPosition else withPosition) shown
       when (not (null errors) && not o.golden) $ exitWith (ExitFailure 1)
+  where
+    request : List String -> Request
+    request = go (MkRequest False False False False Nothing 0 False False Nothing False Nothing [] [] False)
+      where
+        go : Request -> List String -> Request
+        go o [] = o
+        go o ("--golden" :: as) = go ({ golden := True } o) as
+        go o ("--fix" :: as) = go ({ fix := True } o) as
+        go o ("--warnings" :: as) = go ({ warnings := True } o) as
+        go o ("--health" :: as) = go ({ health := True } o) as
+        go o ("--minimum" :: n :: as) = go ({ minimum := Just (cast n) } o) as
+        go o ("--resolved" :: as) = go ({ resolved := True } o) as
+        go o ("--helpers" :: as) = go ({ listHelpers := True } o) as
+        go o ("--refactor" :: n :: as) = go ({ refactoring := Just n } o) as
+        go o ("--dry-run" :: as) = go ({ dryRun := True } o) as
+        go o ("--check" :: c :: as) = go ({ checkCommand := Just c } o) as
+        go o ("--offenders" :: k :: as) = go ({ offenders := cast k } o) as
+        go o ("--programs" :: as) = go ({ inPrograms := True } o) as
+        go o (p :: as) = go (if o.inPrograms then { programs $= (++ [p]) } o else { paths $= (++ [p]) } o) as
+
+    ||| The findings of the product's files and of the programs, suppressions
+    ||| applied: those of the resolved rules too, given the resolution, or the
+    ||| findings that kept it from being made.
+    lint : List (SourceFile, List Declared, Mentions) -> List SourceFile -> Maybe (Either (List Finding) Resolution) -> List Finding
+    lint fdms ps res =
+      let fs = map (\(f, _, _) => f) fdms
+          fds = map (\(f, ds, _) => (f, ds)) fdms
+          resolved = case res of
+            Nothing => []
+            Just (Left problems) => problems
+            Just (Right r) => resolvedRules fdms r
+          ours = the (SortedSet String) (fromList (map (\f => show f.mod.moduleNS) fs))
+          aliases = joined (map (\(f, _, ms) => importAlias ours f ms.refs) fdms)
+          all = joined (map (\(f, ds, ms) => fileRules f ms ds) fdms) ++ joined (map programRules ps) ++ graphRules fs ++ sameName fds
+                ++ parentUnique fs ++ aliases ++ joined (map exclusionRules fs) ++ resolved
+      in sort (foldl (\acc, f => suppress f acc) all (fs ++ ps))
+      where
+        ||| The findings a file's suppressions leave, and the findings about the
+        ||| suppressions themselves.
+        suppress : SourceFile -> List Finding -> List Finding
+        suppress f fs =
+          let ss = suppressions f
+              kept = filter (\fi => fi.path /= f.path || not (any (\s => covers s fi) ss)) fs
+          in kept ++ joined (map (check fs) ss)
+          where
+            covers : Suppression -> Finding -> Bool
+            covers s fi = fi.rule == s.rule && fi.line >= s.line && fi.line <= s.through
+
+            check : List Finding -> Suppression -> List Finding
+            check fs s =
+              let at = MkFinding "suppression" f.path s.line s.col s.rule in
+              if not (s.rule `elem` ruleNames) then [at ("no rule `" ++ s.rule ++ "`")]
+              else if s.reason == "" then [at ("a suppression of `" ++ s.rule ++ "` says why")]
+              else if not (any (\fi => fi.path == f.path && covers s fi) fs) then [at ("the suppression of `" ++ s.rule ++ "` suppresses nothing")]
+              else []
+
+            suppressions : SourceFile -> List Suppression
+            suppressions f = mapMaybe one f.comments
+              where
+                one : SourceComment -> Maybe Suppression
+                one c =
+                  if c.isDoc || not (isPrefixOf "lint: allow " c.text) then Nothing else
+                    let rest = substr 12 (length c.text) c.text
+                        (r, why) = break (== ':') rest
+                        -- to the line before the next blank one
+                        through = maybe 2147483647 (\b => b - 1) (find (> c.line) f.blankLines)
+                    in Just (MkSuppression (trim r) (trim (substr 1 (length why) why)) c.line c.col through)
+
+    ||| The `.idr` files under a path, in order.
+    files : String -> IO (List String)
+    files path =
+      if isSuffixOf ".idr" path then pure [path] else do
+        Right entries <- listDir path
+          | Left _ => pure []
+        let children = sort [ path ++ "/" ++ e | e <- entries, e /= ".", e /= "..", e /= "build" ]
+        joined <$> traverse files children
+
+    ||| The files under the paths, parsed, and a finding for each that does not
+    ||| parse.
+    parsed : List String -> IO (List SourceFile, List Finding)
+    parsed roots = do
+      paths <- joined <$> traverse files roots
+      results <- traverse parse paths
+      let failures = mapMaybe (\(p, r) => either (\e => Just (MkFinding "parse" p 0 0 "" e)) (const Nothing) r) (zip paths results)
+      pure (rights results, failures)
+
+    ||| The refactorings, by name.
+    refactorings : List Refactoring
+    refactorings = [mergeClauses, orderImports, removeUnused, scopeHelpers]
+
+    ||| The refactoring run over every file under the paths, each to a fixed
+    ||| point, with what it changed and what stays printed unless `quiet`.
+    runRefactoring : (quiet, dryRun : Bool) -> (check : Maybe String) -> Refactoring -> List String -> IO ()
+    runRefactoring quiet dryRun check r roots = do
+      paths <- joined <$> traverse files roots
+      for_ paths $ \p => do
+        rep <- refactor dryRun check r p
+        when (not quiet || not (null rep.changed)) $
+          when (not (null rep.changed) || not (null rep.stays)) $ do
+            putStrLn (p ++ ": " ++ show (length rep.changed) ++ " changed, " ++ show (length rep.stays) ++ " stay")
+            for_ rep.stays $ \(what, why) => putStrLn ("  `" ++ what ++ "` stays: " ++ why)
+
+    ||| The components of a group.
+    inGroup : String -> List Component -> List Component
+    inGroup g = filter (\c => c.group == g)
+
+    ||| A component's line, and under it, short of 100, its worst `n` offenders.
+    component : (n : Nat) -> Component -> IO ()
+    component n c = do
+      putStrLn ("    " ++ padRight 14 ' ' c.name ++ padLeft 3 ' ' (show c.value) ++ "  " ++ c.counted)
+      when (c.value /= 100) $ traverse_ offender (worst n c.offenders)
+      where
+        ||| A component's offenders that cost it most, the first `n`, the costliest
+        ||| first, and among equal costs in the order of their subjects.
+        worst : Nat -> List Offender -> List Offender
+        worst n os = take n (sortBy (\a, b => compare (negate (cast {to = Integer} a.cost), a.subject) (negate (cast b.cost), b.subject)) os)
+
+        offender : Offender -> IO ()
+        offender x = putStrLn ("      " ++ padLeft 5 ' ' (show x.cost) ++ "  " ++ x.subject ++ ": " ++ x.detail)
+
+    ||| A helper used by one declaration, as `--helpers` prints it: where it is
+    ||| declared, its name, and its user with where that starts.
+    singleUse : SourceFile -> (Declared, Declared) -> String
+    singleUse f (h, u) =
+      f.path ++ ":" ++ show (line h) ++ " `" ++ name h ++ "` used only by `" ++ name u ++ "` at " ++ show (line u)
+      where
+        line : Declared -> Int
+        line d = case d.decl.fc of
+          MkFC _ (l, _) _ => l + 1
+          MkVirtualFC _ (l, _) _ => l + 1
+          EmptyFC => 0
+
+        name : Declared -> String
+        name d = fromMaybe "?" (head' d.defines)

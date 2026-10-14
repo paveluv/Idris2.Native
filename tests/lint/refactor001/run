@@ -1,0 +1,40 @@
+. ../../testutils.sh
+
+# The refactorings, each over a copy of its fixtures, since a refactoring
+# changes the files it is given. Each file goes to a fixed point: a change,
+# the file parsed again, the candidates asked for anew.
+rm -rf work
+mkdir work
+cp Moves.idr Stays.idr Merges.idr Unused.idr Imports.idr work
+cd work
+lint=../../../../tools/lint/build/exec/idris2-native-lint
+
+# A dry run prints each change, the lines it takes out (`-`) and those it
+# puts in (`+`), and then puts every file back as it was.
+$lint --refactor scope-helpers --dry-run Moves.idr
+cmp -s Moves.idr ../Moves.idr && echo "Moves.idr as it was"
+
+# Helpers moved into the `where` block of their one user, and those that
+# stay, with why.
+$lint --refactor scope-helpers Moves.idr Stays.idr
+
+# Functions several clauses of which use a helper, merged into one clause
+# with a `case`, then the helpers moved. A change is checked by the type
+# checker too, a command with `{}` for the file, and undone if it fails.
+$lint --refactor merge-clauses --check 'idris2 --check {} > /dev/null 2>&1' Merges.idr
+$lint --refactor scope-helpers Merges.idr
+
+# What `remove-unused` and `order-imports` change.
+$lint --refactor remove-unused Unused.idr
+$lint --refactor order-imports Imports.idr
+for f in Moves.idr Stays.idr Merges.idr Unused.idr Imports.idr; do
+  echo "--- $f"
+  cat $f
+done
+
+# What a refactoring writes still checks: it is the same program.
+for f in Moves.idr Stays.idr Merges.idr Unused.idr Imports.idr; do
+  idris2 --check $f > /dev/null && echo "$f checks"
+done
+cd ..
+rm -rf work
