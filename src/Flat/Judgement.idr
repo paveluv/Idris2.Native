@@ -142,34 +142,34 @@ fieldTypes args cdef
 public export
 data Judgement
   = ||| The type is flat, and its values take these registers.
-    LaidOut Layout
+    LaidOut Exp.Layout
   | ||| The type is made of erased arguments of the function being judged, so
     ||| it is known only in a specialisation of the function, where it is
     ||| judged in turn.
     Deferred
   | ||| The type is not flat, for this reason.
-    Rejected NotFlatReason
+    Rejected Problem.NotFlatReason
 
 mutual
   ||| Judge a type: its layout if it is flat, or why it is not.
   judge : {auto c : Ref Ctxt Defs} ->
           Judging -> ClosedNF -> Core Judgement
   judge j f = case f of
-    NPrimVal _ (PrT IntegerType) => pure (Rejected (BoxedPrimitive IntegerType))
-    NPrimVal _ (PrT StringType) => pure (Rejected (BoxedPrimitive StringType))
-    NPrimVal _ (PrT DoubleType) => pure (LaidOut [Dbl])
+    NPrimVal _ (PrT IntegerType) => pure (Rejected (Problem.BoxedPrimitive IntegerType))
+    NPrimVal _ (PrT StringType) => pure (Rejected (Problem.BoxedPrimitive StringType))
+    NPrimVal _ (PrT DoubleType) => pure (LaidOut [Exp.Dbl])
     NPrimVal _ (PrT WorldType) => pure (LaidOut [])
-    NPrimVal _ (PrT _) => pure (LaidOut [Word])
+    NPrimVal _ (PrT _) => pure (LaidOut [Exp.Word])
     NTCon _ n _ args
-       => if !(toFullNames n) == uniformType then pure (LaidOut [Uniform]) else judgeTyCon j n args
-    NType {} => pure (Rejected RuntimeType)
-    NBind _ _ (Pi {}) _ => pure (Rejected FunctionType)
-    NDelayed {} => pure (Rejected LazyType)
+       => if !(toFullNames n) == Exp.uniformType then pure (LaidOut [Exp.Uniform]) else judgeTyCon j n args
+    NType {} => pure (Rejected Problem.RuntimeType)
+    NBind _ _ (Pi {}) _ => pure (Rejected Problem.FunctionType)
+    NDelayed {} => pure (Rejected Problem.LazyType)
     NErased {} => pure (LaidOut [])
     ty
        => do defs <- get Ctxt
              tm <- quote defs Env.empty ty
-             pure (if mentions j.deferred tm then Deferred else Rejected StuckType)
+             pure (if mentions j.deferred tm then Deferred else Rejected Problem.StuckType)
     where
       mentions : List Name -> ClosedTerm -> Bool
       mentions ns tm
@@ -182,18 +182,18 @@ mutual
       judgeTyCon j n args
           = do defs <- get Ctxt
                Just gdef <- lookupCtxtExact n (gamma defs)
-                 | Nothing => pure (Rejected StuckType)
+                 | Nothing => pure (Rejected Problem.StuckType)
                let TCon _ _ _ tyflags _ (Just cons) _ = definition gdef
-                 | _ => pure (Rejected StuckType)
+                 | _ => pure (Rejected Problem.StuckType)
                tn <- toFullNames n
                cdefs <- catMaybes <$> traverse (\cn => lookupCtxtExact cn (gamma defs)) cons
-               if natural cdefs then pure (Rejected (NaturalType tn)) else
-                 if !(recursive tn) then pure (Rejected (RecursiveType tn)) else
+               if natural cdefs then pure (Rejected (Problem.NaturalType tn)) else
+                 if !(recursive tn) then pure (Rejected (Problem.RecursiveType tn)) else
                    case cdefs of
-                        [] => pure (if tyflags.external then Rejected (ExternalType tn) else LaidOut [])
+                        [] => pure (if tyflags.external then Rejected (Problem.ExternalType tn) else LaidOut [])
                         [cdef] => judgeCon j cdef args
                         _ => do js <- traverse (\cdef => judgeCon j cdef args) cdefs
-                                pure (concatJudgements (LaidOut [Word] :: js))
+                                pure (concatJudgements (LaidOut [Exp.Word] :: js))
         where
           -- Constructors flagged as a type of natural numbers' zero and successor.
           natural : List GlobalDef -> Bool
@@ -233,8 +233,8 @@ mutual
                        let TCon _ _ _ _ _ (Just cons) _ = definition gdef
                          | _ => pure []
                        cdefs <- catMaybes <$> traverse (\cn => lookupCtxtExact cn (gamma defs)) cons
-                       tys <- joinMap id <$> traverse (fieldTypes []) cdefs
-                       let refs = joinMap (\t => keys (getRefs (UN Underscore) t)) tys
+                       tys <- Data.Builder.joinMap id <$> traverse (fieldTypes []) cdefs
+                       let refs = Data.Builder.joinMap (\t => keys (getRefs (UN Underscore) t)) tys
                        traverse toFullNames !(filterM isTyCon refs)
 
               reaches : (visited : List Name) -> (todo : List Name) -> Core Bool
@@ -250,7 +250,7 @@ mutual
           concatJudgements = go [<] False
             where
               -- the layouts accumulate at their end, a part at a time
-              go : SnocList Rep -> (deferred : Bool) -> List Judgement -> Judgement
+              go : SnocList Exp.Rep -> (deferred : Bool) -> List Judgement -> Judgement
               go acc d [] = if d then Deferred else LaidOut (acc <>> [])
               go acc d (Rejected why :: _) = Rejected why
               go acc d (Deferred :: js) = go acc True js
@@ -272,10 +272,10 @@ mutual
                        defs <- get Ctxt
                        tm <- quote defs Env.empty ty
                        pure $ Rejected $ case why of
-                         StuckType => if mentions undet tm
-                                         then UndeterminedField (fullname cdef) x
-                                         else InField (fullname cdef) x tm why
-                         _ => InField (fullname cdef) x tm why
+                         Problem.StuckType => if mentions undet tm
+                                                 then Problem.UndeterminedField (fullname cdef) x
+                                                 else Problem.InField (fullname cdef) x tm why
+                         _ => Problem.InField (fullname cdef) x tm why
 
 ||| The layout of a closed type, or why it is not flat. A type made of the
 ||| names in `deferred`, the erased arguments of a function being judged, is
@@ -323,7 +323,7 @@ newtypeOverFunction _ = pure Nothing
 ||| An error gives an argument's position among the explicit arguments, from
 ||| 1, for one that has no name.
 export
-checkFlatSignature : {auto c : Ref Ctxt Defs} -> FC -> Name -> Core (Maybe FlatError)
+checkFlatSignature : {auto c : Ref Ctxt Defs} -> FC -> Name -> Core (Maybe Problem.FlatError)
 checkFlatSignature fc fn
     = do defs <- get Ctxt
          Just ty <- lookupTyExact fn (gamma defs)
@@ -336,7 +336,7 @@ checkFlatSignature fc fn
 
     mutual
       -- Why a type is not flat, a function type judged by its signature.
-      reason : Judging -> ClosedNF -> Core (Maybe NotFlatReason)
+      reason : Judging -> ClosedNF -> Core (Maybe Problem.NotFlatReason)
       reason j ty@(NBind _ _ (Pi {}) _) = function j 0 [] ty
       reason j ty
           = case !(judge j ty) of
@@ -347,7 +347,7 @@ checkFlatSignature fc fn
       -- is not, with its position. A newtype over a function at the result
       -- (`IO a`) adds that function's arguments, once, as at the top.
       function : Judging -> (explicit : Nat) -> (unfolded : List Name) -> ClosedNF ->
-                 Core (Maybe NotFlatReason)
+                 Core (Maybe Problem.NotFlatReason)
       function j i ns (NBind bfc x (Pi _ rig pinfo aty) sc)
           = do defs <- get Ctxt
                let i' = case pinfo of
@@ -356,7 +356,7 @@ checkFlatSignature fc fn
                argNF <- evalClosure defs aty
                argWhy <- if isErased rig then pure Nothing else reason j argNF
                case argWhy of
-                    Just why => pure (Just (InFunction (Just (i', x)) !(quote defs Env.empty argNF) why))
+                    Just why => pure (Just (Problem.InFunction (Just (i', x)) !(quote defs Env.empty argNF) why))
                     Nothing =>
                       do let j' = if isErased rig then { deferred $= (x ::) } j else j
                          function j' i' ns !(sc defs (toClosure defaultOpts Env.empty (Ref bfc Bound x)))
@@ -365,27 +365,27 @@ checkFlatSignature fc fn
                  | Nothing => result
                if n `elem` ns then result else function j i (n :: ns) fnTy
         where
-          result : Core (Maybe NotFlatReason)
+          result : Core (Maybe Problem.NotFlatReason)
           result = do Just why <- reason j res
                         | Nothing => pure Nothing
                       defs <- get Ctxt
-                      pure (Just (InFunction Nothing !(quote defs Env.empty res) why))
+                      pure (Just (Problem.InFunction Nothing !(quote defs Env.empty res) why))
 
     -- Judge an argument (`Just`) or the result (`Nothing`); an auto-implicit
     -- argument is not rejected here.
-    check : (autoImplicit : Bool) -> Judging -> Maybe (Nat, Name) -> ClosedNF -> Core (Maybe FlatError)
+    check : (autoImplicit : Bool) -> Judging -> Maybe (Nat, Name) -> ClosedNF -> Core (Maybe Problem.FlatError)
     check autoImplicit j arg ty
         = do Just why <- reason j ty
                | Nothing => pure Nothing
              if autoImplicit then pure Nothing else do
                defs <- get Ctxt
                tm <- quote defs Env.empty ty
-               pure (Just (NotFlat fc !(toFullNames fn) arg tm why))
+               pure (Just (Problem.NotFlat fc !(toFullNames fn) arg tm why))
 
     -- `unfolded`: the newtypes over functions whose arguments the signature
     -- has taken already. Met again (a type such as `record Stream where next
     -- : Bits64 -> Stream`), one is judged as a value instead.
-    walk : Judging -> (unfolded : List Name) -> (explicit : Nat) -> ClosedNF -> Core (Maybe FlatError)
+    walk : Judging -> (unfolded : List Name) -> (explicit : Nat) -> ClosedNF -> Core (Maybe Problem.FlatError)
     walk j ns i (NBind bfc x (Pi _ rig pinfo argTy) sc)
         = do defs <- get Ctxt
              let i' = case pinfo of
@@ -404,5 +404,5 @@ checkFlatSignature fc fn
                | Nothing => result
              if n `elem` ns then result else walk j (n :: ns) i fnTy
       where
-        result : Core (Maybe FlatError)
+        result : Core (Maybe Problem.FlatError)
         result = check False j Nothing res

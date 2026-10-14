@@ -52,11 +52,11 @@ markingCG = Other "native"
 ||| options nor its output mode, so it cannot print the errors itself: what
 ||| it printed would be text in the middle of the IDE protocol. Thrown, the
 ||| one error is shown as the mode asks.
-report : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} -> List FlatError -> Core ()
+report : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} -> List Problem.FlatError -> Core ()
 report errs
     = do o <- newRef ROpts ({ color := False, consoleWidth := Just 0 }
                               (defaultOpts Nothing (REPL ErrorLvl) []))
-         es <- traverse asError (sortBy (\a, b => compare (place a) (place b)) errs)
+         es <- traverse Report.asError (sortBy (\a, b => compare (place a) (place b)) errs)
          case reverse es of
               [] => pure ()
               (e :: earlier) =>
@@ -96,10 +96,10 @@ report errs
              pure (renderString (layoutPretty (MkLayoutOptions Unbounded) doc))
 
     -- Where an error is, to report errors in the order of the source.
-    place : FlatError -> (Int, Int)
-    place (UnknownFlatName _ _) = (0, 0)
-    place (NotFlat fc _ _ _ _) = maybe (0, 0) startPos (isNonEmptyFC fc)
-    place (NotFlatBody fc _ _ _) = maybe (0, 0) startPos (isNonEmptyFC fc)
+    place : Problem.FlatError -> (Int, Int)
+    place (Problem.UnknownFlatName _ _) = (0, 0)
+    place (Problem.NotFlat fc _ _ _ _) = maybe (0, 0) startPos (isNonEmptyFC fc)
+    place (Problem.NotFlatBody fc _ _ _) = maybe (0, 0) startPos (isNonEmptyFC fc)
 
 -- The session directive that records that a module's check (`checkModule`)
 -- has reported errors in this run of the compiler.
@@ -119,13 +119,13 @@ reportedMark = "flat-errors-reported"
 ||| ambiguous with one of theirs.
 export
 markedForms : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} ->
-              (load : Core ()) -> Core (Maybe (NameMap FlatDef))
+              (load : Core ()) -> Core (Maybe (NameMap Exp.FlatDef))
 markedForms load
     = do own <- getDirectives markingCG
-         marked <- flatNames own
+         marked <- Translate.flatNames own
          load
-         loaded <- flatNames (filter (\d => not (elem d own)) !(getDirectives markingCG))
-         (forms, errs) <- flatForms (fst marked ++ fst loaded)
+         loaded <- Translate.flatNames (filter (\d => not (elem d own)) !(getDirectives markingCG))
+         (forms, errs) <- Translate.flatForms (fst marked ++ fst loaded)
          let nameErrs = snd marked ++ snd loaded
          session <- getSession
          if not (null errs) && elem reportedMark session.directives
@@ -145,9 +145,9 @@ checkModule : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} ->
               (sourceFile : String) -> Core ()
 checkModule sourceFile
     = do here <- ctxtPathToNS sourceFile
-         marked <- flatNames !(getDirectives markingCG)
+         marked <- Translate.flatNames !(getDirectives markingCG)
          mine <- filterM (definedIn here) (fst marked)
-         (_, errs) <- flatForms mine
+         (_, errs) <- Translate.flatForms mine
          unless (null errs) $ setSession ({ directives $= (reportedMark ::) } !getSession)
          report errs
   where

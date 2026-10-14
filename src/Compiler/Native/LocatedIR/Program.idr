@@ -46,8 +46,8 @@ module Compiler.Native.LocatedIR.Program
 import Compiler.Native.LocatedIR.Function
 import Compiler.Native.LocatedIR.Static
 
-import Compiler.Native.HeapObject.Enc
-import Compiler.Native.IRCommon.ConIds
+import Compiler.Native.HeapObject.Enc as HeapObject
+import Compiler.Native.IRCommon.ConIds as IRCommon
 import Compiler.Native.Target
 import Core.Name
 
@@ -56,10 +56,10 @@ import Core.Name
 ||| A whole program: its target, functions, statics, entry function and
 ||| constructor numbering.
 public export
-record Program (enc : Enc) where
+record Program (enc : HeapObject.Enc) where
   constructor MkProgram
   target : Target
   functions : List (Function enc)
   statics : List (Static enc)
   entry : Name
-  conIds : ConIds
+  conIds : IRCommon.ConIds

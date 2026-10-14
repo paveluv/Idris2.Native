@@ -42,10 +42,10 @@ codegenFlatOracle = MkCG compileExpr executeExpr Nothing Nothing
     -- forms: whether there are, or errors have been reported already.
     useForms : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} -> Core Bool
     useForms
-        = do Just forms <- markedForms (pure ())
+        = do Just forms <- Marked.markedForms (pure ())
                | Nothing => pure False
-             whenJust (dumpFlatFile !(getDirectives (Other "flat-oracle"))) $ \f => dumpFlat f forms
-             useFlatForms forms
+             whenJust (dumpFlatFile !(getDirectives (Other "flat-oracle"))) $ \f => Translate.dumpFlat f forms
+             Translate.useFlatForms forms
              pure True
 
     compileExpr : Ref Ctxt Defs -> Ref Syn SyntaxInfo ->

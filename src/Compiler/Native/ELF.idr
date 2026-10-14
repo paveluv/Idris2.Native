@@ -49,8 +49,8 @@ export
 planLayout : (textSize : Int) -> (rodataSize : Int) -> (bssSize : Int) -> Layout
 planLayout ts rs bs =
   let textOff   = pageSize
-      rodataOff = alignUp (textOff + ts) pageSize
-      bssOff    = alignUp (rodataOff + max rs 1) pageSize   -- always its own page
+      rodataOff = Bytes.alignUp (textOff + ts) pageSize
+      bssOff    = Bytes.alignUp (rodataOff + max rs 1) pageSize   -- always its own page
   in MkLayout (imageBase + textOff) textOff (imageBase + rodataOff) rodataOff (imageBase + bssOff) bssOff
 
 -- ELF64 structures -------------------------------------------------------
@@ -72,7 +72,7 @@ Image = List Stretch
 export
 stretchSize : Stretch -> Int
 stretchSize (Bytes bs) = cast (length bs)
-stretchSize (SnocBytes sx) = byteCount sx
+stretchSize (SnocBytes sx) = Bytes.byteCount sx
 stretchSize (Zeros k) = cast k
 
 ||| The bytes an image takes.
@@ -85,13 +85,13 @@ imageSize image = sum (map stretchSize image)
 ||| label). Section headers are not needed to run but let `readelf`/`objdump`
 ||| and debuggers see the regions.
 export
-elfImage : Arch -> Layout -> (text : SnocList Bits8) -> (rodata : SnocList Bits8) -> (bssSize : Int) -> (entry : Int) -> Image
+elfImage : Platform.Arch -> Layout -> (text : SnocList Bits8) -> (rodata : SnocList Bits8) -> (bssSize : Int) -> (entry : Int) -> Image
 elfImage m lay text rodata bssSize entry =
-  let ts = byteCount text
-      rs = byteCount rodata
+  let ts = Bytes.byteCount text
+      rs = Bytes.byteCount rodata
       strOff = rodataOff lay + rs
       strSize = cast (length shstrtab)
-      shoff = alignUp (strOff + strSize) 8
+      shoff = Bytes.alignUp (strOff + strSize) 8
       headers = elfHeader m entry shoff 3 5 4
              ++ programHeader (pfR + pfX) (textOff lay) (textBase lay) ts ts
              ++ programHeader pfR (rodataOff lay) (rodataBase lay) rs rs
@@ -127,14 +127,14 @@ elfImage m lay text rodata bssSize entry =
     shfExec = 4
 
     u32 : Int -> List Bits8
-    u32 = le32
+    u32 = Bytes.le32
 
     u64 : Int -> List Bits8
-    u64 = le64 . cast
+    u64 = Bytes.le64 . cast
 
-    elfHeader : Arch -> (entry : Int) -> (shoff : Int) -> (phnum : Int) -> (shnum : Int) -> (shstrndx : Int) -> List Bits8
+    elfHeader : Platform.Arch -> (entry : Int) -> (shoff : Int) -> (phnum : Int) -> (shnum : Int) -> (shstrndx : Int) -> List Bits8
     elfHeader m entry shoff phnum shnum shstrndx =
-         [0x7F, 0x45, 0x4C, 0x46, 2, 1, 1, 0] ++ zeros 8     -- magic, 64-bit, little-endian, version, SysV ABI
+         [0x7F, 0x45, 0x4C, 0x46, 2, 1, 1, 0] ++ Bytes.zeros 8     -- magic, 64-bit, little-endian, version, SysV ABI
       ++ u16 2                                               -- ET_EXEC
       ++ u16 (machineCode m)
       ++ u32 1                                               -- EV_CURRENT
@@ -146,9 +146,9 @@ elfImage m lay text rodata bssSize entry =
       ++ u16 shentsize ++ u16 shnum ++ u16 shstrndx
       where
         ||| The ELF machine of an architecture.
-        machineCode : Arch -> Int
-        machineCode X86_64 = 0x3E
-        machineCode AArch64 = 0xB7
+        machineCode : Platform.Arch -> Int
+        machineCode Platform.X86_64 = 0x3E
+        machineCode Platform.AArch64 = 0xB7
 
         ehsize, phentsize, shentsize : Int
         ehsize = 64
@@ -156,7 +156,7 @@ elfImage m lay text rodata bssSize entry =
         shentsize = 64
 
         u16 : Int -> List Bits8
-        u16 = le16
+        u16 = Bytes.le16
 
     programHeader : (flags : Int) -> (off : Int) -> (vaddr : Int) -> (filesz : Int) -> (memsz : Int) -> List Bits8
     programHeader flags off vaddr filesz memsz =

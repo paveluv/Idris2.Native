@@ -29,9 +29,9 @@ module Compiler.Native.Linkage.Routine
 
 import Compiler.Native.Linkage.Sym
 
-import Compiler.Native.HeapObject.Enc
-import Compiler.Native.HeapObject.StringEnc
-import Compiler.Native.IRCommon.Ty
+import Compiler.Native.HeapObject.Enc as HeapObject
+import Compiler.Native.HeapObject.StringEnc as HeapObject
+import Compiler.Native.IRCommon.Ty as IRCommon
 import Core.Name
 import Core.Name.Namespace
 import Data.List
@@ -47,7 +47,7 @@ flatName n = NS (mkNamespace "_flat") n
 
 ||| A routine of the runtime that generated code reaches.
 public export
-record Routine (enc : Enc) where
+record Routine (enc : HeapObject.Enc) where
   constructor MkRoutine
   ||| The function of the runtime library that is the routine; for one the
   ||| runtime does not have yet, the name its calls use.
@@ -58,8 +58,8 @@ record Routine (enc : Enc) where
   ||| The symbol by which the rendering and the seed reach it, if they do:
   ||| the rendering defines it at the routine's function.
   symbol : Maybe Sym
-  results : List (Ty enc)
-  params : List (Ty enc)
+  results : List (IRCommon.Ty enc)
+  params : List (IRCommon.Ty enc)
 
 ||| The routine that starts the program, before `main`: the stack limit, the
 ||| first allocation window, the arguments.
@@ -95,20 +95,20 @@ integerRoutine op = UN (Basic ("idris_integer_" ++ op))
 ||| module of the runtime that reads a string's header or bytes. Every other
 ||| part of the runtime asks it. None yet for UTF-32.
 export
-stringModule : StringEnc -> Maybe Namespace
-stringModule Utf8 = Just (mkNamespace "Runtime.String.Utf8")
-stringModule Utf32 = Nothing
+stringModule : HeapObject.StringEnc -> Maybe Namespace
+stringModule HeapObject.StringEnc.Utf8 = Just (mkNamespace "Runtime.String.Utf8")
+stringModule HeapObject.StringEnc.Utf32 = Nothing
 
 ||| A string routine under the encoding: the string module's function of the
 ||| operation's name, and whether the runtime has it.
-stringFunction : StringEnc -> String -> (Name, Bool)
+stringFunction : HeapObject.StringEnc -> String -> (Name, Bool)
 stringFunction e op = case stringModule e of
   Just ns => (NS ns (UN (Basic op)), True)
   Nothing => (UN (Basic ("idris_string_" ++ op)), False)
 
 ||| The name generated code calls a string routine by.
 export
-stringRoutine : Enc -> String -> Name
+stringRoutine : HeapObject.Enc -> String -> Name
 stringRoutine enc op = case stringFunction enc.string op of
   (n, True) => flatName n
   (n, False) => n
@@ -118,46 +118,46 @@ stringRoutine enc op = case stringFunction enc.string op of
 ||| strings as ordinary code holds them; a character is its code point, a
 ||| count or an index a word.
 export
-routines : {enc : Enc} -> List (Routine enc)
+routines : {enc : HeapObject.Enc} -> List (Routine enc)
 routines =
-  [ string "length" [W64] [Val]
-  , string "head" [W64] [Val]
-  , string "tail" [Val] [Val]
-  , string "index" [W64] [Val, W64]
-  , string "cons" [Val] [W64, Val]
-  , string "append" [Val] [Val, Val]
-  , string "reverse" [Val] [Val]
-  , string "substr" [Val] [W64, W64, Val]
-  , string "compare" [W64] [Val, Val]
-  , MkRoutine runtimeStart True (Just SymRuntimeStart) [] [W64, W64]
-  , MkRoutine runtimeAllocSlow True (Just SymAllocSlow) [W64] [W64]
-  , MkRoutine runtimeAllocMutable True (Just SymAllocMutable) [W64] [W64]
-  , MkRoutine runtimeCrash True (Just SymCrash) [] [W64, W64]
-  , integer "add" [Val] [Val, Val]
-  , integer "sub" [Val] [Val, Val]
-  , integer "mul" [Val] [Val, Val]
-  , integer "and" [Val] [Val, Val]
-  , integer "or" [Val] [Val, Val]
-  , integer "xor" [Val] [Val, Val]
-  , integer "div" [Val] [Val, Val]
-  , integer "mod" [Val] [Val, Val]
-  , integer "shl" [Val] [Val, Val]
-  , integer "shr" [Val] [Val, Val]
-  , integer "neg" [Val] [Val]
-  , integer "compare" [W64] [Val, Val]
-  , integer "to_bits64" [W64] [Val]
-  , integer "from_int64" [Val] [W64]
-  , integer "from_bits64" [Val] [W64] ]
+  [ string "length" [IRCommon.Ty.W64] [IRCommon.Ty.Val]
+  , string "head" [IRCommon.Ty.W64] [IRCommon.Ty.Val]
+  , string "tail" [IRCommon.Ty.Val] [IRCommon.Ty.Val]
+  , string "index" [IRCommon.Ty.W64] [IRCommon.Ty.Val, IRCommon.Ty.W64]
+  , string "cons" [IRCommon.Ty.Val] [IRCommon.Ty.W64, IRCommon.Ty.Val]
+  , string "append" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
+  , string "reverse" [IRCommon.Ty.Val] [IRCommon.Ty.Val]
+  , string "substr" [IRCommon.Ty.Val] [IRCommon.Ty.W64, IRCommon.Ty.W64, IRCommon.Ty.Val]
+  , string "compare" [IRCommon.Ty.W64] [IRCommon.Ty.Val, IRCommon.Ty.Val]
+  , MkRoutine runtimeStart True (Just Sym.SymRuntimeStart) [] [IRCommon.Ty.W64, IRCommon.Ty.W64]
+  , MkRoutine runtimeAllocSlow True (Just Sym.SymAllocSlow) [IRCommon.Ty.W64] [IRCommon.Ty.W64]
+  , MkRoutine runtimeAllocMutable True (Just Sym.SymAllocMutable) [IRCommon.Ty.W64] [IRCommon.Ty.W64]
+  , MkRoutine runtimeCrash True (Just Sym.SymCrash) [] [IRCommon.Ty.W64, IRCommon.Ty.W64]
+  , integer "add" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
+  , integer "sub" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
+  , integer "mul" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
+  , integer "and" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
+  , integer "or" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
+  , integer "xor" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
+  , integer "div" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
+  , integer "mod" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
+  , integer "shl" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
+  , integer "shr" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
+  , integer "neg" [IRCommon.Ty.Val] [IRCommon.Ty.Val]
+  , integer "compare" [IRCommon.Ty.W64] [IRCommon.Ty.Val, IRCommon.Ty.Val]
+  , integer "to_bits64" [IRCommon.Ty.W64] [IRCommon.Ty.Val]
+  , integer "from_int64" [IRCommon.Ty.Val] [IRCommon.Ty.W64]
+  , integer "from_bits64" [IRCommon.Ty.Val] [IRCommon.Ty.W64] ]
   where
-    integer : String -> List (Ty enc) -> List (Ty enc) -> Routine enc
+    integer : String -> List (IRCommon.Ty enc) -> List (IRCommon.Ty enc) -> Routine enc
     integer op rs ps = MkRoutine (integerRoutine op) False Nothing rs ps
 
-    string : String -> List (Ty enc) -> List (Ty enc) -> Routine enc
+    string : String -> List (IRCommon.Ty enc) -> List (IRCommon.Ty enc) -> Routine enc
     string op rs ps = let (n, p) = stringFunction enc.string op in MkRoutine n p Nothing rs ps
 
 ||| The symbol the routine whose function has the name is reached by.
 export
-routineSymbol : {enc : Enc} -> Name -> Maybe Sym
+routineSymbol : {enc : HeapObject.Enc} -> Name -> Maybe Sym
 routineSymbol n = do
   r <- find (\r => r.provided && flatName r.name == n) (routines {enc})
   r.symbol

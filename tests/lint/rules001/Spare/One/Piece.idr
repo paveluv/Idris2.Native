@@ -1,5 +1,5 @@
-||| A module of the group `One` under `Spare`; `Shared` has one too:
-||| `parent-unique`.
+||| A module of the group `One` under `Spare`; `Shared` has one too, which
+||| its path tells apart.
 module Spare.One.Piece
 
 %default total

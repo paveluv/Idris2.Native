@@ -32,6 +32,7 @@ import Data.SortedMap
 import Data.String
 import Idris.Syntax
 import Libraries.Data.WithData
+import Lint.Resolution
 import Lint.Rules
 import Lint.Source
 import System
@@ -232,7 +233,7 @@ refactor dryRun check r project changedFiles path = loop [] [] empty
         | False => finish changed stays saved
       Right s <- load path
         | Left e => finish changed (("the file", "it does not parse: " ++ e) :: stays) saved
-      others <- if r.wide then project else pure (MkProject [] [])
+      others <- if r.wide then project else pure (MkProject [] [] Nothing)
       let left = filter (\c => not (c.label `elem` map fst stays)) (r.candidates others s)
       case left of
         [] => finish changed stays saved

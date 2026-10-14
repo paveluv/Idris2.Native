@@ -23,7 +23,7 @@ import Core.FC
 import Core.Name
 import Core.Name.Namespace
 import Core.TT.Primitive
-import Data.Builder
+import Data.Builder as Data
 import Data.List
 import Data.Vect
 
@@ -255,37 +255,37 @@ mutual
 ||| `i`: appending strings level by level would copy the text below at
 ||| each level.
 covering
-expPieces : Nat -> Exp -> Builder String
+expPieces : Nat -> Exp -> Data.Builder String
 expPieces i exp = case exp of
-  FVar _ n => single (show n)
+  FVar _ n => Data.Builder.single (show n)
   FLet _ v val sc
-     => single ("let " ++ show v ++ " = ") <+> expPieces (i + 2) val <+> single "\n"
-        <+> single (showIndent i) <+> expPieces i sc
-  FConst _ c => single (show c)
-  FOp _ op as => single (show op) <+> argPieces i (toList as)
-  FCall _ n as => single (show n) <+> argPieces i as
-  FPrim _ n _ _ as => single ("%prim " ++ show n) <+> argPieces i as
+     => Data.Builder.single ("let " ++ show v ++ " = ") <+> expPieces (i + 2) val <+> Data.Builder.single "\n"
+        <+> Data.Builder.single (showIndent i) <+> expPieces i sc
+  FConst _ c => Data.Builder.single (show c)
+  FOp _ op as => Data.Builder.single (show op) <+> argPieces i (toList as)
+  FCall _ n as => Data.Builder.single (show n) <+> argPieces i as
+  FPrim _ n _ _ as => Data.Builder.single ("%prim " ++ show n) <+> argPieces i as
   FCon _ c t s l as
-     => single (show c ++ maybe "" (\t => "{" ++ show t ++ "}") t) <+> argPieces i as
+     => Data.Builder.single (show c ++ maybe "" (\t => "{" ++ show t ++ "}") t) <+> argPieces i as
   FCase _ sc alts def
-     => single "case " <+> expPieces i sc <+> single " of"
-        <+> concatMap (\a => single ("\n" ++ showIndent (i + 2)) <+> altPieces (i + 4) a) alts
-        <+> maybe neutral (\d => single ("\n" ++ showIndent (i + 2) ++ "_ => ") <+> expPieces (i + 4) d) def
-  FCrash _ msg => single ("crash " ++ show msg)
-  FNone _ => single "()"
+     => Data.Builder.single "case " <+> expPieces i sc <+> Data.Builder.single " of"
+        <+> concatMap (\a => Data.Builder.single ("\n" ++ showIndent (i + 2)) <+> altPieces (i + 4) a) alts
+        <+> maybe neutral (\d => Data.Builder.single ("\n" ++ showIndent (i + 2) ++ "_ => ") <+> expPieces (i + 4) d) def
+  FCrash _ msg => Data.Builder.single ("crash " ++ show msg)
+  FNone _ => Data.Builder.single "()"
   where
     covering
-    altPieces : Nat -> FlatAlt -> Builder String
+    altPieces : Nat -> FlatAlt -> Data.Builder String
     altPieces i (FConAlt c t vs sc)
-        = single (show c ++ maybe "" (\t => "{" ++ show t ++ "}") t
+        = Data.Builder.single (show c ++ maybe "" (\t => "{" ++ show t ++ "}") t
                   ++ fastConcat (map (\v => " (" ++ show v ++ ")") vs) ++ " => ")
           <+> expPieces i sc
-    altPieces i (FConstAlt c sc) = single (show c ++ " => ") <+> expPieces i sc
+    altPieces i (FConstAlt c sc) = Data.Builder.single (show c ++ " => ") <+> expPieces i sc
 
     covering
-    argPieces : Nat -> List Exp -> Builder String
+    argPieces : Nat -> List Exp -> Data.Builder String
     argPieces i [] = neutral
-    argPieces i as = single "(" <+> concat (intersperse (single ", ") (map (expPieces i) as)) <+> single ")"
+    argPieces i as = Data.Builder.single "(" <+> concat (intersperse (Data.Builder.single ", ") (map (expPieces i) as)) <+> Data.Builder.single ")"
 
     showIndent : Nat -> String
     showIndent i = pack (replicate i ' ')
@@ -309,9 +309,9 @@ record FlatDef where
 ||| A definition's flat form as text in pieces: what `show` joins, and what
 ||| a dump writes a piece at a time.
 export covering
-defPieces : FlatDef -> Builder String
+defPieces : FlatDef -> Data.Builder String
 defPieces d =
-  single (show d.name ++ " (" ++ concat (intersperse ", " (map show d.params)) ++ ")"
+  Data.Builder.single (show d.name ++ " (" ++ concat (intersperse ", " (map show d.params)) ++ ")"
           ++ " : " ++ show d.resultSkeleton ++ " " ++ show d.result ++ " =\n  ")
   <+> expPieces 2 d.body
 
@@ -343,7 +343,7 @@ expType var form (FLet _ fv _ sc) = expType (bound [fv]) form sc
     bound vs y = case find (\v => v.name == y) vs of
       Just v => Just (v.skeleton, v.layout)
       Nothing => var y
-expType var form (FConst _ k) = (\t => (SPrim t, primLayout t)) <$> constType k
+expType var form (FConst _ k) = (\t => (SPrim t, primLayout t)) <$> ConstType.constType k
 expType var form (FOp _ op _) = (\t => (SPrim t, primLayout t)) <$> opResult op
   where
     -- The type of a primitive operation's result.
@@ -386,17 +386,17 @@ export
 formCallees : FlatDef -> List Name
 formCallees fd = toList (go fd.body)
   where
-    go : Exp -> Builder Name
+    go : Exp -> Data.Builder Name
     go (FVar _ _) = neutral
     go (FLet _ _ val sc) = go val <+> go sc
     go (FConst _ _) = neutral
     go (FOp _ _ as) = concatMap go (toList as)
-    go (FCall _ f as) = single f <+> concatMap go as
+    go (FCall _ f as) = Data.Builder.single f <+> concatMap go as
     go (FPrim _ _ _ _ as) = concatMap go as
     go (FCon _ _ _ _ _ as) = concatMap go as
     go (FCase _ sc alts def) = go sc <+> concatMap alt alts <+> maybe neutral go def
       where
-        alt : FlatAlt -> Builder Name
+        alt : FlatAlt -> Data.Builder Name
         alt (FConAlt _ _ _ b) = go b
         alt (FConstAlt _ b) = go b
     go (FCrash _ _) = neutral
@@ -407,17 +407,17 @@ export
 formPrims : FlatDef -> List Name
 formPrims fd = toList (go fd.body)
   where
-    go : Exp -> Builder Name
+    go : Exp -> Data.Builder Name
     go (FVar _ _) = neutral
     go (FLet _ _ val sc) = go val <+> go sc
     go (FConst _ _) = neutral
     go (FOp _ _ as) = concatMap go (toList as)
     go (FCall _ _ as) = concatMap go as
-    go (FPrim _ p _ _ as) = single p <+> concatMap go as
+    go (FPrim _ p _ _ as) = Data.Builder.single p <+> concatMap go as
     go (FCon _ _ _ _ _ as) = concatMap go as
     go (FCase _ sc alts def) = go sc <+> concatMap alt alts <+> maybe neutral go def
       where
-        alt : FlatAlt -> Builder Name
+        alt : FlatAlt -> Data.Builder Name
         alt (FConAlt _ _ _ b) = go b
         alt (FConstAlt _ b) = go b
     go (FCrash _ _) = neutral
@@ -428,20 +428,20 @@ formPrims fd = toList (go fd.body)
 ||| shapes of the data types among them.
 export
 formSkeletons : FlatDef -> List Skeleton
-formSkeletons fd = toList (single fd.resultSkeleton <+> piece (map skeleton fd.params) <+> go fd.body)
+formSkeletons fd = toList (Data.Builder.single fd.resultSkeleton <+> Data.Builder.piece (map skeleton fd.params) <+> go fd.body)
   where
-    go : Exp -> Builder Skeleton
+    go : Exp -> Data.Builder Skeleton
     go (FVar _ _) = neutral
-    go (FLet _ fv val sc) = single fv.skeleton <+> go val <+> go sc
+    go (FLet _ fv val sc) = Data.Builder.single fv.skeleton <+> go val <+> go sc
     go (FConst _ _) = neutral
     go (FOp _ _ as) = concatMap go (toList as)
     go (FCall _ _ as) = concatMap go as
-    go (FPrim _ _ sk _ as) = single sk <+> concatMap go as
-    go (FCon _ _ _ sk _ as) = single sk <+> concatMap go as
+    go (FPrim _ _ sk _ as) = Data.Builder.single sk <+> concatMap go as
+    go (FCon _ _ _ sk _ as) = Data.Builder.single sk <+> concatMap go as
     go (FCase _ sc alts def) = go sc <+> concatMap alt alts <+> maybe neutral go def
       where
-        alt : FlatAlt -> Builder Skeleton
-        alt (FConAlt _ _ vs b) = piece (map skeleton vs) <+> go b
+        alt : FlatAlt -> Data.Builder Skeleton
+        alt (FConAlt _ _ vs b) = Data.Builder.piece (map skeleton vs) <+> go b
         alt (FConstAlt _ b) = go b
     go (FCrash _ _) = neutral
     go (FNone _) = neutral

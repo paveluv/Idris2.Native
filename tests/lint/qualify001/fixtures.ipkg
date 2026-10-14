@@ -1,0 +1,9 @@
+package fixtures
+
+depends = idris2-native
+
+modules =
+    Geo.Shape,
+    Left.Side,
+    Plan,
+    Right.Side

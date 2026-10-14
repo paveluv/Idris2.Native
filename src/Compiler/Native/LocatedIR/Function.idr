@@ -8,8 +8,8 @@ import Compiler.Native.LocatedIR.Block
 import Compiler.Native.LocatedIR.Label
 import Compiler.Native.LocatedIR.Reg
 
-import Compiler.Native.HeapObject.Enc
-import Compiler.Native.IRCommon.Conv
+import Compiler.Native.HeapObject.Enc as HeapObject
+import Compiler.Native.IRCommon.Conv as IRCommon
 import Core.FC
 import Core.Name
 
@@ -22,10 +22,10 @@ import Core.Name
 ||| function has none, and delivers one `Val` to its continuation by
 ||| `Return`.
 public export
-record Function (enc : Enc) where
+record Function (enc : HeapObject.Enc) where
   constructor MkFunction
   name : Name
-  conv : Conv enc
+  conv : IRCommon.Conv enc
   params : List (Reg enc)
   entry : Label
   blocks : List (Block enc)

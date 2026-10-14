@@ -10,6 +10,7 @@ import Data.Either
 import Data.List
 import Data.List1
 import Data.String
+import Lint.Resolution
 import System.Directory
 import System.File.Error
 import System.File.ReadWrite
@@ -23,16 +24,19 @@ record Project where
   files : List Subject
   ||| Each package file by its path and text.
   packages : List (String, String)
+  ||| What the modules use, resolved from their TTCs, as they were built
+  ||| before the run, if they could be read.
+  resolution : Maybe Resolution
 
 ||| The files of a run, parsed, and the packages in each root's directory and
 ||| its parent: a package's sources are its directory or one below it.
 export
-loadProject : (roots, paths : List String) -> IO Project
-loadProject roots paths = do
+loadProject : (roots, paths : List String) -> Maybe Resolution -> IO Project
+loadProject roots paths res = do
   subjects <- traverse load paths
   let dirs = nub (concatMap (\r => [r, parentOf r]) roots)
   packages <- traverse packagesIn dirs
-  pure (MkProject (rights subjects) (nub (concat packages)))
+  pure (MkProject (rights subjects) (nub (concat packages)) res)
   where
     ||| A path in a directory, the current one written as nothing.
     inDirectory : String -> String -> String

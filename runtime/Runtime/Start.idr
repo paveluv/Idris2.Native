@@ -27,32 +27,32 @@ import Compiler.Native.HeapObject.Kind
 ||| system's guard gap faults; and the stack pointer at entry, `entry`, kept
 ||| for the program's arguments.
 export covering
-start : (entry, window : Bits64) -> Op Heap ()
+start : (entry, window : Bits64) -> Heap.Op Heap ()
 start entry window = do
   (fb, fs) <- reserveSpace 35184372088832
   (tb, ts) <- reserveSpace 35184372088832
-  setState fromBase fb
-  setState fromEnd (fb + fs)
-  setState fromCommitted fb
-  setState toBase tb
-  setState toEnd (tb + ts)
-  setState toCommitted tb
-  setState toTop tb
-  setState scanCursor tb
-  setState liveBytes 0
-  setState heapLimit 0
-  setState windowBytes window
-  setState collections 0
-  firstEnd <- roundToPage (fb + window)
-  commitMemory fb (firstEnd - fb)
-  setState fromCommitted firstEnd
-  setAllocation fb (fb + window)
-  given <- osStackLimit
+  State.setState State.fromBase fb
+  State.setState State.fromEnd (fb + fs)
+  State.setState State.fromCommitted fb
+  State.setState State.toBase tb
+  State.setState State.toEnd (tb + ts)
+  State.setState State.toCommitted tb
+  State.setState State.toTop tb
+  State.setState State.scanCursor tb
+  State.setState State.liveBytes 0
+  State.setState State.heapLimit 0
+  State.setState State.windowBytes window
+  State.setState State.collections 0
+  firstEnd <- Memory.roundToPage (fb + window)
+  Memory.commitMemory fb (firstEnd - fb)
+  State.setState State.fromCommitted firstEnd
+  Memory.setAllocation fb (fb + window)
+  given <- OS.osStackLimit
   let soft = if given == 0 then defaultStack else given
-  limit <- stackLimitArea {k = BUFFER}
-  store64 limit 0 (entry - (if soft > stackCap then stackCap else soft) + stackMargin)
-  argv <- argvArea {k = BUFFER}
-  store64 argv 0 entry
+  limit <- Memory.stackLimitArea {k = Compiler.Native.HeapObject.Kind.BUFFER}
+  Memory.store64 limit 0 (entry - (if soft > stackCap then stackCap else soft) + stackMargin)
+  argv <- Memory.argvArea {k = Compiler.Native.HeapObject.Kind.BUFFER}
+  Memory.store64 argv 0 entry
   where
     ||| The most of the process stack direct code may use, whatever the stack's
     ||| limit: 1 GiB.
@@ -74,8 +74,8 @@ start entry window = do
     ||| halving to 64 MiB, so that only the system, or a limit the user set on
     ||| the process's address space, bounds the heap. Its address and size.
     covering
-    reserveSpace : (bytes : Bits64) -> Op Heap (Bits64, Bits64)
+    reserveSpace : (bytes : Bits64) -> Heap.Op Heap (Bits64, Bits64)
     reserveSpace bytes =
-      if bytes < 67108864 then crashOp "idris: cannot reserve memory" else do
-        a <- reserveMemory bytes
-        if a == 0 then reserveSpace (shiftR bytes 1) else pure (a, bytes)
+      if bytes < 67108864 then Heap.crashOp "idris: cannot reserve memory" else do
+        a <- Memory.reserveMemory bytes
+        if a == 0 then reserveSpace (Bits.shiftR bytes 1) else Heap.pure (a, bytes)

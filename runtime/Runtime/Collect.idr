@@ -31,42 +31,42 @@ import Runtime.Heap
 public export
 interface Memory (0 h : Type) where
   ||| Whether a word is a pointer to an object in the space being collected.
-  collectable : Bits64 -> Op h Bool
+  collectable : Bits64 -> Heap.Op h Bool
   ||| The address a pointer word points to, and the pointer word of an address.
-  addressOf : Bits64 -> Op h Bits64
-  pointerOf : Bits64 -> Op h Bits64
+  addressOf : Bits64 -> Heap.Op h Bits64
+  pointerOf : Bits64 -> Heap.Op h Bits64
   ||| The words of the object at the address, and which of them hold values:
   ||| the first and how many.
-  objectSize : Bits64 -> Op h Bits64
-  objectScanned : Bits64 -> Op h (Bits64, Bits64)
+  objectSize : Bits64 -> Heap.Op h Bits64
+  objectScanned : Bits64 -> Heap.Op h (Bits64, Bits64)
   ||| Where the object at the address was moved to, if it was.
-  forwarded : Bits64 -> Op h (Maybe Bits64)
+  forwarded : Bits64 -> Heap.Op h (Maybe Bits64)
   ||| Mark the object at the address as moved to the other.
-  setForwarded : (from, to : Bits64) -> Op h ()
+  setForwarded : (from, to : Bits64) -> Heap.Op h ()
   ||| The word at the address's word index, and storing one.
-  readWord : (addr, index : Bits64) -> Op h Bits64
-  writeWord : (addr, index, value : Bits64) -> Op h ()
+  readWord : (addr, index : Bits64) -> Heap.Op h Bits64
+  writeWord : (addr, index, value : Bits64) -> Heap.Op h ()
   ||| Room for the words in the to-space, after what is there: its address.
-  reserve : (words : Bits64) -> Op h Bits64
+  reserve : (words : Bits64) -> Heap.Op h Bits64
   ||| The next copy in the to-space not yet scanned, advancing past it.
-  nextToScan : Op h (Maybe Bits64)
+  nextToScan : Heap.Op h (Maybe Bits64)
   ||| The root buffer: the entries in use, one of them, and storing one.
-  rootCount : Op h Bits64
-  readRoot : Bits64 -> Op h Bits64
-  writeRoot : (index, value : Bits64) -> Op h ()
+  rootCount : Heap.Op h Bits64
+  readRoot : Bits64 -> Heap.Op h Bits64
+  writeRoot : (index, value : Bits64) -> Heap.Op h ()
   ||| The current continuation, a root of its own, and setting it.
-  rootContinuation : Op h Bits64
-  setRootContinuation : Bits64 -> Op h ()
+  rootContinuation : Heap.Op h Bits64
+  setRootContinuation : Bits64 -> Heap.Op h ()
   ||| The end of a collection: the to-space becomes the space the program
   ||| allocates in, and the old one is given back.
-  flipSpaces : Op h ()
+  flipSpaces : Heap.Op h ()
 
 ||| Copy the words of an object from one address to the other, from word
 ||| `i` to the count.
 export covering
-copyWords : Memory h => (from, to, i, count : Bits64) -> Op h ()
+copyWords : Memory h => (from, to, i, count : Bits64) -> Heap.Op h ()
 copyWords from to i count =
-  if i >= count then pure () else do
+  if i >= count then Heap.pure () else do
     w <- readWord from i
     writeWord to i w
     copyWords from to (i + 1) count
@@ -75,10 +75,10 @@ copyWords from to i count =
 ||| collected; the pointer to the copy of what it points to, made now if
 ||| the object was not moved yet.
 export covering
-forward : Memory h => Bits64 -> Op h Bits64
+forward : Memory h => Bits64 -> Heap.Op h Bits64
 forward v = do
   c <- collectable v
-  if not c then pure v else do
+  if not c then Heap.pure v else do
     a <- addressOf v
     moved <- forwarded a
     case moved of
@@ -93,9 +93,9 @@ forward v = do
 ||| Forward the words of the copy at the address that hold values, from
 ||| word `i` to the end.
 export covering
-forwardWords : Memory h => (addr, i, end : Bits64) -> Op h ()
+forwardWords : Memory h => (addr, i, end : Bits64) -> Heap.Op h ()
 forwardWords addr i end =
-  if i >= end then pure () else do
+  if i >= end then Heap.pure () else do
     v <- readWord addr i
     v' <- forward v
     writeWord addr i v'
@@ -103,27 +103,27 @@ forwardWords addr i end =
 
 ||| Scan one copy.
 export covering
-scanObject : Memory h => Bits64 -> Op h ()
+scanObject : Memory h => Bits64 -> Heap.Op h ()
 scanObject addr = do
   (from, count) <- objectScanned addr
   forwardWords addr from (from + count)
 
 ||| Scan the copies until none is left to scan.
 export covering
-scanLoop : Memory h => Op h ()
+scanLoop : Memory h => Heap.Op h ()
 scanLoop = do
   next <- nextToScan
   case next of
-    Nothing => pure ()
+    Nothing => Heap.pure ()
     Just addr => do
       scanObject addr
       scanLoop
 
 ||| Forward the root buffer's entries from `i` to the count.
 export covering
-forwardRoots : Memory h => (i, count : Bits64) -> Op h ()
+forwardRoots : Memory h => (i, count : Bits64) -> Heap.Op h ()
 forwardRoots i count =
-  if i >= count then pure () else do
+  if i >= count then Heap.pure () else do
     v <- readRoot i
     v' <- forward v
     writeRoot i v'
@@ -132,7 +132,7 @@ forwardRoots i count =
 ||| A collection: the roots forwarded, the copies scanned, the spaces
 ||| flipped.
 export covering
-collect : Memory h => Op h ()
+collect : Memory h => Heap.Op h ()
 collect = do
   k <- rootContinuation
   k' <- forward k

@@ -9,11 +9,11 @@ import Compiler.Native.TermIR.Sig
 import Compiler.Native.TermIR.StaticSig
 import Compiler.Native.TermIR.Var
 
-import Compiler.Native.HeapObject.Enc
-import Compiler.Native.HeapObject.Header
-import Compiler.Native.HeapObject.Kind
+import Compiler.Native.HeapObject.Enc as HeapObject
+import Compiler.Native.HeapObject.Header as HeapObject
+import Compiler.Native.HeapObject.Kind as HeapObject
 import Compiler.Native.IRCommon.Conv
-import Compiler.Native.IRCommon.Ty
+import Compiler.Native.IRCommon.Ty as IRCommon
 import Core.Name
 import Data.So
 import Data.Vect
@@ -25,10 +25,10 @@ public export
 data SField : Decls enc -> Type where
   SWord : Int64 -> SField d
   SRef : Var d.statics s -> SField d
-  SCode : Var d.sigs (MkSig n CPS ps cv) -> SField d
+  SCode : Var d.sigs (Sig.MkSig n IRCommon.Conv.CPS ps cv) -> SField d
 
 ||| A static object's definition: its header and its words after it.
 public export
 data StaticDef : Decls enc -> StaticSig -> Type where
-  MkStaticDef : {0 d : Decls enc} -> {k : Kind} -> (h : Header enc k) -> {auto 0 ok : So (wellFormed h)} ->
-                Vect (fieldWords h) (SField d) -> StaticDef d (MkStaticSig s k)
+  MkStaticDef : {0 d : Decls enc} -> {k : HeapObject.Kind} -> (h : HeapObject.Header enc k) -> {auto 0 ok : So (wellFormed h)} ->
+                Vect (fieldWords h) (SField d) -> StaticDef d (StaticSig.MkStaticSig s k)

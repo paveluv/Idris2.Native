@@ -6,13 +6,13 @@ module Compiler.Native.IRCommon.Conv
 
 import Compiler.Native.IRCommon.Ty
 
-import Compiler.Native.HeapObject.Enc
+import Compiler.Native.HeapObject.Enc as HeapObject
 
 %default total
 
 ||| A function's calling convention, the same in both IRs.
 public export
-data Conv : Enc -> Type where
+data Conv : HeapObject.Enc -> Type where
   ||| Compiled Idris code, and the runtime routines that transfer control
   ||| into Idris code. A CPS function never executes a machine return:
   ||| control leaves it only by jumps. `Return`, `Call`, `TailCall`, `Apply`

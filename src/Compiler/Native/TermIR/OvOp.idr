@@ -12,7 +12,7 @@ public export
 data OvOp = OvAdd | OvSub | OvMul
 
 public export
-ovArith : OvOp -> ArithOp
-ovArith OvAdd = Add
-ovArith OvSub = Sub
-ovArith OvMul = Mul
+ovArith : OvOp -> IRCommon.Operators.ArithOp
+ovArith OvAdd = IRCommon.Operators.Add
+ovArith OvSub = IRCommon.Operators.Sub
+ovArith OvMul = IRCommon.Operators.Mul

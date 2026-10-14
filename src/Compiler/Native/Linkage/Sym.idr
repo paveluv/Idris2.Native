@@ -5,7 +5,7 @@
 ||| (`Compiler.Native.Linkage.Routine` says what it is).
 module Compiler.Native.Linkage.Sym
 
-import Compiler.Native.IRCommon.Area
+import Compiler.Native.IRCommon.Area as IRCommon
 import Compiler.Native.X86.Asm
 
 %default total
@@ -34,7 +34,7 @@ data Sym
   | SymRuntime         -- bss: RUNTIME, `runtimeWords` words: the runtime's state
 
 public export
-symLabel : Sym -> Label
+symLabel : Sym -> X86.Asm.Label
 symLabel SymStart = 0
 symLabel SymMain = 1
 symLabel SymHalt = 2
@@ -82,16 +82,16 @@ symName SymRuntime = "RUNTIME"
 
 ||| The symbol of a per-thread area.
 public export
-areaSym : Area -> Sym
-areaSym ARGS = SymArgs
-areaSym ROOTS = SymRoots
-areaSym NROOTS = SymNRoots
-areaSym SCRATCH = SymScratch
-areaSym STACK_LIMIT = SymStackLimit
-areaSym ARGV = SymArgv
-areaSym RUNTIME = SymRuntime
+areaSym : IRCommon.Area -> Sym
+areaSym IRCommon.Area.ARGS = SymArgs
+areaSym IRCommon.Area.ROOTS = SymRoots
+areaSym IRCommon.Area.NROOTS = SymNRoots
+areaSym IRCommon.Area.SCRATCH = SymScratch
+areaSym IRCommon.Area.STACK_LIMIT = SymStackLimit
+areaSym IRCommon.Area.ARGV = SymArgv
+areaSym IRCommon.Area.RUNTIME = SymRuntime
 
 ||| The first label a program may use for itself.
 public export
-reservedLabels : Label
+reservedLabels : X86.Asm.Label
 reservedLabels = 64

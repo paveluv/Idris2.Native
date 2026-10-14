@@ -8,6 +8,7 @@
 module Lint.Graph
 
 import Lint.Finding
+import Lint.Qualifier
 import Lint.Rules
 import Lint.Source
 
@@ -109,76 +110,63 @@ graphRules fs =
 -- where they meet, a module qualifies one by its group, and one component
 -- is all a qualifier ever needs.
 
-||| A module's parent: its name without the last component.
-parentOf : String -> Maybe String
-parentOf m = case reverse (forget (Data.String.split (== '.') m)) of
-  (_ :: rest@(_ :: _)) => Just (fastConcat (intersperse "." (reverse rest)))
-  _ => Nothing
-
 ||| A module's group: the last component of its parent.
 export
 groupOf : String -> Maybe String
 groupOf m = parentOf m >>= \p => last' (forget (Data.String.split (== '.') p))
-
-||| `parent-unique`: no two of our groups have the same name, so that a
-||| group's name, as a qualifier, means one group. Reported at a module of
-||| each.
-export
-parentUnique : List SourceFile -> List Finding
-parentUnique fs =
-  let parents = the (SortedSet String) (fromList (mapMaybe (parentOf . moduleOf) fs))
-      byName = foldl (\acc, p => let g = fromMaybe p (last' (forget (Data.String.split (== '.') p))) in
-                                   insert g (p :: fromMaybe [] (lookup g acc)) acc)
-                     (the (SortedMap String (List String)) empty) (Prelude.toList parents)
-  in joined [ mapMaybe (report g ps) ps | (g, ps) <- SortedMap.toList byName, length ps > 1 ]
   where
-    report : String -> List String -> String -> Maybe Finding
-    report g ps p = case find (\f => parentOf (moduleOf f) == Just p) fs of
-      Nothing => Nothing
-      Just f => Just (MkFinding "parent-unique" f.path 0 0 g
-                        ("the group `" ++ g ++ "` is also " ++ fastConcat (intersperse ", " (map (\o => "`" ++ o ++ "`") (filter (/= p) ps)))
-                         ++ ": a group's name qualifies one group"))
+    ||| A module's parent: its name without the last component.
+    parentOf : String -> Maybe String
+    parentOf m = case reverse (forget (Data.String.split (== '.') m)) of
+      (_ :: rest@(_ :: _)) => Just (fastConcat (intersperse "." (reverse rest)))
+      _ => Nothing
 
-||| `import-alias`: a module is imported under another name only as its
-||| group, so that a qualifier is always a group's name; and a name of ours
-||| is qualified by one component at most, its group, never by a group and
-||| a module (`LocatedIR.Program.Program`): a module that must qualify a
-||| name imports its module as its group.
+||| `import-alias`: a module of ours is imported under another name only
+||| as the qualifier of its key type (`Lint.Qualifier`): its path from the
+||| importer but its last part; and a name of ours written qualified is
+||| written as the rule writes it, with the defining module's path past what
+||| the two modules' names share, `TermIR.StaticDef.SWord` in
+||| `Compiler.Native.RegAlloc`.
 export
-importAlias : SortedSet String -> SourceFile -> List (FC, Name) -> List Finding
-importAlias ours f refs =
-  [ MkFinding "import-alias" f.path l c (show i.path)
-      ("`" ++ show i.path ++ "` imported as `" ++ show i.nameAs ++ "`: a module is imported as its group, "
-       ++ maybe "and this one has none" (\g => "`" ++ g ++ "`") (groupOf (show i.path)))
-  | i <- f.mod.imports, show i.nameAs /= show i.path
-  , groupOf (show i.path) /= Just (show i.nameAs)
+importAlias : (exportsOf : SortedMap String (List String)) -> SourceFile -> List (FC, Name) -> List Finding
+importAlias exportsOf f refs =
+  [ MkFinding "import-alias" f.path l c m
+      ("`" ++ m ++ "` imported as `" ++ show i.nameAs ++ "`: "
+       ++ maybe "its names are qualified by its path, which needs no alias" (\a => "an alias is the qualifier of its key type, `" ++ a ++ "`") (aliasAt (pathFrom me m)))
+  | i <- ours, let m = show i.path, show i.nameAs /= m, Just (show i.nameAs) /= aliasAt (pathFrom me m)
   , let (l, c) = start i.loc ]
   ++
-  mapMaybe deep refs
+  mapMaybe written refs
   where
+    me : String
+    me = show f.mod.moduleNS
+
+    ours : List Import
+    ours = filter (\i => isJust (lookup (show i.path) exportsOf)) f.mod.imports
+
     start : FC -> (Int, Int)
     start (MkFC _ s _) = s
     start (MkVirtualFC _ s _) = s
     start EmptyFC = (0, 0)
 
-    -- the module of ours a qualifier names, if it names one
-    ofOurs : String -> Maybe String
-    ofOurs q = find (\m => m == q || isSuffixOf ("." ++ q) m) (Prelude.toList ours)
+    -- the import a qualifier names, as its alias or by the end of its
+    -- module's name, whose module exports the name
+    by : String -> String -> Import -> Bool
+    by q n i =
+      let m = show i.path in
+      (show i.nameAs == q || m == q || isSuffixOf ("." ++ q) m) && maybe False (elem n) (lookup m exportsOf)
 
-    report : FC -> (qualifier, name, m : String) -> Finding
-    report fc q n m =
-      let (l, c) = start fc
-          g = fromMaybe m (groupOf m)
-      in MkFinding "import-alias" f.path l c (q ++ "." ++ n)
-           ("`" ++ q ++ "." ++ n ++ "` is qualified by more than its group: import `" ++ m
-            ++ "` as `" ++ g ++ "` and write `" ++ g ++ "." ++ n ++ "`")
-
-    deep : (FC, Name) -> Maybe Finding
-    deep (fc, NS ns n) =
-      let parts = reverse (unsafeUnfoldNamespace ns)
-          q = fastConcat (intersperse "." parts)
-      in if length parts < 2 then Nothing else map (report fc q (nameRoot n)) (ofOurs q)
-    deep _ = Nothing
+    written : (FC, Name) -> Maybe Finding
+    written (fc, NS ns (UN (Basic n))) =
+      let q = show ns in
+      case filter (by q n) ours of
+        [i] => let want = qualifiedName (pathFrom me (show i.path)) n
+                   (l, c) = start fc
+               in if q ++ "." ++ n == want then Nothing
+                  else Just (MkFinding "import-alias" f.path l c (q ++ "." ++ n)
+                               ("`" ++ q ++ "." ++ n ++ "` is written otherwise than its module's path from here: `" ++ want ++ "`"))
+        _ => Nothing
+    written _ = Nothing
 
 ||| Names listed for a detail, the first few.
 export

@@ -1,0 +1,17 @@
+. ../../testutils.sh
+
+# qualify-names, an experiment: each name a module takes from another of
+# ours written with the defining module's path past what the two modules'
+# names share, so that a reader without an editor sees where it comes
+# from. It reads which module each name comes from in the TTCs, so the
+# fixtures are built first; a copy of them is changed, and checked after.
+rm -rf work
+mkdir work
+cp -r Geo Left Right Plan.idr fixtures.ipkg work
+cd work
+idris2 --build fixtures.ipkg > /dev/null
+../../../../tools/lint/build/exec/idris2-native-lint --refactor qualify-names --check 'idris2 --check {} > /dev/null 2>&1' .
+cat Plan.idr
+idris2 --check Plan.idr > /dev/null && echo "Plan.idr checks"
+cd ..
+rm -rf work

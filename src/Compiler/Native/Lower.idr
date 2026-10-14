@@ -52,37 +52,37 @@
 module Compiler.Native.Lower
 
 import Compiler.Native.HeapObject.BignumEnc
-import Compiler.Native.HeapObject.Enc
-import Compiler.Native.HeapObject.Header
+import Compiler.Native.HeapObject.Enc as HeapObject
+import Compiler.Native.HeapObject.Header as HeapObject
 import Compiler.Native.HeapObject.Kind
 import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.ConIds
 import Compiler.Native.IRCommon.Conv
 import Compiler.Native.IRCommon.Operators
-import Compiler.Native.IRCommon.Ty
+import Compiler.Native.IRCommon.Ty as IRCommon
 import Compiler.Native.Linkage.ConvertsIn
 import Compiler.Native.Linkage.ForeignFunctions
-import Compiler.Native.Linkage.OSService
-import Compiler.Native.Linkage.Routine
+import Compiler.Native.Linkage.OSService as Linkage
+import Compiler.Native.Linkage.Routine as Linkage
 import Compiler.Native.LowerFlat
 import Compiler.Native.Platform
 import Compiler.Native.Strings
-import Compiler.Native.TermIR.Body
-import Compiler.Native.TermIR.Build
-import Compiler.Native.TermIR.Decls
-import Compiler.Native.TermIR.Def
+import Compiler.Native.TermIR.Body as TermIR
+import Compiler.Native.TermIR.Build as TermIR
+import Compiler.Native.TermIR.Decls as TermIR
+import Compiler.Native.TermIR.Def as TermIR
 import Compiler.Native.TermIR.FieldTys
 import Compiler.Native.TermIR.Instr
 import Compiler.Native.TermIR.IsInt
 import Compiler.Native.TermIR.Mem
-import Compiler.Native.TermIR.Opnd
-import Compiler.Native.TermIR.OvOp
-import Compiler.Native.TermIR.Program
-import Compiler.Native.TermIR.Sig
+import Compiler.Native.TermIR.Opnd as TermIR
+import Compiler.Native.TermIR.OvOp as TermIR
+import Compiler.Native.TermIR.Program as TermIR
+import Compiler.Native.TermIR.Sig as TermIR
 import Compiler.Native.TermIR.Sizes
-import Compiler.Native.TermIR.StaticDef
-import Compiler.Native.TermIR.StaticSig
-import Compiler.Native.TermIR.Var
+import Compiler.Native.TermIR.StaticDef as TermIR
+import Compiler.Native.TermIR.StaticSig as TermIR
+import Compiler.Native.TermIR.Var as TermIR
 import Compiler.Native.Words
 
 import Compiler.VMCode
@@ -90,7 +90,7 @@ import Core.CompileExpr
 import Core.Name
 import Core.Name.Namespace
 import Core.TT.Primitive
-import Data.Builder
+import Data.Builder as Data
 import Data.Distinct
 import Data.List
 import Data.List.Quantifiers
@@ -238,18 +238,18 @@ data StaticPlan
     Text String
 
 ||| Each function and static of the declarations by name, with its variable.
-record Refs (enc : Enc) (d : Decls enc) where
+record Refs (enc : HeapObject.Enc) (d : TermIR.Decls enc) where
   constructor MkRefs
-  funs : SortedMap Name (s ** Var d.sigs s)
-  stats : SortedMap Name (s ** Var d.statics s)
+  funs : SortedMap Name (s ** TermIR.Var d.sigs s)
+  stats : SortedMap Name (s ** TermIR.Var d.statics s)
 
 ------------------------------------------------------------------------------
 -- Locals
 
 ||| What a local holds: an operand, and the constant it is, if known, so that
 ||| a cast of it is done while compiling.
-Env : (Ty enc -> Type) -> Type
-Env v = SortedMap Int (Opnd v Val, Maybe Constant)
+Env : (IRCommon.Ty enc -> Type) -> Type
+Env v = SortedMap Int (TermIR.Opnd v IRCommon.Ty.Val, Maybe Constant)
 
 ||| Each instruction with what is read after it, given what is read after
 ||| the list: one pass, from the end, so that a case does not compute what
@@ -288,46 +288,46 @@ annotate later is = snd (go is)
     go [] = (later, [])
     go (i :: is) = let (r, ais) = go is in (union r (reads1 i), (i, r) :: ais)
 
-get : Env v -> Reg -> Opnd v Val
-get env r = maybe Erased fst (key r >>= \k => lookup k env)
+get : Env v -> Reg -> TermIR.Opnd v IRCommon.Ty.Val
+get env r = maybe TermIR.Opnd.Erased fst (key r >>= \k => lookup k env)
 
 known : Env v -> Reg -> Maybe Constant
 known env r = key r >>= \k => lookup k env >>= snd
 
 ||| Operands of `Val`s for parameters of `Val`s.
-vals : (xs : List (Opnd v Val)) -> All (Opnd v) (replicate (length xs) Val)
+vals : (xs : List (TermIR.Opnd v IRCommon.Ty.Val)) -> All (TermIR.Opnd v) (replicate (length xs) IRCommon.Ty.Val)
 vals [] = []
 vals (x :: xs) = x :: vals xs
 
-allVals : {n : Nat} -> All (Opnd v) (replicate n Val) -> List (Opnd v Val)
+allVals : {n : Nat} -> All (TermIR.Opnd v) (replicate n IRCommon.Ty.Val) -> List (TermIR.Opnd v IRCommon.Ty.Val)
 allVals {n = Z} [] = []
 allVals {n = S n} (x :: xs) = x :: allVals xs
 
-parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
-           (0 d : Decls enc) (refs : Refs enc d)
-           {0 v : Ty enc -> Type} {0 l : List (Ty enc) -> Type}
+parameters {enc : HeapObject.Enc} {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val}
+           (0 d : TermIR.Decls enc) (refs : Refs enc d)
+           {0 v : IRCommon.Ty enc -> Type} {0 l : List (IRCommon.Ty enc) -> Type}
 
   0 B : Type -> Type
-  B = Build d CPS False v l
+  B = TermIR.Build d IRCommon.Conv.CPS False v l
 
   0 E : Type
-  E = End d CPS False v l
+  E = TermIR.Build.End d IRCommon.Conv.CPS False v l
 
   ||| A fixnum as an immediate `Val`, its range decided here.
-  fixnum : Integer -> Maybe (Opnd v Val)
+  fixnum : Integer -> Maybe (TermIR.Opnd v IRCommon.Ty.Val)
   fixnum i = let w : Int64 = cast i in
-    if cast w /= i then Nothing else case choose (inFixnumRange (cast w)) of
-      Left ok => Just (Vx {enc} w)
+    if cast w /= i then Nothing else case choose (HeapObject.ValEnc.inFixnumRange (cast w)) of
+      Left ok => Just (TermIR.Opnd.Vx {enc} w)
       Right _ => Nothing
 
   ------------------------------------------------------------------------------
   -- References
 
   ||| A static object of the program, as a `Val`.
-  staticVal : Name -> B (Opnd v Val)
+  staticVal : Name -> B (TermIR.Opnd v IRCommon.Ty.Val)
   staticVal name = case lookup name refs.stats of
-    Just (MkStaticSig _ _ ** var) => do p <- emit1 (StaticAddr var); emit1 (WidenPtr p)
-    Nothing => unsupported ("the static object " ++ show name ++ ", which no declaration makes")
+    Just (TermIR.StaticSig.MkStaticSig _ _ ** var) => do p <- TermIR.Build.emit1 (TermIR.Instr.StaticAddr var); TermIR.Build.emit1 (TermIR.Instr.WidenPtr p)
+    Nothing => TermIR.Build.unsupported ("the static object " ++ show name ++ ", which no declaration makes")
 
   ------------------------------------------------------------------------------
   -- Integer values
@@ -336,45 +336,45 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
   -- same integer as a `Val`, a `Fix` or a word.
 
   ||| A uniform value known to be a fixnum, as a `Fix`.
-  asFix : Opnd v Val -> B (Opnd v Fix)
-  asFix (Vx {ok} i) = pure (Fx {ok} i)
-  asFix Erased = pure (Fx 0)
-  asFix x = emit1 (NarrowFix x)
+  asFix : TermIR.Opnd v IRCommon.Ty.Val -> B (TermIR.Opnd v IRCommon.Ty.Fix)
+  asFix (TermIR.Opnd.Vx {ok} i) = pure (TermIR.Opnd.Fx {ok} i)
+  asFix TermIR.Opnd.Erased = pure (TermIR.Opnd.Fx 0)
+  asFix x = TermIR.Build.emit1 (TermIR.Instr.NarrowFix x)
 
   ||| A fixnum's value, as a word.
-  untag : Opnd v Fix -> B (Opnd v W64)
-  untag (Fx i) = pure (W i)
-  untag f = emit1 (Untag f)
+  untag : TermIR.Opnd v IRCommon.Ty.Fix -> B (TermIR.Opnd v IRCommon.Ty.W64)
+  untag (TermIR.Opnd.Fx i) = pure (TermIR.Opnd.W i)
+  untag f = TermIR.Build.emit1 (TermIR.Instr.Untag f)
 
-  fixValue : Opnd v Val -> B (Opnd v W64)
+  fixValue : TermIR.Opnd v IRCommon.Ty.Val -> B (TermIR.Opnd v IRCommon.Ty.W64)
   fixValue x = asFix x >>= untag
 
-  widen : Opnd v Fix -> B (Opnd v Val)
-  widen (Fx {ok} i) = pure (Vx {enc} {ok} i)
-  widen f = emit1 (WidenFix f)
+  widen : TermIR.Opnd v IRCommon.Ty.Fix -> B (TermIR.Opnd v IRCommon.Ty.Val)
+  widen (TermIR.Opnd.Fx {ok} i) = pure (TermIR.Opnd.Vx {enc} {ok} i)
+  widen f = TermIR.Build.emit1 (TermIR.Instr.WidenFix f)
 
   ||| The pattern an `INT64` box holds.
-  boxWord : Opnd v Val -> B (Opnd v W64)
+  boxWord : TermIR.Opnd v IRCommon.Ty.Val -> B (TermIR.Opnd v IRCommon.Ty.W64)
   boxWord x = do
-    p <- emit1 (NarrowPtr INT64 x)
-    emit1 (Load W64 (MkMem (AtPtr p) Nothing 8))
+    p <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr HeapObject.Kind.INT64 x)
+    TermIR.Build.emit1 (TermIR.Instr.Load IRCommon.Ty.W64 (TermIR.Mem.MkMem (TermIR.Mem.AtPtr p) Nothing 8))
 
   ||| A 64-bit integer's pattern: untagged from a fixnum, loaded from a box.
-  wideWord : Opnd v Val -> B (Opnd v W64)
-  wideWord (Vx i) = pure (W i)
-  wideWord Erased = pure (W 0)
+  wideWord : TermIR.Opnd v IRCommon.Ty.Val -> B (TermIR.Opnd v IRCommon.Ty.W64)
+  wideWord (TermIR.Opnd.Vx i) = pure (TermIR.Opnd.W i)
+  wideWord TermIR.Opnd.Erased = pure (TermIR.Opnd.W 0)
   wideWord x = do
-    [w] <- joinPoint [W64] $ \done =>
-      ifFixnums [x] (\[f] => do w <- untag (f); done [w]) (do w <- boxWord x; done [w])
+    [w] <- TermIR.Build.joinPoint [IRCommon.Ty.W64] $ \done =>
+      TermIR.Build.ifFixnums [x] (\[f] => do w <- untag (f); done [w]) (do w <- boxWord x; done [w])
     pure w
 
   ||| A 64-bit pattern as a uniform value: tagged if its signed value is in the
   ||| fixnum range, boxed otherwise.
-  wideVal : Opnd v W64 -> B (Opnd v Val)
+  wideVal : TermIR.Opnd v IRCommon.Ty.W64 -> B (TermIR.Opnd v IRCommon.Ty.Val)
   wideVal w = do
-    [r] <- joinPoint [Val] $ \done =>
-      tagOv w (\f => do r <- widen f; done [r])
-              (do p <- emit1 (AllocObj Int64H [w]); r <- emit1 (WidenPtr p); done [r])
+    [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done =>
+      TermIR.Build.tagOv w (\f => do r <- widen f; done [r])
+              (do p <- TermIR.Build.emit1 (TermIR.Instr.AllocObj HeapObject.Header.Int64H [w]); r <- TermIR.Build.emit1 (TermIR.Instr.WidenPtr p); done [r])
     pure r
 
   ------------------------------------------------------------------------------
@@ -395,12 +395,12 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
   -- Objects
 
   ||| A constructor object, its header's fit decided here.
-  constructor : Int -> (fields : List (Opnd v Val)) -> B (Opnd v Val)
-  constructor conId fields = case choose (wellFormed (ConH {enc} (cast conId) (length fields))) of
+  constructor : Int -> (fields : List (TermIR.Opnd v IRCommon.Ty.Val)) -> B (TermIR.Opnd v IRCommon.Ty.Val)
+  constructor conId fields = case choose (TermIR.FieldTys.wellFormed (HeapObject.Header.ConH {enc} (cast conId) (length fields))) of
     Left ok => do
-      p <- emit1 (AllocObj (ConH (cast conId) (length fields)) (vals fields))
-      emit1 (WidenPtr p)
-    Right _ => unsupported ("the constructor id " ++ show conId ++ ", which its header cannot hold")
+      p <- TermIR.Build.emit1 (TermIR.Instr.AllocObj (HeapObject.Header.ConH (cast conId) (length fields)) (vals fields))
+      TermIR.Build.emit1 (TermIR.Instr.WidenPtr p)
+    Right _ => TermIR.Build.unsupported ("the constructor id " ++ show conId ++ ", which its header cannot hold")
 
   ------------------------------------------------------------------------------
   -- The boundary with flat code
@@ -413,68 +413,68 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
 
   ||| A function that has a flat form: its arguments taken apart, the form
   ||| called, its result built.
-  boundary : Callee d -> (params : List Shape) -> (result : Shape) -> List (Opnd v Val) -> E
-  boundary (MkCallee fd (_ ** var)) ss rs xs = do
+  boundary : LowerFlat.Callee d -> (params : List Flat.Exp.Shape) -> (result : Flat.Exp.Shape) -> List (TermIR.Opnd v IRCommon.Ty.Val) -> E
+  boundary (LowerFlat.MkCallee fd (_ ** var)) ss rs xs = do
     parts <- traverse (uncurry unbox) (zip ss xs)
-    case regsAs (paramsLayout fd.params) (concatValues parts) of
-      Nothing => unsupported ("arguments of other layouts for the flat form of " ++ show fd.name)
+    case LowerFlat.regsAs (LowerFlat.paramsLayout fd.params) (LowerFlat.concatValues parts) of
+      Nothing => TermIR.Build.unsupported ("arguments of other layouts for the flat form of " ++ show fd.name)
       Just args => do
-        res <- directCall var args
-        r <- box rs (MkValue fd.result res)
-        return r
+        res <- TermIR.Build.directCall var args
+        r <- box rs (LowerFlat.MkValue fd.result res)
+        TermIR.Build.return r
     where
-      isTag : ConShape -> Bool
+      isTag : Flat.Exp.ConShape -> Bool
       isTag c = case c.ordinary of
-        AsTag => True
+        Flat.Exp.AsTag => True
         _ => False
 
       ||| The registers of an ordinary value of the shape.
-      unbox : Shape -> Opnd v Val -> B (Value enc v)
+      unbox : Flat.Exp.Shape -> TermIR.Opnd v IRCommon.Ty.Val -> B (LowerFlat.Value enc v)
       unbox shape x = case shape of
-        PrimShape DoubleType => do
-          p <- emit1 (NarrowPtr DOUBLE x)
-          f <- emit1 (Load F64 (MkMem (AtPtr p) Nothing 8))
-          pure (MkValue [Dbl] [f])
-        PrimShape WorldType => pure noRegs
-        PrimShape t => case intWidth t of
-          Just (Narrow _ _) => do w <- fixValue x; pure (MkValue [Word] [w])
-          Just (Wide _) => do w <- wideWord x; pure (MkValue [Word] [w])
-          _ => unsupported ("a value of " ++ show t ++ " passed to flat code")
-        UniformShape => pure (MkValue [Uniform] [x])
-        DataShape [] => pure noRegs
-        DataShape [c] => concatValues <$> fieldsFrom c x
-        s@(DataShape cs) =>
-          if all isTag cs then do t <- fixValue x; pure (MkValue [Word] [t]) else do
-            let lay = shapeLayout s
-            q <- emit1 (NarrowPtr CON x)
-            i <- emit1 (LoadPart ConId q)
-            rs <- joinPoint (tys lay) $ \done => do
-              let branches = mapMaybe (\c => case (c.ordinary, placement cs c.name) of
-                                               (AsObject cid, Just (_, p)) => Just (the Int64 (cast cid), do
-                                                 fs <- fieldsFrom c x
-                                                 r <- conValue p (concatValues fs)
-                                                 maybe (unsupported "a sum of another layout") done (regsAs lay r))
+        Flat.Exp.PrimShape DoubleType => do
+                   p <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr HeapObject.Kind.DOUBLE x)
+                   f <- TermIR.Build.emit1 (TermIR.Instr.Load IRCommon.Ty.F64 (TermIR.Mem.MkMem (TermIR.Mem.AtPtr p) Nothing 8))
+                   pure (LowerFlat.MkValue [Flat.Exp.Dbl] [f])
+        Flat.Exp.PrimShape WorldType => pure LowerFlat.noRegs
+        Flat.Exp.PrimShape t => case intWidth t of
+                   Just (Narrow _ _) => do w <- fixValue x; pure (LowerFlat.MkValue [Flat.Exp.Word] [w])
+                   Just (Wide _) => do w <- wideWord x; pure (LowerFlat.MkValue [Flat.Exp.Word] [w])
+                   _ => TermIR.Build.unsupported ("a value of " ++ show t ++ " passed to flat code")
+        Flat.Exp.UniformShape => pure (LowerFlat.MkValue [Flat.Exp.Uniform] [x])
+        Flat.Exp.DataShape [] => pure LowerFlat.noRegs
+        Flat.Exp.DataShape [c] => LowerFlat.concatValues <$> fieldsFrom c x
+        s@(Flat.Exp.DataShape cs) =>
+          if all isTag cs then do t <- fixValue x; pure (LowerFlat.MkValue [Flat.Exp.Word] [t]) else do
+            let lay = Flat.Exp.shapeLayout s
+            q <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr HeapObject.Kind.CON x)
+            i <- TermIR.Build.emit1 (TermIR.Instr.LoadPart HeapObject.Header.ConId q)
+            rs <- TermIR.Build.joinPoint (LowerFlat.tys lay) $ \done => do
+              let branches = mapMaybe (\c => case (c.ordinary, LowerFlat.placement cs c.name) of
+                                               (Flat.Exp.AsObject cid, Just (_, p)) => Just (the Int64 (cast cid), do
+                                                          fs <- fieldsFrom c x
+                                                          r <- LowerFlat.conValue p (LowerFlat.concatValues fs)
+                                                          maybe (TermIR.Build.unsupported "a sum of another layout") done (LowerFlat.regsAs lay r))
                                                _ => Nothing) cs
-              if length branches /= length cs then unsupported "a sum some of whose constructors are not objects" else
-                case choose (distinct (map fst branches) && keysFit (W64 {enc}) (map fst branches)) of
-                  Left ok => switch i branches (crash "no constructor of the type")
-                  Right _ => unsupported "a sum with repeated constructor ids"
-            pure (MkValue lay rs)
+              if length branches /= length cs then TermIR.Build.unsupported "a sum some of whose constructors are not objects" else
+                case choose (Data.Distinct.distinct (map fst branches) && TermIR.Body.keysFit (IRCommon.Ty.W64 {enc}) (map fst branches)) of
+                  Left ok => TermIR.Build.switch i branches (TermIR.Build.crash "no constructor of the type")
+                  Right _ => TermIR.Build.unsupported "a sum with repeated constructor ids"
+            pure (LowerFlat.MkValue lay rs)
         where
           ||| The registers of the fields of an ordinary value of the constructor.
-          fieldsFrom : ConShape -> Opnd v Val -> B (List (Value enc v))
+          fieldsFrom : Flat.Exp.ConShape -> TermIR.Opnd v IRCommon.Ty.Val -> B (List (LowerFlat.Value enc v))
           fieldsFrom c x = case c.ordinary of
-            AsTag => pure []
+            Flat.Exp.AsTag => pure []
             -- the newtype's other fields, such as `MkIORes`'s world, take no
             -- registers
-            AsField k => traverse (\(j, s) => unbox s (if j == k then x else Erased)) (numbered c.fields)
-            AsObject _ => case c.fields of
-              [] => pure []
-              fs => do
-                q <- emit1 (NarrowPtr CON x)
-                traverse (\(j, s) => do f <- emit1 (Load Val (MkMem (AtPtr q) Nothing (8 + 8 * cast j)))
-                                        unbox s f)
-                         (numbered fs)
+            Flat.Exp.AsField k => traverse (\(j, s) => unbox s (if j == k then x else TermIR.Opnd.Erased)) (numbered c.fields)
+            Flat.Exp.AsObject _ => case c.fields of
+                       [] => pure []
+                       fs => do
+                         q <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr HeapObject.Kind.CON x)
+                         traverse (\(j, s) => do f <- TermIR.Build.emit1 (TermIR.Instr.Load IRCommon.Ty.Val (TermIR.Mem.MkMem (TermIR.Mem.AtPtr q) Nothing (8 + 8 * cast j)))
+                                                 unbox s f)
+                                  (numbered fs)
             where
               ||| Each element with its position.
               numbered : List a -> List (Nat, a)
@@ -485,46 +485,46 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
                   go i (x :: xs) = (i, x) :: go (S i) xs
 
       ||| The ordinary value of the shape, from its registers.
-      box : Shape -> Value enc v -> B (Opnd v Val)
+      box : Flat.Exp.Shape -> LowerFlat.Value enc v -> B (TermIR.Opnd v IRCommon.Ty.Val)
       box shape x = case shape of
-        PrimShape DoubleType => case doubleOf x of
-          Just f => do p <- emit1 (AllocObj DoubleH [f]); emit1 (WidenPtr p)
-          Nothing => unsupported "a double of another layout from flat code"
-        PrimShape WorldType => pure Erased
-        PrimShape t => case (intWidth t, wordOf x) of
-          (Just (Narrow _ _), Just w) => do f <- emit1 (Tag w); widen f
-          (Just (Wide _), Just w) => wideVal w
-          _ => unsupported ("a value of " ++ show t ++ " returned by flat code")
-        UniformShape => case x of
-          MkValue [Uniform] [u] => pure u
-          _ => unsupported "a uniform value of another layout from flat code"
-        DataShape [] => pure Erased
-        DataShape [c] => boxCon c x
-        DataShape cs => case tagOf x of
-          Nothing => unsupported "a sum without its tag from flat code"
-          Just t => if all isTag cs then do f <- emit1 (Tag t); widen f else do
-            [r] <- joinPoint [Val] $ \done => do
-              let branches = mapMaybe (\c => do (_, p) <- placement cs c.name
-                                                fs <- fieldsOf p x
-                                                pure (the Int64 (cast c.tag), do r <- boxCon c fs; done [r])) cs
-              if length branches /= length cs then unsupported "a sum of another layout from flat code" else
-                case choose (distinct (map fst branches) && keysFit (W64 {enc}) (map fst branches)) of
-                  Left ok => switch t branches (crash "no constructor of the type")
-                  Right _ => unsupported "a sum with repeated tags"
-            pure r
+        Flat.Exp.PrimShape DoubleType => case LowerFlat.doubleOf x of
+                   Just f => do p <- TermIR.Build.emit1 (TermIR.Instr.AllocObj HeapObject.Header.DoubleH [f]); TermIR.Build.emit1 (TermIR.Instr.WidenPtr p)
+                   Nothing => TermIR.Build.unsupported "a double of another layout from flat code"
+        Flat.Exp.PrimShape WorldType => pure TermIR.Opnd.Erased
+        Flat.Exp.PrimShape t => case (intWidth t, LowerFlat.wordOf x) of
+                   (Just (Narrow _ _), Just w) => do f <- TermIR.Build.emit1 (TermIR.Instr.Tag w); widen f
+                   (Just (Wide _), Just w) => wideVal w
+                   _ => TermIR.Build.unsupported ("a value of " ++ show t ++ " returned by flat code")
+        Flat.Exp.UniformShape => case x of
+                   LowerFlat.MkValue [Flat.Exp.Uniform] [u] => pure u
+                   _ => TermIR.Build.unsupported "a uniform value of another layout from flat code"
+        Flat.Exp.DataShape [] => pure TermIR.Opnd.Erased
+        Flat.Exp.DataShape [c] => boxCon c x
+        Flat.Exp.DataShape cs => case LowerFlat.tagOf x of
+                   Nothing => TermIR.Build.unsupported "a sum without its tag from flat code"
+                   Just t => if all isTag cs then do f <- TermIR.Build.emit1 (TermIR.Instr.Tag t); widen f else do
+                     [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done => do
+                       let branches = mapMaybe (\c => do (_, p) <- LowerFlat.placement cs c.name
+                                                         fs <- LowerFlat.fieldsOf p x
+                                                         pure (the Int64 (cast c.tag), do r <- boxCon c fs; done [r])) cs
+                       if length branches /= length cs then TermIR.Build.unsupported "a sum of another layout from flat code" else
+                         case choose (Data.Distinct.distinct (map fst branches) && TermIR.Body.keysFit (IRCommon.Ty.W64 {enc}) (map fst branches)) of
+                           Left ok => TermIR.Build.switch t branches (TermIR.Build.crash "no constructor of the type")
+                           Right _ => TermIR.Build.unsupported "a sum with repeated tags"
+                     pure r
         where
           ||| The ordinary value of the constructor, from its fields' registers.
-          boxCon : ConShape -> Value enc v -> B (Opnd v Val)
-          boxCon c fs = case splitBy (map shapeLayout c.fields) fs of
-            Nothing => unsupported ("the fields of " ++ show c.name ++ ", of another layout")
+          boxCon : Flat.Exp.ConShape -> LowerFlat.Value enc v -> B (TermIR.Opnd v IRCommon.Ty.Val)
+          boxCon c fs = case LowerFlat.splitBy (map Flat.Exp.shapeLayout c.fields) fs of
+            Nothing => TermIR.Build.unsupported ("the fields of " ++ show c.name ++ ", of another layout")
             Just xs => case c.ordinary of
-              AsTag => maybe (unsupported "a tag outside the fixnum range") pure (fixnum (cast c.tag))
-              AsField k => case getAt k (zip c.fields xs) of
-                Just (s, f) => box s f
-                Nothing => unsupported ("the newtype " ++ show c.name ++ " without its field")
-              AsObject cid => case c.fields of
-                [] => staticVal (nullaryCon cid)
-                _ => do ys <- traverse (uncurry box) (zip c.fields xs); constructor cid ys
+              Flat.Exp.AsTag => maybe (TermIR.Build.unsupported "a tag outside the fixnum range") pure (fixnum (cast c.tag))
+              Flat.Exp.AsField k => case getAt k (zip c.fields xs) of
+                         Just (s, f) => box s f
+                         Nothing => TermIR.Build.unsupported ("the newtype " ++ show c.name ++ " without its field")
+              Flat.Exp.AsObject cid => case c.fields of
+                         [] => staticVal (nullaryCon cid)
+                         _ => do ys <- traverse (uncurry box) (zip c.fields xs); constructor cid ys
 
   ------------------------------------------------------------------------------
   -- Instructions
@@ -541,7 +541,7 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
       (START, _) :: is => lower env t is k
       (ASSIGN Discard _, _) :: is => lower env t is k
       (ASSIGN r x, _) :: is => lower (set env r (get env x)) t is k
-      (NULL r, _) :: is => lower (set env r Erased) t is k
+      (NULL r, _) :: is => lower (set env r TermIR.Opnd.Erased) t is k
       (MKCONSTANT r c, _) :: is => do
         x <- constant c
         lower (setKnown env r x c) t is k
@@ -551,27 +551,27 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
       (MKCON r (Left conId) args, _) :: is => do
         x <- constructor conId (map (get env) args)
         lower (set env r x) t is k
-      (MKCON r (Right n) _, _) :: is => unsupported ("the type constructor " ++ show n ++ " as a value")
+      (MKCON r (Right n) _, _) :: is => TermIR.Build.unsupported ("the type constructor " ++ show n ++ " as a value")
       (MKCLOSURE r f missing args, _) :: is =>
         case lookup f refs.funs of
-          Just (MkSig _ CPS _ _ ** code) => do
+          Just (TermIR.Sig.MkSig _ IRCommon.Conv.CPS _ _ ** code) => do
             x <- closure f code missing (map (get env) args)
             lower (set env r x) t is k
-          _ => unsupported ("a closure of " ++ show f ++ ", which is not a function of the program")
+          _ => TermIR.Build.unsupported ("a closure of " ++ show f ++ ", which is not a function of the program")
       (APPLY r f a, _) :: is =>
         if t && isNil is && isRVal r
-           then tailApply (get env f) (get env a)
+           then TermIR.Build.tailApply (get env f) (get env a)
            else do
-             x <- apply (get env f) (get env a)
+             x <- TermIR.Build.apply (get env f) (get env a)
              lower (set env r x) t is k
       (CALL r tl f args, _) :: is =>
         case cpsFunction f (length (map (get env) args)) of
-          Nothing => unsupported ("a call to " ++ show f ++ ", which is not a function of the program")
+          Nothing => TermIR.Build.unsupported ("a call to " ++ show f ++ ", which is not a function of the program")
           Just (_ ** _ ** callee) =>
             if tl
-               then tailCall callee (vals (map (get env) args))
+               then TermIR.Build.tailCall callee (vals (map (get env) args))
                else do
-                 x <- call callee (vals (map (get env) args))
+                 x <- TermIR.Build.call callee (vals (map (get env) args))
                  lower (set env r x) t is k
       (OP r fn args, _) :: is => do
         env' <- op env r fn args
@@ -581,48 +581,48 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
         lower env' t is k
       (CASE s alts dflt, after) :: is =>
         case traverse (either Just (const Nothing) . fst) alts of
-          Nothing => unsupported "a case on type constructors"
+          Nothing => TermIR.Build.unsupported "a case on type constructors"
           Just ids => do
-            q <- emit1 (NarrowPtr CON (get env s))
-            i <- emit1 (LoadPart ConId q)
+            q <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr HeapObject.Kind.CON (get env s))
+            i <- TermIR.Build.emit1 (TermIR.Instr.LoadPart HeapObject.Header.ConId q)
             cases env after t is k (map snd alts) (fromMaybe [ERROR "no case alternative matched"] dflt) $
               \codes, other => onKeys i (zip (map cast ids) codes) other
       (CONSTCASE s alts dflt, after) :: is =>
         case traverse (intConst . fst) alts of
-          Nothing => unsupported "a case on strings or doubles"
+          Nothing => TermIR.Build.unsupported "a case on strings or doubles"
           Just ks =>
             cases env after t is k (map snd alts) (fromMaybe [ERROR "no case alternative matched"] dflt) $
               \codes, other => constCase (get env s) (zip (map snd ks) codes) (map fst (head' ks)) other
       (PROJECT r x i, _) :: is => do
-        q <- emit1 (NarrowPtr CON (get env x))
-        f <- emit1 (Load Val (MkMem (AtPtr q) Nothing (8 + 8 * i)))
+        q <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr HeapObject.Kind.CON (get env x))
+        f <- TermIR.Build.emit1 (TermIR.Instr.Load IRCommon.Ty.Val (TermIR.Mem.MkMem (TermIR.Mem.AtPtr q) Nothing (8 + 8 * i)))
         lower (set env r f) t is k
-      (ERROR msg, _) :: _ => crash msg
+      (ERROR msg, _) :: _ => TermIR.Build.crash msg
       where
         ||| A closure of the function, with the arguments filled and `missing` to
         ||| come, its header decided here.
-        closure : Name -> Var d.sigs (MkSig n CPS ps cv) -> (missing : Nat) -> (args : List (Opnd v Val)) -> B (Opnd v Val)
+        closure : Name -> TermIR.Var d.sigs (TermIR.Sig.MkSig n IRCommon.Conv.CPS ps cv) -> (missing : Nat) -> (args : List (TermIR.Opnd v IRCommon.Ty.Val)) -> B (TermIR.Opnd v IRCommon.Ty.Val)
         closure f code missing args =
-          case choose (wellFormed (ClosureH {enc} (missing + length args) (length args))) of
+          case choose (TermIR.FieldTys.wellFormed (HeapObject.Header.ClosureH {enc} (missing + length args) (length args))) of
             Left ok => do
-              c <- emit1 (CodeAddr code)
-              p <- emit1 (AllocObj (ClosureH (missing + length args) (length args)) (c :: vals args))
-              emit1 (WidenPtr p)
-            Right _ => unsupported ("a closure of " ++ show f ++ " that its header cannot hold")
+              c <- TermIR.Build.emit1 (TermIR.Instr.CodeAddr code)
+              p <- TermIR.Build.emit1 (TermIR.Instr.AllocObj (HeapObject.Header.ClosureH (missing + length args) (length args)) (c :: vals args))
+              TermIR.Build.emit1 (TermIR.Instr.WidenPtr p)
+            Right _ => TermIR.Build.unsupported ("a closure of " ++ show f ++ " that its header cannot hold")
 
         isRVal : Reg -> Bool
         isRVal RVal = True
         isRVal _ = False
 
         ||| A CPS function of the program of `n` parameters.
-        cpsFunction : Name -> (n : Nat) -> Maybe (nm ** cv ** Var d.sigs (MkSig nm CPS (replicate n Val) cv))
+        cpsFunction : Name -> (n : Nat) -> Maybe (nm ** cv ** TermIR.Var d.sigs (TermIR.Sig.MkSig nm IRCommon.Conv.CPS (replicate n IRCommon.Ty.Val) cv))
         cpsFunction name n = case lookup name refs.funs of
-          Just (MkSig nm CPS ps cv ** var) => case decEq ps (replicate n Val) of
+          Just (TermIR.Sig.MkSig nm IRCommon.Conv.CPS ps cv ** var) => case decEq ps (replicate n IRCommon.Ty.Val) of
             Yes Refl => Just (nm ** cv ** var)
             No _ => Nothing
           _ => Nothing
 
-        set : Env v' -> Reg -> Opnd v' Val -> Env v'
+        set : Env v' -> Reg -> TermIR.Opnd v' IRCommon.Ty.Val -> Env v'
         set env r x = maybe env (\k => insert k (x, Nothing) env) (key r)
 
         extPrim : Env v -> Reg -> Name -> List Reg -> B (Env v)
@@ -630,22 +630,22 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
           [_, x, y, _] =>
             if p == arrayPrim "prim__newArray"
                then do count <- wideWord (get env x)
-                       a <- emit1 (AllocSized ArrayElems count (get env y))
-                       set env r <$> emit1 (WidenPtr a)
+                       a <- TermIR.Build.emit1 (TermIR.Instr.AllocSized HeapObject.Header.ArrayElems count (get env y))
+                       set env r <$> TermIR.Build.emit1 (TermIR.Instr.WidenPtr a)
             else if p == arrayPrim "prim__arrayGet"
-               then do a <- emit1 (NarrowPtr ARRAY (get env x))
+               then do a <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr HeapObject.Kind.ARRAY (get env x))
                        i <- wideWord (get env y)
-                       set env r <$> emit1 (Load Val (MkMem (AtPtr a) (Just i) 8))
-            else unsupported ("the external primitive " ++ show p)
+                       set env r <$> TermIR.Build.emit1 (TermIR.Instr.Load IRCommon.Ty.Val (TermIR.Mem.MkMem (TermIR.Mem.AtPtr a) (Just i) 8))
+            else TermIR.Build.unsupported ("the external primitive " ++ show p)
           -- The result is `()`, which no caller inspects: the erased value.
           [_, x, y, z, _] =>
             if p == arrayPrim "prim__arraySet"
-               then do a <- emit1 (NarrowPtr ARRAY (get env x))
+               then do a <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr HeapObject.Kind.ARRAY (get env x))
                        i <- wideWord (get env y)
-                       emit0 (Store Val (MkMem (AtPtr a) (Just i) 8) (get env z))
-                       pure (set env r Erased)
-            else unsupported ("the external primitive " ++ show p)
-          _ => unsupported ("the external primitive " ++ show p)
+                       TermIR.Build.emit0 (TermIR.Instr.Store IRCommon.Ty.Val (TermIR.Mem.MkMem (TermIR.Mem.AtPtr a) (Just i) 8) (get env z))
+                       pure (set env r TermIR.Opnd.Erased)
+            else TermIR.Build.unsupported ("the external primitive " ++ show p)
+          _ => TermIR.Build.unsupported ("the external primitive " ++ show p)
           where
             ||| One of the `%extern` array primitives of `Data.IOArray.Prims`.
             arrayPrim : String -> Name
@@ -668,18 +668,18 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
           let ks = filter (\r => contains r after)
                           (Prelude.toList (foldr (\alt, w => union w (writes alt)) (writes dflt) alts))
               kset = fromList ks
-              exitWith : Jumper d CPS False v l (replicate (length ks) Val) -> Env v -> E
+              exitWith : TermIR.Build.Jumper d IRCommon.Conv.CPS False v l (replicate (length ks) IRCommon.Ty.Val) -> Env v -> E
               exitWith exit e = exit (passed e ks)
-          vals <- joinPoint (replicate (length ks) Val) $ \exit =>
+          vals <- TermIR.Build.joinPoint (replicate (length ks) IRCommon.Ty.Val) $ \exit =>
             dispatch (map (\alt => lower env False (annotate kset alt) (exitWith exit)) alts)
                      (lower env False (annotate kset dflt) (exitWith exit))
           lower (foldl (\e, (k', x) => insert k' (x, Nothing) e) env (zip ks (allVals vals))) t is k
           where
             -- A local an alternative leaves as it was passes on as it was; one it
             -- never had passes on as the erased value, which no path reads.
-            passed : Env v -> (ks : List Int) -> All (Opnd v) (replicate (length ks) Val)
+            passed : Env v -> (ks : List Int) -> All (TermIR.Opnd v) (replicate (length ks) IRCommon.Ty.Val)
             passed e [] = []
-            passed e (k' :: ks') = maybe Erased fst (lookup k' e) :: passed e ks'
+            passed e (k' :: ks') = maybe TermIR.Opnd.Erased fst (lookup k' e) :: passed e ks'
 
             -- The registers a list of instructions writes, and those it reads, nested
             -- alternatives included. `union x y` inserts the elements of `y` into `x`,
@@ -714,62 +714,62 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
                     altsWrite ((_, is) :: as) = union (altsWrite as) (writes is)
 
         ||| A switch on a word, its keys' distinctness decided here.
-        onKeys : Opnd v W64 -> List (Int64, E) -> E -> E
-        onKeys x cs other = case choose (distinct (map fst cs) && keysFit (W64 {enc}) (map fst cs)) of
-          Left ok => switch x cs other
-          Right _ => unsupported "a case with repeated constructor ids"
+        onKeys : TermIR.Opnd v IRCommon.Ty.W64 -> List (Int64, E) -> E -> E
+        onKeys x cs other = case choose (Data.Distinct.distinct (map fst cs) && TermIR.Body.keysFit (IRCommon.Ty.W64 {enc}) (map fst cs)) of
+          Left ok => TermIR.Build.switch x cs other
+          Right _ => TermIR.Build.unsupported "a case with repeated constructor ids"
 
         ||| A case on integer or character constants. A 64-bit scrutinee is
         ||| matched as a fixnum against the cases in the fixnum range and as a box
         ||| against the others; an `Integer` that is a `BIGNUM` matches no case in
         ||| the fixnum range.
-        constCase : Opnd v Val -> List (Integer, E) -> Maybe IntWidth -> E -> E
+        constCase : TermIR.Opnd v IRCommon.Ty.Val -> List (Integer, E) -> Maybe IntWidth -> E -> E
         constCase x cs y other = case y of
           Just (Wide _) => do
             -- each alternative is reached from both switches, so it is a block
-            alts <- traverse (\(n, code) => do j <- block [] (\[] => code); pure (patternValue n, j)) cs
-            dflt <- block [] (\[] => other)
-            ifFixnums [x]
-              (\[f] => onFixnums f [(cast p, j []) | (p, j) <- alts, inFixnumRange p] (dflt []))
-              (case [(cast p, j []) | (p, j) <- alts, not (inFixnumRange p)] of
+            alts <- traverse (\(n, code) => do j <- TermIR.Build.block [] (\[] => code); pure (patternValue n, j)) cs
+            dflt <- TermIR.Build.block [] (\[] => other)
+            TermIR.Build.ifFixnums [x]
+              (\[f] => onFixnums f [(cast p, j []) | (p, j) <- alts, HeapObject.ValEnc.inFixnumRange p] (dflt []))
+              (case [(cast p, j []) | (p, j) <- alts, not (HeapObject.ValEnc.inFixnumRange p)] of
                  [] => dflt []
                  big => do w <- boxWord x; onKeys w big (dflt []))
           Just Unbounded => do
-            dflt <- block [] (\[] => other)
-            ifFixnums [x]
-              (\[f] => onFixnums f [(cast n, code) | (n, code) <- cs, inFixnumRange n] (dflt []))
-              (if all (inFixnumRange . fst) cs
+            dflt <- TermIR.Build.block [] (\[] => other)
+            TermIR.Build.ifFixnums [x]
+              (\[f] => onFixnums f [(cast n, code) | (n, code) <- cs, HeapObject.ValEnc.inFixnumRange n] (dflt []))
+              (if all (HeapObject.ValEnc.inFixnumRange . fst) cs
                   then dflt []
-                  else unsupported "a case on an Integer constant outside the fixnum range")
+                  else TermIR.Build.unsupported "a case on an Integer constant outside the fixnum range")
           _ => do
             f <- asFix x
             onFixnums f [(cast n, code) | (n, code) <- cs] other
           where
             ||| A switch on a fixnum, its keys decided here to be distinct fixnums.
-            onFixnums : Opnd v Fix -> List (Int64, E) -> E -> E
-            onFixnums x cs other = case choose (distinct (map fst cs) && keysFit (Fix {enc}) (map fst cs)) of
-              Left ok => switch x cs other
-              Right _ => unsupported "a case with repeated constants"
+            onFixnums : TermIR.Opnd v IRCommon.Ty.Fix -> List (Int64, E) -> E -> E
+            onFixnums x cs other = case choose (Data.Distinct.distinct (map fst cs) && TermIR.Body.keysFit (IRCommon.Ty.Fix {enc}) (map fst cs)) of
+              Left ok => TermIR.Build.switch x cs other
+              Right _ => TermIR.Build.unsupported "a case with repeated constants"
 
-        setKnown : Env v' -> Reg -> Opnd v' Val -> Constant -> Env v'
+        setKnown : Env v' -> Reg -> TermIR.Opnd v' IRCommon.Ty.Val -> Constant -> Env v'
         setKnown env r x c = maybe env (\k => insert k (x, Just c) env) (key r)
 
         ||| A constant: an integer is an immediate when it is a fixnum, and the
         ||| static object that holds it otherwise.
-        constant : Constant -> B (Opnd v Val)
-        constant WorldVal = pure Erased
-        constant (PrT _) = pure Erased
+        constant : Constant -> B (TermIR.Opnd v IRCommon.Ty.Val)
+        constant WorldVal = pure TermIR.Opnd.Erased
+        constant (PrT _) = pure TermIR.Opnd.Erased
         constant (Str s) = staticVal (stringStatic s)
-        constant (Db _) = unsupported "a double constant"
+        constant (Db _) = TermIR.Build.unsupported "a double constant"
         constant k = case intConst k of
           Just (Wide _, n) => let p = patternValue n in maybe (staticVal (int64Static p)) pure (fixnum p)
           Just (Unbounded, n) =>
-            maybe (case signInHeader enc.bignum of
+            maybe (case HeapObject.BignumEnc.signInHeader enc.bignum of
                      Just _ => staticVal (bignumStatic n)
-                     Nothing => unsupported "an Integer constant outside the fixnum range, under bignums in two's complement")
+                     Nothing => TermIR.Build.unsupported "an Integer constant outside the fixnum range, under bignums in two's complement")
                   pure (fixnum n)
-          Just (Narrow _ _, n) => maybe (unsupported ("the constant " ++ show k)) pure (fixnum n)
-          Nothing => unsupported ("the constant " ++ show k)
+          Just (Narrow _ _, n) => maybe (TermIR.Build.unsupported ("the constant " ++ show k)) pure (fixnum n)
+          Nothing => TermIR.Build.unsupported ("the constant " ++ show k)
 
         ||| A primitive operation, and the environment after it.
         op : Env v -> Reg -> PrimFn n -> Vect n Reg -> B (Env v)
@@ -780,81 +780,81 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
               Nothing => do
                 c <- if to == CharType then toChar wf (get env x) else retype wf wt (get env x)
                 pure (set env r c)
-            _ => unsupported ("the cast from " ++ show from ++ " to " ++ show to)
+            _ => TermIR.Build.unsupported ("the cast from " ++ show from ++ " to " ++ show to)
           (BelieveMe, [_, _, x]) => pure (set env r (get env x))
           (fn, args) => set env r <$> value fn args
           where
             ||| A cast to `Char`: the value if it is a Unicode scalar value, 0 if not.
-            toChar : IntWidth -> Opnd v Val -> B (Opnd v Val)
+            toChar : IntWidth -> TermIR.Opnd v IRCommon.Ty.Val -> B (TermIR.Opnd v IRCommon.Ty.Val)
             toChar wf x = do
               w <- case wf of
                 Narrow _ _ => fixValue x
                 Wide _ => wideWord x
                 Unbounded => do
-                  [w] <- joinPoint [W64] $ \done =>
-                    ifFixnums [x] (\[f] => do w <- untag (f); done [w]) (done [W (-1)])
+                  [w] <- TermIR.Build.joinPoint [IRCommon.Ty.W64] $ \done =>
+                    TermIR.Build.ifFixnums [x] (\[f] => do w <- untag (f); done [w]) (done [TermIR.Opnd.W (-1)])
                   pure w
-              [r] <- joinPoint [Val] $ \done => do
-                keep <- block [] $ \[] => do f <- emit1 (Tag w); r <- widen f; done [r]
-                zero <- block [] $ \[] => done [Vx {enc} 0]
-                branch LtS w (W 0) (zero []) $
-                  branch LeS w (W 55295) (keep []) $
-                    branch LtS w (W 57344) (zero []) $
-                      branch LeS w (W 1114111) (keep []) (zero [])
+              [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done => do
+                keep <- TermIR.Build.block [] $ \[] => do f <- TermIR.Build.emit1 (TermIR.Instr.Tag w); r <- widen f; done [r]
+                zero <- TermIR.Build.block [] $ \[] => done [TermIR.Opnd.Vx {enc} 0]
+                TermIR.Build.branch IRCommon.Operators.LtS w (TermIR.Opnd.W 0) (zero []) $
+                  TermIR.Build.branch IRCommon.Operators.LeS w (TermIR.Opnd.W 55295) (keep []) $
+                    TermIR.Build.branch IRCommon.Operators.LtS w (TermIR.Opnd.W 57344) (zero []) $
+                      TermIR.Build.branch IRCommon.Operators.LeS w (TermIR.Opnd.W 1114111) (keep []) (zero [])
               pure r
 
             ||| A runtime routine's variable, with its results and parameters.
-            routine : Name -> (rs, ps : List (Ty enc)) -> Maybe (n' ** Var d.sigs (MkSig n' (Direct rs False) ps False))
+            routine : Name -> (rs, ps : List (IRCommon.Ty enc)) -> Maybe (n' ** TermIR.Var d.sigs (TermIR.Sig.MkSig n' (IRCommon.Conv.Direct rs False) ps False))
             routine name rs ps = case lookup name refs.funs of
-              Just (MkSig n (Direct rs' False) ps' False ** var) => case (decEq rs' rs, decEq ps' ps) of
+              Just (TermIR.Sig.MkSig n (IRCommon.Conv.Direct rs' False) ps' False ** var) => case (decEq rs' rs, decEq ps' ps) of
                 (Yes Refl, Yes Refl) => Just (n ** var)
                 _ => Nothing
               _ => Nothing
 
             ||| A call of a runtime routine, binding its results.
-            callRoutine : Name -> {rs : List (Ty enc)} -> {ps : List (Ty enc)} -> All (Opnd v) ps -> B (All (Opnd v) rs)
+            callRoutine : Name -> {rs : List (IRCommon.Ty enc)} -> {ps : List (IRCommon.Ty enc)} -> All (TermIR.Opnd v) ps -> B (All (TermIR.Opnd v) rs)
             callRoutine name xs = case routine name rs ps of
-              Just (_ ** r) => directCall r xs
-              Nothing => crash ("no runtime routine " ++ show name)
+              Just (_ ** r) => TermIR.Build.directCall r xs
+              Nothing => TermIR.Build.crash ("no runtime routine " ++ show name)
 
             ||| A word wrapped to a narrow width, as a uniform value: a fixnum, which it
             ||| always fits.
-            narrowVal : Nat -> Bool -> Opnd v W64 -> B (Opnd v Val)
+            narrowVal : Nat -> Bool -> TermIR.Opnd v IRCommon.Ty.W64 -> B (TermIR.Opnd v IRCommon.Ty.Val)
             narrowVal n s w = do
-              e <- emit1 (Ext (subWord n) s w)
-              f <- emit1 (Tag e)
+              e <- TermIR.Build.emit1 (TermIR.Instr.Ext (subWord n) s w)
+              f <- TermIR.Build.emit1 (TermIR.Instr.Tag e)
               widen f
               where
-                subWord : Nat -> SubWord
-                subWord 8 = Sub8
-                subWord 16 = Sub16
-                subWord _ = Sub32
+                subWord : Nat -> IRCommon.Operators.SubWord
+                subWord 8 = IRCommon.Operators.Sub8
+                subWord 16 = IRCommon.Operators.Sub16
+                subWord _ = IRCommon.Operators.Sub32
 
             ||| A uniform integer of one width as one of another, wrapping as Idris's
             ||| casts do.
-            retype : IntWidth -> IntWidth -> Opnd v Val -> B (Opnd v Val)
+            retype : IntWidth -> IntWidth -> TermIR.Opnd v IRCommon.Ty.Val -> B (TermIR.Opnd v IRCommon.Ty.Val)
             retype wf wt x =
               if keeps wf wt then pure x else case (wf, wt) of
                 (Narrow _ _, Narrow n s) => fixValue x >>= narrowVal n s
                 (Wide _, Narrow n s) => wideWord x >>= narrowVal n s
                 (Unbounded, Narrow n s) => integerBits x >>= narrowVal n s
                 (Unbounded, Wide _) => do
-                  [r] <- joinPoint [Val] $ \done =>
-                    ifFixnums [x] (\_ => done [x]) (do a <- integerBits x; r <- wideVal a; done [r])
+                  [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done =>
+                    TermIR.Build.ifFixnums [x] (\_ => done [x]) (do a <- integerBits x; r <- wideVal a; done [r])
                   pure r
                 (Wide True, Unbounded) => do
-                  [r] <- joinPoint [Val] $ \done =>
-                    ifFixnums [x] (\_ => done [x])
+                  [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done =>
+                    TermIR.Build.ifFixnums [x] (\_ => done [x])
                       (do a <- boxWord x
-                          [r] <- callRoutine (integerRoutine "from_int64") {rs = [Val]} {ps = [W64]} [a]
+                          [r] <- callRoutine (Linkage.Routine.integerRoutine "from_int64") {rs = [IRCommon.Ty.Val]} {ps = [IRCommon.Ty.W64]} [a]
                           done [r])
                   pure r
                 (Wide False, Unbounded) => do
                   a <- wideWord x
-                  [r] <- joinPoint [Val] $ \done =>
-                    branch LtU a (W 4611686018427387904)
-                      (do f <- emit1 (Tag a); r <- widen f; done [r])
-                      (do [r] <- callRoutine (integerRoutine "from_bits64") {rs = [Val]} {ps = [W64]} [a]; done [r])
+                  [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done =>
+                    TermIR.Build.branch IRCommon.Operators.LtU a (TermIR.Opnd.W 4611686018427387904)
+                      (do f <- TermIR.Build.emit1 (TermIR.Instr.Tag a); r <- widen f; done [r])
+                      (do [r] <- callRoutine (Linkage.Routine.integerRoutine "from_bits64") {rs = [IRCommon.Ty.Val]} {ps = [IRCommon.Ty.W64]} [a]; done [r])
                   pure r
                 _ => pure x
               where
@@ -869,116 +869,116 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
                 keeps _ _ = False
 
                 ||| An `Integer`'s value modulo 2^64, as a word.
-                integerBits : Opnd v Val -> B (Opnd v W64)
+                integerBits : TermIR.Opnd v IRCommon.Ty.Val -> B (TermIR.Opnd v IRCommon.Ty.W64)
                 integerBits x = do
-                  [w] <- joinPoint [W64] $ \done =>
-                    ifFixnums [x] (\[f] => do w <- untag (f); done [w])
-                      (do [w] <- callRoutine (integerRoutine "to_bits64") {rs = [W64]} {ps = [Val]} [x]; done [w])
+                  [w] <- TermIR.Build.joinPoint [IRCommon.Ty.W64] $ \done =>
+                    TermIR.Build.ifFixnums [x] (\[f] => do w <- untag (f); done [w])
+                      (do [w] <- callRoutine (Linkage.Routine.integerRoutine "to_bits64") {rs = [IRCommon.Ty.W64]} {ps = [IRCommon.Ty.Val]} [x]; done [w])
                   pure w
 
             ||| A call of a string routine of the program's encoding.
-            strings : String -> {rs : List (Ty enc)} -> {ps : List (Ty enc)} -> All (Opnd v) ps -> B (All (Opnd v) rs)
-            strings op xs = callRoutine (stringRoutine enc op) xs
+            strings : String -> {rs : List (IRCommon.Ty enc)} -> {ps : List (IRCommon.Ty enc)} -> All (TermIR.Opnd v) ps -> B (All (TermIR.Opnd v) rs)
+            strings op xs = callRoutine (Linkage.Routine.stringRoutine enc op) xs
 
             ||| A word known to be in the fixnum range, as a value: a count or a code
             ||| point.
-            wordFix : Opnd v W64 -> B (Opnd v Val)
-            wordFix w = do f <- emit1 (Tag w); emit1 (WidenFix f)
+            wordFix : TermIR.Opnd v IRCommon.Ty.W64 -> B (TermIR.Opnd v IRCommon.Ty.Val)
+            wordFix w = do f <- TermIR.Build.emit1 (TermIR.Instr.Tag w); TermIR.Build.emit1 (TermIR.Instr.WidenFix f)
 
             ||| A comparison of strings: the runtime's order, -1, 0 or 1, against 0.
-            stringOrder : Rel -> Opnd v Val -> Opnd v Val -> B (Opnd v Val)
+            stringOrder : IRCommon.Operators.Rel -> TermIR.Opnd v IRCommon.Ty.Val -> TermIR.Opnd v IRCommon.Ty.Val -> B (TermIR.Opnd v IRCommon.Ty.Val)
             stringOrder rel x y = do
-              [o] <- strings "compare" {rs = [W64]} {ps = [Val, Val]} [x, y]
-              b <- emit1 (Cmp rel o (W 0))
+              [o] <- strings "compare" {rs = [IRCommon.Ty.W64]} {ps = [IRCommon.Ty.Val, IRCommon.Ty.Val]} [x, y]
+              b <- TermIR.Build.emit1 (TermIR.Instr.Cmp rel o (TermIR.Opnd.W 0))
               wordFix b
 
             ||| An `Integer` routine that makes an `Integer`.
-            integerCall : String -> (xs : List (Opnd v Val)) -> B (Opnd v Val)
+            integerCall : String -> (xs : List (TermIR.Opnd v IRCommon.Ty.Val)) -> B (TermIR.Opnd v IRCommon.Ty.Val)
             integerCall what xs = case xs of
-              [x] => do [r] <- callRoutine (integerRoutine what) {rs = [Val]} {ps = [Val]} [x]; pure r
-              [x, y] => do [r] <- callRoutine (integerRoutine what) {rs = [Val]} {ps = [Val, Val]} [x, y]; pure r
-              _ => crash ("the Integer routine " ++ what ++ " takes one or two values")
+              [x] => do [r] <- callRoutine (Linkage.Routine.integerRoutine what) {rs = [IRCommon.Ty.Val]} {ps = [IRCommon.Ty.Val]} [x]; pure r
+              [x, y] => do [r] <- callRoutine (Linkage.Routine.integerRoutine what) {rs = [IRCommon.Ty.Val]} {ps = [IRCommon.Ty.Val, IRCommon.Ty.Val]} [x, y]; pure r
+              _ => TermIR.Build.crash ("the Integer routine " ++ what ++ " takes one or two values")
 
-            negation : IntWidth -> Opnd v Val -> B (Opnd v Val)
+            negation : IntWidth -> TermIR.Opnd v IRCommon.Ty.Val -> B (TermIR.Opnd v IRCommon.Ty.Val)
             negation (Narrow n s) x = do
               a <- fixValue x
-              w <- emit1 (Unary Negate a)
+              w <- TermIR.Build.emit1 (TermIR.Instr.Unary IRCommon.Operators.Negate a)
               narrowVal n s w
             negation (Wide _) x = do
-              [r] <- joinPoint [Val] $ \done => do
-                word <- block [W64] $ \[wa] => do
-                  w <- emit1 (Unary Negate wa)
+              [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done => do
+                word <- TermIR.Build.block [IRCommon.Ty.W64] $ \[wa] => do
+                  w <- TermIR.Build.emit1 (TermIR.Instr.Unary IRCommon.Operators.Negate wa)
                   r <- wideVal w
                   done [r]
-                ifFixnums [x]
-                  (\[a] => arithOv OvSub (Fx 0) a (\f => do r <- widen f; done [r])
+                TermIR.Build.ifFixnums [x]
+                  (\[a] => TermIR.Build.arithOv TermIR.OvOp.OvSub (TermIR.Opnd.Fx 0) a (\f => do r <- widen f; done [r])
                              (do wa <- untag (a); word [wa]))
                   (do wa <- wideWord x; word [wa])
               pure r
             negation Unbounded x = do
-              [r] <- joinPoint [Val] $ \done => do
-                slow <- block [] $ \[] => do r <- integerCall "neg" [x]; done [r]
-                ifFixnums [x] (\[a] => arithOv OvSub (Fx 0) a (\f => do r <- widen f; done [r]) (slow [])) (slow [])
+              [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done => do
+                slow <- TermIR.Build.block [] $ \[] => do r <- integerCall "neg" [x]; done [r]
+                TermIR.Build.ifFixnums [x] (\[a] => TermIR.Build.arithOv TermIR.OvOp.OvSub (TermIR.Opnd.Fx 0) a (\f => do r <- widen f; done [r]) (slow [])) (slow [])
               pure r
 
             ||| `div` or `mod`.
-            division : IntWidth -> (remainder : Bool) -> (x, y : Opnd v Val) -> B (Opnd v Val)
+            division : IntWidth -> (remainder : Bool) -> (x, y : TermIR.Opnd v IRCommon.Ty.Val) -> B (TermIR.Opnd v IRCommon.Ty.Val)
             division (Narrow n s) m x y = do
               a <- fixValue x
               b <- fixValue y
-              nonZero b
-              w <- divide s m a b
+              Words.nonZero b
+              w <- Words.divide s m a b
               narrowVal n s w
             division (Wide s) m x y = do
               a <- wideWord x
               b <- wideWord y
-              nonZero b
-              w <- divide s m a b
+              Words.nonZero b
+              w <- Words.divide s m a b
               wideVal w
             division Unbounded m x y = do
-              [r] <- joinPoint [Val] $ \done => do
-                slow <- block [] $ \[] => do r <- integerCall (if m then "mod" else "div") [x, y]; done [r]
-                ifFixnums [x, y]
+              [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done => do
+                slow <- TermIR.Build.block [] $ \[] => do r <- integerCall (if m then "mod" else "div") [x, y]; done [r]
+                TermIR.Build.ifFixnums [x, y]
                   (\[fa, fb] => do
                      a <- untag (fa)
                      b <- untag (fb)
-                     branch EqR b (W 0) (slow []) $ do
-                       w <- divide True m a b
-                       tagOv w (\f => do r <- widen f; done [r]) (slow []))
+                     TermIR.Build.branch IRCommon.Operators.EqR b (TermIR.Opnd.W 0) (slow []) $ do
+                       w <- Words.divide True m a b
+                       TermIR.Build.tagOv w (\f => do r <- widen f; done [r]) (slow []))
                   (slow [])
               pure r
 
             ||| `shiftL` or `shiftR`: arithmetic on signed types, logical on unsigned.
-            shifting : IntWidth -> (left : Bool) -> (x, y : Opnd v Val) -> B (Opnd v Val)
+            shifting : IntWidth -> (left : Bool) -> (x, y : TermIR.Opnd v IRCommon.Ty.Val) -> B (TermIR.Opnd v IRCommon.Ty.Val)
             shifting (Narrow n s) left x y = do
               a <- fixValue x
               k <- fixValue y
-              w <- shiftBy (if left then Shl else if s then Sar else Shr) a k
+              w <- Words.shiftBy (if left then IRCommon.Operators.Shl else if s then IRCommon.Operators.Sar else IRCommon.Operators.Shr) a k
               narrowVal n s w
             shifting (Wide s) left x y = do
               a <- wideWord x
               k <- wideWord y
-              w <- shiftBy (if left then Shl else if s then Sar else Shr) a k
+              w <- Words.shiftBy (if left then IRCommon.Operators.Shl else if s then IRCommon.Operators.Sar else IRCommon.Operators.Shr) a k
               wideVal w
             shifting Unbounded left x y = do
-              [r] <- joinPoint [Val] $ \done => do
-                slow <- block [] $ \[] => do r <- integerCall (if left then "shl" else "shr") [x, y]; done [r]
-                ifFixnums [x, y]
+              [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done => do
+                slow <- TermIR.Build.block [] $ \[] => do r <- integerCall (if left then "shl" else "shr") [x, y]; done [r]
+                TermIR.Build.ifFixnums [x, y]
                   (\[fa, fk] => do
                      a <- untag (fa)
                      k <- untag (fk)
-                     branch LtS k (W 0) (slow []) $
+                     TermIR.Build.branch IRCommon.Operators.LtS k (TermIR.Opnd.W 0) (slow []) $
                        if left
                           then -- shift by at most 62, and keep the result only if
                                -- shifting back gives the operand and it is a fixnum
-                               branch GtS k (W 62) (slow []) $ do
-                                 w <- emit1 (Arith Shl a k)
-                                 back <- emit1 (Arith Sar w k)
-                                 branch NeR back a (slow []) $
-                                   tagOv w (\f => do r <- widen f; done [r]) (slow [])
+                               TermIR.Build.branch IRCommon.Operators.GtS k (TermIR.Opnd.W 62) (slow []) $ do
+                                 w <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Operators.Shl a k)
+                                 back <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Operators.Sar w k)
+                                 TermIR.Build.branch IRCommon.Operators.NeR back a (slow []) $
+                                   TermIR.Build.tagOv w (\f => do r <- widen f; done [r]) (slow [])
                           else do
-                            w <- shiftBy Sar a k
-                            f <- emit1 (Tag w)
+                            w <- Words.shiftBy IRCommon.Operators.Sar a k
+                            f <- TermIR.Build.emit1 (TermIR.Instr.Tag w)
                             r <- widen f
                             done [r])
                   (slow [])
@@ -987,84 +987,84 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
             withWidth : PrimType -> String -> (IntWidth -> B a) -> B a
             withWidth ty what k = case intWidth ty of
               Just w => k w
-              Nothing => unsupported (what ++ " on " ++ show ty)
+              Nothing => TermIR.Build.unsupported (what ++ " on " ++ show ty)
 
             ||| Addition, subtraction, multiplication and the bitwise operations; the
             ||| name is the operation's `Integer` routine.
-            arithmetic : IntWidth -> ArithOp -> (routine : String) -> (x, y : Opnd v Val) -> B (Opnd v Val)
+            arithmetic : IntWidth -> IRCommon.Operators.ArithOp -> (routine : String) -> (x, y : TermIR.Opnd v IRCommon.Ty.Val) -> B (TermIR.Opnd v IRCommon.Ty.Val)
             arithmetic width o routine x y = case width of
               Narrow n s => do
                 a <- fixValue x
                 b <- fixValue y
-                w <- emit1 (Arith o a b)
+                w <- TermIR.Build.emit1 (TermIR.Instr.Arith o a b)
                 narrowVal n s w
               Wide _ => do
-                [r] <- joinPoint [Val] $ \done => do
-                  words <- block [W64, W64] $ \[wa, wb] => do
-                    w <- emit1 (Arith o wa wb)
+                [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done => do
+                  words <- TermIR.Build.block [IRCommon.Ty.W64, IRCommon.Ty.W64] $ \[wa, wb] => do
+                    w <- TermIR.Build.emit1 (TermIR.Instr.Arith o wa wb)
                     r <- wideVal w
                     done [r]
-                  ifFixnums [x, y]
+                  TermIR.Build.ifFixnums [x, y]
                     (\[a, b] => case ovOp o of
-                       Just ov => arithOv ov a b (\f => do r <- widen f; done [r])
+                       Just ov => TermIR.Build.arithOv ov a b (\f => do r <- widen f; done [r])
                                     (do wa <- untag (a); wb <- untag (b); words [wa, wb])
-                       Nothing => do f <- emit1 (Arith o a b); r <- widen f; done [r])
+                       Nothing => do f <- TermIR.Build.emit1 (TermIR.Instr.Arith o a b); r <- widen f; done [r])
                     (do wa <- wideWord x; wb <- wideWord y; words [wa, wb])
                 pure r
               Unbounded => do
-                [r] <- joinPoint [Val] $ \done => do
-                  slow <- block [] $ \[] => do r <- integerCall routine [x, y]; done [r]
-                  ifFixnums [x, y]
+                [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done => do
+                  slow <- TermIR.Build.block [] $ \[] => do r <- integerCall routine [x, y]; done [r]
+                  TermIR.Build.ifFixnums [x, y]
                     (\[a, b] => case ovOp o of
-                       Just ov => arithOv ov a b (\f => do r <- widen f; done [r]) (slow [])
-                       Nothing => do f <- emit1 (Arith o a b); r <- widen f; done [r])
+                       Just ov => TermIR.Build.arithOv ov a b (\f => do r <- widen f; done [r]) (slow [])
+                       Nothing => do f <- TermIR.Build.emit1 (TermIR.Instr.Arith o a b); r <- widen f; done [r])
                     (slow [])
                 pure r
               where
                 ||| The overflow form of an operation that has one.
-                ovOp : ArithOp -> Maybe OvOp
-                ovOp Add = Just OvAdd
-                ovOp Sub = Just OvSub
-                ovOp Mul = Just OvMul
+                ovOp : IRCommon.Operators.ArithOp -> Maybe TermIR.OvOp
+                ovOp Add = Just TermIR.OvOp.OvAdd
+                ovOp Sub = Just TermIR.OvOp.OvSub
+                ovOp Mul = Just TermIR.OvOp.OvMul
                 ovOp _ = Nothing
 
             ||| A comparison, giving the `Int` 0 or 1.
-            comparison : IntWidth -> Rel -> (x, y : Opnd v Val) -> B (Opnd v Val)
+            comparison : IntWidth -> IRCommon.Operators.Rel -> (x, y : TermIR.Opnd v IRCommon.Ty.Val) -> B (TermIR.Opnd v IRCommon.Ty.Val)
             comparison width rel x y = case width of
               Narrow _ _ => do
                 a <- asFix x
                 b <- asFix y
-                c <- emit1 (Cmp rel a b)
+                c <- TermIR.Build.emit1 (TermIR.Instr.Cmp rel a b)
                 boolVal c
               Wide s => do
                 let rel' = if s then rel else unsignedRel rel
-                [c] <- joinPoint [W64] $ \done =>
-                  ifFixnums [x, y]
-                    (\[a, b] => do c <- emit1 (Cmp rel' a b); done [c])
-                    (do a <- wideWord x; b <- wideWord y; c <- emit1 (Cmp rel' a b); done [c])
+                [c] <- TermIR.Build.joinPoint [IRCommon.Ty.W64] $ \done =>
+                  TermIR.Build.ifFixnums [x, y]
+                    (\[a, b] => do c <- TermIR.Build.emit1 (TermIR.Instr.Cmp rel' a b); done [c])
+                    (do a <- wideWord x; b <- wideWord y; c <- TermIR.Build.emit1 (TermIR.Instr.Cmp rel' a b); done [c])
                 boolVal c
               Unbounded => do
-                [c] <- joinPoint [W64] $ \done =>
-                  ifFixnums [x, y]
-                    (\[a, b] => do c <- emit1 (Cmp rel a b); done [c])
-                    (do [o] <- callRoutine (integerRoutine "compare") {rs = [W64]} {ps = [Val, Val]} [x, y]
-                        c <- emit1 (Cmp rel o (W 0))
+                [c] <- TermIR.Build.joinPoint [IRCommon.Ty.W64] $ \done =>
+                  TermIR.Build.ifFixnums [x, y]
+                    (\[a, b] => do c <- TermIR.Build.emit1 (TermIR.Instr.Cmp rel a b); done [c])
+                    (do [o] <- callRoutine (Linkage.Routine.integerRoutine "compare") {rs = [IRCommon.Ty.W64]} {ps = [IRCommon.Ty.Val, IRCommon.Ty.Val]} [x, y]
+                        c <- TermIR.Build.emit1 (TermIR.Instr.Cmp rel o (TermIR.Opnd.W 0))
                         done [c])
                 boolVal c
               where
                 ||| The unsigned relation for a signed one.
-                unsignedRel : Rel -> Rel
-                unsignedRel LtS = LtU
-                unsignedRel LeS = LeU
-                unsignedRel GtS = GtU
-                unsignedRel GeS = GeU
+                unsignedRel : IRCommon.Operators.Rel -> IRCommon.Operators.Rel
+                unsignedRel IRCommon.Operators.LtS = IRCommon.Operators.LtU
+                unsignedRel IRCommon.Operators.LeS = IRCommon.Operators.LeU
+                unsignedRel IRCommon.Operators.GtS = IRCommon.Operators.GtU
+                unsignedRel IRCommon.Operators.GeS = IRCommon.Operators.GeU
                 unsignedRel r = r
 
                 ||| A comparison's 0 or 1, as the `Int` Idris's comparisons give.
-                boolVal : Opnd v W64 -> B (Opnd v Val)
-                boolVal c = emit1 (Tag c) >>= widen
+                boolVal : TermIR.Opnd v IRCommon.Ty.W64 -> B (TermIR.Opnd v IRCommon.Ty.Val)
+                boolVal c = TermIR.Build.emit1 (TermIR.Instr.Tag c) >>= widen
 
-            value : PrimFn m -> Vect m Reg -> B (Opnd v Val)
+            value : PrimFn m -> Vect m Reg -> B (TermIR.Opnd v IRCommon.Ty.Val)
             value (Add ty) [x, y] = withWidth ty "addition" (\w => arithmetic w Add "add" (get env x) (get env y))
             value (Sub ty) [x, y] = withWidth ty "subtraction" (\w => arithmetic w Sub "sub" (get env x) (get env y))
             value (Mul ty) [x, y] = withWidth ty "multiplication" (\w => arithmetic w Mul "mul" (get env x) (get env y))
@@ -1073,39 +1073,39 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
             value (Neg ty) [x] = withWidth ty "negation" (\w => negation w (get env x))
             value (ShiftL ty) [x, y] = withWidth ty "a left shift" (\w => shifting w True (get env x) (get env y))
             value (ShiftR ty) [x, y] = withWidth ty "a right shift" (\w => shifting w False (get env x) (get env y))
-            value (BAnd ty) [x, y] = withWidth ty "bitwise and" (\w => arithmetic w And "and" (get env x) (get env y))
-            value (BOr ty) [x, y] = withWidth ty "bitwise or" (\w => arithmetic w Or "or" (get env x) (get env y))
-            value (BXOr ty) [x, y] = withWidth ty "bitwise xor" (\w => arithmetic w Xor "xor" (get env x) (get env y))
+            value (BAnd ty) [x, y] = withWidth ty "bitwise and" (\w => arithmetic w IRCommon.Operators.And "and" (get env x) (get env y))
+            value (BOr ty) [x, y] = withWidth ty "bitwise or" (\w => arithmetic w IRCommon.Operators.Or "or" (get env x) (get env y))
+            value (BXOr ty) [x, y] = withWidth ty "bitwise xor" (\w => arithmetic w IRCommon.Operators.Xor "xor" (get env x) (get env y))
             -- the string primitives: the runtime's routines under the encoding
-            value StrLength [s] = do [n] <- strings "length" {rs = [W64]} {ps = [Val]} [get env s]; wordFix n
-            value StrHead [s] = do [c] <- strings "head" {rs = [W64]} {ps = [Val]} [get env s]; wordFix c
-            value StrTail [s] = do [r] <- strings "tail" {rs = [Val]} {ps = [Val]} [get env s]; pure r
+            value StrLength [s] = do [n] <- strings "length" {rs = [IRCommon.Ty.W64]} {ps = [IRCommon.Ty.Val]} [get env s]; wordFix n
+            value StrHead [s] = do [c] <- strings "head" {rs = [IRCommon.Ty.W64]} {ps = [IRCommon.Ty.Val]} [get env s]; wordFix c
+            value StrTail [s] = do [r] <- strings "tail" {rs = [IRCommon.Ty.Val]} {ps = [IRCommon.Ty.Val]} [get env s]; pure r
             value StrIndex [s, i] = do
               w <- wideWord (get env i)
-              [c] <- strings "index" {rs = [W64]} {ps = [Val, W64]} [get env s, w]
+              [c] <- strings "index" {rs = [IRCommon.Ty.W64]} {ps = [IRCommon.Ty.Val, IRCommon.Ty.W64]} [get env s, w]
               wordFix c
             value StrCons [c, s] = do
               w <- fixValue (get env c)
-              [r] <- strings "cons" {rs = [Val]} {ps = [W64, Val]} [w, get env s]
+              [r] <- strings "cons" {rs = [IRCommon.Ty.Val]} {ps = [IRCommon.Ty.W64, IRCommon.Ty.Val]} [w, get env s]
               pure r
-            value StrAppend [a, b] = do [r] <- strings "append" {rs = [Val]} {ps = [Val, Val]} [get env a, get env b]; pure r
-            value StrReverse [s] = do [r] <- strings "reverse" {rs = [Val]} {ps = [Val]} [get env s]; pure r
+            value StrAppend [a, b] = do [r] <- strings "append" {rs = [IRCommon.Ty.Val]} {ps = [IRCommon.Ty.Val, IRCommon.Ty.Val]} [get env a, get env b]; pure r
+            value StrReverse [s] = do [r] <- strings "reverse" {rs = [IRCommon.Ty.Val]} {ps = [IRCommon.Ty.Val]} [get env s]; pure r
             value StrSubstr [o, l, s] = do
               wo <- wideWord (get env o)
               wl <- wideWord (get env l)
-              [r] <- strings "substr" {rs = [Val]} {ps = [W64, W64, Val]} [wo, wl, get env s]
+              [r] <- strings "substr" {rs = [IRCommon.Ty.Val]} {ps = [IRCommon.Ty.W64, IRCommon.Ty.W64, IRCommon.Ty.Val]} [wo, wl, get env s]
               pure r
-            value (LT StringType) [x, y] = stringOrder LtS (get env x) (get env y)
-            value (LTE StringType) [x, y] = stringOrder LeS (get env x) (get env y)
-            value (EQ StringType) [x, y] = stringOrder EqR (get env x) (get env y)
-            value (GTE StringType) [x, y] = stringOrder GeS (get env x) (get env y)
-            value (GT StringType) [x, y] = stringOrder GtS (get env x) (get env y)
-            value (LT ty) [x, y] = withWidth ty "<" (\w => comparison w LtS (get env x) (get env y))
-            value (LTE ty) [x, y] = withWidth ty "<=" (\w => comparison w LeS (get env x) (get env y))
-            value (EQ ty) [x, y] = withWidth ty "==" (\w => comparison w EqR (get env x) (get env y))
-            value (GTE ty) [x, y] = withWidth ty ">=" (\w => comparison w GeS (get env x) (get env y))
-            value (GT ty) [x, y] = withWidth ty ">" (\w => comparison w GtS (get env x) (get env y))
-            value fn _ = unsupported ("the primitive " ++ show fn)
+            value (LT StringType) [x, y] = stringOrder IRCommon.Operators.LtS (get env x) (get env y)
+            value (LTE StringType) [x, y] = stringOrder IRCommon.Operators.LeS (get env x) (get env y)
+            value (EQ StringType) [x, y] = stringOrder IRCommon.Operators.EqR (get env x) (get env y)
+            value (GTE StringType) [x, y] = stringOrder IRCommon.Operators.GeS (get env x) (get env y)
+            value (GT StringType) [x, y] = stringOrder IRCommon.Operators.GtS (get env x) (get env y)
+            value (LT ty) [x, y] = withWidth ty "<" (\w => comparison w IRCommon.Operators.LtS (get env x) (get env y))
+            value (LTE ty) [x, y] = withWidth ty "<=" (\w => comparison w IRCommon.Operators.LeS (get env x) (get env y))
+            value (EQ ty) [x, y] = withWidth ty "==" (\w => comparison w IRCommon.Operators.EqR (get env x) (get env y))
+            value (GTE ty) [x, y] = withWidth ty ">=" (\w => comparison w IRCommon.Operators.GeS (get env x) (get env y))
+            value (GT ty) [x, y] = withWidth ty ">" (\w => comparison w IRCommon.Operators.GtS (get env x) (get env y))
+            value fn _ = TermIR.Build.unsupported ("the primitive " ++ show fn)
 
 ------------------------------------------------------------------------------
 -- The program
@@ -1117,9 +1117,9 @@ data Plan
   | ||| A function that has a flat form, of the arity: a wrapper around the
     ||| form's `Direct` function, with the shapes of its parameters and of its
     ||| result.
-    Boundary Nat FlatDef (List Shape) Shape
+    Boundary Nat Flat.Exp.FlatDef (List Flat.Exp.Shape) Flat.Exp.Shape
   | ||| A flat form: its `Direct` function.
-    Form FlatDef
+    Form Flat.Exp.FlatDef
   | ||| A foreign function, of the arity.
     Foreign Nat
   | ||| A routine of the runtime.
@@ -1127,102 +1127,102 @@ data Plan
   | ||| The entry, when the program has none.
     NoEntry
 
-parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
+parameters {enc : HeapObject.Enc} {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val}
 
   ||| A function that has a flat form, as the wrapper around the form's.
-  lowerBoundary : (d : Decls enc) -> Refs enc d -> Callee d -> List Shape -> Shape -> (arity : Nat) ->
-                  Closed d CPS False (replicate arity Val)
-  lowerBoundary d refs ce ss r arity = build $ \ps => boundary d refs ce ss r (allVals ps)
+  lowerBoundary : (d : TermIR.Decls enc) -> Refs enc d -> LowerFlat.Callee d -> List Flat.Exp.Shape -> Flat.Exp.Shape -> (arity : Nat) ->
+                  TermIR.Build.Closed d IRCommon.Conv.CPS False (replicate arity IRCommon.Ty.Val)
+  lowerBoundary d refs ce ss r arity = TermIR.Build.build $ \ps => boundary d refs ce ss r (allVals ps)
 
   ||| A function's definition, from its plan.
-  defOf : (d : Decls enc) -> Refs enc d -> Forms enc d -> (s : Sig enc) -> Plan -> Def d s
-  defOf d refs fs (MkSig n CPS ps False) (FromVM args body) = case decEq ps (replicate (length args) Val) of
-    Yes Refl => Defined (fromMaybe (Unsupported "a level outside its context") (close (lowerFunction d refs args body)))
-    No _ => Defined (Unsupported ("the parameters of " ++ show n))
+  defOf : (d : TermIR.Decls enc) -> Refs enc d -> LowerFlat.Forms enc d -> (s : TermIR.Sig enc) -> Plan -> TermIR.Def d s
+  defOf d refs fs (TermIR.Sig.MkSig n IRCommon.Conv.CPS ps False) (FromVM args body) = case decEq ps (replicate (length args) IRCommon.Ty.Val) of
+    Yes Refl => TermIR.Def.Defined (fromMaybe (TermIR.Body.Unsupported "a level outside its context") (TermIR.Build.close (lowerFunction d refs args body)))
+    No _ => TermIR.Def.Defined (TermIR.Body.Unsupported ("the parameters of " ++ show n))
     where
       ||| A VMCode function: its parameters are its locals at entry, and it
       ||| returns its result register.
-      lowerFunction : (d : Decls enc) -> Refs enc d -> (args : List Int) -> List VMInst ->
-                      Closed d CPS False (replicate (length args) Val)
-      lowerFunction d refs args body = build $ \ps =>
+      lowerFunction : (d : TermIR.Decls enc) -> Refs enc d -> (args : List Int) -> List VMInst ->
+                      TermIR.Build.Closed d IRCommon.Conv.CPS False (replicate (length args) IRCommon.Ty.Val)
+      lowerFunction d refs args body = TermIR.Build.build $ \ps =>
         lower d refs (fromList (zip args (map (\x => (x, Nothing)) (allVals ps)))) True (annotate (singleton (-1)) body)
-              (\env => return (get env RVal))
-  defOf d refs fs (MkSig n CPS ps False) (Boundary arity fd ss r) =
-    case (decEq ps (replicate arity Val), lookup fd.name fs.callees) of
+              (\env => TermIR.Build.return (get env RVal))
+  defOf d refs fs (TermIR.Sig.MkSig n IRCommon.Conv.CPS ps False) (Boundary arity fd ss r) =
+    case (decEq ps (replicate arity IRCommon.Ty.Val), lookup fd.name fs.callees) of
       (Yes Refl, Just ce) =>
-        Defined (fromMaybe (Unsupported "a level outside its context") (close (lowerBoundary d refs ce ss r arity)))
-      _ => Defined (Unsupported ("the boundary of " ++ show n))
-  defOf d refs fs (MkSig n (Direct rs False) ps cv) (Form fd) =
-    case (decEq rs (tys fd.result), decEq ps (tys (paramsLayout fd.params)), decEq cv (convertsIn fd.name)) of
-      (Yes Refl, Yes Refl, Yes Refl) => Defined (fromMaybe (Unsupported "a level outside its context") (close (lowerForm d fs fd)))
-      _ => Defined (Unsupported ("the registers of the flat form of " ++ show fd.name))
-  defOf d refs fs (MkSig n CPS ps False) (Foreign arity) = case decEq ps (replicate arity Val) of
-    Yes Refl => Defined (fromMaybe (Unsupported "a level outside its context") (close (lowerForeign d refs n arity)))
-    No _ => Defined (Unsupported ("the parameters of " ++ show n))
+        TermIR.Def.Defined (fromMaybe (TermIR.Body.Unsupported "a level outside its context") (TermIR.Build.close (lowerBoundary d refs ce ss r arity)))
+      _ => TermIR.Def.Defined (TermIR.Body.Unsupported ("the boundary of " ++ show n))
+  defOf d refs fs (TermIR.Sig.MkSig n (IRCommon.Conv.Direct rs False) ps cv) (Form fd) =
+    case (decEq rs (LowerFlat.tys fd.result), decEq ps (LowerFlat.tys (LowerFlat.paramsLayout fd.params)), decEq cv (Linkage.ConvertsIn.convertsIn fd.name)) of
+      (Yes Refl, Yes Refl, Yes Refl) => TermIR.Def.Defined (fromMaybe (TermIR.Body.Unsupported "a level outside its context") (TermIR.Build.close (LowerFlat.lowerForm d fs fd)))
+      _ => TermIR.Def.Defined (TermIR.Body.Unsupported ("the registers of the flat form of " ++ show fd.name))
+  defOf d refs fs (TermIR.Sig.MkSig n IRCommon.Conv.CPS ps False) (Foreign arity) = case decEq ps (replicate arity IRCommon.Ty.Val) of
+    Yes Refl => TermIR.Def.Defined (fromMaybe (TermIR.Body.Unsupported "a level outside its context") (TermIR.Build.close (lowerForeign d refs n arity)))
+    No _ => TermIR.Def.Defined (TermIR.Body.Unsupported ("the parameters of " ++ show n))
     where
       ||| A foreign function the runtime does not implement: the abort stub.
-      lowerForeign : (d : Decls enc) -> Refs enc d -> Name -> (arity : Nat) -> Closed d CPS False (replicate arity Val)
-      lowerForeign d refs n arity = build $ \ps => unsupported ("the foreign function " ++ show n)
-  defOf d refs fs (MkSig n (Direct rs False) ps False) Routine = External
-  defOf d refs fs s NoEntry = Defined (Unsupported "a program without __mainExpression")
-  defOf d refs fs s _ = Defined (Unsupported ("the definition of " ++ show s.name))
+      lowerForeign : (d : TermIR.Decls enc) -> Refs enc d -> Name -> (arity : Nat) -> TermIR.Build.Closed d IRCommon.Conv.CPS False (replicate arity IRCommon.Ty.Val)
+      lowerForeign d refs n arity = TermIR.Build.build $ \ps => TermIR.Build.unsupported ("the foreign function " ++ show n)
+  defOf d refs fs (TermIR.Sig.MkSig n (IRCommon.Conv.Direct rs False) ps False) Routine = TermIR.Def.External
+  defOf d refs fs s NoEntry = TermIR.Def.Defined (TermIR.Body.Unsupported "a program without __mainExpression")
+  defOf d refs fs s _ = TermIR.Def.Defined (TermIR.Body.Unsupported ("the definition of " ++ show s.name))
 
-  defs : (d : Decls enc) -> Refs enc d -> Forms enc d -> (es : List (Sig enc, Plan)) -> All (Def d) (map Builtin.fst es)
+  defs : (d : TermIR.Decls enc) -> Refs enc d -> LowerFlat.Forms enc d -> (es : List (TermIR.Sig enc, Plan)) -> All (TermIR.Def d) (map Builtin.fst es)
   defs d refs fs [] = []
   defs d refs fs ((s, p) :: es) = defOf d refs fs s p :: defs d refs fs es
 
 ||| The program of the declarations, the entry first.
-program : {enc : Enc} -> {auto 0 fx : HasFixnums enc.val} -> List FlatDef -> Shapes -> SortedMap Name Name -> Plan ->
-          (es : List (Sig enc, Plan)) -> (rs : List (s ** ({0 d : Decls enc} -> StaticDef d s))) -> TermProgram enc
+program : {enc : HeapObject.Enc} -> {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} -> List Flat.Exp.FlatDef -> Flat.Exp.Shapes -> SortedMap Name Name -> Plan ->
+          (es : List (TermIR.Sig enc, Plan)) -> (rs : List (s ** ({0 d : TermIR.Decls enc} -> TermIR.StaticDef d s))) -> TermIR.Program.TermProgram enc
 program forms shapes services entry es rs =
-  case choose (distinct (map (.name) (mainSig :: map Builtin.fst es)) && distinct (map (.sym) (map DPair.fst rs))) of
+  case choose (Data.Distinct.distinct (map (.name) (mainSig :: map Builtin.fst es)) && Data.Distinct.distinct (map (.sym) (map DPair.fst rs))) of
     Left ok =>
-      (declsOf es rs ** MkProgram
-                     (defs (declsOf es rs) (refsOf (declsOf es rs)) (MkForms (callees (declsOf es rs) forms) shapes services)
+      (declsOf es rs ** TermIR.Program.MkProgram
+                     (defs (declsOf es rs) (refsOf (declsOf es rs)) (LowerFlat.MkForms (LowerFlat.callees (declsOf es rs) forms) shapes services)
                            ((mainSig, entry) :: es))
-                     (staticDefs (declsOf es rs) rs) (MkEntry here) noConIds)
+                     (staticDefs (declsOf es rs) rs) (TermIR.Program.MkEntry TermIR.Var.here) IRCommon.ConIds.noConIds)
     Right _ =>
-      (MkDecls [mainSig] [] ** MkProgram
-                     [Defined (Unsupported "a program with two definitions of one name")] [] (MkEntry here) noConIds)
+      (TermIR.Decls.MkDecls [mainSig] [] ** TermIR.Program.MkProgram
+                     [TermIR.Def.Defined (TermIR.Body.Unsupported "a program with two definitions of one name")] [] (TermIR.Program.MkEntry TermIR.Var.here) IRCommon.ConIds.noConIds)
   where
-    refsOf : (d : Decls enc') -> Refs enc' d
-    refsOf d = MkRefs (fromList [(s.name, (s ** v)) | (s ** v) <- enumerate d.sigs])
-                      (fromList [(s.sym, (s ** v)) | (s ** v) <- enumerate d.statics])
+    refsOf : (d : TermIR.Decls enc') -> Refs enc' d
+    refsOf d = MkRefs (fromList [(s.name, (s ** v)) | (s ** v) <- TermIR.Var.enumerate d.sigs])
+                      (fromList [(s.sym, (s ** v)) | (s ** v) <- TermIR.Var.enumerate d.statics])
 
-    staticDefs : (d : Decls enc) -> (rs : List (s' ** ({0 d' : Decls enc} -> StaticDef d' s'))) ->
-                 All (StaticDef d) (map DPair.fst rs)
+    staticDefs : (d : TermIR.Decls enc) -> (rs : List (s' ** ({0 d' : TermIR.Decls enc} -> TermIR.StaticDef d' s'))) ->
+                 All (TermIR.StaticDef d) (map DPair.fst rs)
     staticDefs d [] = []
     staticDefs d ((_ ** def) :: rs) = def :: staticDefs d rs
 
     ||| The entry's signature: CPS, of no parameters.
-    mainSig : Sig enc'
-    mainSig = MkSig mainExpression CPS [] False
+    mainSig : TermIR.Sig enc'
+    mainSig = TermIR.Sig.MkSig mainExpression IRCommon.Conv.CPS [] False
 
     ||| The declarations: the entry first, the other functions, the statics.
-    declsOf : (es : List (Sig enc', Plan)) -> (rs : List (s' ** ({0 d : Decls enc'} -> StaticDef d s'))) -> Decls enc'
-    declsOf es rs = MkDecls (mainSig :: map Builtin.fst es) (map DPair.fst rs)
+    declsOf : (es : List (TermIR.Sig enc', Plan)) -> (rs : List (s' ** ({0 d : TermIR.Decls enc'} -> TermIR.StaticDef d s'))) -> TermIR.Decls enc'
+    declsOf es rs = TermIR.Decls.MkDecls (mainSig :: map Builtin.fst es) (map DPair.fst rs)
 
 ||| Whether a value of the C type is held as a flat value of the skeleton:
 ||| an integer as its machine type, a `Char`, a `Double`, the world, `()`, a
 ||| primitive's `IORes`, and a `String` held as ordinary code holds it.
 export
-cfAgrees : CFType -> Skeleton -> Bool
-cfAgrees CFInt (SPrim IntType) = True
-cfAgrees CFInt8 (SPrim Int8Type) = True
-cfAgrees CFInt16 (SPrim Int16Type) = True
-cfAgrees CFInt32 (SPrim Int32Type) = True
-cfAgrees CFInt64 (SPrim Int64Type) = True
-cfAgrees CFUnsigned8 (SPrim Bits8Type) = True
-cfAgrees CFUnsigned16 (SPrim Bits16Type) = True
-cfAgrees CFUnsigned32 (SPrim Bits32Type) = True
-cfAgrees CFUnsigned64 (SPrim Bits64Type) = True
-cfAgrees CFChar (SPrim CharType) = True
-cfAgrees CFDouble (SPrim DoubleType) = True
-cfAgrees CFWorld (SPrim WorldType) = True
-cfAgrees CFUnit (SCon n []) = n == NS (mkNamespace "Builtin") (UN (Basic "Unit"))
-cfAgrees (CFIORes t) (SCon n [s]) = n == NS (mkNamespace "PrimIO") (UN (Basic "IORes")) && cfAgrees t s
-cfAgrees CFString (SCon n [SPrim StringType]) = n == uniformType
-cfAgrees (CFUser t _) (SCon n [SCon t' _]) = n == uniformType && t == t'
+cfAgrees : CFType -> Flat.Exp.Skeleton -> Bool
+cfAgrees CFInt (Flat.Exp.SPrim IntType) = True
+cfAgrees CFInt8 (Flat.Exp.SPrim Int8Type) = True
+cfAgrees CFInt16 (Flat.Exp.SPrim Int16Type) = True
+cfAgrees CFInt32 (Flat.Exp.SPrim Int32Type) = True
+cfAgrees CFInt64 (Flat.Exp.SPrim Int64Type) = True
+cfAgrees CFUnsigned8 (Flat.Exp.SPrim Bits8Type) = True
+cfAgrees CFUnsigned16 (Flat.Exp.SPrim Bits16Type) = True
+cfAgrees CFUnsigned32 (Flat.Exp.SPrim Bits32Type) = True
+cfAgrees CFUnsigned64 (Flat.Exp.SPrim Bits64Type) = True
+cfAgrees CFChar (Flat.Exp.SPrim CharType) = True
+cfAgrees CFDouble (Flat.Exp.SPrim DoubleType) = True
+cfAgrees CFWorld (Flat.Exp.SPrim WorldType) = True
+cfAgrees CFUnit (Flat.Exp.SCon n []) = n == NS (mkNamespace "Builtin") (UN (Basic "Unit"))
+cfAgrees (CFIORes t) (Flat.Exp.SCon n [s]) = n == NS (mkNamespace "PrimIO") (UN (Basic "IORes")) && cfAgrees t s
+cfAgrees CFString (Flat.Exp.SCon n [Flat.Exp.SPrim StringType]) = n == Flat.Exp.uniformType
+cfAgrees (CFUser t _) (Flat.Exp.SCon n [Flat.Exp.SCon t' _]) = n == Flat.Exp.uniformType && t == t'
 cfAgrees _ _ = False
 
 ||| A whole program, as a term: every function and foreign function, the
@@ -1248,33 +1248,33 @@ cfAgrees _ _ = False
 ||| the OS services on the platform (`osServices` in `Compiler.Native.Linkage.OSService`),
 ||| each checked against its service where a form calls it.
 export
-lowerProgram : (enc : Enc) -> {auto 0 fx : HasFixnums enc.val} -> Platform -> List FlatDef -> Shapes ->
-               List (Name, VMDef) -> Either String (TermProgram enc)
+lowerProgram : (enc : HeapObject.Enc) -> {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} -> Platform -> List Flat.Exp.FlatDef -> Flat.Exp.Shapes ->
+               List (Name, VMDef) -> Either String (TermIR.Program.TermProgram enc)
 lowerProgram enc platform forms shapes vmdefs = do
-  traverse_ provided (routines {enc})
-  traverse_ implemented (osServices {enc})
+  traverse_ provided (Linkage.Routine.routines {enc})
+  traverse_ implemented (Linkage.OSService.osServices {enc})
   traverse_ agrees (mapMaybe boundForeign vmdefs)
   let entryPlan = case Data.List.lookup mainExpression vmdefs of
                     Just (MkVMFun [] body) => FromVM [] body
                     _ => NoEntry
       planned = mapMaybe plan (filter ((/= mainExpression) . fst) vmdefs)
       others = planned
-                 ++ [(formSig fd, Form fd) | fd <- forms]
-                 ++ [(MkSig r.name (Direct r.results False) r.params False, Routine)
-                    | r <- routines {enc}, not r.provided]
+                 ++ [(LowerFlat.formSig fd, Form fd) | fd <- forms]
+                 ++ [(TermIR.Sig.MkSig r.name (IRCommon.Conv.Direct r.results False) r.params False, Routine)
+                    | r <- Linkage.Routine.routines {enc}, not r.provided]
       boxing = fromList [(nullaryCon c, Nullary c) | c <- toList (concatMap (boxed . snd) planned)]
       statics = Data.SortedMap.toList (foldl mergeLeft boxing (mapMaybe bodyStatics vmdefs))
-  pure (program forms shapes (fromList (serviceBindings {enc} platform)) entryPlan others (mapMaybe ready statics))
+  pure (program forms shapes (fromList (Linkage.OSService.serviceBindings {enc} platform)) entryPlan others (mapMaybe ready statics))
   where
     -- A service's function, of the service's signature, if a form calls it.
-    implemented : OSService enc -> Either String ()
-    implemented s = case serviceFunction platform s of
+    implemented : Linkage.OSService enc -> Either String ()
+    implemented s = case Linkage.OSService.serviceFunction platform s of
       Nothing => Left ("the platform " ++ show platform ++ " has no OS services")
       Just f => case find (\fd => fd.name == f) forms of
         Nothing => Right ()
         Just fd =>
-          let rs = tys {enc} fd.result
-              ps = tys {enc} (paramsLayout fd.params)
+          let rs = LowerFlat.tys {enc} fd.result
+              ps = LowerFlat.tys {enc} (LowerFlat.paramsLayout fd.params)
           in if rs == s.results && ps == s.params then Right ()
              else Left (show f ++ ", the service " ++ s.service ++ " on " ++ show platform
                         ++ ", has the signature " ++ show ps ++ " -> " ++ show rs
@@ -1287,24 +1287,24 @@ lowerProgram enc platform forms shapes vmdefs = do
       case find (\fd => fd.name == r.name) forms of
         Nothing => Left ("the runtime has no routine " ++ show r.name ++ ", which generated code calls")
         Just fd =>
-          let rs = tys {enc} fd.result
-              ps = tys {enc} (paramsLayout fd.params)
+          let rs = LowerFlat.tys {enc} fd.result
+              ps = LowerFlat.tys {enc} (LowerFlat.paramsLayout fd.params)
           in if rs == r.results && ps == r.params then Right ()
              else Left ("the runtime's " ++ show r.name ++ " has the signature "
                         ++ show ps ++ " -> " ++ show rs
                         ++ ", but generated code calls it as "
                         ++ show r.params ++ " -> " ++ show r.results)
 
-    byName : SortedMap Name FlatDef
+    byName : SortedMap Name Flat.Exp.FlatDef
     byName = fromList [(fd.name, fd) | fd <- forms]
 
     boundForeign : (Name, VMDef) -> Maybe (Name, List CFType, CFType)
-    boundForeign (n, MkVMForeign _ fargs ret) = if elem n (map fst (foreignFunctions enc)) then Just (n, fargs, ret) else Nothing
+    boundForeign (n, MkVMForeign _ fargs ret) = if elem n (map fst (Linkage.ForeignFunctions.foreignFunctions enc)) then Just (n, fargs, ret) else Nothing
     boundForeign _ = Nothing
 
     -- A foreign function and its implementation, position by position.
     agrees : (Name, List CFType, CFType) -> Either String ()
-    agrees (n, fargs, ret) = case Data.List.lookup n (foreignFunctions enc) >>= \f => lookup f byName of
+    agrees (n, fargs, ret) = case Data.List.lookup n (Linkage.ForeignFunctions.foreignFunctions enc) >>= \f => lookup f byName of
       Nothing => Left ("the runtime has no function that implements " ++ show n)
       Just fd =>
         if length fd.params == length fargs
@@ -1320,36 +1320,36 @@ lowerProgram enc platform forms shapes vmdefs = do
     -- A foreign function's is its implementation's.
     boundaryOf : Name -> Nat -> Maybe Plan
     boundaryOf n arity = do
-      fd <- lookup n byName <|> (Data.List.lookup n (foreignFunctions enc) >>= \f => lookup f byName)
+      fd <- lookup n byName <|> (Data.List.lookup n (Linkage.ForeignFunctions.foreignFunctions enc) >>= \f => lookup f byName)
       guard (length fd.params == arity)
-      ss <- traverse (shapeOf shapes . skeleton) fd.params
-      r <- shapeOf shapes fd.resultSkeleton
-      guard (map shapeLayout ss == map layout fd.params && shapeLayout r == fd.result)
+      ss <- traverse (Flat.Exp.shapeOf shapes . skeleton) fd.params
+      r <- Flat.Exp.shapeOf shapes fd.resultSkeleton
+      guard (map Flat.Exp.shapeLayout ss == map layout fd.params && Flat.Exp.shapeLayout r == fd.result)
       pure (Boundary arity fd ss r)
 
     ||| The ids of the constructors of no fields that ordinary code represents
     ||| as objects, in a shape: the statics boxing a value of it may need.
-    nullaries : Shape -> Builder Int
-    nullaries (PrimShape _) = neutral
-    nullaries UniformShape = neutral
-    nullaries (DataShape cs) = concatMap con cs
+    nullaries : Flat.Exp.Shape -> Data.Builder Int
+    nullaries (Flat.Exp.PrimShape _) = neutral
+    nullaries Flat.Exp.UniformShape = neutral
+    nullaries (Flat.Exp.DataShape cs) = concatMap con cs
       where
-        con : ConShape -> Builder Int
+        con : Flat.Exp.ConShape -> Data.Builder Int
         con c = (case (c.ordinary, c.fields) of
-                   (AsObject cid, []) => single cid
+                   (Flat.Exp.AsObject cid, []) => Data.Builder.single cid
                    _ => neutral) <+> concatMap nullaries c.fields
 
     -- The nullary constructors a boundary may box.
-    boxed : Plan -> Builder Int
+    boxed : Plan -> Data.Builder Int
     boxed (Boundary _ _ ss r) = concatMap nullaries (r :: ss)
     boxed _ = neutral
 
-    plan : (Name, VMDef) -> Maybe (Sig enc, Plan)
+    plan : (Name, VMDef) -> Maybe (TermIR.Sig enc, Plan)
     plan (n, MkVMFun args body) =
-      Just (MkSig n CPS (replicate (length args) Val) False,
+      Just (TermIR.Sig.MkSig n IRCommon.Conv.CPS (replicate (length args) IRCommon.Ty.Val) False,
             fromMaybe (FromVM args body) (boundaryOf n (length args)))
     plan (n, MkVMForeign _ fargs _) =
-      Just (MkSig n CPS (replicate (length fargs) Val) False,
+      Just (TermIR.Sig.MkSig n IRCommon.Conv.CPS (replicate (length fargs) IRCommon.Ty.Val) False,
             fromMaybe (Foreign (length fargs)) (boundaryOf n (length fargs)))
     plan (n, MkVMError _) = Nothing
 
@@ -1364,8 +1364,8 @@ lowerProgram enc platform forms shapes vmdefs = do
         plan : Constant -> Maybe (Name, StaticPlan)
         plan k = case intConst k of
           Just (Wide _, v) => let p = patternValue v in
-                              if inFixnumRange p then Nothing else Just (int64Static p, Boxed p)
-          Just (Unbounded, v) => if inFixnumRange v then Nothing else Just (bignumStatic v, Big v)
+                              if HeapObject.ValEnc.inFixnumRange p then Nothing else Just (int64Static p, Boxed p)
+          Just (Unbounded, v) => if HeapObject.ValEnc.inFixnumRange v then Nothing else Just (bignumStatic v, Big v)
           _ => case k of
             Str s => Just (stringStatic s, Text s)
             _ => Nothing
@@ -1406,25 +1406,25 @@ lowerProgram enc platform forms shapes vmdefs = do
     bodyStatics (_, MkVMFun _ body) = Just (staticsOf body)
     bodyStatics _ = Nothing
 
-    ready : (Name, StaticPlan) -> Maybe (s ** ({0 d : Decls enc} -> StaticDef d s))
-    ready (n, Nullary c) = case choose (wellFormed (ConH {enc} (cast c) 0)) of
-      Left ok => Just (MkStaticSig n CON ** MkStaticDef (ConH (cast c) 0) [])
+    ready : (Name, StaticPlan) -> Maybe (s ** ({0 d : TermIR.Decls enc} -> TermIR.StaticDef d s))
+    ready (n, Nullary c) = case choose (TermIR.FieldTys.wellFormed (HeapObject.Header.ConH {enc} (cast c) 0)) of
+      Left ok => Just (TermIR.StaticSig.MkStaticSig n HeapObject.Kind.CON ** TermIR.StaticDef.MkStaticDef (HeapObject.Header.ConH (cast c) 0) [])
       Right _ => Nothing
-    ready (n, Boxed p) = Just (MkStaticSig n INT64 ** MkStaticDef Int64H [SWord (cast p)])
-    ready (n, Big v) = case signInHeader enc.bignum of
-      Just sh => bigStatic n v sh (magnitudeWords (abs v))
+    ready (n, Boxed p) = Just (TermIR.StaticSig.MkStaticSig n HeapObject.Kind.INT64 ** TermIR.StaticDef.MkStaticDef HeapObject.Header.Int64H [TermIR.StaticDef.SWord (cast p)])
+    ready (n, Big v) = case HeapObject.BignumEnc.signInHeader enc.bignum of
+      Just sh => bigStatic n v sh (HeapObject.BignumEnc.magnitudeWords (abs v))
       Nothing => Nothing
       where
         ||| A static object's declaration and definition, if its header can hold
         ||| it. Its words name nothing, so it is defined for any declarations.
         -- A big constant's static: a header of its sign and words.
-        bigStatic : Name -> Integer -> (sh : SignInHeader enc.bignum) -> (ws : List Int64) ->
-                    Maybe (s' ** ({0 d : Decls enc} -> StaticDef d s'))
-        bigStatic n v sh ws = case choose (wellFormed (BignumH {enc} @{sh} (v < 0) (length ws))) of
-          Left ok => Just (MkStaticSig n BIGNUM ** MkStaticDef (BignumH @{sh} (v < 0) (length ws)) (map SWord (fromList ws)))
+        bigStatic : Name -> Integer -> (sh : HeapObject.BignumEnc.SignInHeader enc.bignum) -> (ws : List Int64) ->
+                    Maybe (s' ** ({0 d : TermIR.Decls enc} -> TermIR.StaticDef d s'))
+        bigStatic n v sh ws = case choose (TermIR.FieldTys.wellFormed (HeapObject.Header.BignumH {enc} @{sh} (v < 0) (length ws))) of
+          Left ok => Just (TermIR.StaticSig.MkStaticSig n HeapObject.Kind.BIGNUM ** TermIR.StaticDef.MkStaticDef (HeapObject.Header.BignumH @{sh} (v < 0) (length ws)) (map TermIR.StaticDef.SWord (fromList ws)))
           Right _ => Nothing
     ready (n, Text s) = do
-      (h ** ws) <- literal enc s
-      case choose (wellFormed h) of
-        Left ok => Just (MkStaticSig n STRING ** MkStaticDef h (map SWord ws))
+      (h ** ws) <- Strings.literal enc s
+      case choose (TermIR.FieldTys.wellFormed h) of
+        Left ok => Just (TermIR.StaticSig.MkStaticSig n HeapObject.Kind.STRING ** TermIR.StaticDef.MkStaticDef h (map TermIR.StaticDef.SWord ws))
         Right _ => Nothing

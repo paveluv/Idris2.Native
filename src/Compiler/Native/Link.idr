@@ -6,10 +6,10 @@ module Compiler.Native.Link
 
 import Compiler.Native.Bytes
 import Compiler.Native.ELF
-import Compiler.Native.HeapObject.Enc
+import Compiler.Native.HeapObject.Enc as HeapObject
 import Compiler.Native.HeapObject.ValEnc
-import Compiler.Native.Linkage.Areas
-import Compiler.Native.Linkage.Sym
+import Compiler.Native.Linkage.Areas as Linkage
+import Compiler.Native.Linkage.Sym as Linkage
 import Compiler.Native.Platform
 import Compiler.Native.Seed
 import Compiler.Native.X86.Asm
@@ -32,30 +32,30 @@ import Data.SortedMap
 ||| 8-aligned, at its label. Fails with what it could not assemble: labels it
 ||| could not resolve, and fields that do not fit.
 export
-linkProgram : (enc : Enc) -> {auto 0 _ : HasFixnums enc.val} ->
-              (window : Int) -> (areas : Areas) -> (program : List Instr) ->
-              (rodata : List (Label, List Bits8)) -> Either (List AsmProblem) Image
+linkProgram : (enc : HeapObject.Enc) -> {auto 0 _ : HeapObject.ValEnc.HasFixnums enc.val} ->
+              (window : Int) -> (areas : Linkage.Areas) -> (program : List X86.Asm.Instr) ->
+              (rodata : List (X86.Asm.Label, List Bits8)) -> Either (List X86.Encode.AsmProblem) ELF.Image
 linkProgram enc window areas program items =
-  let text = seedText enc window ++ program
-      tl = layout textBase text
-      ts = codeSize textBase text
-      (seedData, rsyms) = seedRodata tl
-      rodata = foldl (\b, (_, item) => b <>< pad8 item) ([<] <>< seedData) items
+  let text = Seed.seedText enc window ++ program
+      tl = X86.Encode.layout ELF.textBase text
+      ts = X86.Encode.codeSize ELF.textBase text
+      (seedData, rsyms) = Seed.seedRodata tl
+      rodata = foldl (\b, (_, item) => b <>< Bytes.pad8 item) ([<] <>< seedData) items
       offsets = offsetsFrom (cast (length seedData)) items
-      as = maxAreas seedAreas areas
-      lay = planLayout ts (byteCount rodata) (seedBssSize as)
-      env = fromList (map (\(s, off) => (symLabel s, rodataBase lay + off)) rsyms
-                   ++ map (\(s, off) => (symLabel s, bssBase lay + off)) (seedBss as)
+      as = Linkage.Areas.maxAreas Seed.seedAreas areas
+      lay = ELF.planLayout ts (Bytes.byteCount rodata) (Seed.seedBssSize as)
+      env = fromList (map (\(s, off) => (Linkage.Sym.symLabel s, rodataBase lay + off)) rsyms
+                   ++ map (\(s, off) => (Linkage.Sym.symLabel s, bssBase lay + off)) (Seed.seedBss as)
                    ++ map (\(l, off) => (l, rodataBase lay + off)) offsets)
-      (bytes, labels, problems) = assembleWith env textBase text
-      entry = fromMaybe textBase (lookup (symLabel SymStart) labels)
-  in if null problems then Right (elfImage X86_64 lay bytes rodata (seedBssSize as) entry)
+      (bytes, labels, problems) = X86.Encode.assembleWith env ELF.textBase text
+      entry = fromMaybe ELF.textBase (lookup (Linkage.Sym.symLabel Linkage.Sym.SymStart) labels)
+  in if null problems then Right (ELF.elfImage Platform.X86_64 lay bytes rodata (Seed.seedBssSize as) entry)
                       else Left problems
   where
     -- each item's label at its offset, the items laid end to end from `at`
-    offsetsFrom : Int -> List (Label, List Bits8) -> List (Label, Int)
+    offsetsFrom : Int -> List (X86.Asm.Label, List Bits8) -> List (X86.Asm.Label, Int)
     offsetsFrom _ [] = []
-    offsetsFrom at ((l, item) :: rest) = (l, at) :: offsetsFrom (at + cast (length (pad8 item))) rest
+    offsetsFrom at ((l, item) :: rest) = (l, at) :: offsetsFrom (at + cast (length (Bytes.pad8 item))) rest
 
 ||| The default allocation window: 4 MiB, the bytes the inline bump may
 ||| allocate before the runtime's slow path runs, which extends the window
@@ -68,12 +68,12 @@ windowBytes = 4 * 1024 * 1024
 ||| `linkProgram` for a program that uses no per-thread area beyond the
 ||| seed's, with no read-only data of its own.
 export
-linkWith : (enc : Enc) -> {auto 0 _ : HasFixnums enc.val} ->
-           (window : Int) -> (program : List Instr) -> Either (List AsmProblem) Image
-linkWith enc window program = linkProgram enc window seedAreas program []
+linkWith : (enc : HeapObject.Enc) -> {auto 0 _ : HeapObject.ValEnc.HasFixnums enc.val} ->
+           (window : Int) -> (program : List X86.Asm.Instr) -> Either (List X86.Encode.AsmProblem) ELF.Image
+linkWith enc window program = linkProgram enc window Seed.seedAreas program []
 
 ||| `linkWith` the default window.
 export
-link : (enc : Enc) -> {auto 0 _ : HasFixnums enc.val} ->
-       (program : List Instr) -> Either (List AsmProblem) Image
+link : (enc : HeapObject.Enc) -> {auto 0 _ : HeapObject.ValEnc.HasFixnums enc.val} ->
+       (program : List X86.Asm.Instr) -> Either (List X86.Encode.AsmProblem) ELF.Image
 link enc = linkWith enc windowBytes

@@ -4,9 +4,9 @@
 ||| is).
 module Compiler.Native.LocatedIR.Static
 
-import Compiler.Native.HeapObject.Enc
-import Compiler.Native.HeapObject.Header
-import Compiler.Native.HeapObject.Kind
+import Compiler.Native.HeapObject.Enc as HeapObject
+import Compiler.Native.HeapObject.Header as HeapObject
+import Compiler.Native.HeapObject.Kind as HeapObject
 import Core.Name
 
 %default total
@@ -30,9 +30,9 @@ data SField
 ||| header. A static never points into a collected space, which lets the
 ||| collector recognise statics by address alone and leave them untouched.
 public export
-record Static (enc : Enc) where
+record Static (enc : HeapObject.Enc) where
   constructor MkStatic
   sym : Name
-  kind : Kind
-  header : Header enc kind
+  kind : HeapObject.Kind
+  header : HeapObject.Header enc kind
   fields : List SField

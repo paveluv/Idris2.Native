@@ -28,9 +28,9 @@ main = do
   cgs <- getEnv "IDRIS2_INC_CGS"
   ignore (setEnv "IDRIS2_INC_CGS" (incremental cgs) True)
   mainWithCodegens [ ("chez", codegenChez)
-                   , ("native", codegenNative)
-                   , ("flat-oracle", codegenFlatOracle)
-                   , ("flat-check", codegenFlatCheck) ]
+                   , ("native", Compiler.Native.Native.codegenNative)
+                   , ("flat-oracle", Flat.Oracle.codegenFlatOracle)
+                   , ("flat-check", Flat.Check.codegenFlatCheck) ]
   where
     ||| The incremental code generators the environment names, and `flat-check`.
     incremental : Maybe String -> String

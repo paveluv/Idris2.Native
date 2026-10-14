@@ -3,7 +3,7 @@
 ||| Part of the term IR (`Compiler.Native.TermIR.Program` says what it is).
 module Compiler.Native.TermIR.StaticSig
 
-import Compiler.Native.HeapObject.Kind
+import Compiler.Native.HeapObject.Kind as HeapObject
 import Core.Name
 
 %default total
@@ -13,4 +13,4 @@ public export
 record StaticSig where
   constructor MkStaticSig
   sym : Name
-  kind : Kind
+  kind : HeapObject.Kind

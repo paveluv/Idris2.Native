@@ -55,6 +55,7 @@ import Lint.Refactor.MergeClauses
 import Lint.Refactor.OrderImports
 import Lint.Refactor.Project
 import Lint.Refactor.PruneImports
+import Lint.Refactor.QualifyNames
 import Lint.Refactor.Refactoring
 import Lint.Refactor.RemoveUnused
 import Lint.Refactor.ScopeHelpers
@@ -72,6 +73,7 @@ import Data.Either
 import Data.IORef
 import Data.List
 import Data.Maybe
+import Data.SortedMap
 import Data.SortedSet
 import Data.String
 import Data.Zippable
@@ -204,9 +206,10 @@ main = do
             Just (Left problems) => problems
             Just (Right r) => resolvedRules fdms programNames r
           ours = the (SortedSet String) (fromList (map (\f => show f.mod.moduleNS) fs))
-          aliases = joined (map (\(f, _, ms) => importAlias ours f ms.refs) fdms)
+          exportsOf = the (SortedMap String (List String)) (fromList [ (show f.mod.moduleNS, joined (map (.visible) ds)) | (f, ds) <- fds ])
+          aliases = joined (map (\(f, _, ms) => importAlias exportsOf f ms.refs) fdms)
           all = joined (map (\(f, ds, ms) => fileRules f ms ds) fdms) ++ joined (map programRules ps) ++ graphRules fs ++ sameName fds
-                ++ parentUnique fs ++ aliases ++ joined (map exclusionRules fs) ++ resolved
+                ++ aliases ++ joined (map exclusionRules fs) ++ resolved
       in sort (foldl (\acc, f => suppress f acc) all (fs ++ ps))
       where
         ||| The findings a file's suppressions leave, and the findings about the
@@ -262,17 +265,23 @@ main = do
     ||| those that take them read: `split-module` the module to make and the
     ||| concepts to move to it.
     refactorings : List String -> List Refactoring
-    refactorings args = [joinModules args, mergeClauses, orderImports, pruneImports, removeUnused, scopeHelpers, splitModule args]
+    refactorings args = [joinModules args, mergeClauses, orderImports, pruneImports, qualifyNames, removeUnused, scopeHelpers, splitModule args]
 
     ||| The files of a run parsed once, and again only after a change: a wide
     ||| refactoring asks for them at every file it looks at.
-    projectOnce : IORef (Maybe Project) -> (roots, paths : List String) -> IO Project
-    projectOnce cache roots paths = do
+    projectOnce : IORef (Maybe Project) -> (roots, paths : List String) -> Maybe Resolution -> IO Project
+    projectOnce cache roots paths res = do
       Nothing <- readIORef cache
         | Just p => pure p
-      p <- loadProject roots paths
+      p <- loadProject roots paths res
       writeIORef cache (Just p)
       pure p
+
+    ||| What the files' modules use, resolved, if their TTCs can be read.
+    resolvedFrom : List String -> IO (Maybe Resolution)
+    resolvedFrom paths = do
+      fs <- rights <$> traverse parse paths
+      either (const Nothing) Just <$> resolve fs
 
     ||| The refactoring run over every file under the paths, each to a fixed
     ||| point, with what it changed and what stays printed unless `quiet`.
@@ -280,8 +289,11 @@ main = do
     runRefactoring quiet dryRun check r roots = do
       paths <- joined <$> traverse files roots
       cache <- newIORef Nothing
+      -- what the modules use, read once from the TTCs built before the run,
+      -- which its changes leave behind
+      res <- if r.wide then resolvedFrom paths else pure Nothing
       for_ paths $ \p => do
-        rep <- refactor dryRun check r (projectOnce cache roots paths) (writeIORef cache Nothing) p
+        rep <- refactor dryRun check r (projectOnce cache roots paths res) (writeIORef cache Nothing) p
         when (not quiet || not (null rep.changed)) $
           when (not (null rep.changed) || not (null rep.stays)) $ do
             putStrLn (p ++ ": " ++ show (length rep.changed) ++ " changed, " ++ show (length rep.stays) ++ " stay")

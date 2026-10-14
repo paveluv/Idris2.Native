@@ -12,7 +12,7 @@ module Runtime.State
 import Runtime.Heap
 import Runtime.Memory
 
-import Compiler.Native.HeapObject.Kind
+import Compiler.Native.HeapObject.Kind as Compiler.Native.HeapObject
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
@@ -59,20 +59,20 @@ scratchBytes = 8 * 16
 
 ||| The word of the state.
 export
-getState : State -> Op Heap Bits64
+getState : State -> Heap.Op Heap Bits64
 getState i = do
-  rt <- runtimeArea
-  loadAt rt (8 * i)
+  rt <- Memory.runtimeArea
+  Memory.loadAt rt (8 * i)
 
 export
-setState : State -> Bits64 -> Op Heap ()
+setState : State -> Bits64 -> Heap.Op Heap ()
 setState i v = do
-  rt <- runtimeArea
-  storeAt rt (8 * i) v
+  rt <- Memory.runtimeArea
+  Memory.storeAt rt (8 * i) v
 
 ||| The address of the scratch bytes.
 export
-scratchArea : Op Heap (Addr k)
+scratchArea : Heap.Op Heap (Memory.Addr k)
 scratchArea = do
-  rt <- runtimeArea
-  pure (fromWord (rt + scratchBytes))
+  rt <- Memory.runtimeArea
+  Heap.pure (Memory.fromWord (rt + scratchBytes))

@@ -49,10 +49,10 @@ import Compiler.Native.TermIR.StaticDef
 import Compiler.Native.TermIR.StaticSig
 import Compiler.Native.TermIR.Var
 
-import Compiler.Native.HeapObject.Enc
-import Compiler.Native.IRCommon.ConIds
+import Compiler.Native.HeapObject.Enc as HeapObject
+import Compiler.Native.IRCommon.ConIds as IRCommon
 import Compiler.Native.IRCommon.Conv
-import Compiler.Native.IRCommon.Ty
+import Compiler.Native.IRCommon.Ty as IRCommon
 import Core.Name
 import Data.Distinct
 import Data.List.Quantifiers
@@ -63,16 +63,16 @@ import Data.So
 ||| The entry: a CPS function of the program, of no parameters.
 public export
 data Entry : Decls enc -> Type where
-  MkEntry : Var d.sigs (MkSig n CPS [] cv) -> Entry d
+  MkEntry : Var d.sigs (Sig.MkSig n IRCommon.Conv.CPS [] cv) -> Entry d
 
 ||| A program: a definition for every function and static, under distinct
 ||| names, its entry, and the link-time numbering of its constructors.
 public export
-data Program : (enc : Enc) -> Decls enc -> Type where
+data Program : (enc : HeapObject.Enc) -> Decls enc -> Type where
   MkProgram : {auto 0 names : So (distinct (map (.name) d.sigs) && distinct (map (.sym) d.statics))} ->
-              All (Def d) d.sigs -> All (StaticDef d) d.statics -> Entry d -> ConIds -> Program enc d
+              All (Def d) d.sigs -> All (StaticDef d) d.statics -> Entry d -> IRCommon.ConIds -> Program enc d
 
 ||| A program with its declarations, as a producer hands it on.
 public export
-TermProgram : Enc -> Type
+TermProgram : HeapObject.Enc -> Type
 TermProgram enc = (d : Decls enc ** Program enc d)

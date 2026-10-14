@@ -9,7 +9,7 @@ import Compiler.Native.LocatedIR.Label
 import Compiler.Native.LocatedIR.Reg
 import Compiler.Native.LocatedIR.Terminator
 
-import Compiler.Native.HeapObject.Enc
+import Compiler.Native.HeapObject.Enc as HeapObject
 
 %default total
 
@@ -18,7 +18,7 @@ import Compiler.Native.HeapObject.Enc
 ||| receives; they do not define registers. Every other block reads the
 ||| registers set before it.
 public export
-record Block (enc : Enc) where
+record Block (enc : HeapObject.Enc) where
   constructor MkBlock
   label : Label
   params : List (Reg enc)

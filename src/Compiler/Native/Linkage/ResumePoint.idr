@@ -12,5 +12,5 @@ import Data.List
 ||| A 16-aligned code label preceded by its layout word, as every resume
 ||| point and `idris_halt` need: pad to 8 mod 16, the word, the label.
 export
-resumePoint : Label -> (layout : Integer) -> List Instr
-resumePoint l w = [Align 16, Bytes (replicate 8 0xCC), Quad w, Lbl l]
+resumePoint : X86.Asm.Label -> (layout : Integer) -> List X86.Asm.Instr
+resumePoint l w = [X86.Asm.Align 16, X86.Asm.Bytes (replicate 8 0xCC), X86.Asm.Quad w, X86.Asm.Lbl l]

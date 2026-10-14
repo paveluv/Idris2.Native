@@ -9,14 +9,14 @@ import Compiler.Native.LocatedIR.Mem
 import Compiler.Native.LocatedIR.Opnd
 import Compiler.Native.LocatedIR.Reg
 
-import Compiler.Native.HeapObject.Enc
-import Compiler.Native.HeapObject.Header
-import Compiler.Native.HeapObject.Kind
+import Compiler.Native.HeapObject.Enc as HeapObject
+import Compiler.Native.HeapObject.Header as HeapObject
+import Compiler.Native.HeapObject.Kind as HeapObject
 import Compiler.Native.HeapObject.ValEnc
-import Compiler.Native.IRCommon.Area
-import Compiler.Native.IRCommon.Intrinsic
+import Compiler.Native.IRCommon.Area as IRCommon
+import Compiler.Native.IRCommon.Intrinsic as IRCommon
 import Compiler.Native.IRCommon.Operators
-import Compiler.Native.IRCommon.Ty
+import Compiler.Native.IRCommon.Ty as IRCommon
 import Core.FC
 import Core.Name
 
@@ -26,7 +26,7 @@ import Core.Name
 ||| which comes first. The types stated here are the term's
 ||| (`Compiler.Native.TermIR.Program`), which the conversion keeps.
 public export
-data Instr : Enc -> Type where
+data Instr : HeapObject.Enc -> Type where
   ||| A constant, into a `W64`, a `Val` or a `Fix`. Into a `W64` it is the
   ||| word itself. Into a `Val` or a `Fix` it is the integer, and the
   ||| rendering turns it into the value encoding's word (`valWord` in
@@ -43,60 +43,60 @@ data Instr : Enc -> Type where
   ||| `PtrTo k` of the static's kind.
   StaticAddr : Reg enc -> Name -> Instr enc
   ||| The address of a per-thread area, into a `W64`.
-  AreaAddr   : Reg enc -> Area -> Instr enc
+  AreaAddr   : Reg enc -> IRCommon.Area -> Instr enc
   ||| Integer arithmetic: the operands and the result are all `W64`s, or all
   ||| `Fix`es. On `Fix`es it is the operation on the fixnums' values, which
   ||| the producer guarantees is in the fixnum range, and the rendering
   ||| computes it on the words, without untagging where the value encoding has
   ||| an identity for it. There is no arithmetic on `Val`s: a `Val` is narrowed
   ||| to a `Fix` first.
-  Arith      : ArithOp -> Reg enc -> Opnd enc -> Opnd enc -> Instr enc
+  Arith      : IRCommon.Operators.ArithOp -> Reg enc -> Opnd enc -> Opnd enc -> Instr enc
   ||| Negation or complement of a `W64`.
-  Unary      : UnOp -> Reg enc -> Reg enc -> Instr enc
+  Unary      : IRCommon.Operators.UnOp -> Reg enc -> Reg enc -> Instr enc
   ||| `Add`, `Sub` or `Mul`, with the operand types of `Arith`, then a branch
   ||| to the label if the result does not fit: in 64 signed bits for `W64`s,
   ||| in the fixnum range for `Fix`es, which is the fixnum fast path. The
   ||| label is a successor of the block at this instruction, not at the
   ||| block's end.
-  ArithOv    : ArithOp -> Reg enc -> Opnd enc -> Opnd enc -> Label -> Instr enc
+  ArithOv    : IRCommon.Operators.ArithOp -> Reg enc -> Opnd enc -> Opnd enc -> Label -> Instr enc
   ||| Narrow a `W64` to the width, then sign- or zero-extend it back to 64
   ||| bits.
-  Ext        : SubWord -> (signed : Bool) -> Reg enc -> Reg enc -> Instr enc
+  Ext        : IRCommon.Operators.SubWord -> (signed : Bool) -> Reg enc -> Reg enc -> Instr enc
   ||| Double arithmetic on `F64`s.
-  FArith     : FOp -> Reg enc -> Reg enc -> Reg enc -> Instr enc
+  FArith     : IRCommon.Operators.FOp -> Reg enc -> Reg enc -> Reg enc -> Instr enc
   ||| Double negation.
   FNeg       : Reg enc -> Reg enc -> Instr enc
   ||| Compare two `F64`s; the destination, a `W64`, is 1 or 0.
-  FCmp       : Rel -> Reg enc -> Reg enc -> Reg enc -> Instr enc
+  FCmp       : IRCommon.Operators.Rel -> Reg enc -> Reg enc -> Reg enc -> Instr enc
   ||| Convert between a `W64` and an `F64`.
-  Convert    : ConvOp -> Reg enc -> Reg enc -> Instr enc
+  Convert    : IRCommon.Operators.ConvOp -> Reg enc -> Reg enc -> Instr enc
   ||| Compare two integers; the destination, a `W64`, is 1 or 0. The operands
   ||| are both `W64`s or both `Fix`es, compared as `Rel` says; a comparison
   ||| never makes a value.
-  Cmp        : Rel -> Reg enc -> Opnd enc -> Opnd enc -> Instr enc
+  Cmp        : IRCommon.Operators.Rel -> Reg enc -> Opnd enc -> Opnd enc -> Instr enc
   ||| Load a word of the given type.
-  Load       : Ty enc -> Reg enc -> Mem enc -> Instr enc
+  Load       : IRCommon.Ty enc -> Reg enc -> Mem enc -> Instr enc
   ||| Store a register of the given type.
-  Store      : Ty enc -> Mem enc -> Reg enc -> Instr enc
+  Store      : IRCommon.Ty enc -> Mem enc -> Reg enc -> Instr enc
   ||| Load 8, 16 or 32 bits into a `W64`, zero- or sign-extended: the bytes
   ||| of strings and buffers, the limbs of bignums.
-  LoadN      : SubWord -> (signed : Bool) -> Reg enc -> Mem enc -> Instr enc
+  LoadN      : IRCommon.Operators.SubWord -> (signed : Bool) -> Reg enc -> Mem enc -> Instr enc
   ||| Store the low 8, 16 or 32 bits of a `W64`.
-  StoreN     : SubWord -> Mem enc -> Reg enc -> Instr enc
+  StoreN     : IRCommon.Operators.SubWord -> Mem enc -> Reg enc -> Instr enc
   ||| The fixnum of a `W64`, as a `Fix`. The producer guarantees that the
   ||| value is in the fixnum range.
-  Tag        : {auto 0 fx : HasFixnums enc.val} -> Reg enc -> Reg enc -> Instr enc
+  Tag        : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} -> Reg enc -> Reg enc -> Instr enc
   ||| The value of a `Fix`, as a `W64`.
-  Untag      : {auto 0 fx : HasFixnums enc.val} -> Reg enc -> Reg enc -> Instr enc
+  Untag      : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} -> Reg enc -> Reg enc -> Instr enc
   ||| The fixnum of a `W64`, as a `Fix`, or a branch to the label if the value
   ||| is outside the fixnum range. The label is a successor of the block at
   ||| this instruction, as for `ArithOv`.
-  TagOv      : {auto 0 fx : HasFixnums enc.val} -> Reg enc -> Reg enc -> Label -> Instr enc
+  TagOv      : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} -> Reg enc -> Reg enc -> Label -> Instr enc
   ||| A `Val` as the type given, a `Fix` or a `PtrTo k`, which is the
   ||| destination's. No code: the producer guarantees it, after an `IfFixnums`
   ||| or a `Switch` on a header, or from static typing. The only way from a
   ||| `Val` to a fixnum or a pointer.
-  Narrow     : Ty enc -> Reg enc -> Reg enc -> Instr enc
+  Narrow     : IRCommon.Ty enc -> Reg enc -> Reg enc -> Instr enc
   ||| A `Fix` or a `PtrTo k` as a `Val`. No code.
   Widen      : Reg enc -> Reg enc -> Instr enc
   ||| A `PtrTo k` as a `W64`. No code. Only the functions of the module that
@@ -106,7 +106,7 @@ data Instr : Enc -> Type where
   ||| there is.
   AddrToWord : Reg enc -> Reg enc -> Instr enc
   ||| A `W64` as a `PtrTo k`. No code. Restricted as `AddrToWord` is.
-  WordToAddr : Kind -> Reg enc -> Reg enc -> Instr enc
+  WordToAddr : HeapObject.Kind -> Reg enc -> Reg enc -> Instr enc
   ||| The header word of the object a `PtrTo k` points to, as a `W64`. For a
   ||| `CONT`, which has no header, it is the layout word.
   LoadHeader : Reg enc -> Reg enc -> Instr enc
@@ -114,7 +114,7 @@ data Instr : Enc -> Type where
   ||| the constructor id of a `CON`, for instance. The pointer's kind is the
   ||| part's kind, which the instruction keeps, so that a pass reads it here
   ||| instead of rebuilding it from the part.
-  LoadPart   : {0 k : Kind} -> HeaderPart k -> Reg enc -> Reg enc -> Instr enc
+  LoadPart   : {0 k : HeapObject.Kind} -> HeapObject.Header.HeaderPart k -> Reg enc -> Reg enc -> Instr enc
   ||| A whole object in one step: the destination, a `PtrTo k` of the
   ||| header's kind, becomes a new object with this header and these initial
   ||| fields. Since one instruction makes the whole object, no collection can
@@ -130,7 +130,7 @@ data Instr : Enc -> Type where
   ||| across includes the field registers, because the fields are written
   ||| after the slow path's collection. The rendering may rematerialise a
   ||| static's address instead of saving it.
-  AllocObj   : {k : Kind} -> Reg enc -> Header enc k -> (fields : List (Opnd enc)) ->
+  AllocObj   : {k : HeapObject.Kind} -> Reg enc -> HeapObject.Header enc k -> (fields : List (Opnd enc)) ->
                (live : List (Reg enc)) -> Instr enc
   ||| A whole object whose size is known only at run time: the destination, a
   ||| `PtrTo k`, becomes a new object of the part's kind, whose size part is
@@ -145,7 +145,7 @@ data Instr : Enc -> Type where
   ||| A count that does not fit the part's bits ends the program, as `Crash`
   ||| does. The rendering checks it, so no count can make an object smaller
   ||| than its header claims, a negative `Int` read as a word included.
-  AllocSized : {k : Kind} -> Reg enc -> HeaderPart k -> (count : Reg enc) ->
+  AllocSized : {k : HeapObject.Kind} -> Reg enc -> HeapObject.Header.HeaderPart k -> (count : Reg enc) ->
                (fill : Maybe (Opnd enc)) -> (live : List (Reg enc)) -> Instr enc
   ||| A machine call to a `Direct` function: one of the program's, or a
   ||| routine of the runtime. The registers receive the callee's results, in
@@ -182,8 +182,8 @@ instrName (CodeAddr _ _) = "CodeAddr"
 instrName (StaticAddr _ _) = "StaticAddr"
 instrName (AreaAddr _ _) = "AreaAddr"
 instrName (Arith op _ _ _) = show op
-instrName (Unary Negate _ _) = "Negate"
-instrName (Unary Complement _ _) = "Complement"
+instrName (Unary IRCommon.Operators.Negate _ _) = "Negate"
+instrName (Unary IRCommon.Operators.Complement _ _) = "Complement"
 instrName (ArithOv op _ _ _ _) = show op ++ "Ov"
 instrName (Ext _ _ _ _) = "Ext"
 instrName (FArith op _ _ _) = show op

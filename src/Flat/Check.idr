@@ -36,5 +36,5 @@ codegenFlatCheck = MkCG compileExpr executeExpr (Just check) Nothing
 
     check : Ref Ctxt Defs -> Ref Syn SyntaxInfo -> (sourceFile : String) -> Core (Maybe (String, List String))
     check c s sourceFile
-        = do checkModule sourceFile
+        = do Marked.checkModule sourceFile
              pure (Just (sourceFile, []))

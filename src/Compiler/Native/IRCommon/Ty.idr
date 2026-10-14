@@ -8,8 +8,8 @@
 ||| instructions and terminators share their names with the term IR's.
 module Compiler.Native.IRCommon.Ty
 
-import Compiler.Native.HeapObject.Enc
-import Compiler.Native.HeapObject.Kind
+import Compiler.Native.HeapObject.Enc as HeapObject
+import Compiler.Native.HeapObject.Kind as HeapObject
 import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.Target
 import Decidable.Equality.Core
@@ -38,7 +38,7 @@ import Decidable.Equality.Core
 ||| points to nothing. This distinction is what the rooting stubs and the
 ||| continuations' live sets are derived from.
 public export
-data Ty : Enc -> Type where
+data Ty : HeapObject.Enc -> Type where
   ||| A raw 64-bit word: integers of every width, with narrowing explicit
   ||| (`Ext`), and addresses and header words.
   W64 : Ty enc
@@ -52,10 +52,10 @@ data Ty : Enc -> Type where
   ||| type.
   ||| Integer arithmetic, comparisons and switches take `Fix`es and mean the
   ||| fixnums' values, which the renderings compute on the words.
-  Fix : {auto 0 fx : HasFixnums enc.val} -> Ty enc
+  Fix : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} -> Ty enc
   ||| A pointer to an object of the kind: the same word as a `Val` that
   ||| points to it.
-  PtrTo : Kind -> Ty enc
+  PtrTo : HeapObject.Kind -> Ty enc
 
 public export
 Eq (Ty enc) where
@@ -72,7 +72,7 @@ DecEq (Ty enc) where
   decEq W64 W64 = Yes Refl
   decEq F64 F64 = Yes Refl
   decEq Val Val = Yes Refl
-  decEq (Fix {fx = p}) (Fix {fx = q}) = Yes (rewrite fixnumsUnique p q in Refl)
+  decEq (Fix {fx = p}) (Fix {fx = q}) = Yes (rewrite HeapObject.ValEnc.fixnumsUnique p q in Refl)
   decEq (PtrTo a) (PtrTo b) = case decEq a b of
     Yes Refl => Yes Refl
     No c => No (\Refl => c Refl)
@@ -107,9 +107,9 @@ Show (Ty enc) where
 
 ||| The register class a value of the type crosses a call boundary in.
 public export
-classOf : Ty enc -> RegClass
-classOf F64 = FloatClass
-classOf _ = WordClass
+classOf : Ty enc -> Target.RegClass
+classOf F64 = Target.FloatClass
+classOf _ = Target.WordClass
 
 ||| Whether the collector must find, and may move, what a register holds.
 export

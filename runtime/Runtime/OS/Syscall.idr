@@ -11,8 +11,8 @@ import Runtime.Heap
 
 ||| A system call: its number and six arguments in, its result out, by the
 ||| architecture's and the operating system's convention.
-%extern prim__syscall6 : (n, a1, a2, a3, a4, a5, a6 : Bits64) -> (1 m : Heap) -> Ret Heap Bits64
+%extern prim__syscall6 : (n, a1, a2, a3, a4, a5, a6 : Bits64) -> (1 m : Heap) -> Heap.Ret Heap Bits64
 
 export %inline
-syscall : (n, a1, a2, a3, a4, a5, a6 : Bits64) -> Op Heap Bits64
+syscall : (n, a1, a2, a3, a4, a5, a6 : Bits64) -> Heap.Op Heap Bits64
 syscall = prim__syscall6

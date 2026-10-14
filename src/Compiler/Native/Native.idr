@@ -17,24 +17,24 @@
 module Compiler.Native.Native
 
 import Compiler.Native.ELF
-import Compiler.Native.HeapObject.BignumEnc
-import Compiler.Native.HeapObject.Enc
-import Compiler.Native.HeapObject.StringEnc
+import Compiler.Native.HeapObject.BignumEnc as HeapObject
+import Compiler.Native.HeapObject.Enc as HeapObject
+import Compiler.Native.HeapObject.StringEnc as HeapObject
 import Compiler.Native.HeapObject.ValEnc
-import Compiler.Native.IRCommon.Ty
+import Compiler.Native.IRCommon.Ty as IRCommon
 import Compiler.Native.Link
 import Compiler.Native.Linkage.ForeignFunctions
 import Compiler.Native.Linkage.InlineExtern
-import Compiler.Native.Linkage.OSService
-import Compiler.Native.Linkage.Routine
+import Compiler.Native.Linkage.OSService as Linkage
+import Compiler.Native.Linkage.Routine as Linkage
 import Compiler.Native.LocatedIR.Dump
-import Compiler.Native.LocatedIR.Program
+import Compiler.Native.LocatedIR.Program as LocatedIR
 import Compiler.Native.Lower
 import Compiler.Native.LowerFlat
 import Compiler.Native.Platform
 import Compiler.Native.RegAlloc
-import Compiler.Native.TermIR.Decls
-import Compiler.Native.TermIR.Program
+import Compiler.Native.TermIR.Decls as TermIR
+import Compiler.Native.TermIR.Program as TermIR
 import Compiler.Native.X86.Asm
 import Compiler.Native.X86.Encode
 import Compiler.Native.X86.Render
@@ -59,7 +59,7 @@ import Core.TT.Binder
 import Core.TT.Term
 import Core.UnifyState
 import Core.Value
-import Data.Builder
+import Data.Builder as Data
 import Data.List
 import Data.List1
 import Data.Maybe
@@ -118,7 +118,7 @@ record Settings where
   dumpIr : Maybe String
   dumpAsm : Maybe String
   dumpForeign : Maybe String
-  encodings : Enc
+  encodings : HeapObject.Enc
   platform : Platform
 
 export
@@ -129,9 +129,9 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
                   (tmpDir : String) -> (outputDir : String) ->
                   ClosedTerm -> (outfile : String) -> Core (Maybe String)
     compileExpr c s _ outputDir tm outfile = do
-      Right settings <- parseSettings <$> getDirectives markingCG
+      Right settings <- parseSettings <$> getDirectives Flat.Marked.markingCG
         | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
-      Just table <- phase "the runtime loaded" (markedForms (loadRuntime settings.platform settings.encodings))
+      Just table <- phase "the runtime loaded" (Flat.Marked.markedForms (loadRuntime settings.platform settings.encodings))
         | Nothing => pure Nothing
       [] <- phase "the contract checked" (checkExterns settings.encodings)
         | errs => throw (GenericMsg EmptyFC ("native: " ++ fastConcat (intersperse "\n" errs)))
@@ -139,17 +139,17 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
       whenJust settings.dumpForeign $ \f => dumpForeign settings.encodings f
       cdata <- phase "Idris's passes" (getCompileData False VMCode tm)
       image <- case settings.encodings of
-        MkEnc FixnumTag1 b s => pipeline (MkEnc FixnumTag1 b s) settings table (vmcode cdata)
-        MkEnc FixnumTag0 b s => pipeline (MkEnc FixnumTag0 b s) settings table (vmcode cdata)
-        MkEnc NoFixnums _ _ => throw (GenericMsg EmptyFC "native: the encoding nofixnums is not implemented")
+        HeapObject.Enc.MkEnc HeapObject.ValEnc.FixnumTag1 b s => pipeline (HeapObject.Enc.MkEnc HeapObject.ValEnc.FixnumTag1 b s) settings table (vmcode cdata)
+        HeapObject.Enc.MkEnc HeapObject.ValEnc.FixnumTag0 b s => pipeline (HeapObject.Enc.MkEnc HeapObject.ValEnc.FixnumTag0 b s) settings table (vmcode cdata)
+        HeapObject.Enc.MkEnc HeapObject.ValEnc.NoFixnums _ _ => throw (GenericMsg EmptyFC "native: the encoding nofixnums is not implemented")
       coreLift_ $ mkdirAll outputDir
       let outexec = outputDir </> outfile
-      Right () <- phase "the image written" (coreLift (writeImage outexec image))
+      Right () <- phase "the image written" (coreLift (ELF.writeImage outexec image))
         | Left err => throw (FileErr outexec err)
       pure (Just outexec)
       where
         parseSettings : List String -> Either String Settings
-        parseSettings = foldlM setting (MkSettings windowBytes Nothing Nothing Nothing Nothing defaultEnc defaultPlatform)
+        parseSettings = foldlM setting (MkSettings Link.windowBytes Nothing Nothing Nothing Nothing HeapObject.Enc.defaultEnc Platform.defaultPlatform)
           where
             setting : Settings -> String -> Either String Settings
             setting o d = case forget (split (== '=') d) of
@@ -165,15 +165,15 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
               ["dump-ir", path] => Right ({ dumpIr := Just path } o)
               ["dump-asm", path] => Right ({ dumpAsm := Just path } o)
               ["dump-foreign", path] => Right ({ dumpForeign := Just path } o)
-              ["val-encoding", "tag1"] => Right ({ encodings.val := FixnumTag1 } o)
-              ["val-encoding", "tag0"] => Right ({ encodings.val := FixnumTag0 } o)
+              ["val-encoding", "tag1"] => Right ({ encodings.val := HeapObject.ValEnc.FixnumTag1 } o)
+              ["val-encoding", "tag0"] => Right ({ encodings.val := HeapObject.ValEnc.FixnumTag0 } o)
               ["val-encoding", "nofixnums"] => Left "the encoding nofixnums, every integer boxed, is not implemented"
               ["val-encoding", v] => Left ("val-encoding= takes tag1, tag0 or nofixnums, not " ++ show v)
-              ["string-encoding", "utf8"] => Right ({ encodings.string := Utf8 } o)
+              ["string-encoding", "utf8"] => Right ({ encodings.string := HeapObject.StringEnc.Utf8 } o)
               ["string-encoding", "utf32"] => Left "the string encoding utf32 is not implemented"
               ["string-encoding", v] => Left ("string-encoding= takes utf8 or utf32, not " ++ show v)
-              ["target", v] => case parsePlatform v of
-                Just p => if built p then Right ({ platform := p } o)
+              ["target", v] => case Platform.parsePlatform v of
+                Just p => if Platform.built p then Right ({ platform := p } o)
                           else Left ("the target " ++ show p ++ " is not implemented; only x86_64-linux is")
                 Nothing => Left ("target= takes <arch>-<os>, such as x86_64-linux, not " ++ show v)
               _ => Right o
@@ -185,28 +185,28 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
         ||| registers, the token among them taking none, and whose result lays out
         ||| as the declared ones. What differs is reported; one the runtime does not
         ||| declare is not missed.
-        checkExterns : (enc : Enc) -> Core (List String)
+        checkExterns : (enc : HeapObject.Enc) -> Core (List String)
         checkExterns enc
-            = catMaybes <$> traverse one ([(i.name, "an inline extern", i.params, i.results) | i <- inlineExterns {enc}]
-                                          ++ [(serviceExtern s, "an OS service", s.params, s.results) | s <- osServices {enc}])
+            = catMaybes <$> traverse one ([(i.name, "an inline extern", i.params, i.results) | i <- Linkage.InlineExtern.inlineExterns {enc}]
+                                          ++ [(Linkage.OSService.serviceExtern s, "an OS service", s.params, s.results) | s <- Linkage.OSService.osServices {enc}])
           where
             -- the registers of the arguments, then of the result
-            walk : ClosedNF -> Core (Either String (List (Ty enc), List (Ty enc)))
+            walk : ClosedNF -> Core (Either String (List (IRCommon.Ty enc), List (IRCommon.Ty enc)))
             walk (NBind bfc x (Pi _ rig _ aty) sc) = do
               defs <- get Ctxt
               let False = isErased rig
                 | True => walk !(sc defs (toClosure defaultOpts Env.empty (Ref bfc Bound x)))
-              Right (_, lay) <- laidOut !(evalClosure defs aty)
+              Right (_, lay) <- Flat.Translate.laidOut !(evalClosure defs aty)
                 | Left _ => pure (Left ("its argument " ++ show x ++ " is not flat"))
               Right (ps, rs) <- walk !(sc defs (toClosure defaultOpts Env.empty (Ref bfc Bound x)))
                 | Left e => pure (Left e)
-              pure (Right (tys lay ++ ps, rs))
+              pure (Right (LowerFlat.tys lay ++ ps, rs))
             walk res = do
-              Right (_, lay) <- laidOut res
+              Right (_, lay) <- Flat.Translate.laidOut res
                 | Left _ => pure (Left "its result is not flat")
-              pure (Right ([], tys lay))
+              pure (Right ([], LowerFlat.tys lay))
 
-            one : (Name, String, List (Ty enc), List (Ty enc)) -> Core (Maybe String)
+            one : (Name, String, List (IRCommon.Ty enc), List (IRCommon.Ty enc)) -> Core (Maybe String)
             one (n, what, params, results) = do
               defs <- get Ctxt
               Just gdef <- lookupCtxtExact n (gamma defs)
@@ -227,25 +227,25 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
         ||| package, with the backend's own package, whose
         ||| heap-object model (the modules of `Compiler.Native.HeapObject`) the
         ||| runtime shares.
-        loadRuntime : Platform -> Enc -> Core ()
+        loadRuntime : Platform -> HeapObject.Enc -> Core ()
         loadRuntime platform enc = do
           addPkgDir "idris2-native-runtime" anyBounds
           addPkgDir "idris2-native" anyBounds
           u <- newRef UST initUState
           traverse_ (\ns => addImport (MkImport EmptyFC False (nsAsModuleIdent ns) ns))
-                    (mkNamespace "Runtime" :: toList (platformModule platform) ++ toList (stringModule enc.string))
+                    (mkNamespace "Runtime" :: toList (Linkage.OSService.platformModule platform) ++ toList (Linkage.Routine.stringModule enc.string))
 
         ||| The foreign functions and externs of the libraries in the context, each
         ||| with how this backend implements it: by the runtime (`runtime`), by the
         ||| lowering inline (`lowered`), or not yet (`missing`). The runtime's own
         ||| externs are its inline externs and services, not the libraries', and are left
         ||| out.
-        dumpForeign : Enc -> String -> Core ()
+        dumpForeign : HeapObject.Enc -> String -> Core ()
         dumpForeign enc path = do
           defs <- get Ctxt
           all <- traverse (\n => (n,) <$> lookupCtxtExact n (gamma defs)) !(allNames (gamma defs))
           entries <- traverse entry (mapMaybe library all)
-          Right () <- coreLift (writeBuilder path (concatMap (\e => single (e ++ "\n")) (sort entries)))
+          Right () <- coreLift (Data.WriteBuilder.writeBuilder path (concatMap (\e => Data.Builder.single (e ++ "\n")) (sort entries)))
             | Left err => throw (FileErr path err)
           pure ()
           where
@@ -269,7 +269,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
             entry : (Name, GlobalDef) -> Core String
             entry (n, _) = do
               n' <- toFullNames n
-              pure $ (if elem n' (map fst (foreignFunctions enc)) then "runtime  "
+              pure $ (if elem n' (map fst (Linkage.ForeignFunctions.foreignFunctions enc)) then "runtime  "
                       else if elem (nameRoot n') lowered then "lowered  "
                       else "missing  ") ++ show n'
 
@@ -299,58 +299,58 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
 
         ||| From VMCode to the image, under encodings whose value encoding has
         ||| fixnums: produce the term, allocate its registers, render, link.
-        pipeline : (enc : Enc) -> {auto 0 _ : HasFixnums enc.val} ->
-                   Settings -> NameMap FlatDef -> List (Name, VMDef) -> Core Image
+        pipeline : (enc : HeapObject.Enc) -> {auto 0 _ : HeapObject.ValEnc.HasFixnums enc.val} ->
+                   Settings -> NameMap Flat.Exp.FlatDef -> List (Name, VMDef) -> Core ELF.Image
         pipeline enc settings table defs = do
           (forms, shapes) <- phase "flat inputs" $
-                               flatInputs table (serviceBindings {enc} settings.platform)
-                                          (map fst defs ++ [r.name | r <- routines {enc}, r.provided]
+                               flatInputs table (Linkage.OSService.serviceBindings {enc} settings.platform)
+                                          (map fst defs ++ [r.name | r <- Linkage.Routine.routines {enc}, r.provided]
                                            ++ mapMaybe (foreignRoot {enc' = enc}) defs)
-          Right (_ ** term) <- phase "lowering" (later (lowerProgram enc settings.platform forms shapes defs))
+          Right (_ ** term) <- phase "lowering" (later (Lower.lowerProgram enc settings.platform forms shapes defs))
             | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
-          ir <- phase "register allocation" (later (allocRegs x86_64 term))
+          ir <- phase "register allocation" (later (RegAlloc.allocRegs X86.Target.x86_64 term))
           case settings.dumpIr of
             Just path => do
-              Right () <- coreLift (writeBuilder path (dumpProgram ir))
+              Right () <- coreLift (Data.WriteBuilder.writeBuilder path (LocatedIR.Dump.dumpProgram ir))
                 | Left err => throw (FileErr path err)
               pure ()
             Nothing => pure ()
-          Right rendered <- phase "rendering" (later (render enc ir))
+          Right rendered <- phase "rendering" (later (X86.Render.render enc ir))
             | Left err => throw (InternalError ("native: " ++ err))
           case settings.dumpAsm of
             Just path => do
-              Right () <- coreLift (writeBuilder path (concatMap (\i => single (show i ++ "\n")) rendered.text))
+              Right () <- coreLift (Data.WriteBuilder.writeBuilder path (concatMap (\i => Data.Builder.single (show i ++ "\n")) rendered.text))
                 | Left err => throw (FileErr path err)
               pure ()
             Nothing => pure ()
-          Right image <- phase "linking" (later (linkProgram enc settings.window rendered.areas rendered.text rendered.rodata))
+          Right image <- phase "linking" (later (Link.linkProgram enc settings.window rendered.areas rendered.text rendered.rodata))
             | Left problems => throw (InternalError ("native: the image cannot be assembled: " ++ show problems))
           pure image
           where
             ||| Of the flat forms, those of the functions named and of the forms they
             ||| call, the functions of the OS services they call among them, and the
             ||| shapes of the data types among their types.
-            flatInputs : NameMap FlatDef -> List (Name, Name) -> List Name ->
-                         Core (List FlatDef, Shapes)
+            flatInputs : NameMap Flat.Exp.FlatDef -> List (Name, Name) -> List Name ->
+                         Core (List Flat.Exp.FlatDef, Flat.Exp.Shapes)
             flatInputs table services roots = do
               forms <- reach empty [<] roots
-              let skeletons = nub (filter isData (toList (concatMap (piece . formSkeletons) forms)))
-              shapes <- traverse (\sk => map (sk,) <$> shape sk) skeletons
+              let skeletons = nub (filter isData (toList (concatMap (Data.Builder.piece . Flat.Exp.formSkeletons) forms)))
+              shapes <- traverse (\sk => map (sk,) <$> Flat.Translate.shape sk) skeletons
               pure (forms, catMaybes shapes)
               where
-                isData : Skeleton -> Bool
-                isData (SCon _ _) = True
+                isData : Flat.Exp.Skeleton -> Bool
+                isData (Flat.Exp.SCon _ _) = True
                 isData _ = False
 
                 -- the forms reached so far accumulate at their end, in the order reached
-                reach : SortedMap Name () -> SnocList FlatDef -> List Name -> Core (List FlatDef)
+                reach : SortedMap Name () -> SnocList Flat.Exp.FlatDef -> List Name -> Core (List Flat.Exp.FlatDef)
                 reach seen acc [] = pure (acc <>> [])
                 reach seen acc (n :: ns) =
                   if isJust (Data.SortedMap.lookup n seen) then reach seen acc ns else do
                     Just fd <- pure (lookup n table)
                       | Nothing => reach (insert n () seen) acc ns
                     reach (insert n () seen) (acc :< fd)
-                          (formCallees fd ++ mapMaybe (\p => Data.List.lookup p services) (formPrims fd) ++ ns)
+                          (Flat.Exp.formCallees fd ++ mapMaybe (\p => Data.List.lookup p services) (Flat.Exp.formPrims fd) ++ ns)
 
             ||| A pure computation as an action, so that it runs where the action runs:
             ||| inside `phase`.
@@ -359,8 +359,8 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
 
             ||| The runtime's function for a foreign function of the program it
             ||| implements.
-            foreignRoot : {enc' : Enc} -> (Name, VMDef) -> Maybe Name
-            foreignRoot (n, MkVMForeign {}) = lookup n (foreignFunctions enc')
+            foreignRoot : {enc' : HeapObject.Enc} -> (Name, VMDef) -> Maybe Name
+            foreignRoot (n, MkVMForeign {}) = lookup n (Linkage.ForeignFunctions.foreignFunctions enc')
             foreignRoot _ = Nothing
 
     executeExpr : Ref Ctxt Defs -> Ref Syn SyntaxInfo ->

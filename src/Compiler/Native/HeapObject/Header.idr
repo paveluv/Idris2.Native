@@ -37,22 +37,22 @@ import Compiler.Native.HeapObject.StringEnc
 ||| depends on its bignum encoding; only the sign-magnitude one exists so far.
 public export
 data Header : Enc -> Kind -> Type where
-  ConH     : (conId : Nat) -> (arity : Nat) -> Header enc CON
-  ClosureH : (arity : Nat) -> (filled : Nat) -> Header enc CLOSURE
-  Int64H   : Header enc INT64
-  DoubleH  : Header enc DOUBLE
-  StringH  : {auto 0 u : Utf8Strings enc.string} -> (ascii : Bool) -> (bytes : Nat) -> Header enc STRING
-  StringCharsH : {auto 0 u : Utf32Strings enc.string} -> (chars : Nat) -> Header enc STRING
-  BignumH  : {auto 0 sh : SignInHeader enc.bignum} -> (negative : Bool) -> (words : Nat) ->
-             Header enc BIGNUM
-  IORefH   : Header enc IOREF
-  ArrayH   : (elems : Nat) -> Header enc ARRAY
-  BufferH  : (bytes : Nat) -> Header enc BUFFER
-  PtrH     : Header enc PTR
+  ConH     : (conId : Nat) -> (arity : Nat) -> Header enc Kind.CON
+  ClosureH : (arity : Nat) -> (filled : Nat) -> Header enc Kind.CLOSURE
+  Int64H   : Header enc Kind.INT64
+  DoubleH  : Header enc Kind.DOUBLE
+  StringH  : {auto 0 u : StringEnc.Utf8Strings enc.string} -> (ascii : Bool) -> (bytes : Nat) -> Header enc Kind.STRING
+  StringCharsH : {auto 0 u : StringEnc.Utf32Strings enc.string} -> (chars : Nat) -> Header enc Kind.STRING
+  BignumH  : {auto 0 sh : BignumEnc.SignInHeader enc.bignum} -> (negative : Bool) -> (words : Nat) ->
+             Header enc Kind.BIGNUM
+  IORefH   : Header enc Kind.IOREF
+  ArrayH   : (elems : Nat) -> Header enc Kind.ARRAY
+  BufferH  : (bytes : Nat) -> Header enc Kind.BUFFER
+  PtrH     : Header enc Kind.PTR
 
 ||| A continuation has no header.
 public export
-Uninhabited (Header enc CONT) where
+Uninhabited (Header enc Kind.CONT) where
   uninhabited (ConH _ _) impossible
   uninhabited (ClosureH _ _) impossible
   uninhabited Int64H impossible
@@ -68,17 +68,17 @@ Uninhabited (Header enc CONT) where
 ||| A part of a header, by kind: what `LoadPart` reads.
 public export
 data HeaderPart : Kind -> Type where
-  ConId          : HeaderPart CON
-  ConArity       : HeaderPart CON
-  ClosureArity   : HeaderPart CLOSURE
-  ClosureFilled  : HeaderPart CLOSURE
-  StringAscii    : HeaderPart STRING
-  StringBytes    : HeaderPart STRING
-  StringChars    : HeaderPart STRING
-  BignumNegative : HeaderPart BIGNUM
-  BignumWords    : HeaderPart BIGNUM
-  ArrayElems     : HeaderPart ARRAY
-  BufferBytes    : HeaderPart BUFFER
+  ConId          : HeaderPart Kind.CON
+  ConArity       : HeaderPart Kind.CON
+  ClosureArity   : HeaderPart Kind.CLOSURE
+  ClosureFilled  : HeaderPart Kind.CLOSURE
+  StringAscii    : HeaderPart Kind.STRING
+  StringBytes    : HeaderPart Kind.STRING
+  StringChars    : HeaderPart Kind.STRING
+  BignumNegative : HeaderPart Kind.BIGNUM
+  BignumWords    : HeaderPart Kind.BIGNUM
+  ArrayElems     : HeaderPart Kind.ARRAY
+  BufferBytes    : HeaderPart Kind.BUFFER
 
 public export
 Show (HeaderPart kn) where
@@ -153,7 +153,7 @@ fits h = all (\pv => cast (snd pv) < prim__shl_Integer 1 (cast (snd (place (fst 
 ||| The header word, with flags 0.
 export
 encodeHeader : {k : Kind} -> Header enc k -> Int64
-encodeHeader h = signed (cast (kindId k) + sum (map part (parts h)))
+encodeHeader h = signed (cast (Kind.kindId k) + sum (map part (parts h)))
   where
     part : (HeaderPart k', Nat) -> Integer
     part (p, v) = (cast v `mod` prim__shl_Integer 1 (cast (snd (place p)))) * prim__shl_Integer 1 (cast (fst (place p)))
@@ -170,7 +170,7 @@ encodeHeader h = signed (cast (kindId k) + sum (map part (parts h)))
 export
 decodeHeader : (enc : Enc) -> Int64 -> Maybe (k : Kind ** Header enc k)
 decodeHeader enc w = do
-  r <- parse (kindOfId (cast (u `mod` 16)))
+  r <- parse (Kind.kindOfId (cast (u `mod` 16)))
   if encodeHeader (snd r) == w then Just r else Nothing
   where
     unsigned : Int64 -> Integer
@@ -185,28 +185,28 @@ decodeHeader enc w = do
     -- A sign-magnitude program's BIGNUM header, matched on the record so
     -- that the match proves the sign is in the header.
     bignum : (enc' : Enc) -> Maybe (k : Kind ** Header enc' k)
-    bignum (MkEnc _ (MkBignumEnc _ SignMagnitude) _) =
-      Just (BIGNUM ** BignumH (get BignumNegative == 1) (get BignumWords))
+    bignum (Enc.MkEnc _ (BignumEnc.MkBignumEnc _ BignumEnc.SignMagnitude) _) =
+      Just (Kind.BIGNUM ** BignumH (get BignumNegative == 1) (get BignumWords))
     bignum _ = Nothing
 
     -- A string's header, matched on the record so that the match proves the
     -- encoding the constructor needs.
     string : (enc' : Enc) -> Maybe (k : Kind ** Header enc' k)
-    string (MkEnc _ _ Utf8) = Just (STRING ** StringH (get StringAscii == 1) (get StringBytes))
-    string (MkEnc _ _ Utf32) = Just (STRING ** StringCharsH (get StringChars))
+    string (Enc.MkEnc _ _ StringEnc.Utf8) = Just (Kind.STRING ** StringH (get StringAscii == 1) (get StringBytes))
+    string (Enc.MkEnc _ _ StringEnc.Utf32) = Just (Kind.STRING ** StringCharsH (get StringChars))
 
     parse : Maybe Kind -> Maybe (k : Kind ** Header enc k)
-    parse (Just CON) = Just (CON ** ConH (get ConId) (get ConArity))
-    parse (Just CLOSURE) = Just (CLOSURE ** ClosureH (get ClosureArity) (get ClosureFilled))
-    parse (Just INT64) = Just (INT64 ** Int64H)
-    parse (Just DOUBLE) = Just (DOUBLE ** DoubleH)
-    parse (Just STRING) = string enc
-    parse (Just BIGNUM) = bignum enc
-    parse (Just IOREF) = Just (IOREF ** IORefH)
-    parse (Just ARRAY) = Just (ARRAY ** ArrayH (get ArrayElems))
-    parse (Just BUFFER) = Just (BUFFER ** BufferH (get BufferBytes))
-    parse (Just PTR) = Just (PTR ** PtrH)
-    parse (Just CONT) = Nothing
+    parse (Just Kind.CON) = Just (Kind.CON ** ConH (get ConId) (get ConArity))
+    parse (Just Kind.CLOSURE) = Just (Kind.CLOSURE ** ClosureH (get ClosureArity) (get ClosureFilled))
+    parse (Just Kind.INT64) = Just (Kind.INT64 ** Int64H)
+    parse (Just Kind.DOUBLE) = Just (Kind.DOUBLE ** DoubleH)
+    parse (Just Kind.STRING) = string enc
+    parse (Just Kind.BIGNUM) = bignum enc
+    parse (Just Kind.IOREF) = Just (Kind.IOREF ** IORefH)
+    parse (Just Kind.ARRAY) = Just (Kind.ARRAY ** ArrayH (get ArrayElems))
+    parse (Just Kind.BUFFER) = Just (Kind.BUFFER ** BufferH (get BufferBytes))
+    parse (Just Kind.PTR) = Just (Kind.PTR ** PtrH)
+    parse (Just Kind.CONT) = Nothing
     parse Nothing = Nothing
 
 ||| The number of fields: the object's words after its header.

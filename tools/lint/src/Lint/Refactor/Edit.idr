@@ -86,3 +86,49 @@ describe t e =
   where
     marked : String -> String -> String
     marked m l = if l == "" then m else m ++ " " ++ l
+
+||| The edits that keep a text's layout under edits that change the length
+||| of a line: each line after it indented past an edit's start, up to the
+||| first that is not, hangs off what follows the edit (the rest of a `do`
+||| block or of a `case` alternative), so it moves as far as the edits
+||| before its indentation move the text. One edit a line, its moves summed.
+export
+realigned : String -> List Edit -> List Edit
+realigned t es =
+  let ms = moves (lines t) in mapMaybe (moved ms) (nub (map fst ms))
+  where
+    growth : Edit -> Int
+    growth e = cast (length e.text) - (snd e.to - snd e.from)
+
+    -- the edits within a line that change its length: line, column, growth
+    grown : List (Int, Int, Int)
+    grown = [ (fst e.from, snd e.from, growth e) | e <- es, fst e.from == fst e.to, not (isInfixOf "\n" e.text), growth e /= 0 ]
+
+    indentOf : String -> Int
+    indentOf l = cast (length (takeWhile (== ' ') (unpack l)))
+
+    -- the lines hanging off a line's edits, each with how far they move it
+    hanging : List String -> List (Int, Int) -> Int -> List (Int, Int)
+    hanging ls here l = go (l + 1) (drop (cast (l + 1)) ls)
+      where
+        start : Int
+        start = foldr min (foldr max 0 (map fst here)) (map fst here)
+
+        go : Int -> List String -> List (Int, Int)
+        go _ [] = []
+        go i (x :: xs) =
+          if trim x == "" then go (i + 1) xs
+          else if indentOf x <= start then []
+          else (i, sum [ g | (c, g) <- here, c < indentOf x ]) :: go (i + 1) xs
+
+    -- each line hanging off an edited one, with how far it moves
+    moves : List String -> List (Int, Int)
+    moves ls = concat [ hanging ls [ (c, g) | (l', c, g) <- grown, l' == l ] l | l <- nub (map fst grown) ]
+
+    -- a line's moves made one edit at its start
+    moved : List (Int, Int) -> Int -> Maybe Edit
+    moved ms i =
+      let by = sum [ g | (i', g) <- ms, i' == i ] in
+      if by > 0 then Just (MkEdit (i, 0) (i, 0) (pack (replicate (cast by) ' ')))
+      else if by < 0 then Just (MkEdit (i, 0) (i, negate by) "")
+      else Nothing

@@ -5,8 +5,8 @@
 ||| (`Compiler.Native.Linkage.Routine` says what it is).
 module Compiler.Native.Linkage.OSService
 
-import Compiler.Native.HeapObject.Enc
-import Compiler.Native.IRCommon.Ty
+import Compiler.Native.HeapObject.Enc as HeapObject
+import Compiler.Native.IRCommon.Ty as IRCommon
 import Compiler.Native.Platform
 import Core.Name
 import Core.Name.Namespace
@@ -19,11 +19,11 @@ import Core.Name.Namespace
 ||| token among them taking none, and of its result. A platform's module
 ||| implements it as a function of the service's own name.
 public export
-record OSService (0 enc : Enc) where
+record OSService (0 enc : HeapObject.Enc) where
   constructor MkOSService
   service : String
-  params : List (Ty enc)
-  results : List (Ty enc)
+  params : List (IRCommon.Ty enc)
+  results : List (IRCommon.Ty enc)
 
 ||| The OS services. A result that reports success is 1 for success and 0
 ||| for failure, so that the generic runtime decides what a failure means.
@@ -42,15 +42,15 @@ record OSService (0 enc : Enc) where
 ||| * `pageBytes`: the system's page, the bytes memory is committed and
 |||   released by.
 export
-osServices : {0 enc : Enc} -> List (OSService enc)
+osServices : {0 enc : HeapObject.Enc} -> List (OSService enc)
 osServices =
-  [ MkOSService "exit" [W64] []
-  , MkOSService "write" [W64, W64, W64] [W64]
-  , MkOSService "reserve" [W64] [W64]
-  , MkOSService "commit" [W64, W64] [W64]
-  , MkOSService "release" [W64, W64] []
-  , MkOSService "stackLimit" [] [W64]
-  , MkOSService "pageBytes" [] [W64] ]
+  [ MkOSService "exit" [IRCommon.Ty.W64] []
+  , MkOSService "write" [IRCommon.Ty.W64, IRCommon.Ty.W64, IRCommon.Ty.W64] [IRCommon.Ty.W64]
+  , MkOSService "reserve" [IRCommon.Ty.W64] [IRCommon.Ty.W64]
+  , MkOSService "commit" [IRCommon.Ty.W64, IRCommon.Ty.W64] [IRCommon.Ty.W64]
+  , MkOSService "release" [IRCommon.Ty.W64, IRCommon.Ty.W64] []
+  , MkOSService "stackLimit" [] [IRCommon.Ty.W64]
+  , MkOSService "pageBytes" [] [IRCommon.Ty.W64] ]
 
 ||| The generic runtime's `%extern` for a service.
 export
@@ -61,7 +61,7 @@ serviceExtern s = NS (mkNamespace "Runtime.OS") (UN (Basic ("prim__os_" ++ s.ser
 ||| if the platform is built.
 export
 platformModule : Platform -> Maybe Namespace
-platformModule (MkPlatform X86_64 Linux) = Just (mkNamespace "Runtime.OS.LinuxX86_64")
+platformModule (Platform.MkPlatform Platform.X86_64 Platform.Linux) = Just (mkNamespace "Runtime.OS.LinuxX86_64")
 platformModule _ = Nothing
 
 ||| The function that implements a service on the platform.
@@ -71,5 +71,5 @@ serviceFunction p s = (\ns => NS ns (UN (Basic s.service))) <$> platformModule p
 
 ||| Each service's extern bound to its function on the platform.
 export
-serviceBindings : {0 enc : Enc} -> Platform -> List (Name, Name)
+serviceBindings : {0 enc : HeapObject.Enc} -> Platform -> List (Name, Name)
 serviceBindings p = mapMaybe (\s => (serviceExtern s,) <$> serviceFunction p s) (osServices {enc})

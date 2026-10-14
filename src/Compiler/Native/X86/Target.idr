@@ -17,19 +17,19 @@ import Compiler.Native.Target
 ||| so C code preserves them.
 public export
 x86_64 : Target
-x86_64 = MkTarget
+x86_64 = Target.MkTarget
   { name = "x86-64"
   , wordSize = 8
-  , lowering = HeapLowering
-  , abi = MkAbi (map reg [RDI, RSI, RDX, RCX, R8, R9])
-                (map (cast . xmmNum) [XMM0, XMM1, XMM2, XMM3, XMM4, XMM5, XMM6, XMM7])
-  , returnReg = reg RAX
-  , hp = reg R15
-  , hplim = reg R14
-  , k = reg R12
-  , stackPointer = reg RSP
-  , regName = \r => if r < 16 then show (regOfNum r) else "reg" ++ show r
+  , lowering = Target.HeapLowering
+  , abi = Target.MkAbi (map reg [Asm.RDI, Asm.RSI, Asm.RDX, Asm.RCX, Asm.R8, Asm.R9])
+                (map (cast . Asm.xmmNum) [Asm.XMM0, Asm.XMM1, Asm.XMM2, Asm.XMM3, Asm.XMM4, Asm.XMM5, Asm.XMM6, Asm.XMM7])
+  , returnReg = reg Asm.RAX
+  , hp = reg Asm.R15
+  , hplim = reg Asm.R14
+  , k = reg Asm.R12
+  , stackPointer = reg Asm.RSP
+  , regName = \r => if r < 16 then show (Asm.regOfNum r) else "reg" ++ show r
   }
   where
-    reg : Reg64 -> TargetReg
-    reg r = cast (regNum r)
+    reg : Asm.Reg64 -> Target.TargetReg
+    reg r = cast (Asm.regNum r)

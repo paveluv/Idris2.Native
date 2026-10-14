@@ -44,4 +44,4 @@ record Enc where
 ||| sign in the header, and UTF-8 strings.
 public export
 defaultEnc : Enc
-defaultEnc = MkEnc FixnumTag1 (MkBignumEnc Limb64 SignMagnitude) Utf8
+defaultEnc = MkEnc ValEnc.FixnumTag1 (BignumEnc.MkBignumEnc BignumEnc.Limb64 BignumEnc.SignMagnitude) StringEnc.Utf8

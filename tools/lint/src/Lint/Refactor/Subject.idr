@@ -2,8 +2,11 @@
 ||| with what each defines and mentions, and its text.
 module Lint.Refactor.Subject
 
+import Core.FC
+import Core.Name
 import Data.List
 import Data.String
+import Idris.Syntax
 import Lint.Rules
 import Lint.Source
 import System.File.Error
@@ -18,6 +21,8 @@ record Subject where
   file : SourceFile
   declared : List Declared
   text : String
+  ||| The names its declarations write, each where it is written.
+  written : List (FC, Name)
 
 ||| The file's text, line by line.
 export
@@ -45,4 +50,5 @@ load path = do
   ds <- declared f
   Right t <- readFile path
     | Left e => pure (Left (show e))
-  pure (Right (MkSubject f ds t))
+  ms <- mentions f.mod.decls
+  pure (Right (MkSubject f ds t ms.refs))

@@ -5,12 +5,12 @@
 ||| (`Compiler.Native.Linkage.Routine` says what it is).
 module Compiler.Native.Linkage.InlineExtern
 
-import Compiler.Native.HeapObject.Enc
-import Compiler.Native.HeapObject.Kind
-import Compiler.Native.IRCommon.Area
-import Compiler.Native.IRCommon.Intrinsic
+import Compiler.Native.HeapObject.Enc as HeapObject
+import Compiler.Native.HeapObject.Kind as HeapObject
+import Compiler.Native.IRCommon.Area as IRCommon
+import Compiler.Native.IRCommon.Intrinsic as IRCommon
 import Compiler.Native.IRCommon.Operators
-import Compiler.Native.IRCommon.Ty
+import Compiler.Native.IRCommon.Ty as IRCommon
 import Core.Name
 import Core.Name.Namespace
 import Data.Fin
@@ -28,80 +28,80 @@ public export
 data InlineExtern
   = ||| An intrinsic, on words: a pointer it takes or gives is the pointer's
     ||| word.
-    Machine Intrinsic
+    Machine IRCommon.Intrinsic
   | ||| Load a word.
     Load64
   | ||| Load 8, 16 or 32 bits.
-    LoadNarrow SubWord
+    LoadNarrow IRCommon.Operators.SubWord
   | ||| Store a word.
     Store64
   | ||| Store a word's low 8, 16 or 32 bits.
-    StoreNarrow SubWord
+    StoreNarrow IRCommon.Operators.SubWord
   | ||| The pointer tag of the program's encoding: what a pointer word is
     ||| beyond the object's address.
     PointerTag
   | ||| The address of a per-thread area.
-    AreaAddress Area
+    AreaAddress IRCommon.Area
   | ||| The pointer word of a uniform value known to be an object of the kind.
-    ObjectWord Kind
+    ObjectWord HeapObject.Kind
   | ||| The uniform value of a pointer word to an object of the kind.
-    WordObject Kind
+    WordObject HeapObject.Kind
 
 ||| An inline extern as the runtime library declares it: the registers of
 ||| its arguments, the token among them taking none, and of its result.
 public export
-record InlineExternSig (0 enc : Enc) where
+record InlineExternSig (0 enc : HeapObject.Enc) where
   constructor MkInlineExternSig
   name : Name
   extern : InlineExtern
-  params : List (Ty enc)
-  results : List (Ty enc)
+  params : List (IRCommon.Ty enc)
+  results : List (IRCommon.Ty enc)
 
 ||| The inline externs, with their signatures.
 export
-inlineExterns : {0 enc : Enc} -> List (InlineExternSig enc)
+inlineExterns : {0 enc : HeapObject.Enc} -> List (InlineExternSig enc)
 inlineExterns =
-  [ machine "Runtime.OS.Syscall" "prim__syscall6" (Syscall 6)
-  , memory "prim__load64" Load64 [W64, W64] [W64]
-  , memory "prim__load32" (LoadNarrow Sub32) [W64, W64] [W64]
-  , memory "prim__load16" (LoadNarrow Sub16) [W64, W64] [W64]
-  , memory "prim__load8" (LoadNarrow Sub8) [W64, W64] [W64]
-  , memory "prim__store64" Store64 [W64, W64, W64] []
-  , memory "prim__store32" (StoreNarrow Sub32) [W64, W64, W64] []
-  , memory "prim__store16" (StoreNarrow Sub16) [W64, W64, W64] []
-  , memory "prim__store8" (StoreNarrow Sub8) [W64, W64, W64] []
-  , machine "Runtime.Memory" "prim__getHp" GetHp
-  , machine "Runtime.Memory" "prim__setHp" SetHp
-  , machine "Runtime.Memory" "prim__getHpLim" GetHpLim
-  , machine "Runtime.Memory" "prim__setHpLim" SetHpLim
-  , machine "Runtime.Memory" "prim__getK" GetK
-  , machine "Runtime.Memory" "prim__setK" SetK
-  , memory "prim__pointerTag" PointerTag [] [W64]
-  , memory "prim__stackLimitArea" (AreaAddress STACK_LIMIT) [] [W64]
-  , memory "prim__argvArea" (AreaAddress ARGV) [] [W64]
-  , memory "prim__rootsArea" (AreaAddress ROOTS) [] [W64]
-  , memory "prim__nrootsArea" (AreaAddress NROOTS) [] [W64]
-  , memory "prim__runtimeArea" (AreaAddress RUNTIME) [] [W64]
-  , memory "prim__stringWord" (ObjectWord STRING) [Val] [W64]
-  , memory "prim__wordString" (WordObject STRING) [W64] [Val]
-  , memory "prim__conWord" (ObjectWord CON) [Val] [W64]
-  , memory "prim__wordCon" (WordObject CON) [W64] [Val] ]
+  [ machine "Runtime.OS.Syscall" "prim__syscall6" (IRCommon.Intrinsic.Syscall 6)
+  , memory "prim__load64" Load64 [IRCommon.Ty.W64, IRCommon.Ty.W64] [IRCommon.Ty.W64]
+  , memory "prim__load32" (LoadNarrow IRCommon.Operators.Sub32) [IRCommon.Ty.W64, IRCommon.Ty.W64] [IRCommon.Ty.W64]
+  , memory "prim__load16" (LoadNarrow IRCommon.Operators.Sub16) [IRCommon.Ty.W64, IRCommon.Ty.W64] [IRCommon.Ty.W64]
+  , memory "prim__load8" (LoadNarrow IRCommon.Operators.Sub8) [IRCommon.Ty.W64, IRCommon.Ty.W64] [IRCommon.Ty.W64]
+  , memory "prim__store64" Store64 [IRCommon.Ty.W64, IRCommon.Ty.W64, IRCommon.Ty.W64] []
+  , memory "prim__store32" (StoreNarrow IRCommon.Operators.Sub32) [IRCommon.Ty.W64, IRCommon.Ty.W64, IRCommon.Ty.W64] []
+  , memory "prim__store16" (StoreNarrow IRCommon.Operators.Sub16) [IRCommon.Ty.W64, IRCommon.Ty.W64, IRCommon.Ty.W64] []
+  , memory "prim__store8" (StoreNarrow IRCommon.Operators.Sub8) [IRCommon.Ty.W64, IRCommon.Ty.W64, IRCommon.Ty.W64] []
+  , machine "Runtime.Memory" "prim__getHp" IRCommon.Intrinsic.GetHp
+  , machine "Runtime.Memory" "prim__setHp" IRCommon.Intrinsic.SetHp
+  , machine "Runtime.Memory" "prim__getHpLim" IRCommon.Intrinsic.GetHpLim
+  , machine "Runtime.Memory" "prim__setHpLim" IRCommon.Intrinsic.SetHpLim
+  , machine "Runtime.Memory" "prim__getK" IRCommon.Intrinsic.GetK
+  , machine "Runtime.Memory" "prim__setK" IRCommon.Intrinsic.SetK
+  , memory "prim__pointerTag" PointerTag [] [IRCommon.Ty.W64]
+  , memory "prim__stackLimitArea" (AreaAddress IRCommon.Area.STACK_LIMIT) [] [IRCommon.Ty.W64]
+  , memory "prim__argvArea" (AreaAddress IRCommon.Area.ARGV) [] [IRCommon.Ty.W64]
+  , memory "prim__rootsArea" (AreaAddress IRCommon.Area.ROOTS) [] [IRCommon.Ty.W64]
+  , memory "prim__nrootsArea" (AreaAddress IRCommon.Area.NROOTS) [] [IRCommon.Ty.W64]
+  , memory "prim__runtimeArea" (AreaAddress IRCommon.Area.RUNTIME) [] [IRCommon.Ty.W64]
+  , memory "prim__stringWord" (ObjectWord HeapObject.Kind.STRING) [IRCommon.Ty.Val] [IRCommon.Ty.W64]
+  , memory "prim__wordString" (WordObject HeapObject.Kind.STRING) [IRCommon.Ty.W64] [IRCommon.Ty.Val]
+  , memory "prim__conWord" (ObjectWord HeapObject.Kind.CON) [IRCommon.Ty.Val] [IRCommon.Ty.W64]
+  , memory "prim__wordCon" (WordObject HeapObject.Kind.CON) [IRCommon.Ty.W64] [IRCommon.Ty.Val] ]
   where
-    sig : String -> String -> InlineExtern -> List (Ty enc) -> List (Ty enc) -> InlineExternSig enc
+    sig : String -> String -> InlineExtern -> List (IRCommon.Ty enc) -> List (IRCommon.Ty enc) -> InlineExternSig enc
     sig ns n = MkInlineExternSig (NS (mkNamespace ns) (UN (Basic n)))
 
-    memory : String -> InlineExtern -> List (Ty enc) -> List (Ty enc) -> InlineExternSig enc
+    memory : String -> InlineExtern -> List (IRCommon.Ty enc) -> List (IRCommon.Ty enc) -> InlineExternSig enc
     memory = sig "Runtime.Memory"
 
-    word : Ty enc -> Ty enc
-    word (PtrTo _) = W64
+    word : IRCommon.Ty enc -> IRCommon.Ty enc
+    word (IRCommon.Ty.PtrTo _) = IRCommon.Ty.W64
     word t = t
 
     -- an intrinsic's own signature, a pointer in it a word
-    machine : String -> String -> Intrinsic -> InlineExternSig enc
-    machine ns n i = sig ns n (Machine i) (map word (Intrinsic.params i)) (map word (Intrinsic.results i))
+    machine : String -> String -> IRCommon.Intrinsic -> InlineExternSig enc
+    machine ns n i = sig ns n (Machine i) (map word (IRCommon.Intrinsic.params i)) (map word (IRCommon.Intrinsic.results i))
 
 ||| The inline extern a primitive of the runtime library is, by its name.
 export
-inlineExternOf : {0 enc : Enc} -> Name -> Maybe InlineExtern
+inlineExternOf : {0 enc : HeapObject.Enc} -> Name -> Maybe InlineExtern
 inlineExternOf n = (.extern) <$> find (\i => i.name == n) (inlineExterns {enc})

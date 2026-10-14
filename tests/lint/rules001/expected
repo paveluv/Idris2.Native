@@ -1,6 +1,7 @@
 ./Adjacency.idr:30:1 implementation-adjacent: `Show Shade` stands apart from `Shade`: `double` is between them, neither one of its implementations nor something they use
-./Aliased.idr:7:1 import-alias: `Shared.One.Item` imported as `Wrong`: a module is imported as its group, `One`
-./Aliased.idr:15:21 import-alias: `One.Piece.piece` is qualified by more than its group: import `Spare.One.Piece` as `One` and write `One.piece`
+./Aliased.idr:8:1 import-alias: `Shared.One.Item` imported as `Wrong`: an alias is the qualifier of its key type, `Shared.One`
+./Aliased.idr:16:8 import-alias: `Wrong.item` is written otherwise than its module's path from here: `Shared.One.Item.item`
+./Aliased.idr:16:21 import-alias: `One.Piece.piece` is written otherwise than its module's path from here: `Spare.One.Piece.piece`
 ./Cites.idr:2:1 cites-plan: cites `IL-001`: the code states what it needs
 ./Cites.idr:7:1 cites-plan: cites `PQ-123`: the code states what it needs
 ./Cites.idr:7:1 cites-plan: cites `docs/design-cites.md`: the code states what it needs
@@ -20,7 +21,5 @@
 ./Reflects.idr:11:1 elab-reflection: `%macro` function
 ./Reflects.idr:15:1 elab-reflection: `%runElab` declaration
 ./Runtime/Direct.idr:5:1 syscall: the raw system call outside `Runtime.OS`: the platform's services reach the system
-./Shared/One/Item.idr:1:1 parent-unique: the group `One` is also `Spare.One`: a group's name qualifies one group
-./Spare/One/Piece.idr:1:1 parent-unique: the group `One` is also `Shared.One`: a group's name qualifies one group
 ./Spare/One/Unsorted.idr:4:1 import-order: `Spare.One.Piece` comes here: the public imports first, then the module's own group's, then the others, each alphabetical
 ./Unordered.idr:5:1 import-order: `Data.List` comes here: the public imports first, then the module's own group's, then the others, each alphabetical

@@ -1,0 +1,58 @@
+||| How a module of ours writes a name another of ours defines
+||| (`qualifierOf`): with the defining module's path past what the two
+||| modules' names share. One rule, which the refactoring `qualify-names`
+||| writes by and `import-alias` checks.
+|||
+||| In `Compiler.Native.RegAlloc`, `SWord` of `Compiler.Native.TermIR.StaticDef`
+||| is `TermIR.StaticDef.SWord`, `piece` of `Data.Builder` is
+||| `Data.Builder.piece`. A type named after its module drops the module's
+||| name: `TermIR.StaticDef`, which Idris resolves only through an alias,
+||| the module imported under the path's rest (`as TermIR`); a peer's type,
+||| of the same group, is bare (`Target`).
+module Lint.Qualifier
+
+import Data.List
+import Data.List1
+import Data.String
+
+%default covering
+
+||| A module's path seen from another module: its name past the parts the
+||| two names begin with alike; its own last name if that leaves nothing.
+export
+pathFrom : (importer, defining : String) -> List String
+pathFrom importer m = case dropShared (partsOf importer) (partsOf m) of
+  [] => maybe [] (\x => [x]) (last' (partsOf m))
+  rest => rest
+  where
+    dropShared : List String -> List String -> List String
+    dropShared (a :: as) (b :: bs) = if a == b then dropShared as bs else b :: bs
+    dropShared _ bs = bs
+
+    ||| The parts of a dotted name.
+    partsOf : String -> List String
+    partsOf m = forget (split (== '.') m)
+
+||| The qualifier a name defined in a module at the path is written with,
+||| if any: the path, or, for the module's key type, the path but its last
+||| part, none if that leaves nothing.
+export
+qualifierOf : (path : List String) -> (name : String) -> Maybe String
+qualifierOf path n = case reverse path of
+  (m :: rest) =>
+    if n == m then (if null rest then Nothing else Just (joinBy "." (reverse rest)))
+    else Just (joinBy "." path)
+  [] => Nothing
+
+||| A name as written with its qualifier.
+export
+qualifiedName : (path : List String) -> (name : String) -> String
+qualifiedName path n = maybe n (\q => q ++ "." ++ n) (qualifierOf path n)
+
+||| The alias the module at a path is imported under where its key type is
+||| written: the path but its last part, if more than that is left.
+export
+aliasAt : (path : List String) -> Maybe String
+aliasAt path = case reverse path of
+  (_ :: rest@(_ :: _)) => Just (joinBy "." (reverse rest))
+  _ => Nothing
