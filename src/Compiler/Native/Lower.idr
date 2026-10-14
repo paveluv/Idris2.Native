@@ -112,10 +112,6 @@ import Flat.Exp
 ------------------------------------------------------------------------------
 -- Names the lowering introduces
 
-||| One of the `%extern` array primitives of `Data.IOArray.Prims`.
-arrayPrim : String -> Name
-arrayPrim s = NS (mkNamespace "Data.IOArray.Prims") (UN (Basic s))
-
 ||| The static object for every nullary constructor with this constructor id.
 export
 nullaryCon : Int -> Name
@@ -186,36 +182,6 @@ intConst _ = Nothing
 patternValue : Integer -> Integer
 patternValue v = if v >= 9223372036854775808 then v - 18446744073709551616 else v
 
-subWord : Nat -> SubWord
-subWord 8 = Sub8
-subWord 16 = Sub16
-subWord _ = Sub32
-
-||| The unsigned relation for a signed one.
-unsignedRel : Rel -> Rel
-unsignedRel LtS = LtU
-unsignedRel LeS = LeU
-unsignedRel GtS = GtU
-unsignedRel GeS = GeU
-unsignedRel r = r
-
-||| Whether the operation on two fixnums can leave the fixnum range.
-overflows : ArithOp -> Bool
-overflows Add = True
-overflows Sub = True
-overflows Mul = True
-overflows _ = False
-
-||| Whether every value of the first width is a value of the second, held the
-||| same way, so that a cast between them is a move.
-keeps : IntWidth -> IntWidth -> Bool
-keeps (Wide _) (Wide _) = True
-keeps (Narrow _ _) (Wide _) = True
-keeps (Narrow _ _) Unbounded = True
-keeps Unbounded Unbounded = True
-keeps (Narrow n s) (Narrow m t) = if s == t then m >= n else not s && t && m > n
-keeps _ _ = False
-
 ||| The static object of a 64-bit integer constant outside the fixnum range,
 ||| by the signed value of its pattern.
 int64Static : Integer -> Name
@@ -273,64 +239,11 @@ data StaticPlan
   | ||| A string literal.
     Text String
 
-||| The constants a function's locals may hold, and the static objects its
-||| constants need. A cast of a local holding a constant is folded while
-||| compiling, so every constant a local may hold is followed through casts;
-||| the result may name statics the lowering does not use, which costs only
-||| their bytes.
-staticsOf : List VMInst -> SortedMap Name StaticPlan
-staticsOf body = snd (go body (empty, empty))
-  where
-    plan : Constant -> Maybe (Name, StaticPlan)
-    plan k = case intConst k of
-      Just (Wide _, v) => let p = patternValue v in
-                          if inFixnumRange p then Nothing else Just (int64Static p, Boxed p)
-      Just (Unbounded, v) => if inFixnumRange v then Nothing else Just (bignumStatic v, Big v)
-      _ => case k of
-        Str s => Just (stringStatic s, Text s)
-        _ => Nothing
-
-    note : Constant -> SortedMap Name StaticPlan -> SortedMap Name StaticPlan
-    note k ss = case plan k of
-      Just (n, p) => insert n p ss
-      Nothing => ss
-
-    add : Int -> Constant -> (SortedMap Int (List Constant), SortedMap Name StaticPlan) ->
-          (SortedMap Int (List Constant), SortedMap Name StaticPlan)
-    add i k (known, ss) = (insert i (k :: fromMaybe [] (lookup i known)) known, note k ss)
-
-    mutual
-      go : List VMInst -> (SortedMap Int (List Constant), SortedMap Name StaticPlan) ->
-           (SortedMap Int (List Constant), SortedMap Name StaticPlan)
-      go [] acc = acc
-      go (i :: is) acc = go is (one i acc)
-
-      one : VMInst -> (SortedMap Int (List Constant), SortedMap Name StaticPlan) ->
-            (SortedMap Int (List Constant), SortedMap Name StaticPlan)
-      one (MKCONSTANT r k) acc@(known, ss) = case key r of
-        Just i => add i k acc
-        Nothing => (known, note k ss)
-      one (MKCON _ (Left c) []) (known, ss) = (known, insert (nullaryCon c) (Nullary c) ss)
-      one (OP r (Cast _ to) [x]) acc@(known, ss) =
-        let folded = mapMaybe (\k => intConst k >>= (castConstant to . snd))
-                              (fromMaybe [] (key x >>= \i => lookup i known))
-        in case key r of
-             Just i => foldl (\a, f => add i f a) acc folded
-             Nothing => (known, foldl (flip note) ss folded)
-      -- lint: allow trust-escape: VMCode nests its instruction lists in tuples, which totality checking does not see through
-      one (CASE _ alts d) acc = assert_total (maybe id go d (foldl (\a, alt => go (snd alt) a) acc alts))
-      one (CONSTCASE _ alts d) acc = assert_total (maybe id go d (foldl (\a, alt => go (snd alt) a) acc alts))
-      one _ acc = acc
-
 ||| Each function and static of the declarations by name, with its variable.
 record Refs (enc : Enc) (d : Decls enc) where
   constructor MkRefs
   funs : SortedMap Name (s ** Var d.sigs s)
   stats : SortedMap Name (s ** Var d.statics s)
-
-refsOf : (d : Decls enc) -> Refs enc d
-refsOf d = MkRefs (fromList [(s.name, (s ** v)) | (s ** v) <- enumerate d.sigs])
-                  (fromList [(s.sym, (s ** v)) | (s ** v) <- enumerate d.statics])
 
 ------------------------------------------------------------------------------
 -- Locals
@@ -340,64 +253,6 @@ refsOf d = MkRefs (fromList [(s.name, (s ** v)) | (s ** v) <- enumerate d.sigs])
 Env : (Ty enc -> Type) -> Type
 Env v = SortedMap Int (Opnd v Val, Maybe Constant)
 
--- The registers a list of instructions writes, and those it reads, nested
--- alternatives included. `union x y` inserts the elements of `y` into `x`,
--- so each union here takes the smaller set second: the other way, a list's
--- set is built again at every instruction, the square of its length.
-mutual
-  writes : List VMInst -> SortedSet Int
-  writes [] = empty
-  writes (i :: is) = union (writes is) (writes1 i)
-
-  writes1 : VMInst -> SortedSet Int
-  -- lint: allow trust-escape: VMCode nests its instruction lists in tuples, which totality checking does not see through
-  writes1 (CASE _ alts d) = assert_total (union (altsWrite alts) (maybe empty writes d))
-  writes1 (CONSTCASE _ alts d) = assert_total (union (altsWrite alts) (maybe empty writes d))
-  writes1 i = maybe empty singleton (target i >>= key)
-
-  altsWrite : List (a, List VMInst) -> SortedSet Int
-  altsWrite [] = empty
-  altsWrite ((_, is) :: as) = union (altsWrite as) (writes is)
-
-  target : VMInst -> Maybe Reg
-  target (ASSIGN d _) = Just d
-  target (MKCON d _ _) = Just d
-  target (MKCLOSURE d _ _ _) = Just d
-  target (MKCONSTANT d _) = Just d
-  target (APPLY d _ _) = Just d
-  target (CALL d _ _ _) = Just d
-  target (OP d _ _) = Just d
-  target (EXTPRIM d _ _) = Just d
-  target (PROJECT d _ _) = Just d
-  target (NULL d) = Just d
-  target _ = Nothing
-
-mutual
-  reads : List VMInst -> SortedSet Int
-  reads [] = empty
-  reads (i :: is) = union (reads is) (reads1 i)
-
-  reads1 : VMInst -> SortedSet Int
-  reads1 (ASSIGN _ s) = regs [s]
-  reads1 (MKCON _ _ as) = regs as
-  reads1 (MKCLOSURE _ _ _ as) = regs as
-  reads1 (APPLY _ f a) = regs [f, a]
-  reads1 (CALL _ _ _ as) = regs as
-  reads1 (OP _ _ as) = regs (toList as)
-  reads1 (EXTPRIM _ _ as) = regs as
-  -- lint: allow trust-escape: VMCode nests its instruction lists in tuples, which totality checking does not see through
-  reads1 (CASE s alts d) = assert_total (union (union (altsRead alts) (maybe empty reads d)) (regs [s]))
-  reads1 (CONSTCASE s alts d) = assert_total (union (union (altsRead alts) (maybe empty reads d)) (regs [s]))
-  reads1 (PROJECT _ v _) = regs [v]
-  reads1 _ = empty
-
-  altsRead : List (a, List VMInst) -> SortedSet Int
-  altsRead [] = empty
-  altsRead ((_, is) :: as) = union (altsRead as) (reads is)
-
-  regs : List Reg -> SortedSet Int
-  regs rs = fromList (mapMaybe key rs)
-
 ||| Each instruction with what is read after it, given what is read after
 ||| the list: one pass, from the end, so that a case does not compute what
 ||| the code after it reads again, which made a function of n cases cost the
@@ -405,13 +260,35 @@ mutual
 annotate : SortedSet Int -> List VMInst -> List (VMInst, SortedSet Int)
 annotate later is = snd (go is)
   where
+    reads1 : VMInst -> SortedSet Int
+    reads1 inst = case inst of
+      ASSIGN _ s => regs [s]
+      MKCON _ _ as => regs as
+      MKCLOSURE _ _ _ as => regs as
+      APPLY _ f a => regs [f, a]
+      CALL _ _ _ as => regs as
+      OP _ _ as => regs (toList as)
+      EXTPRIM _ _ as => regs as
+      -- lint: allow trust-escape: VMCode nests its instruction lists in tuples, which totality checking does not see through
+      CASE s alts d => assert_total (union (union (altsRead alts) (maybe empty reads d)) (regs [s]))
+      CONSTCASE s alts d => assert_total (union (union (altsRead alts) (maybe empty reads d)) (regs [s]))
+      PROJECT _ v _ => regs [v]
+      _ => empty
+      where
+        reads : List VMInst -> SortedSet Int
+        reads [] = empty
+        reads (i :: is) = union (reads is) (reads1 i)
+
+        altsRead : List (a, List VMInst) -> SortedSet Int
+        altsRead [] = empty
+        altsRead ((_, is) :: as) = union (altsRead as) (reads is)
+
+        regs : List Reg -> SortedSet Int
+        regs rs = fromList (mapMaybe key rs)
+
     go : List VMInst -> (SortedSet Int, List (VMInst, SortedSet Int))
     go [] = (later, [])
     go (i :: is) = let (r, ais) = go is in (union r (reads1 i), (i, r) :: ais)
-
-isRVal : Reg -> Bool
-isRVal RVal = True
-isRVal _ = False
 
 get : Env v -> Reg -> Opnd v Val
 get env r = maybe Erased fst (key r >>= \k => lookup k env)
@@ -419,24 +296,10 @@ get env r = maybe Erased fst (key r >>= \k => lookup k env)
 known : Env v -> Reg -> Maybe Constant
 known env r = key r >>= \k => lookup k env >>= snd
 
-set : Env v -> Reg -> Opnd v Val -> Env v
-set env r x = maybe env (\k => insert k (x, Nothing) env) (key r)
-
-setKnown : Env v -> Reg -> Opnd v Val -> Constant -> Env v
-setKnown env r x c = maybe env (\k => insert k (x, Just c) env) (key r)
-
 ||| Operands of `Val`s for parameters of `Val`s.
 vals : (xs : List (Opnd v Val)) -> All (Opnd v) (replicate (length xs) Val)
 vals [] = []
 vals (x :: xs) = x :: vals xs
-
-||| Each element with its position.
-numbered : List a -> List (Nat, a)
-numbered = go 0
-  where
-    go : Nat -> List a -> List (Nat, a)
-    go _ [] = []
-    go i (x :: xs) = (i, x) :: go (S i) xs
 
 allVals : {n : Nat} -> All (Opnd v) (replicate n Val) -> List (Opnd v Val)
 allVals {n = Z} [] = []
@@ -459,57 +322,8 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
       Left ok => Just (Vx {enc} w)
       Right _ => Nothing
 
-  ||| A word as an immediate.
-  word : Integer -> Opnd v W64
-  word i = W (cast i)
-
   ------------------------------------------------------------------------------
   -- References
-
-  ||| A runtime routine's variable, with its results and parameters.
-  routine : Name -> (rs, ps : List (Ty enc)) -> Maybe (n ** Var d.sigs (MkSig n (Direct rs False) ps False))
-  routine name rs ps = case lookup name refs.funs of
-    Just (MkSig n (Direct rs' False) ps' False ** var) => case (decEq rs' rs, decEq ps' ps) of
-      (Yes Refl, Yes Refl) => Just (n ** var)
-      _ => Nothing
-    _ => Nothing
-
-  ||| A call of a runtime routine, binding its results.
-  callRoutine : Name -> {rs : List (Ty enc)} -> {ps : List (Ty enc)} -> All (Opnd v) ps -> B (All (Opnd v) rs)
-  callRoutine name xs = case routine name rs ps of
-    Just (_ ** r) => directCall r xs
-    Nothing => crash ("no runtime routine " ++ show name)
-
-  ||| A call of a string routine of the program's encoding.
-  strings : String -> {rs : List (Ty enc)} -> {ps : List (Ty enc)} -> All (Opnd v) ps -> B (All (Opnd v) rs)
-  strings op xs = callRoutine (stringRoutine enc op) xs
-
-  ||| A word known to be in the fixnum range, as a value: a count or a code
-  ||| point.
-  wordFix : Opnd v W64 -> B (Opnd v Val)
-  wordFix w = do f <- emit1 (Tag w); emit1 (WidenFix f)
-
-  ||| A comparison of strings: the runtime's order, -1, 0 or 1, against 0.
-  stringOrder : Rel -> Opnd v Val -> Opnd v Val -> B (Opnd v Val)
-  stringOrder rel x y = do
-    [o] <- strings "compare" {rs = [W64]} {ps = [Val, Val]} [x, y]
-    b <- emit1 (Cmp rel o (W 0))
-    wordFix b
-
-  ||| An `Integer` routine that makes an `Integer`.
-  integerCall : String -> (xs : List (Opnd v Val)) -> B (Opnd v Val)
-  integerCall what xs = case xs of
-    [x] => do [r] <- callRoutine (integerRoutine what) {rs = [Val]} {ps = [Val]} [x]; pure r
-    [x, y] => do [r] <- callRoutine (integerRoutine what) {rs = [Val]} {ps = [Val, Val]} [x, y]; pure r
-    _ => crash ("the Integer routine " ++ what ++ " takes one or two values")
-
-  ||| A CPS function of the program of `n` parameters.
-  cpsFunction : Name -> (n : Nat) -> Maybe (nm ** cv ** Var d.sigs (MkSig nm CPS (replicate n Val) cv))
-  cpsFunction name n = case lookup name refs.funs of
-    Just (MkSig nm CPS ps cv ** var) => case decEq ps (replicate n Val) of
-      Yes Refl => Just (nm ** cv ** var)
-      No _ => Nothing
-    _ => Nothing
 
   ||| A static object of the program, as a `Val`.
   staticVal : Name -> B (Opnd v Val)
@@ -565,298 +379,8 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
               (do p <- emit1 (AllocObj Int64H [w]); r <- emit1 (WidenPtr p); done [r])
     pure r
 
-  ||| A word wrapped to a narrow width, as a uniform value: a fixnum, which it
-  ||| always fits.
-  narrowVal : Nat -> Bool -> Opnd v W64 -> B (Opnd v Val)
-  narrowVal n s w = do
-    e <- emit1 (Ext (subWord n) s w)
-    f <- emit1 (Tag e)
-    widen f
-
-  ||| A comparison's 0 or 1, as the `Int` Idris's comparisons give.
-  boolVal : Opnd v W64 -> B (Opnd v Val)
-  boolVal c = emit1 (Tag c) >>= widen
-
-  ||| An `Integer`'s value modulo 2^64, as a word.
-  integerBits : Opnd v Val -> B (Opnd v W64)
-  integerBits x = do
-    [w] <- joinPoint [W64] $ \done =>
-      ifFixnums [x] (\[f] => do w <- untag (f); done [w])
-        (do [w] <- callRoutine (integerRoutine "to_bits64") {rs = [W64]} {ps = [Val]} [x]; done [w])
-    pure w
-
   ------------------------------------------------------------------------------
   -- Integer operations
-
-  ||| The overflow form of an operation that has one.
-  ovOp : ArithOp -> Maybe OvOp
-  ovOp Add = Just OvAdd
-  ovOp Sub = Just OvSub
-  ovOp Mul = Just OvMul
-  ovOp _ = Nothing
-
-  ||| Addition, subtraction, multiplication and the bitwise operations; the
-  ||| name is the operation's `Integer` routine.
-  arithmetic : IntWidth -> ArithOp -> (routine : String) -> (x, y : Opnd v Val) -> B (Opnd v Val)
-  arithmetic (Narrow n s) o _ x y = do
-    a <- fixValue x
-    b <- fixValue y
-    w <- emit1 (Arith o a b)
-    narrowVal n s w
-  arithmetic (Wide _) o _ x y = do
-    [r] <- joinPoint [Val] $ \done => do
-      words <- block [W64, W64] $ \[wa, wb] => do
-        w <- emit1 (Arith o wa wb)
-        r <- wideVal w
-        done [r]
-      ifFixnums [x, y]
-        (\[a, b] => case ovOp o of
-           Just ov => arithOv ov a b (\f => do r <- widen f; done [r])
-                        (do wa <- untag (a); wb <- untag (b); words [wa, wb])
-           Nothing => do f <- emit1 (Arith o a b); r <- widen f; done [r])
-        (do wa <- wideWord x; wb <- wideWord y; words [wa, wb])
-    pure r
-  arithmetic Unbounded o routine x y = do
-    [r] <- joinPoint [Val] $ \done => do
-      slow <- block [] $ \[] => do r <- integerCall routine [x, y]; done [r]
-      ifFixnums [x, y]
-        (\[a, b] => case ovOp o of
-           Just ov => arithOv ov a b (\f => do r <- widen f; done [r]) (slow [])
-           Nothing => do f <- emit1 (Arith o a b); r <- widen f; done [r])
-        (slow [])
-    pure r
-
-  negation : IntWidth -> Opnd v Val -> B (Opnd v Val)
-  negation (Narrow n s) x = do
-    a <- fixValue x
-    w <- emit1 (Unary Negate a)
-    narrowVal n s w
-  negation (Wide _) x = do
-    [r] <- joinPoint [Val] $ \done => do
-      word <- block [W64] $ \[wa] => do
-        w <- emit1 (Unary Negate wa)
-        r <- wideVal w
-        done [r]
-      ifFixnums [x]
-        (\[a] => arithOv OvSub (Fx 0) a (\f => do r <- widen f; done [r])
-                   (do wa <- untag (a); word [wa]))
-        (do wa <- wideWord x; word [wa])
-    pure r
-  negation Unbounded x = do
-    [r] <- joinPoint [Val] $ \done => do
-      slow <- block [] $ \[] => do r <- integerCall "neg" [x]; done [r]
-      ifFixnums [x] (\[a] => arithOv OvSub (Fx 0) a (\f => do r <- widen f; done [r]) (slow [])) (slow [])
-    pure r
-
-  ||| `div` or `mod`.
-  division : IntWidth -> (remainder : Bool) -> (x, y : Opnd v Val) -> B (Opnd v Val)
-  division (Narrow n s) m x y = do
-    a <- fixValue x
-    b <- fixValue y
-    nonZero b
-    w <- divide s m a b
-    narrowVal n s w
-  division (Wide s) m x y = do
-    a <- wideWord x
-    b <- wideWord y
-    nonZero b
-    w <- divide s m a b
-    wideVal w
-  division Unbounded m x y = do
-    [r] <- joinPoint [Val] $ \done => do
-      slow <- block [] $ \[] => do r <- integerCall (if m then "mod" else "div") [x, y]; done [r]
-      ifFixnums [x, y]
-        (\[fa, fb] => do
-           a <- untag (fa)
-           b <- untag (fb)
-           branch EqR b (W 0) (slow []) $ do
-             w <- divide True m a b
-             tagOv w (\f => do r <- widen f; done [r]) (slow []))
-        (slow [])
-    pure r
-
-  ||| `shiftL` or `shiftR`: arithmetic on signed types, logical on unsigned.
-  shifting : IntWidth -> (left : Bool) -> (x, y : Opnd v Val) -> B (Opnd v Val)
-  shifting (Narrow n s) left x y = do
-    a <- fixValue x
-    k <- fixValue y
-    w <- shiftBy (if left then Shl else if s then Sar else Shr) a k
-    narrowVal n s w
-  shifting (Wide s) left x y = do
-    a <- wideWord x
-    k <- wideWord y
-    w <- shiftBy (if left then Shl else if s then Sar else Shr) a k
-    wideVal w
-  shifting Unbounded left x y = do
-    [r] <- joinPoint [Val] $ \done => do
-      slow <- block [] $ \[] => do r <- integerCall (if left then "shl" else "shr") [x, y]; done [r]
-      ifFixnums [x, y]
-        (\[fa, fk] => do
-           a <- untag (fa)
-           k <- untag (fk)
-           branch LtS k (W 0) (slow []) $
-             if left
-                then -- shift by at most 62, and keep the result only if
-                     -- shifting back gives the operand and it is a fixnum
-                     branch GtS k (W 62) (slow []) $ do
-                       w <- emit1 (Arith Shl a k)
-                       back <- emit1 (Arith Sar w k)
-                       branch NeR back a (slow []) $
-                         tagOv w (\f => do r <- widen f; done [r]) (slow [])
-                else do
-                  w <- shiftBy Sar a k
-                  f <- emit1 (Tag w)
-                  r <- widen f
-                  done [r])
-        (slow [])
-    pure r
-
-  ||| A comparison, giving the `Int` 0 or 1.
-  comparison : IntWidth -> Rel -> (x, y : Opnd v Val) -> B (Opnd v Val)
-  comparison (Narrow _ _) rel x y = do
-    a <- asFix x
-    b <- asFix y
-    c <- emit1 (Cmp rel a b)
-    boolVal c
-  comparison (Wide s) rel x y = do
-    let rel' = if s then rel else unsignedRel rel
-    [c] <- joinPoint [W64] $ \done =>
-      ifFixnums [x, y]
-        (\[a, b] => do c <- emit1 (Cmp rel' a b); done [c])
-        (do a <- wideWord x; b <- wideWord y; c <- emit1 (Cmp rel' a b); done [c])
-    boolVal c
-  comparison Unbounded rel x y = do
-    [c] <- joinPoint [W64] $ \done =>
-      ifFixnums [x, y]
-        (\[a, b] => do c <- emit1 (Cmp rel a b); done [c])
-        (do [o] <- callRoutine (integerRoutine "compare") {rs = [W64]} {ps = [Val, Val]} [x, y]
-            c <- emit1 (Cmp rel o (W 0))
-            done [c])
-    boolVal c
-
-  ||| A cast to `Char`: the value if it is a Unicode scalar value, 0 if not.
-  toChar : IntWidth -> Opnd v Val -> B (Opnd v Val)
-  toChar wf x = do
-    w <- case wf of
-      Narrow _ _ => fixValue x
-      Wide _ => wideWord x
-      Unbounded => do
-        [w] <- joinPoint [W64] $ \done =>
-          ifFixnums [x] (\[f] => do w <- untag (f); done [w]) (done [W (-1)])
-        pure w
-    [r] <- joinPoint [Val] $ \done => do
-      keep <- block [] $ \[] => do f <- emit1 (Tag w); r <- widen f; done [r]
-      zero <- block [] $ \[] => done [Vx {enc} 0]
-      branch LtS w (W 0) (zero []) $
-        branch LeS w (W 55295) (keep []) $
-          branch LtS w (W 57344) (zero []) $
-            branch LeS w (W 1114111) (keep []) (zero [])
-    pure r
-
-  ||| A uniform integer of one width as one of another, wrapping as Idris's
-  ||| casts do.
-  retype : IntWidth -> IntWidth -> Opnd v Val -> B (Opnd v Val)
-  retype wf wt x =
-    if keeps wf wt then pure x else case (wf, wt) of
-      (Narrow _ _, Narrow n s) => fixValue x >>= narrowVal n s
-      (Wide _, Narrow n s) => wideWord x >>= narrowVal n s
-      (Unbounded, Narrow n s) => integerBits x >>= narrowVal n s
-      (Unbounded, Wide _) => do
-        [r] <- joinPoint [Val] $ \done =>
-          ifFixnums [x] (\_ => done [x]) (do a <- integerBits x; r <- wideVal a; done [r])
-        pure r
-      (Wide True, Unbounded) => do
-        [r] <- joinPoint [Val] $ \done =>
-          ifFixnums [x] (\_ => done [x])
-            (do a <- boxWord x
-                [r] <- callRoutine (integerRoutine "from_int64") {rs = [Val]} {ps = [W64]} [a]
-                done [r])
-        pure r
-      (Wide False, Unbounded) => do
-        a <- wideWord x
-        [r] <- joinPoint [Val] $ \done =>
-          branch LtU a (W 4611686018427387904)
-            (do f <- emit1 (Tag a); r <- widen f; done [r])
-            (do [r] <- callRoutine (integerRoutine "from_bits64") {rs = [Val]} {ps = [W64]} [a]; done [r])
-        pure r
-      _ => pure x
-
-  ||| A constant: an integer is an immediate when it is a fixnum, and the
-  ||| static object that holds it otherwise.
-  constant : Constant -> B (Opnd v Val)
-  constant WorldVal = pure Erased
-  constant (PrT _) = pure Erased
-  constant (Str s) = staticVal (stringStatic s)
-  constant (Db _) = unsupported "a double constant"
-  constant k = case intConst k of
-    Just (Wide _, n) => let p = patternValue n in maybe (staticVal (int64Static p)) pure (fixnum p)
-    Just (Unbounded, n) =>
-      maybe (case signInHeader enc.bignum of
-               Just _ => staticVal (bignumStatic n)
-               Nothing => unsupported "an Integer constant outside the fixnum range, under bignums in two's complement")
-            pure (fixnum n)
-    Just (Narrow _ _, n) => maybe (unsupported ("the constant " ++ show k)) pure (fixnum n)
-    Nothing => unsupported ("the constant " ++ show k)
-
-  withWidth : PrimType -> String -> (IntWidth -> B a) -> B a
-  withWidth ty what k = case intWidth ty of
-    Just w => k w
-    Nothing => unsupported (what ++ " on " ++ show ty)
-
-  ||| A primitive operation, and the environment after it.
-  op : Env v -> Reg -> PrimFn n -> Vect n Reg -> B (Env v)
-  op env r (Cast from to) [x] = case (intWidth from, intWidth to) of
-    (Just wf, Just wt) => case known env x >>= intConst >>= (castConstant to . snd) of
-      Just folded => do c <- constant folded; pure (setKnown env r c folded)
-      Nothing => do
-        c <- if to == CharType then toChar wf (get env x) else retype wf wt (get env x)
-        pure (set env r c)
-    _ => unsupported ("the cast from " ++ show from ++ " to " ++ show to)
-  op env r BelieveMe [_, _, x] = pure (set env r (get env x))
-  op env r fn args = set env r <$> value fn args
-    where
-      value : PrimFn m -> Vect m Reg -> B (Opnd v Val)
-      value (Add ty) [x, y] = withWidth ty "addition" (\w => arithmetic w Add "add" (get env x) (get env y))
-      value (Sub ty) [x, y] = withWidth ty "subtraction" (\w => arithmetic w Sub "sub" (get env x) (get env y))
-      value (Mul ty) [x, y] = withWidth ty "multiplication" (\w => arithmetic w Mul "mul" (get env x) (get env y))
-      value (Div ty) [x, y] = withWidth ty "division" (\w => division w False (get env x) (get env y))
-      value (Mod ty) [x, y] = withWidth ty "remainder" (\w => division w True (get env x) (get env y))
-      value (Neg ty) [x] = withWidth ty "negation" (\w => negation w (get env x))
-      value (ShiftL ty) [x, y] = withWidth ty "a left shift" (\w => shifting w True (get env x) (get env y))
-      value (ShiftR ty) [x, y] = withWidth ty "a right shift" (\w => shifting w False (get env x) (get env y))
-      value (BAnd ty) [x, y] = withWidth ty "bitwise and" (\w => arithmetic w And "and" (get env x) (get env y))
-      value (BOr ty) [x, y] = withWidth ty "bitwise or" (\w => arithmetic w Or "or" (get env x) (get env y))
-      value (BXOr ty) [x, y] = withWidth ty "bitwise xor" (\w => arithmetic w Xor "xor" (get env x) (get env y))
-      -- the string primitives: the runtime's routines under the encoding
-      value StrLength [s] = do [n] <- strings "length" {rs = [W64]} {ps = [Val]} [get env s]; wordFix n
-      value StrHead [s] = do [c] <- strings "head" {rs = [W64]} {ps = [Val]} [get env s]; wordFix c
-      value StrTail [s] = do [r] <- strings "tail" {rs = [Val]} {ps = [Val]} [get env s]; pure r
-      value StrIndex [s, i] = do
-        w <- wideWord (get env i)
-        [c] <- strings "index" {rs = [W64]} {ps = [Val, W64]} [get env s, w]
-        wordFix c
-      value StrCons [c, s] = do
-        w <- fixValue (get env c)
-        [r] <- strings "cons" {rs = [Val]} {ps = [W64, Val]} [w, get env s]
-        pure r
-      value StrAppend [a, b] = do [r] <- strings "append" {rs = [Val]} {ps = [Val, Val]} [get env a, get env b]; pure r
-      value StrReverse [s] = do [r] <- strings "reverse" {rs = [Val]} {ps = [Val]} [get env s]; pure r
-      value StrSubstr [o, l, s] = do
-        wo <- wideWord (get env o)
-        wl <- wideWord (get env l)
-        [r] <- strings "substr" {rs = [Val]} {ps = [W64, W64, Val]} [wo, wl, get env s]
-        pure r
-      value (LT StringType) [x, y] = stringOrder LtS (get env x) (get env y)
-      value (LTE StringType) [x, y] = stringOrder LeS (get env x) (get env y)
-      value (EQ StringType) [x, y] = stringOrder EqR (get env x) (get env y)
-      value (GTE StringType) [x, y] = stringOrder GeS (get env x) (get env y)
-      value (GT StringType) [x, y] = stringOrder GtS (get env x) (get env y)
-      value (LT ty) [x, y] = withWidth ty "<" (\w => comparison w LtS (get env x) (get env y))
-      value (LTE ty) [x, y] = withWidth ty "<=" (\w => comparison w LeS (get env x) (get env y))
-      value (EQ ty) [x, y] = withWidth ty "==" (\w => comparison w EqR (get env x) (get env y))
-      value (GTE ty) [x, y] = withWidth ty ">=" (\w => comparison w GeS (get env x) (get env y))
-      value (GT ty) [x, y] = withWidth ty ">" (\w => comparison w GtS (get env x) (get env y))
-      value fn _ = unsupported ("the primitive " ++ show fn)
 
   ------------------------------------------------------------------------------
   -- Arrays
@@ -869,27 +393,6 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
   -- `Data.IOArray` checks them. Writing an element needs no barrier while the
   -- collector is not generational.
 
-  extPrim : Env v -> Reg -> Name -> List Reg -> B (Env v)
-  extPrim env r p [_, x, y, _] =
-    if p == arrayPrim "prim__newArray"
-       then do count <- wideWord (get env x)
-               a <- emit1 (AllocSized ArrayElems count (get env y))
-               set env r <$> emit1 (WidenPtr a)
-    else if p == arrayPrim "prim__arrayGet"
-       then do a <- emit1 (NarrowPtr ARRAY (get env x))
-               i <- wideWord (get env y)
-               set env r <$> emit1 (Load Val (MkMem (AtPtr a) (Just i) 8))
-    else unsupported ("the external primitive " ++ show p)
-  -- The result is `()`, which no caller inspects: the erased value.
-  extPrim env r p [_, x, y, z, _] =
-    if p == arrayPrim "prim__arraySet"
-       then do a <- emit1 (NarrowPtr ARRAY (get env x))
-               i <- wideWord (get env y)
-               emit0 (Store Val (MkMem (AtPtr a) (Just i) 8) (get env z))
-               pure (set env r Erased)
-    else unsupported ("the external primitive " ++ show p)
-  extPrim env r p _ = unsupported ("the external primitive " ++ show p)
-
   ------------------------------------------------------------------------------
   -- Objects
 
@@ -901,17 +404,6 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
       emit1 (WidenPtr p)
     Right _ => unsupported ("the constructor id " ++ show conId ++ ", which its header cannot hold")
 
-  ||| A closure of the function, with the arguments filled and `missing` to
-  ||| come, its header decided here.
-  closure : Name -> Var d.sigs (MkSig n CPS ps cv) -> (missing : Nat) -> (args : List (Opnd v Val)) -> B (Opnd v Val)
-  closure f code missing args =
-    case choose (wellFormed (ClosureH {enc} (missing + length args) (length args))) of
-      Left ok => do
-        c <- emit1 (CodeAddr code)
-        p <- emit1 (AllocObj (ClosureH (missing + length args) (length args)) (c :: vals args))
-        emit1 (WidenPtr p)
-      Right _ => unsupported ("a closure of " ++ show f ++ " that its header cannot hold")
-
   ------------------------------------------------------------------------------
   -- The boundary with flat code
   --
@@ -920,101 +412,6 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
   -- apart into the form's registers, calls the form, and builds its result
   -- from the form's, as ordinary code represents each type
   -- (`Flat.Exp.Ordinary`).
-
-  isTag : ConShape -> Bool
-  isTag c = case c.ordinary of
-    AsTag => True
-    _ => False
-
-  mutual
-    ||| The registers of an ordinary value of the shape.
-    unbox : Shape -> Opnd v Val -> B (Value enc v)
-    unbox (PrimShape DoubleType) x = do
-      p <- emit1 (NarrowPtr DOUBLE x)
-      f <- emit1 (Load F64 (MkMem (AtPtr p) Nothing 8))
-      pure (MkValue [Dbl] [f])
-    unbox (PrimShape WorldType) _ = pure noRegs
-    unbox (PrimShape t) x = case intWidth t of
-      Just (Narrow _ _) => do w <- fixValue x; pure (MkValue [Word] [w])
-      Just (Wide _) => do w <- wideWord x; pure (MkValue [Word] [w])
-      _ => unsupported ("a value of " ++ show t ++ " passed to flat code")
-    unbox UniformShape x = pure (MkValue [Uniform] [x])
-    unbox (DataShape []) _ = pure noRegs
-    unbox (DataShape [c]) x = concatValues <$> fieldsFrom c x
-    unbox s@(DataShape cs) x =
-      if all isTag cs then do t <- fixValue x; pure (MkValue [Word] [t]) else do
-        let lay = shapeLayout s
-        q <- emit1 (NarrowPtr CON x)
-        i <- emit1 (LoadPart ConId q)
-        rs <- joinPoint (tys lay) $ \done => do
-          let branches = mapMaybe (\c => case (c.ordinary, placement cs c.name) of
-                                           (AsObject cid, Just (_, p)) => Just (the Int64 (cast cid), do
-                                             fs <- fieldsFrom c x
-                                             r <- conValue p (concatValues fs)
-                                             maybe (unsupported "a sum of another layout") done (regsAs lay r))
-                                           _ => Nothing) cs
-          if length branches /= length cs then unsupported "a sum some of whose constructors are not objects" else
-            case choose (distinct (map fst branches) && keysFit (W64 {enc}) (map fst branches)) of
-              Left ok => switch i branches (crash "no constructor of the type")
-              Right _ => unsupported "a sum with repeated constructor ids"
-        pure (MkValue lay rs)
-
-    ||| The registers of the fields of an ordinary value of the constructor.
-    fieldsFrom : ConShape -> Opnd v Val -> B (List (Value enc v))
-    fieldsFrom c x = case c.ordinary of
-      AsTag => pure []
-      -- the newtype's other fields, such as `MkIORes`'s world, take no
-      -- registers
-      AsField k => traverse (\(j, s) => unbox s (if j == k then x else Erased)) (numbered c.fields)
-      AsObject _ => case c.fields of
-        [] => pure []
-        fs => do
-          q <- emit1 (NarrowPtr CON x)
-          traverse (\(j, s) => do f <- emit1 (Load Val (MkMem (AtPtr q) Nothing (8 + 8 * cast j)))
-                                  unbox s f)
-                   (numbered fs)
-
-  mutual
-    ||| The ordinary value of the shape, from its registers.
-    box : Shape -> Value enc v -> B (Opnd v Val)
-    box (PrimShape DoubleType) x = case doubleOf x of
-      Just f => do p <- emit1 (AllocObj DoubleH [f]); emit1 (WidenPtr p)
-      Nothing => unsupported "a double of another layout from flat code"
-    box (PrimShape WorldType) _ = pure Erased
-    box (PrimShape t) x = case (intWidth t, wordOf x) of
-      (Just (Narrow _ _), Just w) => do f <- emit1 (Tag w); widen f
-      (Just (Wide _), Just w) => wideVal w
-      _ => unsupported ("a value of " ++ show t ++ " returned by flat code")
-    box UniformShape x = case x of
-      MkValue [Uniform] [u] => pure u
-      _ => unsupported "a uniform value of another layout from flat code"
-    box (DataShape []) _ = pure Erased
-    box (DataShape [c]) x = boxCon c x
-    box (DataShape cs) x = case tagOf x of
-      Nothing => unsupported "a sum without its tag from flat code"
-      Just t => if all isTag cs then do f <- emit1 (Tag t); widen f else do
-        [r] <- joinPoint [Val] $ \done => do
-          let branches = mapMaybe (\c => do (_, p) <- placement cs c.name
-                                            fs <- fieldsOf p x
-                                            pure (the Int64 (cast c.tag), do r <- boxCon c fs; done [r])) cs
-          if length branches /= length cs then unsupported "a sum of another layout from flat code" else
-            case choose (distinct (map fst branches) && keysFit (W64 {enc}) (map fst branches)) of
-              Left ok => switch t branches (crash "no constructor of the type")
-              Right _ => unsupported "a sum with repeated tags"
-        pure r
-
-    ||| The ordinary value of the constructor, from its fields' registers.
-    boxCon : ConShape -> Value enc v -> B (Opnd v Val)
-    boxCon c fs = case splitBy (map shapeLayout c.fields) fs of
-      Nothing => unsupported ("the fields of " ++ show c.name ++ ", of another layout")
-      Just xs => case c.ordinary of
-        AsTag => maybe (unsupported "a tag outside the fixnum range") pure (fixnum (cast c.tag))
-        AsField k => case getAt k (zip c.fields xs) of
-          Just (s, f) => box s f
-          Nothing => unsupported ("the newtype " ++ show c.name ++ " without its field")
-        AsObject cid => case c.fields of
-          [] => staticVal (nullaryCon cid)
-          _ => do ys <- traverse (uncurry box) (zip c.fields xs); constructor cid ys
 
   ||| A function that has a flat form: its arguments taken apart, the form
   ||| called, its result built.
@@ -1027,144 +424,690 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
         res <- directCall var args
         r <- box rs (MkValue fd.result res)
         return r
+    where
+      isTag : ConShape -> Bool
+      isTag c = case c.ordinary of
+        AsTag => True
+        _ => False
+
+      ||| The registers of an ordinary value of the shape.
+      unbox : Shape -> Opnd v Val -> B (Value enc v)
+      unbox shape x = case shape of
+        PrimShape DoubleType => do
+          p <- emit1 (NarrowPtr DOUBLE x)
+          f <- emit1 (Load F64 (MkMem (AtPtr p) Nothing 8))
+          pure (MkValue [Dbl] [f])
+        PrimShape WorldType => pure noRegs
+        PrimShape t => case intWidth t of
+          Just (Narrow _ _) => do w <- fixValue x; pure (MkValue [Word] [w])
+          Just (Wide _) => do w <- wideWord x; pure (MkValue [Word] [w])
+          _ => unsupported ("a value of " ++ show t ++ " passed to flat code")
+        UniformShape => pure (MkValue [Uniform] [x])
+        DataShape [] => pure noRegs
+        DataShape [c] => concatValues <$> fieldsFrom c x
+        s@(DataShape cs) =>
+          if all isTag cs then do t <- fixValue x; pure (MkValue [Word] [t]) else do
+            let lay = shapeLayout s
+            q <- emit1 (NarrowPtr CON x)
+            i <- emit1 (LoadPart ConId q)
+            rs <- joinPoint (tys lay) $ \done => do
+              let branches = mapMaybe (\c => case (c.ordinary, placement cs c.name) of
+                                               (AsObject cid, Just (_, p)) => Just (the Int64 (cast cid), do
+                                                 fs <- fieldsFrom c x
+                                                 r <- conValue p (concatValues fs)
+                                                 maybe (unsupported "a sum of another layout") done (regsAs lay r))
+                                               _ => Nothing) cs
+              if length branches /= length cs then unsupported "a sum some of whose constructors are not objects" else
+                case choose (distinct (map fst branches) && keysFit (W64 {enc}) (map fst branches)) of
+                  Left ok => switch i branches (crash "no constructor of the type")
+                  Right _ => unsupported "a sum with repeated constructor ids"
+            pure (MkValue lay rs)
+        where
+          ||| The registers of the fields of an ordinary value of the constructor.
+          fieldsFrom : ConShape -> Opnd v Val -> B (List (Value enc v))
+          fieldsFrom c x = case c.ordinary of
+            AsTag => pure []
+            -- the newtype's other fields, such as `MkIORes`'s world, take no
+            -- registers
+            AsField k => traverse (\(j, s) => unbox s (if j == k then x else Erased)) (numbered c.fields)
+            AsObject _ => case c.fields of
+              [] => pure []
+              fs => do
+                q <- emit1 (NarrowPtr CON x)
+                traverse (\(j, s) => do f <- emit1 (Load Val (MkMem (AtPtr q) Nothing (8 + 8 * cast j)))
+                                        unbox s f)
+                         (numbered fs)
+            where
+              ||| Each element with its position.
+              numbered : List a -> List (Nat, a)
+              numbered = go 0
+                where
+                  go : Nat -> List a -> List (Nat, a)
+                  go _ [] = []
+                  go i (x :: xs) = (i, x) :: go (S i) xs
+
+      ||| The ordinary value of the shape, from its registers.
+      box : Shape -> Value enc v -> B (Opnd v Val)
+      box shape x = case shape of
+        PrimShape DoubleType => case doubleOf x of
+          Just f => do p <- emit1 (AllocObj DoubleH [f]); emit1 (WidenPtr p)
+          Nothing => unsupported "a double of another layout from flat code"
+        PrimShape WorldType => pure Erased
+        PrimShape t => case (intWidth t, wordOf x) of
+          (Just (Narrow _ _), Just w) => do f <- emit1 (Tag w); widen f
+          (Just (Wide _), Just w) => wideVal w
+          _ => unsupported ("a value of " ++ show t ++ " returned by flat code")
+        UniformShape => case x of
+          MkValue [Uniform] [u] => pure u
+          _ => unsupported "a uniform value of another layout from flat code"
+        DataShape [] => pure Erased
+        DataShape [c] => boxCon c x
+        DataShape cs => case tagOf x of
+          Nothing => unsupported "a sum without its tag from flat code"
+          Just t => if all isTag cs then do f <- emit1 (Tag t); widen f else do
+            [r] <- joinPoint [Val] $ \done => do
+              let branches = mapMaybe (\c => do (_, p) <- placement cs c.name
+                                                fs <- fieldsOf p x
+                                                pure (the Int64 (cast c.tag), do r <- boxCon c fs; done [r])) cs
+              if length branches /= length cs then unsupported "a sum of another layout from flat code" else
+                case choose (distinct (map fst branches) && keysFit (W64 {enc}) (map fst branches)) of
+                  Left ok => switch t branches (crash "no constructor of the type")
+                  Right _ => unsupported "a sum with repeated tags"
+            pure r
+        where
+          ||| The ordinary value of the constructor, from its fields' registers.
+          boxCon : ConShape -> Value enc v -> B (Opnd v Val)
+          boxCon c fs = case splitBy (map shapeLayout c.fields) fs of
+            Nothing => unsupported ("the fields of " ++ show c.name ++ ", of another layout")
+            Just xs => case c.ordinary of
+              AsTag => maybe (unsupported "a tag outside the fixnum range") pure (fixnum (cast c.tag))
+              AsField k => case getAt k (zip c.fields xs) of
+                Just (s, f) => box s f
+                Nothing => unsupported ("the newtype " ++ show c.name ++ " without its field")
+              AsObject cid => case c.fields of
+                [] => staticVal (nullaryCon cid)
+                _ => do ys <- traverse (uncurry box) (zip c.fields xs); constructor cid ys
 
   ------------------------------------------------------------------------------
   -- Instructions
 
   mutual
-    ||| The alternatives of a case, as code, and the code after the case,
-    ||| from the environment: in tail position each alternative returns
-    ||| itself; otherwise they meet at a join whose parameters are the locals
-    ||| they assign that the rest reads, and the rest is lowered once.
-    ||| `dispatch` branches to the alternatives and the default.
-    ||| `after` is what the code after the case reads.
-    cases : Env v -> (after : SortedSet Int) -> (tail : Bool) -> List (VMInst, SortedSet Int) -> (Env v -> E) ->
-            (alts : List (List VMInst)) -> (dflt : List VMInst) -> (List E -> E -> E) -> E
-    cases env after True [] k alts dflt dispatch =
-      dispatch (map (\alt => lower env True (annotate after alt) k) alts) (lower env True (annotate after dflt) k)
-    cases env after t is k alts dflt dispatch = do
-      -- the locals the alternatives assign that the rest reads: each of the
-      -- few assigned looked up in what is read after, which is as long as the
-      -- rest of the function (`intersection` walks its second set)
-      let ks = filter (\r => contains r after)
-                      (Prelude.toList (foldr (\alt, w => union w (writes alt)) (writes dflt) alts))
-          kset = fromList ks
-          exitWith : Jumper d CPS False v l (replicate (length ks) Val) -> Env v -> E
-          exitWith exit e = exit (passed e ks)
-      vals <- joinPoint (replicate (length ks) Val) $ \exit =>
-        dispatch (map (\alt => lower env False (annotate kset alt) (exitWith exit)) alts)
-                 (lower env False (annotate kset dflt) (exitWith exit))
-      lower (foldl (\e, (k', x) => insert k' (x, Nothing) e) env (zip ks (allVals vals))) t is k
-      where
-        -- A local an alternative leaves as it was passes on as it was; one it
-        -- never had passes on as the erased value, which no path reads.
-        passed : Env v -> (ks : List Int) -> All (Opnd v) (replicate (length ks) Val)
-        passed e [] = []
-        passed e (k' :: ks') = maybe Erased fst (lookup k' e) :: passed e ks'
 
     ||| The instructions, each with what is read after it (`annotate`), then
     ||| the rest, `k`, on the environment they leave; in `tail` position the
     ||| rest returns the result.
     lower : Env v -> (tail : Bool) -> List (VMInst, SortedSet Int) -> (Env v -> E) -> E
-    lower env t [] k = k env
-    lower env t ((DECLARE _, _) :: is) k = lower env t is k
-    lower env t ((START, _) :: is) k = lower env t is k
-    lower env t ((ASSIGN Discard _, _) :: is) k = lower env t is k
-    lower env t ((ASSIGN r x, _) :: is) k = lower (set env r (get env x)) t is k
-    lower env t ((NULL r, _) :: is) k = lower (set env r Erased) t is k
-    lower env t ((MKCONSTANT r c, _) :: is) k = do
-      x <- constant c
-      lower (setKnown env r x c) t is k
-    lower env t ((MKCON r (Left conId) [], _) :: is) k = do
-      x <- staticVal (nullaryCon conId)
-      lower (set env r x) t is k
-    lower env t ((MKCON r (Left conId) args, _) :: is) k = do
-      x <- constructor conId (map (get env) args)
-      lower (set env r x) t is k
-    lower env t ((MKCON r (Right n) _, _) :: is) k = unsupported ("the type constructor " ++ show n ++ " as a value")
-    lower env t ((MKCLOSURE r f missing args, _) :: is) k =
-      case lookup f refs.funs of
-        Just (MkSig _ CPS _ _ ** code) => do
-          x <- closure f code missing (map (get env) args)
-          lower (set env r x) t is k
-        _ => unsupported ("a closure of " ++ show f ++ ", which is not a function of the program")
-    lower env t ((APPLY r f a, _) :: is) k =
-      if t && isNil is && isRVal r
-         then tailApply (get env f) (get env a)
-         else do
-           x <- apply (get env f) (get env a)
-           lower (set env r x) t is k
-    lower env t ((CALL r tl f args, _) :: is) k =
-      case cpsFunction f (length (map (get env) args)) of
-        Nothing => unsupported ("a call to " ++ show f ++ ", which is not a function of the program")
-        Just (_ ** _ ** callee) =>
-          if tl
-             then tailCall callee (vals (map (get env) args))
-             else do
-               x <- call callee (vals (map (get env) args))
-               lower (set env r x) t is k
-    lower env t ((OP r fn args, _) :: is) k = do
-      env' <- op env r fn args
-      lower env' t is k
-    lower env t ((EXTPRIM r p args, _) :: is) k = do
-      env' <- extPrim env r p args
-      lower env' t is k
-    lower env t ((CASE s alts dflt, after) :: is) k =
-      case traverse (either Just (const Nothing) . fst) alts of
-        Nothing => unsupported "a case on type constructors"
-        Just ids => do
-          q <- emit1 (NarrowPtr CON (get env s))
-          i <- emit1 (LoadPart ConId q)
-          cases env after t is k (map snd alts) (fromMaybe [ERROR "no case alternative matched"] dflt) $
-            \codes, other => onKeys i (zip (map cast ids) codes) other
-    lower env t ((CONSTCASE s alts dflt, after) :: is) k =
-      case traverse (intConst . fst) alts of
-        Nothing => unsupported "a case on strings or doubles"
-        Just ks =>
-          cases env after t is k (map snd alts) (fromMaybe [ERROR "no case alternative matched"] dflt) $
-            \codes, other => constCase (get env s) (zip (map snd ks) codes) (map fst (head' ks)) other
-    lower env t ((PROJECT r x i, _) :: is) k = do
-      q <- emit1 (NarrowPtr CON (get env x))
-      f <- emit1 (Load Val (MkMem (AtPtr q) Nothing (8 + 8 * i)))
-      lower (set env r f) t is k
-    lower env t ((ERROR msg, _) :: _) k = crash msg
+    lower env t list k = case list of
+      [] => k env
+      (DECLARE _, _) :: is => lower env t is k
+      (START, _) :: is => lower env t is k
+      (ASSIGN Discard _, _) :: is => lower env t is k
+      (ASSIGN r x, _) :: is => lower (set env r (get env x)) t is k
+      (NULL r, _) :: is => lower (set env r Erased) t is k
+      (MKCONSTANT r c, _) :: is => do
+        x <- constant c
+        lower (setKnown env r x c) t is k
+      (MKCON r (Left conId) [], _) :: is => do
+        x <- staticVal (nullaryCon conId)
+        lower (set env r x) t is k
+      (MKCON r (Left conId) args, _) :: is => do
+        x <- constructor conId (map (get env) args)
+        lower (set env r x) t is k
+      (MKCON r (Right n) _, _) :: is => unsupported ("the type constructor " ++ show n ++ " as a value")
+      (MKCLOSURE r f missing args, _) :: is =>
+        case lookup f refs.funs of
+          Just (MkSig _ CPS _ _ ** code) => do
+            x <- closure f code missing (map (get env) args)
+            lower (set env r x) t is k
+          _ => unsupported ("a closure of " ++ show f ++ ", which is not a function of the program")
+      (APPLY r f a, _) :: is =>
+        if t && isNil is && isRVal r
+           then tailApply (get env f) (get env a)
+           else do
+             x <- apply (get env f) (get env a)
+             lower (set env r x) t is k
+      (CALL r tl f args, _) :: is =>
+        case cpsFunction f (length (map (get env) args)) of
+          Nothing => unsupported ("a call to " ++ show f ++ ", which is not a function of the program")
+          Just (_ ** _ ** callee) =>
+            if tl
+               then tailCall callee (vals (map (get env) args))
+               else do
+                 x <- call callee (vals (map (get env) args))
+                 lower (set env r x) t is k
+      (OP r fn args, _) :: is => do
+        env' <- op env r fn args
+        lower env' t is k
+      (EXTPRIM r p args, _) :: is => do
+        env' <- extPrim env r p args
+        lower env' t is k
+      (CASE s alts dflt, after) :: is =>
+        case traverse (either Just (const Nothing) . fst) alts of
+          Nothing => unsupported "a case on type constructors"
+          Just ids => do
+            q <- emit1 (NarrowPtr CON (get env s))
+            i <- emit1 (LoadPart ConId q)
+            cases env after t is k (map snd alts) (fromMaybe [ERROR "no case alternative matched"] dflt) $
+              \codes, other => onKeys i (zip (map cast ids) codes) other
+      (CONSTCASE s alts dflt, after) :: is =>
+        case traverse (intConst . fst) alts of
+          Nothing => unsupported "a case on strings or doubles"
+          Just ks =>
+            cases env after t is k (map snd alts) (fromMaybe [ERROR "no case alternative matched"] dflt) $
+              \codes, other => constCase (get env s) (zip (map snd ks) codes) (map fst (head' ks)) other
+      (PROJECT r x i, _) :: is => do
+        q <- emit1 (NarrowPtr CON (get env x))
+        f <- emit1 (Load Val (MkMem (AtPtr q) Nothing (8 + 8 * i)))
+        lower (set env r f) t is k
+      (ERROR msg, _) :: _ => crash msg
+      where
+        ||| A closure of the function, with the arguments filled and `missing` to
+        ||| come, its header decided here.
+        closure : Name -> Var d.sigs (MkSig n CPS ps cv) -> (missing : Nat) -> (args : List (Opnd v Val)) -> B (Opnd v Val)
+        closure f code missing args =
+          case choose (wellFormed (ClosureH {enc} (missing + length args) (length args))) of
+            Left ok => do
+              c <- emit1 (CodeAddr code)
+              p <- emit1 (AllocObj (ClosureH (missing + length args) (length args)) (c :: vals args))
+              emit1 (WidenPtr p)
+            Right _ => unsupported ("a closure of " ++ show f ++ " that its header cannot hold")
 
-    ||| A switch on a word, its keys' distinctness decided here.
-    onKeys : Opnd v W64 -> List (Int64, E) -> E -> E
-    onKeys x cs other = case choose (distinct (map fst cs) && keysFit (W64 {enc}) (map fst cs)) of
-      Left ok => switch x cs other
-      Right _ => unsupported "a case with repeated constructor ids"
+        isRVal : Reg -> Bool
+        isRVal RVal = True
+        isRVal _ = False
 
-    ||| A switch on a fixnum, its keys decided here to be distinct fixnums.
-    onFixnums : Opnd v Fix -> List (Int64, E) -> E -> E
-    onFixnums x cs other = case choose (distinct (map fst cs) && keysFit (Fix {enc}) (map fst cs)) of
-      Left ok => switch x cs other
-      Right _ => unsupported "a case with repeated constants"
+        ||| A CPS function of the program of `n` parameters.
+        cpsFunction : Name -> (n : Nat) -> Maybe (nm ** cv ** Var d.sigs (MkSig nm CPS (replicate n Val) cv))
+        cpsFunction name n = case lookup name refs.funs of
+          Just (MkSig nm CPS ps cv ** var) => case decEq ps (replicate n Val) of
+            Yes Refl => Just (nm ** cv ** var)
+            No _ => Nothing
+          _ => Nothing
 
-    ||| A case on integer or character constants. A 64-bit scrutinee is
-    ||| matched as a fixnum against the cases in the fixnum range and as a box
-    ||| against the others; an `Integer` that is a `BIGNUM` matches no case in
-    ||| the fixnum range.
-    constCase : Opnd v Val -> List (Integer, E) -> Maybe IntWidth -> E -> E
-    constCase x cs (Just (Wide _)) other = do
-      -- each alternative is reached from both switches, so it is a block
-      alts <- traverse (\(n, code) => do j <- block [] (\[] => code); pure (patternValue n, j)) cs
-      dflt <- block [] (\[] => other)
-      ifFixnums [x]
-        (\[f] => onFixnums f [(cast p, j []) | (p, j) <- alts, inFixnumRange p] (dflt []))
-        (case [(cast p, j []) | (p, j) <- alts, not (inFixnumRange p)] of
-           [] => dflt []
-           big => do w <- boxWord x; onKeys w big (dflt []))
-    constCase x cs (Just Unbounded) other = do
-      dflt <- block [] (\[] => other)
-      ifFixnums [x]
-        (\[f] => onFixnums f [(cast n, code) | (n, code) <- cs, inFixnumRange n] (dflt []))
-        (if all (inFixnumRange . fst) cs
-            then dflt []
-            else unsupported "a case on an Integer constant outside the fixnum range")
-    constCase x cs _ other = do
-      f <- asFix x
-      onFixnums f [(cast n, code) | (n, code) <- cs] other
+        set : Env v' -> Reg -> Opnd v' Val -> Env v'
+        set env r x = maybe env (\k => insert k (x, Nothing) env) (key r)
+
+        extPrim : Env v -> Reg -> Name -> List Reg -> B (Env v)
+        extPrim env r p list = case list of
+          [_, x, y, _] =>
+            if p == arrayPrim "prim__newArray"
+               then do count <- wideWord (get env x)
+                       a <- emit1 (AllocSized ArrayElems count (get env y))
+                       set env r <$> emit1 (WidenPtr a)
+            else if p == arrayPrim "prim__arrayGet"
+               then do a <- emit1 (NarrowPtr ARRAY (get env x))
+                       i <- wideWord (get env y)
+                       set env r <$> emit1 (Load Val (MkMem (AtPtr a) (Just i) 8))
+            else unsupported ("the external primitive " ++ show p)
+          -- The result is `()`, which no caller inspects: the erased value.
+          [_, x, y, z, _] =>
+            if p == arrayPrim "prim__arraySet"
+               then do a <- emit1 (NarrowPtr ARRAY (get env x))
+                       i <- wideWord (get env y)
+                       emit0 (Store Val (MkMem (AtPtr a) (Just i) 8) (get env z))
+                       pure (set env r Erased)
+            else unsupported ("the external primitive " ++ show p)
+          _ => unsupported ("the external primitive " ++ show p)
+          where
+            ||| One of the `%extern` array primitives of `Data.IOArray.Prims`.
+            arrayPrim : String -> Name
+            arrayPrim s = NS (mkNamespace "Data.IOArray.Prims") (UN (Basic s))
+
+        ||| The alternatives of a case, as code, and the code after the case,
+        ||| from the environment: in tail position each alternative returns
+        ||| itself; otherwise they meet at a join whose parameters are the locals
+        ||| they assign that the rest reads, and the rest is lowered once.
+        ||| `dispatch` branches to the alternatives and the default.
+        ||| `after` is what the code after the case reads.
+        cases : Env v -> (after : SortedSet Int) -> (tail : Bool) -> List (VMInst, SortedSet Int) -> (Env v -> E) ->
+                (alts : List (List VMInst)) -> (dflt : List VMInst) -> (List E -> E -> E) -> E
+        cases env after True [] k alts dflt dispatch =
+          dispatch (map (\alt => lower env True (annotate after alt) k) alts) (lower env True (annotate after dflt) k)
+        cases env after t is k alts dflt dispatch = do
+          -- the locals the alternatives assign that the rest reads: each of the
+          -- few assigned looked up in what is read after, which is as long as the
+          -- rest of the function (`intersection` walks its second set)
+          let ks = filter (\r => contains r after)
+                          (Prelude.toList (foldr (\alt, w => union w (writes alt)) (writes dflt) alts))
+              kset = fromList ks
+              exitWith : Jumper d CPS False v l (replicate (length ks) Val) -> Env v -> E
+              exitWith exit e = exit (passed e ks)
+          vals <- joinPoint (replicate (length ks) Val) $ \exit =>
+            dispatch (map (\alt => lower env False (annotate kset alt) (exitWith exit)) alts)
+                     (lower env False (annotate kset dflt) (exitWith exit))
+          lower (foldl (\e, (k', x) => insert k' (x, Nothing) e) env (zip ks (allVals vals))) t is k
+          where
+            -- A local an alternative leaves as it was passes on as it was; one it
+            -- never had passes on as the erased value, which no path reads.
+            passed : Env v -> (ks : List Int) -> All (Opnd v) (replicate (length ks) Val)
+            passed e [] = []
+            passed e (k' :: ks') = maybe Erased fst (lookup k' e) :: passed e ks'
+
+            -- The registers a list of instructions writes, and those it reads, nested
+            -- alternatives included. `union x y` inserts the elements of `y` into `x`,
+            -- so each union here takes the smaller set second: the other way, a list's
+            -- set is built again at every instruction, the square of its length.
+            writes : List VMInst -> SortedSet Int
+            writes [] = empty
+            writes (i :: is) = union (writes is) (writes1 i)
+              where
+                writes1 : VMInst -> SortedSet Int
+                -- lint: allow trust-escape: VMCode nests its instruction lists in tuples, which totality checking does not see through
+                writes1 inst = case inst of
+                  CASE _ alts d => assert_total (union (altsWrite alts) (maybe empty writes d))
+                  CONSTCASE _ alts d => assert_total (union (altsWrite alts) (maybe empty writes d))
+                  i => maybe empty singleton (target i >>= key)
+                  where
+                    target : VMInst -> Maybe Reg
+                    target (ASSIGN d _) = Just d
+                    target (MKCON d _ _) = Just d
+                    target (MKCLOSURE d _ _ _) = Just d
+                    target (MKCONSTANT d _) = Just d
+                    target (APPLY d _ _) = Just d
+                    target (CALL d _ _ _) = Just d
+                    target (OP d _ _) = Just d
+                    target (EXTPRIM d _ _) = Just d
+                    target (PROJECT d _ _) = Just d
+                    target (NULL d) = Just d
+                    target _ = Nothing
+
+                    altsWrite : List (a, List VMInst) -> SortedSet Int
+                    altsWrite [] = empty
+                    altsWrite ((_, is) :: as) = union (altsWrite as) (writes is)
+
+        ||| A switch on a word, its keys' distinctness decided here.
+        onKeys : Opnd v W64 -> List (Int64, E) -> E -> E
+        onKeys x cs other = case choose (distinct (map fst cs) && keysFit (W64 {enc}) (map fst cs)) of
+          Left ok => switch x cs other
+          Right _ => unsupported "a case with repeated constructor ids"
+
+        ||| A case on integer or character constants. A 64-bit scrutinee is
+        ||| matched as a fixnum against the cases in the fixnum range and as a box
+        ||| against the others; an `Integer` that is a `BIGNUM` matches no case in
+        ||| the fixnum range.
+        constCase : Opnd v Val -> List (Integer, E) -> Maybe IntWidth -> E -> E
+        constCase x cs y other = case y of
+          Just (Wide _) => do
+            -- each alternative is reached from both switches, so it is a block
+            alts <- traverse (\(n, code) => do j <- block [] (\[] => code); pure (patternValue n, j)) cs
+            dflt <- block [] (\[] => other)
+            ifFixnums [x]
+              (\[f] => onFixnums f [(cast p, j []) | (p, j) <- alts, inFixnumRange p] (dflt []))
+              (case [(cast p, j []) | (p, j) <- alts, not (inFixnumRange p)] of
+                 [] => dflt []
+                 big => do w <- boxWord x; onKeys w big (dflt []))
+          Just Unbounded => do
+            dflt <- block [] (\[] => other)
+            ifFixnums [x]
+              (\[f] => onFixnums f [(cast n, code) | (n, code) <- cs, inFixnumRange n] (dflt []))
+              (if all (inFixnumRange . fst) cs
+                  then dflt []
+                  else unsupported "a case on an Integer constant outside the fixnum range")
+          _ => do
+            f <- asFix x
+            onFixnums f [(cast n, code) | (n, code) <- cs] other
+          where
+            ||| A switch on a fixnum, its keys decided here to be distinct fixnums.
+            onFixnums : Opnd v Fix -> List (Int64, E) -> E -> E
+            onFixnums x cs other = case choose (distinct (map fst cs) && keysFit (Fix {enc}) (map fst cs)) of
+              Left ok => switch x cs other
+              Right _ => unsupported "a case with repeated constants"
+
+        setKnown : Env v' -> Reg -> Opnd v' Val -> Constant -> Env v'
+        setKnown env r x c = maybe env (\k => insert k (x, Just c) env) (key r)
+
+        ||| A constant: an integer is an immediate when it is a fixnum, and the
+        ||| static object that holds it otherwise.
+        constant : Constant -> B (Opnd v Val)
+        constant WorldVal = pure Erased
+        constant (PrT _) = pure Erased
+        constant (Str s) = staticVal (stringStatic s)
+        constant (Db _) = unsupported "a double constant"
+        constant k = case intConst k of
+          Just (Wide _, n) => let p = patternValue n in maybe (staticVal (int64Static p)) pure (fixnum p)
+          Just (Unbounded, n) =>
+            maybe (case signInHeader enc.bignum of
+                     Just _ => staticVal (bignumStatic n)
+                     Nothing => unsupported "an Integer constant outside the fixnum range, under bignums in two's complement")
+                  pure (fixnum n)
+          Just (Narrow _ _, n) => maybe (unsupported ("the constant " ++ show k)) pure (fixnum n)
+          Nothing => unsupported ("the constant " ++ show k)
+
+        ||| A primitive operation, and the environment after it.
+        op : Env v -> Reg -> PrimFn n -> Vect n Reg -> B (Env v)
+        op env r fn' vect = case (fn', vect) of
+          (Cast from to, [x]) => case (intWidth from, intWidth to) of
+            (Just wf, Just wt) => case known env x >>= intConst >>= (castConstant to . snd) of
+              Just folded => do c <- constant folded; pure (setKnown env r c folded)
+              Nothing => do
+                c <- if to == CharType then toChar wf (get env x) else retype wf wt (get env x)
+                pure (set env r c)
+            _ => unsupported ("the cast from " ++ show from ++ " to " ++ show to)
+          (BelieveMe, [_, _, x]) => pure (set env r (get env x))
+          (fn, args) => set env r <$> value fn args
+          where
+            ||| A cast to `Char`: the value if it is a Unicode scalar value, 0 if not.
+            toChar : IntWidth -> Opnd v Val -> B (Opnd v Val)
+            toChar wf x = do
+              w <- case wf of
+                Narrow _ _ => fixValue x
+                Wide _ => wideWord x
+                Unbounded => do
+                  [w] <- joinPoint [W64] $ \done =>
+                    ifFixnums [x] (\[f] => do w <- untag (f); done [w]) (done [W (-1)])
+                  pure w
+              [r] <- joinPoint [Val] $ \done => do
+                keep <- block [] $ \[] => do f <- emit1 (Tag w); r <- widen f; done [r]
+                zero <- block [] $ \[] => done [Vx {enc} 0]
+                branch LtS w (W 0) (zero []) $
+                  branch LeS w (W 55295) (keep []) $
+                    branch LtS w (W 57344) (zero []) $
+                      branch LeS w (W 1114111) (keep []) (zero [])
+              pure r
+
+            ||| A runtime routine's variable, with its results and parameters.
+            routine : Name -> (rs, ps : List (Ty enc)) -> Maybe (n' ** Var d.sigs (MkSig n' (Direct rs False) ps False))
+            routine name rs ps = case lookup name refs.funs of
+              Just (MkSig n (Direct rs' False) ps' False ** var) => case (decEq rs' rs, decEq ps' ps) of
+                (Yes Refl, Yes Refl) => Just (n ** var)
+                _ => Nothing
+              _ => Nothing
+
+            ||| A call of a runtime routine, binding its results.
+            callRoutine : Name -> {rs : List (Ty enc)} -> {ps : List (Ty enc)} -> All (Opnd v) ps -> B (All (Opnd v) rs)
+            callRoutine name xs = case routine name rs ps of
+              Just (_ ** r) => directCall r xs
+              Nothing => crash ("no runtime routine " ++ show name)
+
+            ||| A word wrapped to a narrow width, as a uniform value: a fixnum, which it
+            ||| always fits.
+            narrowVal : Nat -> Bool -> Opnd v W64 -> B (Opnd v Val)
+            narrowVal n s w = do
+              e <- emit1 (Ext (subWord n) s w)
+              f <- emit1 (Tag e)
+              widen f
+              where
+                subWord : Nat -> SubWord
+                subWord 8 = Sub8
+                subWord 16 = Sub16
+                subWord _ = Sub32
+
+            ||| A uniform integer of one width as one of another, wrapping as Idris's
+            ||| casts do.
+            retype : IntWidth -> IntWidth -> Opnd v Val -> B (Opnd v Val)
+            retype wf wt x =
+              if keeps wf wt then pure x else case (wf, wt) of
+                (Narrow _ _, Narrow n s) => fixValue x >>= narrowVal n s
+                (Wide _, Narrow n s) => wideWord x >>= narrowVal n s
+                (Unbounded, Narrow n s) => integerBits x >>= narrowVal n s
+                (Unbounded, Wide _) => do
+                  [r] <- joinPoint [Val] $ \done =>
+                    ifFixnums [x] (\_ => done [x]) (do a <- integerBits x; r <- wideVal a; done [r])
+                  pure r
+                (Wide True, Unbounded) => do
+                  [r] <- joinPoint [Val] $ \done =>
+                    ifFixnums [x] (\_ => done [x])
+                      (do a <- boxWord x
+                          [r] <- callRoutine (integerRoutine "from_int64") {rs = [Val]} {ps = [W64]} [a]
+                          done [r])
+                  pure r
+                (Wide False, Unbounded) => do
+                  a <- wideWord x
+                  [r] <- joinPoint [Val] $ \done =>
+                    branch LtU a (W 4611686018427387904)
+                      (do f <- emit1 (Tag a); r <- widen f; done [r])
+                      (do [r] <- callRoutine (integerRoutine "from_bits64") {rs = [Val]} {ps = [W64]} [a]; done [r])
+                  pure r
+                _ => pure x
+              where
+                ||| Whether every value of the first width is a value of the second, held the
+                ||| same way, so that a cast between them is a move.
+                keeps : IntWidth -> IntWidth -> Bool
+                keeps (Wide _) (Wide _) = True
+                keeps (Narrow _ _) (Wide _) = True
+                keeps (Narrow _ _) Unbounded = True
+                keeps Unbounded Unbounded = True
+                keeps (Narrow n s) (Narrow m t) = if s == t then m >= n else not s && t && m > n
+                keeps _ _ = False
+
+                ||| An `Integer`'s value modulo 2^64, as a word.
+                integerBits : Opnd v Val -> B (Opnd v W64)
+                integerBits x = do
+                  [w] <- joinPoint [W64] $ \done =>
+                    ifFixnums [x] (\[f] => do w <- untag (f); done [w])
+                      (do [w] <- callRoutine (integerRoutine "to_bits64") {rs = [W64]} {ps = [Val]} [x]; done [w])
+                  pure w
+
+            ||| A call of a string routine of the program's encoding.
+            strings : String -> {rs : List (Ty enc)} -> {ps : List (Ty enc)} -> All (Opnd v) ps -> B (All (Opnd v) rs)
+            strings op xs = callRoutine (stringRoutine enc op) xs
+
+            ||| A word known to be in the fixnum range, as a value: a count or a code
+            ||| point.
+            wordFix : Opnd v W64 -> B (Opnd v Val)
+            wordFix w = do f <- emit1 (Tag w); emit1 (WidenFix f)
+
+            ||| A comparison of strings: the runtime's order, -1, 0 or 1, against 0.
+            stringOrder : Rel -> Opnd v Val -> Opnd v Val -> B (Opnd v Val)
+            stringOrder rel x y = do
+              [o] <- strings "compare" {rs = [W64]} {ps = [Val, Val]} [x, y]
+              b <- emit1 (Cmp rel o (W 0))
+              wordFix b
+
+            ||| An `Integer` routine that makes an `Integer`.
+            integerCall : String -> (xs : List (Opnd v Val)) -> B (Opnd v Val)
+            integerCall what xs = case xs of
+              [x] => do [r] <- callRoutine (integerRoutine what) {rs = [Val]} {ps = [Val]} [x]; pure r
+              [x, y] => do [r] <- callRoutine (integerRoutine what) {rs = [Val]} {ps = [Val, Val]} [x, y]; pure r
+              _ => crash ("the Integer routine " ++ what ++ " takes one or two values")
+
+            negation : IntWidth -> Opnd v Val -> B (Opnd v Val)
+            negation (Narrow n s) x = do
+              a <- fixValue x
+              w <- emit1 (Unary Negate a)
+              narrowVal n s w
+            negation (Wide _) x = do
+              [r] <- joinPoint [Val] $ \done => do
+                word <- block [W64] $ \[wa] => do
+                  w <- emit1 (Unary Negate wa)
+                  r <- wideVal w
+                  done [r]
+                ifFixnums [x]
+                  (\[a] => arithOv OvSub (Fx 0) a (\f => do r <- widen f; done [r])
+                             (do wa <- untag (a); word [wa]))
+                  (do wa <- wideWord x; word [wa])
+              pure r
+            negation Unbounded x = do
+              [r] <- joinPoint [Val] $ \done => do
+                slow <- block [] $ \[] => do r <- integerCall "neg" [x]; done [r]
+                ifFixnums [x] (\[a] => arithOv OvSub (Fx 0) a (\f => do r <- widen f; done [r]) (slow [])) (slow [])
+              pure r
+
+            ||| `div` or `mod`.
+            division : IntWidth -> (remainder : Bool) -> (x, y : Opnd v Val) -> B (Opnd v Val)
+            division (Narrow n s) m x y = do
+              a <- fixValue x
+              b <- fixValue y
+              nonZero b
+              w <- divide s m a b
+              narrowVal n s w
+            division (Wide s) m x y = do
+              a <- wideWord x
+              b <- wideWord y
+              nonZero b
+              w <- divide s m a b
+              wideVal w
+            division Unbounded m x y = do
+              [r] <- joinPoint [Val] $ \done => do
+                slow <- block [] $ \[] => do r <- integerCall (if m then "mod" else "div") [x, y]; done [r]
+                ifFixnums [x, y]
+                  (\[fa, fb] => do
+                     a <- untag (fa)
+                     b <- untag (fb)
+                     branch EqR b (W 0) (slow []) $ do
+                       w <- divide True m a b
+                       tagOv w (\f => do r <- widen f; done [r]) (slow []))
+                  (slow [])
+              pure r
+
+            ||| `shiftL` or `shiftR`: arithmetic on signed types, logical on unsigned.
+            shifting : IntWidth -> (left : Bool) -> (x, y : Opnd v Val) -> B (Opnd v Val)
+            shifting (Narrow n s) left x y = do
+              a <- fixValue x
+              k <- fixValue y
+              w <- shiftBy (if left then Shl else if s then Sar else Shr) a k
+              narrowVal n s w
+            shifting (Wide s) left x y = do
+              a <- wideWord x
+              k <- wideWord y
+              w <- shiftBy (if left then Shl else if s then Sar else Shr) a k
+              wideVal w
+            shifting Unbounded left x y = do
+              [r] <- joinPoint [Val] $ \done => do
+                slow <- block [] $ \[] => do r <- integerCall (if left then "shl" else "shr") [x, y]; done [r]
+                ifFixnums [x, y]
+                  (\[fa, fk] => do
+                     a <- untag (fa)
+                     k <- untag (fk)
+                     branch LtS k (W 0) (slow []) $
+                       if left
+                          then -- shift by at most 62, and keep the result only if
+                               -- shifting back gives the operand and it is a fixnum
+                               branch GtS k (W 62) (slow []) $ do
+                                 w <- emit1 (Arith Shl a k)
+                                 back <- emit1 (Arith Sar w k)
+                                 branch NeR back a (slow []) $
+                                   tagOv w (\f => do r <- widen f; done [r]) (slow [])
+                          else do
+                            w <- shiftBy Sar a k
+                            f <- emit1 (Tag w)
+                            r <- widen f
+                            done [r])
+                  (slow [])
+              pure r
+
+            withWidth : PrimType -> String -> (IntWidth -> B a) -> B a
+            withWidth ty what k = case intWidth ty of
+              Just w => k w
+              Nothing => unsupported (what ++ " on " ++ show ty)
+
+            ||| Addition, subtraction, multiplication and the bitwise operations; the
+            ||| name is the operation's `Integer` routine.
+            arithmetic : IntWidth -> ArithOp -> (routine : String) -> (x, y : Opnd v Val) -> B (Opnd v Val)
+            arithmetic width o routine x y = case width of
+              Narrow n s => do
+                a <- fixValue x
+                b <- fixValue y
+                w <- emit1 (Arith o a b)
+                narrowVal n s w
+              Wide _ => do
+                [r] <- joinPoint [Val] $ \done => do
+                  words <- block [W64, W64] $ \[wa, wb] => do
+                    w <- emit1 (Arith o wa wb)
+                    r <- wideVal w
+                    done [r]
+                  ifFixnums [x, y]
+                    (\[a, b] => case ovOp o of
+                       Just ov => arithOv ov a b (\f => do r <- widen f; done [r])
+                                    (do wa <- untag (a); wb <- untag (b); words [wa, wb])
+                       Nothing => do f <- emit1 (Arith o a b); r <- widen f; done [r])
+                    (do wa <- wideWord x; wb <- wideWord y; words [wa, wb])
+                pure r
+              Unbounded => do
+                [r] <- joinPoint [Val] $ \done => do
+                  slow <- block [] $ \[] => do r <- integerCall routine [x, y]; done [r]
+                  ifFixnums [x, y]
+                    (\[a, b] => case ovOp o of
+                       Just ov => arithOv ov a b (\f => do r <- widen f; done [r]) (slow [])
+                       Nothing => do f <- emit1 (Arith o a b); r <- widen f; done [r])
+                    (slow [])
+                pure r
+              where
+                ||| The overflow form of an operation that has one.
+                ovOp : ArithOp -> Maybe OvOp
+                ovOp Add = Just OvAdd
+                ovOp Sub = Just OvSub
+                ovOp Mul = Just OvMul
+                ovOp _ = Nothing
+
+            ||| A comparison, giving the `Int` 0 or 1.
+            comparison : IntWidth -> Rel -> (x, y : Opnd v Val) -> B (Opnd v Val)
+            comparison width rel x y = case width of
+              Narrow _ _ => do
+                a <- asFix x
+                b <- asFix y
+                c <- emit1 (Cmp rel a b)
+                boolVal c
+              Wide s => do
+                let rel' = if s then rel else unsignedRel rel
+                [c] <- joinPoint [W64] $ \done =>
+                  ifFixnums [x, y]
+                    (\[a, b] => do c <- emit1 (Cmp rel' a b); done [c])
+                    (do a <- wideWord x; b <- wideWord y; c <- emit1 (Cmp rel' a b); done [c])
+                boolVal c
+              Unbounded => do
+                [c] <- joinPoint [W64] $ \done =>
+                  ifFixnums [x, y]
+                    (\[a, b] => do c <- emit1 (Cmp rel a b); done [c])
+                    (do [o] <- callRoutine (integerRoutine "compare") {rs = [W64]} {ps = [Val, Val]} [x, y]
+                        c <- emit1 (Cmp rel o (W 0))
+                        done [c])
+                boolVal c
+              where
+                ||| The unsigned relation for a signed one.
+                unsignedRel : Rel -> Rel
+                unsignedRel LtS = LtU
+                unsignedRel LeS = LeU
+                unsignedRel GtS = GtU
+                unsignedRel GeS = GeU
+                unsignedRel r = r
+
+                ||| A comparison's 0 or 1, as the `Int` Idris's comparisons give.
+                boolVal : Opnd v W64 -> B (Opnd v Val)
+                boolVal c = emit1 (Tag c) >>= widen
+
+            value : PrimFn m -> Vect m Reg -> B (Opnd v Val)
+            value (Add ty) [x, y] = withWidth ty "addition" (\w => arithmetic w Add "add" (get env x) (get env y))
+            value (Sub ty) [x, y] = withWidth ty "subtraction" (\w => arithmetic w Sub "sub" (get env x) (get env y))
+            value (Mul ty) [x, y] = withWidth ty "multiplication" (\w => arithmetic w Mul "mul" (get env x) (get env y))
+            value (Div ty) [x, y] = withWidth ty "division" (\w => division w False (get env x) (get env y))
+            value (Mod ty) [x, y] = withWidth ty "remainder" (\w => division w True (get env x) (get env y))
+            value (Neg ty) [x] = withWidth ty "negation" (\w => negation w (get env x))
+            value (ShiftL ty) [x, y] = withWidth ty "a left shift" (\w => shifting w True (get env x) (get env y))
+            value (ShiftR ty) [x, y] = withWidth ty "a right shift" (\w => shifting w False (get env x) (get env y))
+            value (BAnd ty) [x, y] = withWidth ty "bitwise and" (\w => arithmetic w And "and" (get env x) (get env y))
+            value (BOr ty) [x, y] = withWidth ty "bitwise or" (\w => arithmetic w Or "or" (get env x) (get env y))
+            value (BXOr ty) [x, y] = withWidth ty "bitwise xor" (\w => arithmetic w Xor "xor" (get env x) (get env y))
+            -- the string primitives: the runtime's routines under the encoding
+            value StrLength [s] = do [n] <- strings "length" {rs = [W64]} {ps = [Val]} [get env s]; wordFix n
+            value StrHead [s] = do [c] <- strings "head" {rs = [W64]} {ps = [Val]} [get env s]; wordFix c
+            value StrTail [s] = do [r] <- strings "tail" {rs = [Val]} {ps = [Val]} [get env s]; pure r
+            value StrIndex [s, i] = do
+              w <- wideWord (get env i)
+              [c] <- strings "index" {rs = [W64]} {ps = [Val, W64]} [get env s, w]
+              wordFix c
+            value StrCons [c, s] = do
+              w <- fixValue (get env c)
+              [r] <- strings "cons" {rs = [Val]} {ps = [W64, Val]} [w, get env s]
+              pure r
+            value StrAppend [a, b] = do [r] <- strings "append" {rs = [Val]} {ps = [Val, Val]} [get env a, get env b]; pure r
+            value StrReverse [s] = do [r] <- strings "reverse" {rs = [Val]} {ps = [Val]} [get env s]; pure r
+            value StrSubstr [o, l, s] = do
+              wo <- wideWord (get env o)
+              wl <- wideWord (get env l)
+              [r] <- strings "substr" {rs = [Val]} {ps = [W64, W64, Val]} [wo, wl, get env s]
+              pure r
+            value (LT StringType) [x, y] = stringOrder LtS (get env x) (get env y)
+            value (LTE StringType) [x, y] = stringOrder LeS (get env x) (get env y)
+            value (EQ StringType) [x, y] = stringOrder EqR (get env x) (get env y)
+            value (GTE StringType) [x, y] = stringOrder GeS (get env x) (get env y)
+            value (GT StringType) [x, y] = stringOrder GtS (get env x) (get env y)
+            value (LT ty) [x, y] = withWidth ty "<" (\w => comparison w LtS (get env x) (get env y))
+            value (LTE ty) [x, y] = withWidth ty "<=" (\w => comparison w LeS (get env x) (get env y))
+            value (EQ ty) [x, y] = withWidth ty "==" (\w => comparison w EqR (get env x) (get env y))
+            value (GTE ty) [x, y] = withWidth ty ">=" (\w => comparison w GeS (get env x) (get env y))
+            value (GT ty) [x, y] = withWidth ty ">" (\w => comparison w GtS (get env x) (get env y))
+            value fn _ = unsupported ("the primitive " ++ show fn)
 
 ------------------------------------------------------------------------------
 -- The program
@@ -1187,17 +1130,6 @@ data Plan
     NoEntry
 
 parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
-  ||| A VMCode function: its parameters are its locals at entry, and it
-  ||| returns its result register.
-  lowerFunction : (d : Decls enc) -> Refs enc d -> (args : List Int) -> List VMInst ->
-                  Closed d CPS False (replicate (length args) Val)
-  lowerFunction d refs args body = build $ \ps =>
-    lower d refs (fromList (zip args (map (\x => (x, Nothing)) (allVals ps)))) True (annotate (singleton (-1)) body)
-          (\env => return (get env RVal))
-
-  ||| A foreign function the runtime does not implement: the abort stub.
-  lowerForeign : (d : Decls enc) -> Refs enc d -> Name -> (arity : Nat) -> Closed d CPS False (replicate arity Val)
-  lowerForeign d refs n arity = build $ \ps => unsupported ("the foreign function " ++ show n)
 
   ||| A function that has a flat form, as the wrapper around the form's.
   lowerBoundary : (d : Decls enc) -> Refs enc d -> Callee d -> List Shape -> Shape -> (arity : Nat) ->
@@ -1209,6 +1141,14 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
   defOf d refs fs (MkSig n CPS ps False) (FromVM args body) = case decEq ps (replicate (length args) Val) of
     Yes Refl => Defined (fromMaybe (Unsupported "a level outside its context") (close (lowerFunction d refs args body)))
     No _ => Defined (Unsupported ("the parameters of " ++ show n))
+    where
+      ||| A VMCode function: its parameters are its locals at entry, and it
+      ||| returns its result register.
+      lowerFunction : (d : Decls enc) -> Refs enc d -> (args : List Int) -> List VMInst ->
+                      Closed d CPS False (replicate (length args) Val)
+      lowerFunction d refs args body = build $ \ps =>
+        lower d refs (fromList (zip args (map (\x => (x, Nothing)) (allVals ps)))) True (annotate (singleton (-1)) body)
+              (\env => return (get env RVal))
   defOf d refs fs (MkSig n CPS ps False) (Boundary arity fd ss r) =
     case (decEq ps (replicate arity Val), lookup fd.name fs.callees) of
       (Yes Refl, Just ce) =>
@@ -1221,6 +1161,10 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
   defOf d refs fs (MkSig n CPS ps False) (Foreign arity) = case decEq ps (replicate arity Val) of
     Yes Refl => Defined (fromMaybe (Unsupported "a level outside its context") (close (lowerForeign d refs n arity)))
     No _ => Defined (Unsupported ("the parameters of " ++ show n))
+    where
+      ||| A foreign function the runtime does not implement: the abort stub.
+      lowerForeign : (d : Decls enc) -> Refs enc d -> Name -> (arity : Nat) -> Closed d CPS False (replicate arity Val)
+      lowerForeign d refs n arity = build $ \ps => unsupported ("the foreign function " ++ show n)
   defOf d refs fs (MkSig n (Direct rs False) ps False) Routine = External
   defOf d refs fs s NoEntry = Defined (Unsupported "a program without __mainExpression")
   defOf d refs fs s _ = Defined (Unsupported ("the definition of " ++ show s.name))
@@ -1228,42 +1172,6 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
   defs : (d : Decls enc) -> Refs enc d -> Forms enc d -> (es : List (Sig enc, Plan)) -> All (Def d) (map Builtin.fst es)
   defs d refs fs [] = []
   defs d refs fs ((s, p) :: es) = defOf d refs fs s p :: defs d refs fs es
-
-  ||| A static object's declaration and definition, if its header can hold
-  ||| it. Its words name nothing, so it is defined for any declarations.
-  -- A big constant's static: a header of its sign and words.
-  bigStatic : Name -> Integer -> (sh : SignInHeader enc.bignum) -> (ws : List Int64) ->
-              Maybe (s ** ({0 d : Decls enc} -> StaticDef d s))
-  bigStatic n v sh ws = case choose (wellFormed (BignumH {enc} @{sh} (v < 0) (length ws))) of
-    Left ok => Just (MkStaticSig n BIGNUM ** MkStaticDef (BignumH @{sh} (v < 0) (length ws)) (map SWord (fromList ws)))
-    Right _ => Nothing
-
-  ready : (Name, StaticPlan) -> Maybe (s ** ({0 d : Decls enc} -> StaticDef d s))
-  ready (n, Nullary c) = case choose (wellFormed (ConH {enc} (cast c) 0)) of
-    Left ok => Just (MkStaticSig n CON ** MkStaticDef (ConH (cast c) 0) [])
-    Right _ => Nothing
-  ready (n, Boxed p) = Just (MkStaticSig n INT64 ** MkStaticDef Int64H [SWord (cast p)])
-  ready (n, Big v) = case signInHeader enc.bignum of
-    Just sh => bigStatic n v sh (magnitudeWords (abs v))
-    Nothing => Nothing
-  ready (n, Text s) = do
-    (h ** ws) <- literal enc s
-    case choose (wellFormed h) of
-      Left ok => Just (MkStaticSig n STRING ** MkStaticDef h (map SWord ws))
-      Right _ => Nothing
-
-  staticDefs : (d : Decls enc) -> (rs : List (s ** ({0 d' : Decls enc} -> StaticDef d' s))) ->
-               All (StaticDef d) (map DPair.fst rs)
-  staticDefs d [] = []
-  staticDefs d ((_ ** def) :: rs) = def :: staticDefs d rs
-
-||| The entry's signature: CPS, of no parameters.
-mainSig : Sig enc
-mainSig = MkSig mainExpression CPS [] False
-
-||| The declarations: the entry first, the other functions, the statics.
-declsOf : (es : List (Sig enc, Plan)) -> (rs : List (s ** ({0 d : Decls enc} -> StaticDef d s))) -> Decls enc
-declsOf es rs = MkDecls (mainSig :: map Builtin.fst es) (map DPair.fst rs)
 
 ||| The program of the declarations, the entry first.
 program : {enc : Enc} -> {auto 0 fx : HasFixnums enc.val} -> List FlatDef -> Shapes -> SortedMap Name Name -> Plan ->
@@ -1278,18 +1186,23 @@ program forms shapes services entry es rs =
     Right _ =>
       (MkDecls [mainSig] [] ** MkProgram
                      [Defined (Unsupported "a program with two definitions of one name")] [] (MkEntry here) noConIds)
-
-||| The ids of the constructors of no fields that ordinary code represents
-||| as objects, in a shape: the statics boxing a value of it may need.
-nullaries : Shape -> Builder Int
-nullaries (PrimShape _) = neutral
-nullaries UniformShape = neutral
-nullaries (DataShape cs) = concatMap con cs
   where
-    con : ConShape -> Builder Int
-    con c = (case (c.ordinary, c.fields) of
-               (AsObject cid, []) => single cid
-               _ => neutral) <+> concatMap nullaries c.fields
+    refsOf : (d : Decls enc') -> Refs enc' d
+    refsOf d = MkRefs (fromList [(s.name, (s ** v)) | (s ** v) <- enumerate d.sigs])
+                      (fromList [(s.sym, (s ** v)) | (s ** v) <- enumerate d.statics])
+
+    staticDefs : (d : Decls enc) -> (rs : List (s' ** ({0 d' : Decls enc} -> StaticDef d' s'))) ->
+                 All (StaticDef d) (map DPair.fst rs)
+    staticDefs d [] = []
+    staticDefs d ((_ ** def) :: rs) = def :: staticDefs d rs
+
+    ||| The entry's signature: CPS, of no parameters.
+    mainSig : Sig enc'
+    mainSig = MkSig mainExpression CPS [] False
+
+    ||| The declarations: the entry first, the other functions, the statics.
+    declsOf : (es : List (Sig enc', Plan)) -> (rs : List (s' ** ({0 d : Decls enc'} -> StaticDef d s'))) -> Decls enc'
+    declsOf es rs = MkDecls (mainSig :: map Builtin.fst es) (map DPair.fst rs)
 
 ||| Whether a value of the C type is held as a flat value of the skeleton:
 ||| an integer as its machine type, a `Char`, a `Double`, the world, `()`, a
@@ -1416,6 +1329,18 @@ lowerProgram enc platform forms shapes vmdefs = do
       guard (map shapeLayout ss == map layout fd.params && shapeLayout r == fd.result)
       pure (Boundary arity fd ss r)
 
+    ||| The ids of the constructors of no fields that ordinary code represents
+    ||| as objects, in a shape: the statics boxing a value of it may need.
+    nullaries : Shape -> Builder Int
+    nullaries (PrimShape _) = neutral
+    nullaries UniformShape = neutral
+    nullaries (DataShape cs) = concatMap con cs
+      where
+        con : ConShape -> Builder Int
+        con c = (case (c.ordinary, c.fields) of
+                   (AsObject cid, []) => single cid
+                   _ => neutral) <+> concatMap nullaries c.fields
+
     -- The nullary constructors a boundary may box.
     boxed : Plan -> Builder Int
     boxed (Boundary _ _ ss r) = concatMap nullaries (r :: ss)
@@ -1430,6 +1355,78 @@ lowerProgram enc platform forms shapes vmdefs = do
             fromMaybe (Foreign (length fargs)) (boundaryOf n (length fargs)))
     plan (n, MkVMError _) = Nothing
 
+    ||| The constants a function's locals may hold, and the static objects its
+    ||| constants need. A cast of a local holding a constant is folded while
+    ||| compiling, so every constant a local may hold is followed through casts;
+    ||| the result may name statics the lowering does not use, which costs only
+    ||| their bytes.
+    staticsOf : List VMInst -> SortedMap Name StaticPlan
+    staticsOf body = snd (go body (empty, empty))
+      where
+        plan : Constant -> Maybe (Name, StaticPlan)
+        plan k = case intConst k of
+          Just (Wide _, v) => let p = patternValue v in
+                              if inFixnumRange p then Nothing else Just (int64Static p, Boxed p)
+          Just (Unbounded, v) => if inFixnumRange v then Nothing else Just (bignumStatic v, Big v)
+          _ => case k of
+            Str s => Just (stringStatic s, Text s)
+            _ => Nothing
+
+        note : Constant -> SortedMap Name StaticPlan -> SortedMap Name StaticPlan
+        note k ss = case plan k of
+          Just (n, p) => insert n p ss
+          Nothing => ss
+
+        add : Int -> Constant -> (SortedMap Int (List Constant), SortedMap Name StaticPlan) ->
+              (SortedMap Int (List Constant), SortedMap Name StaticPlan)
+        add i k (known, ss) = (insert i (k :: fromMaybe [] (lookup i known)) known, note k ss)
+
+        mutual
+          go : List VMInst -> (SortedMap Int (List Constant), SortedMap Name StaticPlan) ->
+               (SortedMap Int (List Constant), SortedMap Name StaticPlan)
+          go [] acc = acc
+          go (i :: is) acc = go is (one i acc)
+
+          one : VMInst -> (SortedMap Int (List Constant), SortedMap Name StaticPlan) ->
+                (SortedMap Int (List Constant), SortedMap Name StaticPlan)
+          one (MKCONSTANT r k) acc@(known, ss) = case key r of
+            Just i => add i k acc
+            Nothing => (known, note k ss)
+          one (MKCON _ (Left c) []) (known, ss) = (known, insert (nullaryCon c) (Nullary c) ss)
+          one (OP r (Cast _ to) [x]) acc@(known, ss) =
+            let folded = mapMaybe (\k => intConst k >>= (castConstant to . snd))
+                                  (fromMaybe [] (key x >>= \i => lookup i known))
+            in case key r of
+                 Just i => foldl (\a, f => add i f a) acc folded
+                 Nothing => (known, foldl (flip note) ss folded)
+          -- lint: allow trust-escape: VMCode nests its instruction lists in tuples, which totality checking does not see through
+          one (CASE _ alts d) acc = assert_total (maybe id go d (foldl (\a, alt => go (snd alt) a) acc alts))
+          one (CONSTCASE _ alts d) acc = assert_total (maybe id go d (foldl (\a, alt => go (snd alt) a) acc alts))
+          one _ acc = acc
+
     bodyStatics : (Name, VMDef) -> Maybe (SortedMap Name StaticPlan)
     bodyStatics (_, MkVMFun _ body) = Just (staticsOf body)
     bodyStatics _ = Nothing
+
+    ready : (Name, StaticPlan) -> Maybe (s ** ({0 d : Decls enc} -> StaticDef d s))
+    ready (n, Nullary c) = case choose (wellFormed (ConH {enc} (cast c) 0)) of
+      Left ok => Just (MkStaticSig n CON ** MkStaticDef (ConH (cast c) 0) [])
+      Right _ => Nothing
+    ready (n, Boxed p) = Just (MkStaticSig n INT64 ** MkStaticDef Int64H [SWord (cast p)])
+    ready (n, Big v) = case signInHeader enc.bignum of
+      Just sh => bigStatic n v sh (magnitudeWords (abs v))
+      Nothing => Nothing
+      where
+        ||| A static object's declaration and definition, if its header can hold
+        ||| it. Its words name nothing, so it is defined for any declarations.
+        -- A big constant's static: a header of its sign and words.
+        bigStatic : Name -> Integer -> (sh : SignInHeader enc.bignum) -> (ws : List Int64) ->
+                    Maybe (s' ** ({0 d : Decls enc} -> StaticDef d s'))
+        bigStatic n v sh ws = case choose (wellFormed (BignumH {enc} @{sh} (v < 0) (length ws))) of
+          Left ok => Just (MkStaticSig n BIGNUM ** MkStaticDef (BignumH @{sh} (v < 0) (length ws)) (map SWord (fromList ws)))
+          Right _ => Nothing
+    ready (n, Text s) = do
+      (h ** ws) <- literal enc s
+      case choose (wellFormed h) of
+        Left ok => Just (MkStaticSig n STRING ** MkStaticDef h (map SWord ws))
+        Right _ => Nothing

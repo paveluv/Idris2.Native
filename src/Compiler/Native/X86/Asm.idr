@@ -388,75 +388,76 @@ data Instr : Type where
   Bytes  : List Bits8 -> Instr
   Comment : String -> Instr
 
-sizedMem : String -> Mem -> String
-sizedMem sz m = sz ++ " ptr " ++ show m
-
-showWidthReg : Width -> Reg64 -> String
-showWidthReg W8 = showReg8
-showWidthReg W16 = showReg16
-showWidthReg W32 = showReg32
-
-loadMnemonic : Width -> Bool -> String
-loadMnemonic W32 False = "mov"          -- mov r32, m32 zero-extends
-loadMnemonic W32 True = "movsxd"
-loadMnemonic _ True = "movsx"
-loadMnemonic _ False = "movzx"
-
 public export
 Show Instr where
-  show (MovRR d s) = "mov " ++ show d ++ ", " ++ show s
-  show (MovRI d i) = "mov " ++ show d ++ ", " ++ show i
-  show (MovRM d m) = "mov " ++ show d ++ ", " ++ sizedMem "qword" m
-  show (MovMR m s) = "mov " ++ sizedMem "qword" m ++ ", " ++ show s
-  show (MovMI m i) = "mov " ++ sizedMem "qword" m ++ ", " ++ show i
-  show (Lea d m) = "lea " ++ show d ++ ", " ++ show m
-  show (Load W32 False d m) = "mov " ++ showReg32 d ++ ", " ++ sizedMem "dword" m
-  show (Load w s d m) = loadMnemonic w s ++ " " ++ show d ++ ", " ++ sizedMem (show w) m
-  show (Store w m s) = "mov " ++ sizedMem (show w) m ++ ", " ++ showWidthReg w s
-  show (Alu op d s) = show op ++ " " ++ show d ++ ", " ++ show s
-  show (AluI op d i) = show op ++ " " ++ show d ++ ", " ++ show i
-  show (AluRM op d m) = show op ++ " " ++ show d ++ ", " ++ sizedMem "qword" m
-  show (AluMR op m s) = show op ++ " " ++ sizedMem "qword" m ++ ", " ++ show s
-  show (Test a b) = "test " ++ show a ++ ", " ++ show b
-  show (TestI a i) = "test " ++ show a ++ ", " ++ show i
-  show (Imul d s) = "imul " ++ show d ++ ", " ++ show s
-  show (ImulI d s i) = "imul " ++ show d ++ ", " ++ show s ++ ", " ++ show i
-  show Cqo = "cqo"
-  show (Idiv r) = "idiv " ++ show r
-  show (DivU r) = "div " ++ show r
-  show (Neg r) = "neg " ++ show r
-  show (Not r) = "not " ++ show r
-  show (ShiftI op r n) = show op ++ " " ++ show r ++ ", " ++ show (cast {to = Nat} n)
-  show (ShiftCl op r) = show op ++ " " ++ show r ++ ", cl"
-  show (Jmp l) = "jmp " ++ showLabel l
-  show (Jcc c l) = "j" ++ show c ++ " " ++ showLabel l
-  show (Call l) = "call " ++ showLabel l
-  show (JmpR r) = "jmp " ++ show r
-  show (JmpM m) = "jmp " ++ sizedMem "qword" m
-  show (CallR r) = "call " ++ show r
-  show Ret = "ret"
-  show (Push r) = "push " ++ show r
-  show (Pop r) = "pop " ++ show r
-  show (Setcc c r) = "set" ++ show c ++ " " ++ showReg8 r
-  show (Cmov c d s) = "cmov" ++ show c ++ " " ++ show d ++ ", " ++ show s
-  show (MovsdRM x m) = "movsd " ++ show x ++ ", " ++ sizedMem "qword" m
-  show (MovsdMR m x) = "movsd " ++ sizedMem "qword" m ++ ", " ++ show x
-  show (MovsdRR d s) = "movsd " ++ show d ++ ", " ++ show s
-  show (Sse op d s) = show op ++ " " ++ show d ++ ", " ++ show s
-  show (Ucomisd a b) = "ucomisd " ++ show a ++ ", " ++ show b
-  show (Cvtsi2sd x r) = "cvtsi2sd " ++ show x ++ ", " ++ show r
-  show (Cvttsd2si r x) = "cvttsd2si " ++ show r ++ ", " ++ show x
-  show (MovqXR x r) = "movq " ++ show x ++ ", " ++ show r
-  show (MovqRX r x) = "movq " ++ show r ++ ", " ++ show x
-  show Syscall = "syscall"
-  show (LockCmpxchg m r) = "lock cmpxchg " ++ sizedMem "qword" m ++ ", " ++ show r
-  show Nop = "nop"
-  show Int3 = "int3"
-  show (Lbl l) = showLabel l ++ ":"
-  show (Align n) = ".balign " ++ show n ++ ", 0xcc"
-  show (Quad v) = ".quad " ++ show v
-  show (Bytes bs) = ".byte " ++ concat (intersperse ", " (map (show . cast {to = Nat}) bs))
-  show (Comment s) = "# " ++ s
+  show y = case y of
+    MovRR d s => "mov " ++ show d ++ ", " ++ show s
+    MovRI d i => "mov " ++ show d ++ ", " ++ show i
+    MovRM d m => "mov " ++ show d ++ ", " ++ sizedMem "qword" m
+    MovMR m s => "mov " ++ sizedMem "qword" m ++ ", " ++ show s
+    MovMI m i => "mov " ++ sizedMem "qword" m ++ ", " ++ show i
+    Lea d m => "lea " ++ show d ++ ", " ++ show m
+    Load W32 False d m => "mov " ++ showReg32 d ++ ", " ++ sizedMem "dword" m
+    Load w s d m => loadMnemonic w s ++ " " ++ show d ++ ", " ++ sizedMem (show w) m
+    Store w m s => "mov " ++ sizedMem (show w) m ++ ", " ++ showWidthReg w s
+    Alu op d s => show op ++ " " ++ show d ++ ", " ++ show s
+    AluI op d i => show op ++ " " ++ show d ++ ", " ++ show i
+    AluRM op d m => show op ++ " " ++ show d ++ ", " ++ sizedMem "qword" m
+    AluMR op m s => show op ++ " " ++ sizedMem "qword" m ++ ", " ++ show s
+    Test a b => "test " ++ show a ++ ", " ++ show b
+    TestI a i => "test " ++ show a ++ ", " ++ show i
+    Imul d s => "imul " ++ show d ++ ", " ++ show s
+    ImulI d s i => "imul " ++ show d ++ ", " ++ show s ++ ", " ++ show i
+    Cqo => "cqo"
+    Idiv r => "idiv " ++ show r
+    DivU r => "div " ++ show r
+    Neg r => "neg " ++ show r
+    Not r => "not " ++ show r
+    ShiftI op r n => show op ++ " " ++ show r ++ ", " ++ show (cast {to = Nat} n)
+    ShiftCl op r => show op ++ " " ++ show r ++ ", cl"
+    Jmp l => "jmp " ++ showLabel l
+    Jcc c l => "j" ++ show c ++ " " ++ showLabel l
+    Call l => "call " ++ showLabel l
+    JmpR r => "jmp " ++ show r
+    JmpM m => "jmp " ++ sizedMem "qword" m
+    CallR r => "call " ++ show r
+    Ret => "ret"
+    Push r => "push " ++ show r
+    Pop r => "pop " ++ show r
+    Setcc c r => "set" ++ show c ++ " " ++ showReg8 r
+    Cmov c d s => "cmov" ++ show c ++ " " ++ show d ++ ", " ++ show s
+    MovsdRM x m => "movsd " ++ show x ++ ", " ++ sizedMem "qword" m
+    MovsdMR m x => "movsd " ++ sizedMem "qword" m ++ ", " ++ show x
+    MovsdRR d s => "movsd " ++ show d ++ ", " ++ show s
+    Sse op d s => show op ++ " " ++ show d ++ ", " ++ show s
+    Ucomisd a b => "ucomisd " ++ show a ++ ", " ++ show b
+    Cvtsi2sd x r => "cvtsi2sd " ++ show x ++ ", " ++ show r
+    Cvttsd2si r x => "cvttsd2si " ++ show r ++ ", " ++ show x
+    MovqXR x r => "movq " ++ show x ++ ", " ++ show r
+    MovqRX r x => "movq " ++ show r ++ ", " ++ show x
+    Syscall => "syscall"
+    LockCmpxchg m r => "lock cmpxchg " ++ sizedMem "qword" m ++ ", " ++ show r
+    Nop => "nop"
+    Int3 => "int3"
+    Lbl l => showLabel l ++ ":"
+    Align n => ".balign " ++ show n ++ ", 0xcc"
+    Quad v => ".quad " ++ show v
+    Bytes bs => ".byte " ++ concat (intersperse ", " (map (show . cast {to = Nat}) bs))
+    Comment s => "# " ++ s
+    where
+      loadMnemonic : Width -> Bool -> String
+      loadMnemonic W32 False = "mov"          -- mov r32, m32 zero-extends
+      loadMnemonic W32 True = "movsxd"
+      loadMnemonic _ True = "movsx"
+      loadMnemonic _ False = "movzx"
+
+      showWidthReg : Width -> Reg64 -> String
+      showWidthReg W8 = showReg8
+      showWidthReg W16 = showReg16
+      showWidthReg W32 = showReg32
+
+      sizedMem : String -> Mem -> String
+      sizedMem sz m = sz ++ " ptr " ++ show m
 
 ||| Move the bit field `width` bits wide at bit `offset` of a register down to
 ||| bits 0 and up, clearing every bit above it: two shifts, or one when the

@@ -139,19 +139,6 @@ usesAll : All (HV enc) ctx -> All (Op ctx) ts -> RegMap enc
 usesAll env [] = empty
 usesAll env (x :: xs) = mergeLeft (uses env x) (usesAll env xs)
 
-usesList : All (HV enc) ctx -> List (Op ctx t) -> RegMap enc
-usesList env = foldr (\x, m => mergeLeft (uses env x) m) empty
-
-usesVect : All (HV enc) ctx -> Vect n (Op ctx t) -> RegMap enc
-usesVect env = foldr (\x, m => mergeLeft (uses env x) m) empty
-
-collect : All (HV enc) ctx -> {0 t : Ty enc} -> Op ctx t -> State (RegMap enc) (Op ctx t)
-collect env x = do modify (mergeLeft (uses env x)); pure x
-
-||| The registers of the environment an instruction reads.
-instrUses : All (HV enc) ctx -> TermIR.Instr d m (Var ctx) ts -> RegMap enc
-instrUses env i = execState empty (traverseInstr (collect env) i)
-
 ------------------------------------------------------------------------------
 -- The free variables of join blocks
 
@@ -160,98 +147,11 @@ instrUses env i = execState empty (traverseInstr (collect env) i)
 Level : Type
 Level = Nat
 
-||| The level of a variable in a context of `depth` entries.
-level : (depth : Nat) -> Var ctx t -> Level
-level depth v = minus depth (S v.index)
-
-opLevel : (depth : Nat) -> Op ctx t -> SortedSet Level
-opLevel depth (V x) = singleton (level depth x)
-opLevel _ _ = empty
-
-opsLevels : (depth : Nat) -> All (Op ctx) ts -> SortedSet Level
-opsLevels depth [] = empty
-opsLevels depth (x :: xs) = union (opLevel depth x) (opsLevels depth xs)
-
-listLevels : (depth : Nat) -> List (Op ctx t) -> SortedSet Level
-listLevels depth = foldr (union . opLevel depth) empty
-
-vectLevels : (depth : Nat) -> Vect n (Op ctx t) -> SortedSet Level
-vectLevels depth = foldr (union . opLevel depth) empty
-
-||| The levels an instruction reads.
-instrLevels : (depth : Nat) -> TermIR.Instr d m (Var ctx) ts -> SortedSet Level
-instrLevels depth i = execState empty (traverseInstr (\x => do modify (union (opLevel depth x)); pure x) i)
-
-||| The levels of a body's own first `n` binders, from `depth`, taken out of
-||| what it reads: what is left, it reads from outside.
-outside : (depth : Nat) -> (n : Nat) -> SortedSet Level -> SortedSet Level
-outside depth Z s = s
-outside depth (S n) s = outside (S depth) n (delete depth s)
-
 ||| What a join's block reads from outside: the depth of the join's context
 ||| and the levels below it, which the lowering of the join turns into the
 ||| registers of its environment.
 JoinFrees : Type
 JoinFrees = (Nat, SortedSet Level)
-
-mutual
-  ||| The levels a body reads of the variables bound outside it, directly or
-  ||| through the blocks it jumps to (`lf` is what each label in scope reads);
-  ||| and what each join's block reads, in the order the lowering meets the
-  ||| joins: a join, then those in the code that reaches it, then those in
-  ||| its block. Once for a whole body: computing a block's at its join read
-  ||| the rest of the function again at every join, the square of its length.
-  frees : Body d c m ls ctx -> (depth : Nat) -> All (\_ => SortedSet Level) ls ->
-          (SortedSet Level, List JoinFrees -> List JoinFrees)
-  frees (Bind {ts} i k) depth lf =
-    let (fk, jk) = frees k (depth + length ts) lf
-    in (union (instrLevels depth i) (outside depth (length ts) fk), jk)
-  frees (Join ps b r) depth lf =
-    let (fb, jb) = frees b (depth + length ps) (empty :: lf)
-        block = outside depth (length ps) fb
-        (fr, jr) = frees r depth (block :: lf)
-    in (fr, \rest => (depth, block) :: jr (jb rest))
-  frees (TermIR.Jump l xs) depth lf = (union (fetch l lf) (opsLevels depth xs), id)
-  frees (TermIR.Branch _ x y a b) depth lf =
-    let (fa, ja) = frees a depth lf
-        (fb, jb) = frees b depth lf
-    in (union (union (opLevel depth x) (opLevel depth y)) (union fa fb), ja . jb)
-  frees (TermIR.IfFixnums {n} vs y no) depth lf =
-    let (fy, jy) = frees y (depth + S n) lf
-        (fn, jn) = frees no depth lf
-    in (union (vectLevels depth vs) (union (outside depth (S n) fy) fn), jy . jn)
-  frees (TermIR.ArithOv _ x y ok ovf) depth lf =
-    let (fo, jo) = frees ok (S depth) lf
-        (fv, jv) = frees ovf depth lf
-    in (union (union (opLevel depth x) (opLevel depth y)) (union (outside depth 1 fo) fv), jo . jv)
-  frees (TermIR.TagOv x ok ovf) depth lf =
-    let (fo, jo) = frees ok (S depth) lf
-        (fv, jv) = frees ovf depth lf
-    in (union (opLevel depth x) (union (outside depth 1 fo) fv), jo . jv)
-  frees (TermIR.Switch x _ bs dflt) depth lf =
-    let (fc, jc) = freesCases bs depth lf
-        (fd, jd) = frees dflt depth lf
-    in (union (opLevel depth x) (union fc fd), jc . jd)
-  frees (TermIR.Call _ xs k) depth lf =
-    let (fk, jk) = frees k (S depth) lf in (union (opsLevels depth xs) (outside depth 1 fk), jk)
-  frees (TermIR.TailCall _ xs) depth lf = (opsLevels depth xs, id)
-  frees (TermIR.Apply f x k) depth lf =
-    let (fk, jk) = frees k (S depth) lf
-    in (union (union (opLevel depth f) (opLevel depth x)) (outside depth 1 fk), jk)
-  frees (TermIR.TailApply f x) depth lf = (union (opLevel depth f) (opLevel depth x), id)
-  frees (TermIR.Return x) depth lf = (opLevel depth x, id)
-  frees (TermIR.Enter f xs) depth lf = (union (opLevel depth f) (listLevels depth xs), id)
-  frees (TermIR.Ret xs) depth lf = (opsLevels depth xs, id)
-  frees (TermIR.Crash _) depth lf = (empty, id)
-  frees (TermIR.Unsupported _) depth lf = (empty, id)
-
-  freesCases : All (\_ => Body d c m ls ctx) ks -> (depth : Nat) -> All (\_ => SortedSet Level) ls ->
-               (SortedSet Level, List JoinFrees -> List JoinFrees)
-  freesCases [] depth lf = (empty, id)
-  freesCases (b :: bs) depth lf =
-    let (fb, jb) = frees b depth lf
-        (fs, js) = freesCases bs depth lf
-    in (union fb fs, jb . js)
 
 ------------------------------------------------------------------------------
 -- The conversion's state
@@ -284,28 +184,6 @@ freshLabel = do
   s <- get
   put ({ nextLabel := S s.nextLabel } s)
   pure s.nextLabel
-
-||| What the next join's block reads.
-popJoin : M enc JoinFrees
-popJoin = do
-  s <- get
-  case s.joins of
-    j :: js => do put ({ joins := js } s); pure j
-    [] => pure (0, empty)
-
-||| The registers of the environment, `depth` deep, at the levels.
-registersAt : All (HV enc) ctx -> (depth : Nat) -> SortedSet Level -> RegMap enc
-registersAt env depth lvs = foldl add empty (Prelude.toList lvs)
-  where
-    at : Nat -> All (HV enc) xs -> Maybe (Held enc)
-    at _ [] = Nothing
-    at Z (h :: _) = Just h
-    at (S i) (_ :: hs) = at i hs
-
-    add : RegMap enc -> Level -> RegMap enc
-    add m l = case at (minus depth (S l)) env of
-      Just (InReg r) => insert (slotOf r) r m
-      _ => m
 
 ||| A block's code: its instructions, as the lowering produces them, and
 ||| its terminator.
@@ -346,27 +224,6 @@ asReg env (Fx {fx} i) = do r <- fresh Fix; pure ([Const r i], r)
 asReg env (Vx {fx} i) = do r <- fresh Val; pure ([Const r i], r)
 asReg env Erased = do r <- fresh Val; pure ([Const r 0], r)
 
-||| An operand into a given register.
-moveInto : All (HV enc) ctx -> Reg enc -> Op ctx t -> LocatedIR.Instr enc
-moveInto env d (V x) = case fetch x env of
-  InReg r => Move d r
-  OfStatic s => LocatedIR.StaticAddr d s
-moveInto env d (W i) = Const d i
-moveInto env d (Fx i) = Const d i
-moveInto env d (Vx i) = Const d i
-moveInto env d Erased = Const d 0
-
-baseReg : All (HV enc) ctx -> Base (Var ctx) -> M enc (List (LocatedIR.Instr enc), Reg enc)
-baseReg env (AtWord x) = asReg env x
-baseReg env (AtPtr x) = asReg env x
-
-memRef : All (HV enc) ctx -> TermIR.Mem (Var ctx) -> M enc (List (LocatedIR.Instr enc), LocatedIR.Mem enc)
-memRef env (TermIR.MkMem b i o) = do
-  (pb, rb) <- baseReg env b
-  case i of
-    Nothing => pure (pb, LocatedIR.MkMem rb Nothing o)
-    Just x => do (pi, ri) <- asReg env x; pure (pb ++ pi, LocatedIR.MkMem rb (Just ri) o)
-
 ------------------------------------------------------------------------------
 -- Instructions and bodies
 
@@ -374,110 +231,8 @@ parameters (d : Decls enc)
   nameOf : Var d.sigs s -> Name
   nameOf r = (entry d.sigs r).name
 
-  collectsOf : Var d.sigs s -> Bool
-  collectsOf r = case (entry d.sigs r).conv of
-    CPS => False
-    Direct _ col => col
-
   symOf : Var d.statics s -> Name
   symOf r = (entry d.statics r).sym
-
-  ||| One register, through an instruction that reads it from an operand.
-  unary : All (HV enc) ctx -> Op ctx t -> (Reg enc -> LocatedIR.Instr enc) -> M enc (List (LocatedIR.Instr enc))
-  unary env x f = do (p, r) <- asReg env x; pure (p ++ [f r])
-
-  binary : All (HV enc) ctx -> Op ctx t -> Op ctx u -> (Reg enc -> Reg enc -> LocatedIR.Instr enc) ->
-           M enc (List (LocatedIR.Instr enc))
-  binary env x y f = do (px, rx) <- asReg env x; (py, ry) <- asReg env y; pure (px ++ py ++ [f rx ry])
-
-  ||| The IR of an instruction binding the registers `ds`, given what is live
-  ||| after it.
-  instr : All (HV enc) ctx -> All (RV enc) ts -> (after : RegMap enc) -> TermIR.Instr d m (Var ctx) ts ->
-          M enc (List (LocatedIR.Instr enc))
-  instr env [r] _ (TermIR.FConst x) = pure [LocatedIR.FConst r x]
-  instr env [r] _ (TermIR.CodeAddr f) = pure [LocatedIR.CodeAddr r (nameOf f)]
-  -- not reached: `body` holds a static's address as itself, in no register
-  instr env [r] _ (TermIR.StaticAddr s) = pure [LocatedIR.StaticAddr r (symOf s)]
-  instr env [r] _ (TermIR.AreaAddr a) = pure [LocatedIR.AreaAddr r a]
-  instr env [r] _ (TermIR.Arith o x y) = pure [LocatedIR.Arith o r (operand env x) (operand env y)]
-  instr env [r] _ (TermIR.Unary o x) = unary env x (LocatedIR.Unary o r)
-  instr env [r] _ (TermIR.Ext w s x) = unary env x (LocatedIR.Ext w s r)
-  instr env [r] _ (TermIR.FArith o x y) = binary env x y (LocatedIR.FArith o r)
-  instr env [r] _ (TermIR.FNeg x) = unary env x (LocatedIR.FNeg r)
-  instr env [r] _ (TermIR.FCmp rel x y) = binary env x y (LocatedIR.FCmp rel r)
-  instr env [r] _ (TermIR.Convert op x) = unary env x (LocatedIR.Convert op r)
-  instr env [r] _ (TermIR.Cmp rel x y) = pure [LocatedIR.Cmp rel r (operand env x) (operand env y)]
-  instr env [r] _ (TermIR.Load t mem) = do (p, m') <- memRef env mem; pure (p ++ [LocatedIR.Load t r m'])
-  instr env [] _ (TermIR.Store t mem x) = do
-    (p, m') <- memRef env mem
-    (px, rx) <- asReg env x
-    pure (p ++ px ++ [LocatedIR.Store t m' rx])
-  instr env [r] _ (TermIR.LoadN w s mem) = do (p, m') <- memRef env mem; pure (p ++ [LocatedIR.LoadN w s r m'])
-  instr env [] _ (TermIR.StoreN w mem x) = do
-    (p, m') <- memRef env mem
-    (px, rx) <- asReg env x
-    pure (p ++ px ++ [LocatedIR.StoreN w m' rx])
-  instr env [r] _ (TermIR.Tag {fx} x) = unary env x (LocatedIR.Tag r)
-  instr env [r] _ (TermIR.Untag {fx} x) = unary env x (LocatedIR.Untag r)
-  instr env [r] _ (TermIR.NarrowFix {fx} x) = unary env x (LocatedIR.Narrow Fix r)
-  instr env [r] _ (TermIR.NarrowPtr k x) = unary env x (LocatedIR.Narrow (PtrTo k) r)
-  instr env [r] _ (TermIR.WidenFix x) = unary env x (LocatedIR.Widen r)
-  instr env [r] _ (TermIR.WidenPtr x) = unary env x (LocatedIR.Widen r)
-  instr env [r] _ (TermIR.AddrToWord x) = unary env x (LocatedIR.AddrToWord r)
-  instr env [r] _ (TermIR.WordToAddr k x) = unary env x (LocatedIR.WordToAddr k r)
-  instr env [r] _ (TermIR.LoadHeader x) = unary env x (LocatedIR.LoadHeader r)
-  instr env [r] _ (TermIR.LoadPart p x) = unary env x (LocatedIR.LoadPart p r)
-  instr env [r] after (TermIR.AllocObj h fs) =
-    -- the fields are written after the slow path's collection
-    let live = values (mergeLeft after (usesAll env fs))
-    in pure [LocatedIR.AllocObj r h (operands env fs) live]
-  instr env [r] after (TermIR.AllocSized p n f) = do
-    (pn, rn) <- asReg env n
-    let fill = fillOf p f
-        live = values (mergeLeft after (mergeLeft (one (InReg rn)) (maybe empty (fillUses p f) (Just ()))))
-    pure (pn ++ [LocatedIR.AllocSized r p rn fill live])
-    where
-      fillOf : {0 kind : Kind} -> (q : HeaderPart kind) -> Fill (Var ctx) q -> Maybe (LocatedIR.Opnd enc)
-      fillOf ArrayElems x = Just (operand env x)
-      fillOf _ _ = Nothing
-      fillUses : {0 kind : Kind} -> (q : HeaderPart kind) -> Fill (Var ctx) q -> () -> RegMap enc
-      fillUses ArrayElems x _ = uses env x
-      fillUses _ _ _ = empty
-  instr env ds after (TermIR.DirectCall f xs) =
-    pure [LocatedIR.DirectCall (nameOf f) (operands env xs) (regs ds) (collectsOf f) (values after)]
-  instr env ds _ (TermIR.Intrinsic i xs) = pure [LocatedIR.Intrinsic i (regs ds) (operands env xs)]
-  instr env [] _ (TermIR.Loc fc) = pure [LocatedIR.Loc fc]
-  instr env [] _ (TermIR.Comment s) = pure [LocatedIR.Comment s]
-
-  ||| A jump to a block: the arguments into its parameters. When an argument
-  ||| reads one of those parameters, every argument goes into a fresh
-  ||| register first, so that none is overwritten before it is read.
-  jump : All (HV enc) ctx -> LabelInfo enc -> All (Op ctx) ps -> M enc (Code enc)
-  jump env info xs =
-    if any (\r => isJust (lookup (slotOf r) (usesAll env xs))) info.params
-       then do
-         (loads, temps) <- moves info.params xs
-         pure (piece (loads ++ zipWith Move info.params temps), LocatedIR.Jump info.label)
-       else pure (piece (direct info.params xs), LocatedIR.Jump info.label)
-    where
-      direct : List (Reg enc) -> All (Op ctx) qs -> List (LocatedIR.Instr enc)
-      direct (p :: ps) (x :: xs) = moveInto env p x :: direct ps xs
-      direct _ _ = []
-
-      moves : List (Reg enc) -> All (Op ctx) qs -> M enc (List (LocatedIR.Instr enc), List (Reg enc))
-      moves (p :: ps) (x :: xs) = do
-        t <- fresh (regTy p)
-        (is, ts) <- moves ps xs
-        pure (moveInto env t x :: is, t :: ts)
-      moves _ _ = pure ([], [])
-
-  narrowAll : {auto 0 fx : HasFixnums enc.val} -> Vect n (Reg enc) ->
-              M enc (List (LocatedIR.Instr enc), All (RV enc) (replicate n (Fix {enc})))
-  narrowAll [] = pure ([], [])
-  narrowAll (r :: rs) = do
-    f <- fresh Fix
-    (is, fs) <- narrowAll rs
-    pure (Narrow Fix f r :: is, f :: fs)
 
   mutual
     ||| Where a branch goes: a block of the body's own, or, when the body only
@@ -510,10 +265,64 @@ parameters (d : Decls enc)
       (_, codeB) <- body b (append (held params) env) (info :: li)
       addBlock l [] codeB
       pure (fr, codeR)
+      where
+        ||| What the next join's block reads.
+        popJoin : M enc' JoinFrees
+        popJoin = do
+          s <- get
+          case s.joins of
+            j :: js => do put ({ joins := js } s); pure j
+            [] => pure (0, empty)
+
+        ||| The registers of the environment, `depth` deep, at the levels.
+        registersAt : All (HV enc') ctx' -> (depth : Nat) -> SortedSet Level -> RegMap enc'
+        registersAt env depth lvs = foldl add empty (Prelude.toList lvs)
+          where
+            at : Nat -> All (HV enc') xs -> Maybe (Held enc')
+            at _ [] = Nothing
+            at Z (h :: _) = Just h
+            at (S i) (_ :: hs) = at i hs
+
+            add : RegMap enc' -> Level -> RegMap enc'
+            add m l = case at (minus depth (S l)) env of
+              Just (InReg r) => insert (slotOf r) r m
+              _ => m
     body (TermIR.Jump l xs) env li = do
       let info = fetch l li
       code <- jump env info xs
       pure (mergeLeft info.free (usesAll env xs), code)
+      where
+        ||| A jump to a block: the arguments into its parameters. When an argument
+        ||| reads one of those parameters, every argument goes into a fresh
+        ||| register first, so that none is overwritten before it is read.
+        jump : All (HV enc) ctx'' -> LabelInfo enc -> All (Op ctx'') ps -> M enc (Code enc)
+        jump env info xs =
+          if any (\r => isJust (lookup (slotOf r) (usesAll env xs))) info.params
+             then do
+               (loads, temps) <- moves info.params xs
+               pure (piece (loads ++ zipWith Move info.params temps), LocatedIR.Jump info.label)
+             else pure (piece (direct info.params xs), LocatedIR.Jump info.label)
+          where
+            ||| An operand into a given register.
+            moveInto : All (HV enc') ctx' -> Reg enc' -> Op ctx' t -> LocatedIR.Instr enc'
+            moveInto env d (V x) = case fetch x env of
+              InReg r => Move d r
+              OfStatic s => LocatedIR.StaticAddr d s
+            moveInto env d (W i) = Const d i
+            moveInto env d (Fx i) = Const d i
+            moveInto env d (Vx i) = Const d i
+            moveInto env d Erased = Const d 0
+
+            direct : List (Reg enc) -> All (Op ctx'') qs -> List (LocatedIR.Instr enc)
+            direct (p :: ps) (x :: xs) = moveInto env p x :: direct ps xs
+            direct _ _ = []
+
+            moves : List (Reg enc) -> All (Op ctx'') qs -> M enc (List (LocatedIR.Instr enc), List (Reg enc))
+            moves (p :: ps) (x :: xs) = do
+              t <- fresh (regTy p)
+              (is, ts) <- moves ps xs
+              pure (moveInto env t x :: is, t :: ts)
+            moves _ _ = pure ([], [])
     body (TermIR.Branch rel x y a b) env li = do
       (fa, la) <- branchTo a env li
       (fb, lb) <- branchTo b env li
@@ -529,6 +338,17 @@ parameters (d : Decls enc)
       (fn, ln) <- branchTo no env li
       pure (mergeLeft (usesVect env vs) (mergeLeft (without (regs fs) fy) fn),
             (concatMap (piece . fst) (toList loaded), LocatedIR.IfFixnums (toList rs) ly ln))
+      where
+        usesVect : All (HV enc') ctx' -> Vect n (Op ctx' t) -> RegMap enc'
+        usesVect env = foldr (\x, m => mergeLeft (uses env x) m) empty
+
+        narrowAll : Vect n (Reg enc) ->
+                    M enc (List (LocatedIR.Instr enc), All (RV enc) (replicate n (Fix {enc})))
+        narrowAll [] = pure ([], [])
+        narrowAll (r :: rs) = do
+          f <- fresh Fix
+          (is, fs) <- narrowAll rs
+          pure (Narrow Fix f r :: is, f :: fs)
     body (TermIR.ArithOv {t} o x y ok ovf) env li = do
       f <- fresh t
       (fok, (isOk, tOk)) <- body ok (InReg f :: env) li
@@ -547,6 +367,15 @@ parameters (d : Decls enc)
       (fcs, labels) <- cases bs env li
       (fd, ld) <- branchTo dflt env li
       pure (mergeLeft (uses env x) (mergeLeft fcs fd), (piece px, LocatedIR.Switch rx (zip keys labels) ld))
+      where
+        ||| A switch's cases, each a block of its own, in order.
+        cases : All (\_ => Body d c' m' ls' ctx') ks -> All (HV enc) ctx' -> All (LI enc) ls' ->
+                M enc (RegMap enc, List Label)
+        cases [] env li = pure (empty, [])
+        cases (b :: bs) env li = do
+          (fb, l) <- branchTo b env li
+          (fbs, ls) <- cases bs env li
+          pure (mergeLeft fb fbs, l :: ls)
     body (TermIR.Call f xs k) env li = do
       lr <- freshLabel
       r <- fresh Val
@@ -577,6 +406,9 @@ parameters (d : Decls enc)
     body (TermIR.Enter f xs) env li = do
       (pf, rf) <- asReg env f
       pure (mergeLeft (uses env f) (usesList env xs), (piece pf, LocatedIR.Enter rf (map (operand env) xs)))
+      where
+        usesList : All (HV enc') ctx' -> List (Op ctx' t) -> RegMap enc'
+        usesList env = foldr (\x, m => mergeLeft (uses env x) m) empty
     body (TermIR.Ret xs) env li = pure (usesAll env xs, (neutral, LocatedIR.Ret (operands env xs)))
     body (TermIR.Crash s) env li = pure (empty, (neutral, LocatedIR.Crash s))
     body (TermIR.Unsupported s) env li = pure (empty, (neutral, LocatedIR.Unsupported s))
@@ -590,41 +422,210 @@ parameters (d : Decls enc)
       let outer = without (regs ds) after
       pre <- instr env ds outer i
       pure (mergeLeft (instrUses env i) outer, (piece pre <+> is, t))
+      where
+        ||| The registers of the environment an instruction reads.
+        instrUses : All (HV enc'') ctx'' -> TermIR.Instr d' m' (Var ctx'') ts' -> RegMap enc''
+        instrUses env i = execState empty (traverseInstr (collect env) i)
+          where
+            collect : All (HV enc') ctx' -> {0 t : Ty enc'} -> Op ctx' t -> State (RegMap enc') (Op ctx' t)
+            collect env x = do modify (mergeLeft (uses env x)); pure x
 
-    ||| A switch's cases, each a block of its own, in order.
-    cases : All (\_ => Body d c m ls ctx) ks -> All (HV enc) ctx -> All (LI enc) ls ->
-            M enc (RegMap enc, List Label)
-    cases [] env li = pure (empty, [])
-    cases (b :: bs) env li = do
-      (fb, l) <- branchTo b env li
-      (fbs, ls) <- cases bs env li
-      pure (mergeLeft fb fbs, l :: ls)
+        ||| The IR of an instruction binding the registers `ds`, given what is live
+        ||| after it.
+        instr : All (HV enc) ctx''' -> All (RV enc) ts' -> (after : RegMap enc) -> TermIR.Instr d m' (Var ctx''') ts' ->
+                M enc (List (LocatedIR.Instr enc))
+        instr env z after instr' = case (z, instr') of
+          ([r], TermIR.FConst x) => pure [LocatedIR.FConst r x]
+          ([r], TermIR.CodeAddr f) => pure [LocatedIR.CodeAddr r (nameOf f)]
+          -- not reached: `body` holds a static's address as itself, in no register
+          ([r], TermIR.StaticAddr s) => pure [LocatedIR.StaticAddr r (symOf s)]
+          ([r], TermIR.AreaAddr a) => pure [LocatedIR.AreaAddr r a]
+          ([r], TermIR.Arith o x y) => pure [LocatedIR.Arith o r (operand env x) (operand env y)]
+          ([r], TermIR.Unary o x) => unary env x (LocatedIR.Unary o r)
+          ([r], TermIR.Ext w s x) => unary env x (LocatedIR.Ext w s r)
+          ([r], TermIR.FArith o x y) => binary env x y (LocatedIR.FArith o r)
+          ([r], TermIR.FNeg x) => unary env x (LocatedIR.FNeg r)
+          ([r], TermIR.FCmp rel x y) => binary env x y (LocatedIR.FCmp rel r)
+          ([r], TermIR.Convert op x) => unary env x (LocatedIR.Convert op r)
+          ([r], TermIR.Cmp rel x y) => pure [LocatedIR.Cmp rel r (operand env x) (operand env y)]
+          ([r], TermIR.Load t mem) => do (p, m') <- memRef env mem; pure (p ++ [LocatedIR.Load t r m'])
+          ([], TermIR.Store t mem x) => do
+            (p, m') <- memRef env mem
+            (px, rx) <- asReg env x
+            pure (p ++ px ++ [LocatedIR.Store t m' rx])
+          ([r], TermIR.LoadN w s mem) => do (p, m') <- memRef env mem; pure (p ++ [LocatedIR.LoadN w s r m'])
+          ([], TermIR.StoreN w mem x) => do
+            (p, m') <- memRef env mem
+            (px, rx) <- asReg env x
+            pure (p ++ px ++ [LocatedIR.StoreN w m' rx])
+          ([r], TermIR.Tag {fx} x) => unary env x (LocatedIR.Tag r)
+          ([r], TermIR.Untag {fx} x) => unary env x (LocatedIR.Untag r)
+          ([r], TermIR.NarrowFix {fx} x) => unary env x (LocatedIR.Narrow Fix r)
+          ([r], TermIR.NarrowPtr k x) => unary env x (LocatedIR.Narrow (PtrTo k) r)
+          ([r], TermIR.WidenFix x) => unary env x (LocatedIR.Widen r)
+          ([r], TermIR.WidenPtr x) => unary env x (LocatedIR.Widen r)
+          ([r], TermIR.AddrToWord x) => unary env x (LocatedIR.AddrToWord r)
+          ([r], TermIR.WordToAddr k x) => unary env x (LocatedIR.WordToAddr k r)
+          ([r], TermIR.LoadHeader x) => unary env x (LocatedIR.LoadHeader r)
+          ([r], TermIR.LoadPart p x) => unary env x (LocatedIR.LoadPart p r)
+          ([r], TermIR.AllocObj h fs) =>
+            -- the fields are written after the slow path's collection
+            let live = values (mergeLeft after (usesAll env fs))
+            in pure [LocatedIR.AllocObj r h (operands env fs) live]
+          ([r], TermIR.AllocSized p n f) => do
+            (pn, rn) <- asReg env n
+            let fill = fillOf p f
+                live = values (mergeLeft after (mergeLeft (one (InReg rn)) (maybe empty (fillUses p f) (Just ()))))
+            pure (pn ++ [LocatedIR.AllocSized r p rn fill live])
+          (ds, TermIR.DirectCall f xs) =>
+            pure [LocatedIR.DirectCall (nameOf f) (operands env xs) (regs ds) (collectsOf f) (values after)]
+          (ds, TermIR.Intrinsic i xs) => pure [LocatedIR.Intrinsic i (regs ds) (operands env xs)]
+          ([], TermIR.Loc fc) => pure [LocatedIR.Loc fc]
+          ([], TermIR.Comment s) => pure [LocatedIR.Comment s]
+          where
+            fillOf : {0 kind : Kind} -> (q : HeaderPart kind) -> Fill (Var ctx''') q -> Maybe (LocatedIR.Opnd enc)
+            fillOf ArrayElems x = Just (operand env x)
+            fillOf _ _ = Nothing
+            fillUses : {0 kind : Kind} -> (q : HeaderPart kind) -> Fill (Var ctx''') q -> () -> RegMap enc
+            fillUses ArrayElems x _ = uses env x
+            fillUses _ _ _ = empty
 
-  function : (s : Sig enc) -> Body d s.conv s.converts [] s.params -> Function enc
-  function s b =
-    let run : M enc (List (Reg enc))
-        run = do
-          ps <- freshAll s.params
-          modify { joins := snd (frees b (length s.params) []) [] }
-          (_, code) <- body b (held ps) []
-          addBlock 0 [] code
-          pure (regs ps)
-    in case runState (MkSt 0 1 empty []) run of
-         (st, ps) => MkFunction s.name s.conv ps 0 (values st.blocks) EmptyFC
+            collectsOf : Var d.sigs s -> Bool
+            collectsOf r = case (entry d.sigs r).conv of
+              CPS => False
+              Direct _ col => col
+
+            memRef : All (HV enc'') ctx'' -> TermIR.Mem (Var ctx'') -> M enc'' (List (LocatedIR.Instr enc''), LocatedIR.Mem enc'')
+            memRef env (TermIR.MkMem b i o) = do
+              (pb, rb) <- baseReg env b
+              case i of
+                Nothing => pure (pb, LocatedIR.MkMem rb Nothing o)
+                Just x => do (pi, ri) <- asReg env x; pure (pb ++ pi, LocatedIR.MkMem rb (Just ri) o)
+              where
+                baseReg : All (HV enc') ctx' -> Base (Var ctx') -> M enc' (List (LocatedIR.Instr enc'), Reg enc')
+                baseReg env (AtWord x) = asReg env x
+                baseReg env (AtPtr x) = asReg env x
+
+            ||| One register, through an instruction that reads it from an operand.
+            unary : All (HV enc) ctx' -> Op ctx' t -> (Reg enc -> LocatedIR.Instr enc) -> M enc (List (LocatedIR.Instr enc))
+            unary env x f = do (p, r) <- asReg env x; pure (p ++ [f r])
+
+            binary : All (HV enc) ctx' -> Op ctx' t -> Op ctx' u -> (Reg enc -> Reg enc -> LocatedIR.Instr enc) ->
+                     M enc (List (LocatedIR.Instr enc))
+            binary env x y f = do (px, rx) <- asReg env x; (py, ry) <- asReg env y; pure (px ++ py ++ [f rx ry])
 
   functions : (ss : List (Sig enc)) -> All (Def d) ss -> List (Function enc)
   functions [] [] = []
   functions (s :: ss) (Defined b :: ds) = function s b :: functions ss ds
-  functions (_ :: ss) (External :: ds) = functions ss ds
+    where
+      function : (s : Sig enc) -> Body d s.conv s.converts [] s.params -> Function enc
+      function s b =
+        let run : M enc (List (Reg enc))
+            run = do
+              ps <- freshAll s.params
+              modify { joins := snd (frees b (length s.params) []) [] }
+              (_, code) <- body b (held ps) []
+              addBlock 0 [] code
+              pure (regs ps)
+        in case runState (MkSt 0 1 empty []) run of
+             (st, ps) => MkFunction s.name s.conv ps 0 (values st.blocks) EmptyFC
+        where
+          ||| The levels a body reads of the variables bound outside it, directly or
+          ||| through the blocks it jumps to (`lf` is what each label in scope reads);
+          ||| and what each join's block reads, in the order the lowering meets the
+          ||| joins: a join, then those in the code that reaches it, then those in
+          ||| its block. Once for a whole body: computing a block's at its join read
+          ||| the rest of the function again at every join, the square of its length.
+          frees : Body d'' c m ls ctx -> (depth : Nat) -> All (\_ => SortedSet Level) ls ->
+                  (SortedSet Level, List JoinFrees -> List JoinFrees)
+          frees body' depth lf = case body' of
+            Bind {ts} i k =>
+              let (fk, jk) = frees k (depth + length ts) lf
+              in (union (instrLevels depth i) (outside depth (length ts) fk), jk)
+            Join ps b r =>
+              let (fb, jb) = frees b (depth + length ps) (empty :: lf)
+                  block = outside depth (length ps) fb
+                  (fr, jr) = frees r depth (block :: lf)
+              in (fr, \rest => (depth, block) :: jr (jb rest))
+            TermIR.Jump l xs => (union (fetch l lf) (opsLevels depth xs), id)
+            TermIR.Branch _ x y a b =>
+              let (fa, ja) = frees a depth lf
+                  (fb, jb) = frees b depth lf
+              in (union (union (opLevel depth x) (opLevel depth y)) (union fa fb), ja . jb)
+            TermIR.IfFixnums {n} vs y no =>
+              let (fy, jy) = frees y (depth + S n) lf
+                  (fn, jn) = frees no depth lf
+              in (union (vectLevels depth vs) (union (outside depth (S n) fy) fn), jy . jn)
+            TermIR.ArithOv _ x y ok ovf =>
+              let (fo, jo) = frees ok (S depth) lf
+                  (fv, jv) = frees ovf depth lf
+              in (union (union (opLevel depth x) (opLevel depth y)) (union (outside depth 1 fo) fv), jo . jv)
+            TermIR.TagOv x ok ovf =>
+              let (fo, jo) = frees ok (S depth) lf
+                  (fv, jv) = frees ovf depth lf
+              in (union (opLevel depth x) (union (outside depth 1 fo) fv), jo . jv)
+            TermIR.Switch x _ bs dflt =>
+              let (fc, jc) = freesCases bs depth lf
+                  (fd, jd) = frees dflt depth lf
+              in (union (opLevel depth x) (union fc fd), jc . jd)
+            TermIR.Call _ xs k =>
+              let (fk, jk) = frees k (S depth) lf in (union (opsLevels depth xs) (outside depth 1 fk), jk)
+            TermIR.TailCall _ xs => (opsLevels depth xs, id)
+            TermIR.Apply f x k =>
+              let (fk, jk) = frees k (S depth) lf
+              in (union (union (opLevel depth f) (opLevel depth x)) (outside depth 1 fk), jk)
+            TermIR.TailApply f x => (union (opLevel depth f) (opLevel depth x), id)
+            TermIR.Return x => (opLevel depth x, id)
+            TermIR.Enter f xs => (union (opLevel depth f) (listLevels depth xs), id)
+            TermIR.Ret xs => (opsLevels depth xs, id)
+            TermIR.Crash _ => (empty, id)
+            TermIR.Unsupported _ => (empty, id)
+            where
+              opLevel : (depth : Nat) -> Op ctx'' t -> SortedSet Level
+              opLevel depth (V x) = singleton (level depth x)
+                where
+                  ||| The level of a variable in a context of `depth` entries.
+                  level : (depth : Nat) -> Var ctx' t' -> Level
+                  level depth v = minus depth (S v.index)
+              opLevel _ _ = empty
 
-  field : TermIR.SField d -> LocatedIR.SField
-  field (TermIR.SWord w) = LocatedIR.SWord w
-  field (TermIR.SRef s) = LocatedIR.SRef (symOf s)
-  field (TermIR.SCode f) = LocatedIR.SCode (nameOf f)
+              ||| The levels an instruction reads.
+              instrLevels : (depth : Nat) -> TermIR.Instr d' m' (Var ctx') ts' -> SortedSet Level
+              instrLevels depth i = execState empty (traverseInstr (\x => do modify (union (opLevel depth x)); pure x) i)
+
+              vectLevels : (depth : Nat) -> Vect n' (Op ctx' t) -> SortedSet Level
+              vectLevels depth = foldr (union . opLevel depth) empty
+
+              freesCases : All (\_ => Body d' c' m' ls' ctx') ks -> (depth : Nat) -> All (\_ => SortedSet Level) ls' ->
+                           (SortedSet Level, List JoinFrees -> List JoinFrees)
+              freesCases [] depth lf = (empty, id)
+              freesCases (b :: bs) depth lf =
+                let (fb, jb) = frees b depth lf
+                    (fs, js) = freesCases bs depth lf
+                in (union fb fs, jb . js)
+
+              listLevels : (depth : Nat) -> List (Op ctx' t) -> SortedSet Level
+              listLevels depth = foldr (union . opLevel depth) empty
+
+              opsLevels : (depth : Nat) -> All (Op ctx') ts -> SortedSet Level
+              opsLevels depth [] = empty
+              opsLevels depth (x :: xs) = union (opLevel depth x) (opsLevels depth xs)
+
+              ||| The levels of a body's own first `n` binders, from `depth`, taken out of
+              ||| what it reads: what is left, it reads from outside.
+              outside : (depth : Nat) -> (n : Nat) -> SortedSet Level -> SortedSet Level
+              outside depth Z s = s
+              outside depth (S n) s = outside (S depth) n (delete depth s)
+  functions (_ :: ss) (External :: ds) = functions ss ds
 
   statics : (ss : List StaticSig) -> All (StaticDef d) ss -> List (Static enc)
   statics [] [] = []
   statics (MkStaticSig sym k :: ss) (MkStaticDef h fs :: ds) = MkStatic sym k h (map field (toList fs)) :: statics ss ds
+    where
+      field : TermIR.SField d -> LocatedIR.SField
+      field (TermIR.SWord w) = LocatedIR.SWord w
+      field (TermIR.SRef s) = LocatedIR.SRef (symOf s)
+      field (TermIR.SCode f) = LocatedIR.SCode (nameOf f)
 
   entryName : Entry d -> Name
   entryName (MkEntry f) = nameOf f

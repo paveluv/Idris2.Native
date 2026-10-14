@@ -100,28 +100,28 @@ public export
 Eq Kind where
   a == b = kindId a == kindId b
 
-kindRoundTrip : (k : Kind) -> kindOfId (kindId k) = Just k
-kindRoundTrip CON = Refl
-kindRoundTrip CLOSURE = Refl
-kindRoundTrip INT64 = Refl
-kindRoundTrip DOUBLE = Refl
-kindRoundTrip STRING = Refl
-kindRoundTrip BIGNUM = Refl
-kindRoundTrip IOREF = Refl
-kindRoundTrip ARRAY = Refl
-kindRoundTrip BUFFER = Refl
-kindRoundTrip PTR = Refl
-kindRoundTrip CONT = Refl
-
-justInjective : Just a = Just b -> a = b
-justInjective Refl = Refl
-
 ||| Equal kinds have equal ids, since `kindOfId` inverts `kindId`.
 public export
 DecEq Kind where
   decEq a b = case decEq (kindId a) (kindId b) of
     Yes p => Yes (justInjective (trans (sym (kindRoundTrip a)) (trans (cong kindOfId p) (kindRoundTrip b))))
     No c => No (\q => c (cong kindId q))
+    where
+      kindRoundTrip : (k : Kind) -> kindOfId (kindId k) = Just k
+      kindRoundTrip CON = Refl
+      kindRoundTrip CLOSURE = Refl
+      kindRoundTrip INT64 = Refl
+      kindRoundTrip DOUBLE = Refl
+      kindRoundTrip STRING = Refl
+      kindRoundTrip BIGNUM = Refl
+      kindRoundTrip IOREF = Refl
+      kindRoundTrip ARRAY = Refl
+      kindRoundTrip BUFFER = Refl
+      kindRoundTrip PTR = Refl
+      kindRoundTrip CONT = Refl
+
+      justInjective : Just a' = Just b' -> a' = b'
+      justInjective Refl = Refl
 
 public export
 Show Kind where

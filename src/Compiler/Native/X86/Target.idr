@@ -9,9 +9,6 @@ import Compiler.Native.X86.Asm
 
 %default total
 
-reg : Reg64 -> TargetReg
-reg r = cast (regNum r)
-
 ||| x86-64 Linux under the heap lowering. Values pass in the SysV argument
 ||| registers, word and floating-point, and a `Direct` function returns its
 ||| results in them too, where SysV would use rax and rdx. `hp`,
@@ -32,3 +29,6 @@ x86_64 = MkTarget
   , stackPointer = reg RSP
   , regName = \r => if r < 16 then show (regOfNum r) else "reg" ++ show r
   }
+  where
+    reg : Reg64 -> TargetReg
+    reg r = cast (regNum r)

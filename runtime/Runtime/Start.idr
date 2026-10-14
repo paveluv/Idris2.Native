@@ -17,32 +17,6 @@ import Runtime.State
 
 %default total
 
-||| The most of the process stack direct code may use, whatever the stack's
-||| limit: 1 GiB.
-stackCap : Bits64
-stackCap = 1073741824
-
-||| What the stack check leaves below the limit, for the arguments and the
-||| environment above the stack pointer at entry and for the frames of code
-||| that does not check, such as a direct call's saved values: 256 KiB.
-stackMargin : Bits64
-stackMargin = 262144
-
-||| The stack's limit assumed when the system does not say: Linux's
-||| default, 8 MiB.
-defaultStack : Bits64
-defaultStack = 8388608
-
-||| A space's reservation: as large as the system allows, from 32 TiB
-||| halving to 64 MiB, so that only the system, or a limit the user set on
-||| the process's address space, bounds the heap. Its address and size.
-covering
-reserveSpace : (bytes : Bits64) -> Op Heap (Bits64, Bits64)
-reserveSpace bytes =
-  if bytes < 67108864 then crashOp "idris: cannot reserve memory" else do
-    a <- reserveMemory bytes
-    if a == 0 then reserveSpace (shiftR bytes 1) else pure (a, bytes)
-
 %cg native flat Runtime.Start.start
 ||| `idris_start`: the two spaces reserved and the first window committed,
 ||| of `window` bytes, as the allocation window; the stack limit, which
@@ -78,3 +52,29 @@ start entry window = do
   store64 limit 0 (entry - (if soft > stackCap then stackCap else soft) + stackMargin)
   argv <- argvArea {k = BUFFER}
   store64 argv 0 entry
+  where
+    ||| The most of the process stack direct code may use, whatever the stack's
+    ||| limit: 1 GiB.
+    stackCap : Bits64
+    stackCap = 1073741824
+
+    ||| What the stack check leaves below the limit, for the arguments and the
+    ||| environment above the stack pointer at entry and for the frames of code
+    ||| that does not check, such as a direct call's saved values: 256 KiB.
+    stackMargin : Bits64
+    stackMargin = 262144
+
+    ||| The stack's limit assumed when the system does not say: Linux's
+    ||| default, 8 MiB.
+    defaultStack : Bits64
+    defaultStack = 8388608
+
+    ||| A space's reservation: as large as the system allows, from 32 TiB
+    ||| halving to 64 MiB, so that only the system, or a limit the user set on
+    ||| the process's address space, bounds the heap. Its address and size.
+    covering
+    reserveSpace : (bytes : Bits64) -> Op Heap (Bits64, Bits64)
+    reserveSpace bytes =
+      if bytes < 67108864 then crashOp "idris: cannot reserve memory" else do
+        a <- reserveMemory bytes
+        if a == 0 then reserveSpace (shiftR bytes 1) else pure (a, bytes)

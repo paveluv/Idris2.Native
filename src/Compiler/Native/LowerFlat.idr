@@ -274,23 +274,6 @@ callees d fds = fromList (mapMaybe one (enumerate d.sigs))
         _ => Nothing
     one _ = Nothing
 
-||| Whether the expression calls the form.
-calls : Name -> Exp -> Bool
-calls n (FVar _ _) = False
-calls n (FLet _ _ val sc) = calls n val || calls n sc
-calls n (Flat.FConst _ _) = False
-calls n (Flat.FOp _ _ as) = any (calls n) (toList as)
-calls n (FCall _ f as) = f == n || any (calls n) as
-calls n (FPrim _ _ _ _ as) = any (calls n) as
-calls n (FCon _ _ _ _ _ as) = any (calls n) as
-calls n (FCase _ sc alts def) = calls n sc || any alt alts || maybe False (calls n) def
-  where
-    alt : FlatAlt -> Bool
-    alt (FConAlt _ _ _ b) = calls n b
-    alt (FConstAlt _ b) = calls n b
-calls n (FCrash _ _) = False
-calls n (FNone _) = False
-
 ------------------------------------------------------------------------------
 -- Primitive types and operations
 
@@ -312,41 +295,6 @@ constWord _ = Nothing
 ||| How a machine integer type is held in a word: narrower than it, extended
 ||| from the width as the type is signed or not, or the whole word.
 data Held = Narrower SubWord Bool | Whole Bool
-
-||| How an integer type or `Char` is held; `Char` as its code point.
-held : PrimType -> Maybe Held
-held IntType = Just (Whole True)
-held Int64Type = Just (Whole True)
-held Bits64Type = Just (Whole False)
-held Int8Type = Just (Narrower Sub8 True)
-held Int16Type = Just (Narrower Sub16 True)
-held Int32Type = Just (Narrower Sub32 True)
-held Bits8Type = Just (Narrower Sub8 False)
-held Bits16Type = Just (Narrower Sub16 False)
-held Bits32Type = Just (Narrower Sub32 False)
-held CharType = Just (Narrower Sub32 False)
-held _ = Nothing
-
-signed : Held -> Bool
-signed (Narrower _ s) = s
-signed (Whole s) = s
-
-||| The unsigned relation for a signed one.
-unsignedRel : Rel -> Rel
-unsignedRel LtS = LtU
-unsignedRel LeS = LeU
-unsignedRel GtS = GtU
-unsignedRel GeS = GeU
-unsignedRel r = r
-
-------------------------------------------------------------------------------
--- Intrinsics
-
-||| The words of a value whose registers are all words.
-words : Value enc v -> Maybe (List (Opnd v W64))
-words (MkValue [] []) = Just []
-words (MkValue (Word :: rs) (x :: xs)) = (x ::) <$> words (MkValue rs xs)
-words _ = Nothing
 
 ------------------------------------------------------------------------------
 -- The lowering
@@ -383,172 +331,8 @@ parameters {enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef) (m 
   word : Value enc v -> B (Opnd v W64)
   word x = maybe (unsupported "a word of another layout") pure (wordOf x)
 
-  double : Value enc v -> B (Opnd v F64)
-  double x = maybe (unsupported "a double of another layout") pure (doubleOf x)
-
-  ||| A word wrapped to the type's width, extended again.
-  wrap : Held -> Opnd v W64 -> B (Opnd v W64)
-  wrap (Narrower sw s) w = emit1 (Ext sw s w)
-  wrap (Whole _) w = pure w
-
-  ||| A value of the primitive type.
-  prim : PrimType -> Value enc v -> (Skeleton, Value enc v)
-  prim t x = (SPrim t, x)
-
-  wordVal : PrimType -> Opnd v W64 -> (Skeleton, Value enc v)
-  wordVal t w = prim t (MkValue [Word] [w])
-
-  doubleVal : Opnd v F64 -> (Skeleton, Value enc v)
-  doubleVal f = prim DoubleType (MkValue [Dbl] [f])
-
-  withHeld : PrimType -> String -> (Held -> B a) -> B a
-  withHeld t what k = case held t of
-    Just h => k h
-    Nothing => unsupported (what ++ " on " ++ show t ++ " in a flat form")
-
-  ||| A word as a `Char`: itself if it is a Unicode scalar value, 0 if not.
-  toChar : Opnd v W64 -> B (Opnd v W64)
-  toChar w = do
-    [r] <- joinPoint [W64] $ \done => do
-      keep <- block [] $ \[] => done [w]
-      zero <- block [] $ \[] => done [W 0]
-      branch LtS w (W 0) (zero []) $
-        branch LeS w (W 55295) (keep []) $
-          branch LtS w (W 57344) (zero []) $
-            branch LeS w (W 1114111) (keep []) (zero [])
-    pure r
-
-  ||| A word of the integer type as a double. A `Bits64` at or above 2^63
-  ||| is halved, its low bit kept for the rounding, converted and doubled.
-  wordToDouble : Held -> Opnd v W64 -> B (Opnd v F64)
-  wordToDouble (Whole False) w = do
-    [f] <- joinPoint [F64] $ \done =>
-      branch GeS w (W 0) (do f <- emit1 (Convert I2F w); done [f]) $ do
-        h <- emit1 (Arith Shr w (W 1))
-        b <- emit1 (Arith And w (W 1))
-        hb <- emit1 (Arith Or h b)
-        f <- emit1 (Convert I2F hb)
-        f2 <- emit1 (FArith FAdd f f)
-        done [f2]
-    pure f
-  wordToDouble _ w = emit1 (Convert I2F w)
-
-  ||| A double truncated to the integer type. A `Bits64` at or above 2^63 is
-  ||| converted less 2^63, which is added back to the word.
-  doubleToWord : Held -> Opnd v F64 -> B (Opnd v W64)
-  doubleToWord (Whole False) f = do
-    big <- emit1 (TermIR.FConst 9223372036854775808.0)
-    above <- emit1 (FCmp GeS f big)
-    [w] <- joinPoint [W64] $ \done =>
-      branch EqR above (W 0) (do w <- emit1 (Convert F2I f); done [w]) $ do
-        g <- emit1 (FArith FSub f big)
-        w <- emit1 (Convert F2I g)
-        w' <- emit1 (Arith Add w (W (-9223372036854775808)))
-        done [w']
-    pure w
-  doubleToWord h f = do
-    w <- emit1 (Convert F2I f)
-    wrap h w
-
-  ||| A cast between the primitive types.
-  castTo : PrimType -> PrimType -> Value enc v -> B (Skeleton, Value enc v)
-  castTo from to x =
-    if from == to then pure (prim to x) else
-    case (from, to) of
-      (DoubleType, CharType) => do f <- double x; w <- doubleToWord (Whole True) f; wordVal to <$> toChar w
-      (DoubleType, _) => withHeld to "a cast" $ \h => do f <- double x; wordVal to <$> doubleToWord h f
-      (_, DoubleType) => withHeld from "a cast" $ \h => do w <- word x; doubleVal <$> wordToDouble h w
-      (_, CharType) => withHeld from "a cast" $ \_ => do w <- word x; wordVal to <$> toChar w
-      _ => withHeld from "a cast" $ \_ => withHeld to "a cast" $ \h => do
-             w <- word x
-             wordVal to <$> wrap h w
-
-  arith : PrimType -> ArithOp -> Operators.FOp -> (x, y : Value enc v) -> B (Skeleton, Value enc v)
-  arith DoubleType _ o x y = do a <- double x; b <- double y; doubleVal <$> emit1 (FArith o a b)
-  arith t o _ x y = withHeld t "arithmetic" $ \h => do
-    a <- word x
-    b <- word y
-    w <- emit1 (Arith o a b)
-    wordVal t <$> wrap h w
-
-  bitwise : PrimType -> ArithOp -> (x, y : Value enc v) -> B (Skeleton, Value enc v)
-  bitwise t o x y = withHeld t "a bitwise operation" $ \h => do
-    a <- word x
-    b <- word y
-    w <- emit1 (Arith o a b)
-    wordVal t <$> wrap h w
-
-  shifting : PrimType -> (left : Bool) -> (x, y : Value enc v) -> B (Skeleton, Value enc v)
-  shifting t left x y = withHeld t "a shift" $ \h => do
-    a <- word x
-    k <- word y
-    w <- shiftBy (if left then Shl else if signed h then Sar else Shr) a k
-    wordVal t <$> wrap h w
-
-  comparison : PrimType -> Rel -> (x, y : Value enc v) -> B (Skeleton, Value enc v)
-  comparison DoubleType rel x y = do
-    a <- double x
-    b <- double y
-    wordVal IntType <$> emit1 (FCmp rel a b)
-  comparison t rel x y = withHeld t "a comparison" $ \h => do
-    a <- word x
-    b <- word y
-    wordVal IntType <$> emit1 (Cmp (if signed h then rel else unsignedRel rel) a b)
-
-  constant : Constant -> B (Skeleton, Value enc v)
-  constant (Db x) = doubleVal <$> emit1 (TermIR.FConst x)
-  constant WorldVal = pure (SPrim WorldType, noRegs)
-  constant k = case (constType k, constWord k) of
-    (Just t, Just w) => pure (wordVal t (W w))
-    _ => unsupported ("the constant " ++ show k ++ " in a flat form")
-
-  ||| A primitive operation.
-  primOp : PrimFn n -> Vect n (Value enc v) -> B (Skeleton, Value enc v)
-  primOp (Add t) [x, y] = arith t Add FAdd x y
-  primOp (Sub t) [x, y] = arith t Sub FSub x y
-  primOp (Mul t) [x, y] = arith t Mul FMul x y
-  primOp (Div DoubleType) [x, y] = do a <- double x; b <- double y; doubleVal <$> emit1 (FArith FDiv a b)
-  primOp (Div t) [x, y] = withHeld t "division" $ \h => do
-    a <- word x
-    b <- word y
-    nonZero b
-    w <- divide (signed h) False a b
-    wordVal t <$> wrap h w
-  primOp (Mod t) [x, y] = withHeld t "remainder" $ \h => do
-    a <- word x
-    b <- word y
-    nonZero b
-    w <- divide (signed h) True a b
-    wordVal t <$> wrap h w
-  primOp (Neg DoubleType) [x] = do a <- double x; doubleVal <$> emit1 (FNeg a)
-  primOp (Neg t) [x] = withHeld t "negation" $ \h => do
-    a <- word x
-    w <- emit1 (Unary Negate a)
-    wordVal t <$> wrap h w
-  primOp (ShiftL t) [x, y] = shifting t True x y
-  primOp (ShiftR t) [x, y] = shifting t False x y
-  primOp (BAnd t) [x, y] = bitwise t And x y
-  primOp (BOr t) [x, y] = bitwise t Or x y
-  primOp (BXOr t) [x, y] = bitwise t Xor x y
-  primOp (LT t) [x, y] = comparison t LtS x y
-  primOp (LTE t) [x, y] = comparison t LeS x y
-  primOp (EQ t) [x, y] = comparison t EqR x y
-  primOp (GTE t) [x, y] = comparison t GeS x y
-  primOp (GT t) [x, y] = comparison t GtS x y
-  primOp (Cast from to) [x] = castTo from to x
-  primOp op _ = unsupported ("the primitive " ++ show op ++ " in a flat form")
-
   ------------------------------------------------------------------------------
   -- Expressions
-
-  ||| The skeleton and layout of an expression's value, from the variables'
-  ||| and the callees' results.
-  typeOf : SortedMap Name (Skeleton, Layout) -> Exp -> Maybe (Skeleton, Layout)
-  typeOf env = expType (\x => lookup x env)
-                       (\n => (\c => (c.form.resultSkeleton, c.form.result)) <$> lookup n pr.callees)
-
-  layouts : Env enc v -> SortedMap Name (Skeleton, Layout)
-  layouts = map (\(sk, x) => (sk, x.layout))
 
   ||| The variables of an alternative, bound to the registers of the fields.
   bindFields : Env enc v -> List FlatVar -> Value enc v -> Maybe (Env enc v)
@@ -561,121 +345,337 @@ parameters {enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef) (m 
   mutual
     ||| An expression's value, and its type's skeleton.
     expr : Env enc v -> Exp -> B (Skeleton, Value enc v)
-    expr env (FVar _ x) = case lookup x env of
-      Just t => pure t
-      Nothing => unsupported ("the unbound variable " ++ show x ++ " in a flat form")
-    expr env (FLet _ fv val sc) = do
-      env' <- bind env fv val
-      expr env' sc
-    expr env (Flat.FConst _ k) = constant k
-    expr env (Flat.FOp _ op args) = do
-      xs <- traverse (\a => snd <$> expr env a) args
-      primOp op xs
-    expr env (FCall _ n args) = do
-      xs <- traverse (\a => snd <$> expr env a) args
-      callForm n xs
-    expr env (FPrim _ n sk lay args) = case inlineExternOf {enc} n of
-      Nothing => case lookup n pr.services of
-        -- an OS service: a call of the platform's function for it
-        Just f => do
-          xs <- traverse (\a => snd <$> expr env a) args
-          (_, x) <- callForm f xs
-          maybe (unsupported ("the OS service " ++ show n ++ ", whose result is not its type's"))
-                (\rs => pure (sk, MkValue lay rs)) (regsAs lay x)
-        Nothing => unsupported ("the primitive " ++ show n ++ " in a flat form")
-      Just i => do
+    expr env exp = case exp of
+      FVar _ x => case lookup x env of
+        Just t => pure t
+        Nothing => unsupported ("the unbound variable " ++ show x ++ " in a flat form")
+      FLet _ fv val sc => do
+        env' <- bind env fv val
+        expr env' sc
+      Flat.FConst _ k => constant k
+      Flat.FOp _ op args => do
         xs <- traverse (\a => snd <$> expr env a) args
-        x <- inlineExtern n i (concatValues xs)
-        maybe (unsupported ("the inline extern " ++ show n ++ ", whose result is not its type's"))
-              (\rs => pure (sk, MkValue lay rs)) (regsAs lay x)
-    expr env (FCon _ c _ sk lay args) = do
-      xs <- traverse (\a => snd <$> expr env a) args
-      x <- construct sk c (concatValues xs)
-      case regsAs lay x of
-        Just rs => pure (sk, MkValue lay rs)
-        Nothing => unsupported ("the constructor " ++ show c ++ ", whose layout is not its type's")
-    expr env e@(FCase _ scr alts def) = case typeOf (layouts env) e of
-      Nothing => do
-        _ <- joinPoint [] $ \exit => dispatch env scr alts def (\env', b => do _ <- expr env' b; exit [])
-        unsupported "a case that has no value"
-      Just (sk, lay) => do
-        rs <- joinPoint (tys lay) $ \exit =>
-          dispatch env scr alts def $ \env', b => do
-            (_, x) <- expr env' b
-            maybe (unsupported "an alternative of another layout") exit (regsAs lay x)
-        pure (sk, MkValue lay rs)
-    expr env (FCrash _ msg) = crash msg
-    expr env (FNone _) = pure (SOther, noRegs)
-
-    ||| An inline extern's instructions, from its arguments' registers.
-    inlineExtern : Name -> InlineExtern -> Value enc v -> B (Value enc v)
-    -- a uniform value and a pointer word: the conversions, so this module's
-    -- functions alone
-    inlineExtern n (ObjectWord k) (MkValue [Uniform] [u]) = case m of
-      True => do
-        p <- emit1 (NarrowPtr k u)
-        w <- emit1 (AddrToWord p)
-        pure (MkValue [Word] [w])
-      False => unsupported ("the inline extern " ++ show n ++ " outside the memory module")
-    inlineExtern n (WordObject k) (MkValue [Word] [w]) = case m of
-      True => do
-        p <- emit1 (WordToAddr k w)
-        u <- emit1 (WidenPtr p)
-        pure (MkValue [Uniform] [u])
-      False => unsupported ("the inline extern " ++ show n ++ " outside the memory module")
-    inlineExtern n i x = case words x of
-      Just ws => wordExtern n i ws
-      Nothing => unsupported ("the inline extern " ++ show n ++ " on registers of another kind")
-
-    ||| An inline extern on words.
-    wordExtern : Name -> InlineExtern -> List (Opnd v W64) -> B (Value enc v)
-    -- an intrinsic: its words in and out, a pointer among them converted from
-    -- or to its word, so that one taking or giving a pointer is this module's
-    -- functions' alone
-    wordExtern n (Machine i) ws = do
-      xs <- takes (Intrinsic.params i) ws
-      rs <- emit (TermIR.Intrinsic i xs)
-      gives (Intrinsic.results i) rs
+        primOp op xs
+      FCall _ n args => do
+        xs <- traverse (\a => snd <$> expr env a) args
+        callForm n xs
+      FPrim _ n sk lay args => case inlineExternOf {enc} n of
+        Nothing => case lookup n pr.services of
+          -- an OS service: a call of the platform's function for it
+          Just f => do
+            xs <- traverse (\a => snd <$> expr env a) args
+            (_, x) <- callForm f xs
+            maybe (unsupported ("the OS service " ++ show n ++ ", whose result is not its type's"))
+                  (\rs => pure (sk, MkValue lay rs)) (regsAs lay x)
+          Nothing => unsupported ("the primitive " ++ show n ++ " in a flat form")
+        Just i => do
+          xs <- traverse (\a => snd <$> expr env a) args
+          x <- inlineExtern n i (concatValues xs)
+          maybe (unsupported ("the inline extern " ++ show n ++ ", whose result is not its type's"))
+                (\rs => pure (sk, MkValue lay rs)) (regsAs lay x)
+      FCon _ c _ sk lay args => do
+        xs <- traverse (\a => snd <$> expr env a) args
+        x <- construct sk c (concatValues xs)
+        case regsAs lay x of
+          Just rs => pure (sk, MkValue lay rs)
+          Nothing => unsupported ("the constructor " ++ show c ++ ", whose layout is not its type's")
+      e@(FCase _ scr alts def) => case typeOf (layouts env) e of
+        Nothing => do
+          _ <- joinPoint [] $ \exit => dispatch env scr alts def (\env', b => do _ <- expr env' b; exit [])
+          unsupported "a case that has no value"
+        Just (sk, lay) => do
+          rs <- joinPoint (tys lay) $ \exit =>
+            dispatch env scr alts def $ \env', b => do
+              (_, x) <- expr env' b
+              maybe (unsupported "an alternative of another layout") exit (regsAs lay x)
+          pure (sk, MkValue lay rs)
+      FCrash _ msg => crash msg
+      FNone _ => pure (SOther, noRegs)
       where
-        outside : B a
-        outside = unsupported ("the inline extern " ++ show n ++ " outside the memory module")
+        ||| A value of the primitive type.
+        prim : PrimType -> Value enc v -> (Skeleton, Value enc v)
+        prim t x = (SPrim t, x)
 
-        takes : (ts : List (Ty enc)) -> List (Opnd v W64) -> B (All (Opnd v) ts)
-        takes [] [] = pure []
-        takes (W64 :: ts) (w :: more) = (w ::) <$> takes ts more
-        takes (PtrTo k :: ts) (w :: more) = case m of
-          True => do p <- emit1 (WordToAddr k w); (p ::) <$> takes ts more
-          False => outside
-        takes _ _ = unsupported ("the inline extern " ++ show n ++ " with another number of arguments")
+        wordVal : PrimType -> Opnd v W64 -> (Skeleton, Value enc v)
+        wordVal t w = prim t (MkValue [Word] [w])
 
-        gives : (ts : List (Ty enc)) -> All v ts -> B (Value enc v)
-        gives [] [] = pure noRegs
-        gives (W64 :: ts) (r :: more) = appendValues (MkValue [Word] [V r]) <$> gives ts more
-        gives (PtrTo _ :: ts) (r :: more) = case m of
-          True => do w <- emit1 (AddrToWord (V r)); appendValues (MkValue [Word] [w]) <$> gives ts more
-          False => outside
-        gives _ _ = unsupported ("the inline extern " ++ show n ++ ", whose result is not words")
-    wordExtern _ Load64 [base, off] = do
-      p <- emit1 (Arith Add base off)
-      r <- emit1 (Load W64 (MkMem (AtWord p) Nothing 0))
-      pure (MkValue [Word] [r])
-    wordExtern _ (LoadNarrow sw) [base, off] = do
-      p <- emit1 (Arith Add base off)
-      r <- emit1 (LoadN sw False (MkMem (AtWord p) Nothing 0))
-      pure (MkValue [Word] [r])
-    wordExtern _ Store64 [base, off, x] = do
-      p <- emit1 (Arith Add base off)
-      emit0 (Store W64 (MkMem (AtWord p) Nothing 0) x)
-      pure noRegs
-    wordExtern _ (StoreNarrow sw) [base, off, x] = do
-      p <- emit1 (Arith Add base off)
-      emit0 (StoreN sw (MkMem (AtWord p) Nothing 0) x)
-      pure noRegs
-    wordExtern _ PointerTag [] = pure (MkValue [Word] [W (cast (pointerTag enc.val))])
-    wordExtern _ (AreaAddress a) [] = do
-      p <- emit1 (AreaAddr a)
-      pure (MkValue [Word] [p])
-    wordExtern n _ _ = unsupported ("the inline extern " ++ show n ++ " with another number of arguments")
+        doubleVal : Opnd v F64 -> (Skeleton, Value enc v)
+        doubleVal f = prim DoubleType (MkValue [Dbl] [f])
+
+        constant : Constant -> B (Skeleton, Value enc v)
+        constant (Db x) = doubleVal <$> emit1 (TermIR.FConst x)
+        constant WorldVal = pure (SPrim WorldType, noRegs)
+        constant k = case (constType k, constWord k) of
+          (Just t, Just w) => pure (wordVal t (W w))
+          _ => unsupported ("the constant " ++ show k ++ " in a flat form")
+
+        ||| An inline extern's instructions, from its arguments' registers.
+        inlineExtern : Name -> InlineExtern -> Value enc v -> B (Value enc v)
+        -- a uniform value and a pointer word: the conversions, so this module's
+        -- functions alone
+        inlineExtern n (ObjectWord k) (MkValue [Uniform] [u]) = case m of
+          True => do
+            p <- emit1 (NarrowPtr k u)
+            w <- emit1 (AddrToWord p)
+            pure (MkValue [Word] [w])
+          False => unsupported ("the inline extern " ++ show n ++ " outside the memory module")
+        inlineExtern n (WordObject k) (MkValue [Word] [w]) = case m of
+          True => do
+            p <- emit1 (WordToAddr k w)
+            u <- emit1 (WidenPtr p)
+            pure (MkValue [Uniform] [u])
+          False => unsupported ("the inline extern " ++ show n ++ " outside the memory module")
+        inlineExtern n i x = case words x of
+          Just ws => wordExtern n i ws
+          Nothing => unsupported ("the inline extern " ++ show n ++ " on registers of another kind")
+          where
+            ||| The words of a value whose registers are all words.
+            words : Value enc' v' -> Maybe (List (Opnd v' W64))
+            words (MkValue [] []) = Just []
+            words (MkValue (Word :: rs) (x :: xs)) = (x ::) <$> words (MkValue rs xs)
+            words _ = Nothing
+
+            ||| An inline extern on words.
+            wordExtern : Name -> InlineExtern -> List (Opnd v W64) -> B (Value enc v)
+            -- an intrinsic: its words in and out, a pointer among them converted from
+            -- or to its word, so that one taking or giving a pointer is this module's
+            -- functions' alone
+            wordExtern n (Machine i) ws = do
+              xs <- takes (Intrinsic.params i) ws
+              rs <- emit (TermIR.Intrinsic i xs)
+              gives (Intrinsic.results i) rs
+              where
+                outside : B a
+                outside = unsupported ("the inline extern " ++ show n ++ " outside the memory module")
+
+                takes : (ts : List (Ty enc)) -> List (Opnd v W64) -> B (All (Opnd v) ts)
+                takes [] [] = pure []
+                takes (W64 :: ts) (w :: more) = (w ::) <$> takes ts more
+                takes (PtrTo k :: ts) (w :: more) = case m of
+                  True => do p <- emit1 (WordToAddr k w); (p ::) <$> takes ts more
+                  False => outside
+                takes _ _ = unsupported ("the inline extern " ++ show n ++ " with another number of arguments")
+
+                gives : (ts : List (Ty enc)) -> All v ts -> B (Value enc v)
+                gives [] [] = pure noRegs
+                gives (W64 :: ts) (r :: more) = appendValues (MkValue [Word] [V r]) <$> gives ts more
+                gives (PtrTo _ :: ts) (r :: more) = case m of
+                  True => do w <- emit1 (AddrToWord (V r)); appendValues (MkValue [Word] [w]) <$> gives ts more
+                  False => outside
+                gives _ _ = unsupported ("the inline extern " ++ show n ++ ", whose result is not words")
+            wordExtern _ Load64 [base, off] = do
+              p <- emit1 (Arith Add base off)
+              r <- emit1 (Load W64 (MkMem (AtWord p) Nothing 0))
+              pure (MkValue [Word] [r])
+            wordExtern _ (LoadNarrow sw) [base, off] = do
+              p <- emit1 (Arith Add base off)
+              r <- emit1 (LoadN sw False (MkMem (AtWord p) Nothing 0))
+              pure (MkValue [Word] [r])
+            wordExtern _ Store64 [base, off, x] = do
+              p <- emit1 (Arith Add base off)
+              emit0 (Store W64 (MkMem (AtWord p) Nothing 0) x)
+              pure noRegs
+            wordExtern _ (StoreNarrow sw) [base, off, x] = do
+              p <- emit1 (Arith Add base off)
+              emit0 (StoreN sw (MkMem (AtWord p) Nothing 0) x)
+              pure noRegs
+            wordExtern _ PointerTag [] = pure (MkValue [Word] [W (cast (pointerTag enc.val))])
+            wordExtern _ (AreaAddress a) [] = do
+              p <- emit1 (AreaAddr a)
+              pure (MkValue [Word] [p])
+            wordExtern n _ _ = unsupported ("the inline extern " ++ show n ++ " with another number of arguments")
+
+        ||| A constructor's value, from its fields'.
+        construct : Skeleton -> Name -> Value enc v -> B (Value enc v)
+        construct sk c fs = case shapeOf pr.shapes sk of
+          Just (DataShape cs) => case placement cs c of
+            Just (_, p) => conValue p fs
+            Nothing => unsupported ("the constructor " ++ show c ++ ", which is not one of " ++ show sk)
+          _ => unsupported ("a constructor of " ++ show sk ++ ", whose shape is not known")
+
+        ||| The skeleton and layout of an expression's value, from the variables'
+        ||| and the callees' results.
+        typeOf : SortedMap Name (Skeleton, Layout) -> Exp -> Maybe (Skeleton, Layout)
+        typeOf env = expType (\x => lookup x env)
+                             (\n => (\c => (c.form.resultSkeleton, c.form.result)) <$> lookup n pr.callees)
+
+        layouts : Env enc v -> SortedMap Name (Skeleton, Layout)
+        layouts = map (\(sk, x) => (sk, x.layout))
+
+        ||| A primitive operation.
+        primOp : PrimFn n -> Vect n (Value enc v) -> B (Skeleton, Value enc v)
+        primOp fn vect = case (fn, vect) of
+          (Add t, [x, y]) => arith t Add FAdd x y
+          (Sub t, [x, y]) => arith t Sub FSub x y
+          (Mul t, [x, y]) => arith t Mul FMul x y
+          (Div DoubleType, [x, y]) => do a <- double x; b <- double y; doubleVal <$> emit1 (FArith FDiv a b)
+          (Div t, [x, y]) => withHeld t "division" $ \h => do
+            a <- word x
+            b <- word y
+            nonZero b
+            w <- divide (signed h) False a b
+            wordVal t <$> wrap h w
+          (Mod t, [x, y]) => withHeld t "remainder" $ \h => do
+            a <- word x
+            b <- word y
+            nonZero b
+            w <- divide (signed h) True a b
+            wordVal t <$> wrap h w
+          (Neg DoubleType, [x]) => do a <- double x; doubleVal <$> emit1 (FNeg a)
+          (Neg t, [x]) => withHeld t "negation" $ \h => do
+            a <- word x
+            w <- emit1 (Unary Negate a)
+            wordVal t <$> wrap h w
+          (ShiftL t, [x, y]) => shifting t True x y
+          (ShiftR t, [x, y]) => shifting t False x y
+          (BAnd t, [x, y]) => bitwise t And x y
+          (BOr t, [x, y]) => bitwise t Or x y
+          (BXOr t, [x, y]) => bitwise t Xor x y
+          (LT t, [x, y]) => comparison t LtS x y
+          (LTE t, [x, y]) => comparison t LeS x y
+          (EQ t, [x, y]) => comparison t EqR x y
+          (GTE t, [x, y]) => comparison t GeS x y
+          (GT t, [x, y]) => comparison t GtS x y
+          (Cast from to, [x]) => castTo from to x
+          (op, _) => unsupported ("the primitive " ++ show op ++ " in a flat form")
+          where
+            ||| A word wrapped to the type's width, extended again.
+            wrap : Held -> Opnd v W64 -> B (Opnd v W64)
+            wrap (Narrower sw s) w = emit1 (Ext sw s w)
+            wrap (Whole _) w = pure w
+
+            double : Value enc v -> B (Opnd v F64)
+            double x = maybe (unsupported "a double of another layout") pure (doubleOf x)
+
+            withHeld : PrimType -> String -> (Held -> B a) -> B a
+            withHeld t what k = case held t of
+              Just h => k h
+              Nothing => unsupported (what ++ " on " ++ show t ++ " in a flat form")
+              where
+                ||| How an integer type or `Char` is held; `Char` as its code point.
+                held : PrimType -> Maybe Held
+                held IntType = Just (Whole True)
+                held Int64Type = Just (Whole True)
+                held Bits64Type = Just (Whole False)
+                held Int8Type = Just (Narrower Sub8 True)
+                held Int16Type = Just (Narrower Sub16 True)
+                held Int32Type = Just (Narrower Sub32 True)
+                held Bits8Type = Just (Narrower Sub8 False)
+                held Bits16Type = Just (Narrower Sub16 False)
+                held Bits32Type = Just (Narrower Sub32 False)
+                held CharType = Just (Narrower Sub32 False)
+                held _ = Nothing
+
+            ||| A cast between the primitive types.
+            castTo : PrimType -> PrimType -> Value enc v -> B (Skeleton, Value enc v)
+            castTo from to x =
+              if from == to then pure (prim to x) else
+              case (from, to) of
+                (DoubleType, CharType) => do f <- double x; w <- doubleToWord (Whole True) f; wordVal to <$> toChar w
+                (DoubleType, _) => withHeld to "a cast" $ \h => do f <- double x; wordVal to <$> doubleToWord h f
+                (_, DoubleType) => withHeld from "a cast" $ \h => do w <- word x; doubleVal <$> wordToDouble h w
+                (_, CharType) => withHeld from "a cast" $ \_ => do w <- word x; wordVal to <$> toChar w
+                _ => withHeld from "a cast" $ \_ => withHeld to "a cast" $ \h => do
+                       w <- word x
+                       wordVal to <$> wrap h w
+              where
+                ||| A word as a `Char`: itself if it is a Unicode scalar value, 0 if not.
+                toChar : Opnd v W64 -> B (Opnd v W64)
+                toChar w = do
+                  [r] <- joinPoint [W64] $ \done => do
+                    keep <- block [] $ \[] => done [w]
+                    zero <- block [] $ \[] => done [W 0]
+                    branch LtS w (W 0) (zero []) $
+                      branch LeS w (W 55295) (keep []) $
+                        branch LtS w (W 57344) (zero []) $
+                          branch LeS w (W 1114111) (keep []) (zero [])
+                  pure r
+
+                ||| A word of the integer type as a double. A `Bits64` at or above 2^63
+                ||| is halved, its low bit kept for the rounding, converted and doubled.
+                wordToDouble : Held -> Opnd v W64 -> B (Opnd v F64)
+                wordToDouble (Whole False) w = do
+                  [f] <- joinPoint [F64] $ \done =>
+                    branch GeS w (W 0) (do f <- emit1 (Convert I2F w); done [f]) $ do
+                      h <- emit1 (Arith Shr w (W 1))
+                      b <- emit1 (Arith And w (W 1))
+                      hb <- emit1 (Arith Or h b)
+                      f <- emit1 (Convert I2F hb)
+                      f2 <- emit1 (FArith FAdd f f)
+                      done [f2]
+                  pure f
+                wordToDouble _ w = emit1 (Convert I2F w)
+
+                ||| A double truncated to the integer type. A `Bits64` at or above 2^63 is
+                ||| converted less 2^63, which is added back to the word.
+                doubleToWord : Held -> Opnd v F64 -> B (Opnd v W64)
+                doubleToWord (Whole False) f = do
+                  big <- emit1 (TermIR.FConst 9223372036854775808.0)
+                  above <- emit1 (FCmp GeS f big)
+                  [w] <- joinPoint [W64] $ \done =>
+                    branch EqR above (W 0) (do w <- emit1 (Convert F2I f); done [w]) $ do
+                      g <- emit1 (FArith FSub f big)
+                      w <- emit1 (Convert F2I g)
+                      w' <- emit1 (Arith Add w (W (-9223372036854775808)))
+                      done [w']
+                  pure w
+                doubleToWord h f = do
+                  w <- emit1 (Convert F2I f)
+                  wrap h w
+
+            arith : PrimType -> ArithOp -> Operators.FOp -> (x, y : Value enc v) -> B (Skeleton, Value enc v)
+            arith DoubleType _ o x y = do a <- double x; b <- double y; doubleVal <$> emit1 (FArith o a b)
+            arith t o _ x y = withHeld t "arithmetic" $ \h => do
+              a <- word x
+              b <- word y
+              w <- emit1 (Arith o a b)
+              wordVal t <$> wrap h w
+
+            bitwise : PrimType -> ArithOp -> (x, y : Value enc v) -> B (Skeleton, Value enc v)
+            bitwise t o x y = withHeld t "a bitwise operation" $ \h => do
+              a <- word x
+              b <- word y
+              w <- emit1 (Arith o a b)
+              wordVal t <$> wrap h w
+
+            signed : Held -> Bool
+            signed (Narrower _ s) = s
+            signed (Whole s) = s
+
+            shifting : PrimType -> (left : Bool) -> (x, y : Value enc v) -> B (Skeleton, Value enc v)
+            shifting t left x y = withHeld t "a shift" $ \h => do
+              a <- word x
+              k <- word y
+              w <- shiftBy (if left then Shl else if signed h then Sar else Shr) a k
+              wordVal t <$> wrap h w
+
+            comparison : PrimType -> Rel -> (x, y : Value enc v) -> B (Skeleton, Value enc v)
+            comparison DoubleType rel x y = do
+              a <- double x
+              b <- double y
+              wordVal IntType <$> emit1 (FCmp rel a b)
+            comparison t rel x y = withHeld t "a comparison" $ \h => do
+              a <- word x
+              b <- word y
+              wordVal IntType <$> emit1 (Cmp (if signed h then rel else unsignedRel rel) a b)
+              where
+                ||| The unsigned relation for a signed one.
+                unsignedRel : Rel -> Rel
+                unsignedRel LtS = LtU
+                unsignedRel LeS = LeU
+                unsignedRel GtS = GtU
+                unsignedRel GeS = GeU
+                unsignedRel r = r
+
+        ||| A call of a form.
+        callForm : Name -> List (Value enc v) -> B (Skeleton, Value enc v)
+        callForm n xs = case lookup n pr.callees of
+          Nothing => unsupported ("a call of " ++ show n ++ ", which has no flat form in the program")
+          Just (MkCallee fd (_ ** var)) => case regsAs (paramsLayout fd.params) (concatValues xs) of
+            Nothing => unsupported ("a call of " ++ show n ++ " with arguments of other layouts")
+            Just args => do
+              rs <- directCall var args
+              pure (fd.resultSkeleton, MkValue fd.result rs)
 
     ||| A `let`: the variable bound to the value.
     bind : Env enc v -> FlatVar -> Exp -> B (Env enc v)
@@ -684,24 +684,6 @@ parameters {enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef) (m 
       case regsAs fv.layout x of
         Just rs => pure (insert fv.name (fv.skeleton, MkValue fv.layout rs) env)
         Nothing => unsupported ("the value of " ++ show fv.name ++ ", whose layout is not its type's")
-
-    ||| A call of a form.
-    callForm : Name -> List (Value enc v) -> B (Skeleton, Value enc v)
-    callForm n xs = case lookup n pr.callees of
-      Nothing => unsupported ("a call of " ++ show n ++ ", which has no flat form in the program")
-      Just (MkCallee fd (_ ** var)) => case regsAs (paramsLayout fd.params) (concatValues xs) of
-        Nothing => unsupported ("a call of " ++ show n ++ " with arguments of other layouts")
-        Just args => do
-          rs <- directCall var args
-          pure (fd.resultSkeleton, MkValue fd.result rs)
-
-    ||| A constructor's value, from its fields'.
-    construct : Skeleton -> Name -> Value enc v -> B (Value enc v)
-    construct sk c fs = case shapeOf pr.shapes sk of
-      Just (DataShape cs) => case placement cs c of
-        Just (_, p) => conValue p fs
-        Nothing => unsupported ("the constructor " ++ show c ++ ", which is not one of " ++ show sk)
-      _ => unsupported ("a constructor of " ++ show sk ++ ", whose shape is not known")
 
     ||| A case: the scrutinee, then each alternative's body as `k` lowers it,
     ||| in the environment of its variables.
@@ -713,72 +695,73 @@ parameters {enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef) (m 
         [] => other
         FConstAlt _ _ :: _ => constCase env x alts other k
         FConAlt _ _ _ _ :: _ => conCase env sk x alts other k
-
-    constCase : Env enc v -> Value enc v -> List FlatAlt -> E -> (Env enc v -> Exp -> E) -> E
-    constCase env x alts other k = do
-      w <- word x
-      let cs = mapMaybe (\a => case a of
-                                 FConstAlt c b => (\i => (i, k env b)) <$> constWord c
-                                 _ => Nothing) alts
-      if length cs /= length alts then unsupported "a case on constants that are not words" else
-        case choose (distinct (map fst cs) && keysFit (W64 {enc}) (map fst cs)) of
-          Left ok => switch w cs other
-          Right _ => unsupported "a case with repeated constants"
-
-    conCase : Env enc v -> Skeleton -> Value enc v -> List FlatAlt -> E -> (Env enc v -> Exp -> E) -> E
-    conCase env sk x alts other k = case shapeOf pr.shapes sk of
-      Just (DataShape [c]) => case find (named c.name) alts of
-        Just (FConAlt _ _ vs b) => alternative env (MkPlacement Nothing [] (fieldsLayout c.fields) []) x vs b k
-        _ => other
-      Just (DataShape cs) => do
-        t <- maybe (unsupported "a sum without its tag") pure (tagOf x)
-        let branches = mapMaybe (\a => case a of
-                                         FConAlt cn _ vs b => do
-                                           (c, p) <- placement cs cn
-                                           pure (the Int64 (cast c.tag), alternative env p x vs b k)
-                                         _ => Nothing) alts
-        if length branches /= length alts then unsupported ("a case on a constructor that is not one of " ++ show sk) else
-          case choose (distinct (map fst branches) && keysFit (W64 {enc}) (map fst branches)) of
-            Left ok => switch t branches other
-            Right _ => unsupported "a case with repeated constructors"
-      _ => unsupported ("a case on " ++ show sk ++ ", whose shape is not known")
       where
-        named : Name -> FlatAlt -> Bool
-        named n (FConAlt cn _ _ _) = cn == n
-        named _ _ = False
+        constCase : Env enc v -> Value enc v -> List FlatAlt -> E -> (Env enc v -> Exp -> E) -> E
+        constCase env x alts other k = do
+          w <- word x
+          let cs = mapMaybe (\a => case a of
+                                     FConstAlt c b => (\i => (i, k env b)) <$> constWord c
+                                     _ => Nothing) alts
+          if length cs /= length alts then unsupported "a case on constants that are not words" else
+            case choose (distinct (map fst cs) && keysFit (W64 {enc}) (map fst cs)) of
+              Left ok => switch w cs other
+              Right _ => unsupported "a case with repeated constants"
 
-    alternative : Env enc v -> Placement -> Value enc v -> List FlatVar -> Exp ->
-                  (Env enc v -> Exp -> E) -> E
-    alternative env p x vs b k = case fieldsOf p x >>= bindFields env vs of
-      Just env' => k env' b
-      Nothing => unsupported "an alternative whose fields are not its constructor's"
+        conCase : Env enc v -> Skeleton -> Value enc v -> List FlatAlt -> E -> (Env enc v -> Exp -> E) -> E
+        conCase env sk x alts other k = case shapeOf pr.shapes sk of
+          Just (DataShape [c]) => case find (named c.name) alts of
+            Just (FConAlt _ _ vs b) => alternative env (MkPlacement Nothing [] (fieldsLayout c.fields) []) x vs b k
+            _ => other
+          Just (DataShape cs) => do
+            t <- maybe (unsupported "a sum without its tag") pure (tagOf x)
+            let branches = mapMaybe (\a => case a of
+                                             FConAlt cn _ vs b => do
+                                               (c, p) <- placement cs cn
+                                               pure (the Int64 (cast c.tag), alternative env p x vs b k)
+                                             _ => Nothing) alts
+            if length branches /= length alts then unsupported ("a case on a constructor that is not one of " ++ show sk) else
+              case choose (distinct (map fst branches) && keysFit (W64 {enc}) (map fst branches)) of
+                Left ok => switch t branches other
+                Right _ => unsupported "a case with repeated constructors"
+          _ => unsupported ("a case on " ++ show sk ++ ", whose shape is not known")
+          where
+            named : Name -> FlatAlt -> Bool
+            named n (FConAlt cn _ _ _) = cn == n
+            named _ _ = False
 
-  ||| The expression's value, returned.
-  returned : Env enc v -> Exp -> E
-  returned env e = do
-    (_, x) <- expr env e
-    maybe (unsupported "a result whose layout is not the form's") ret (regsAs self.result x)
-
-  ||| An expression in tail position: its value is the result, and a call of
-  ||| the form itself jumps back to its start.
-  tailExp : Env enc v -> Maybe Again -> Exp -> E
-  tailExp env again (FLet _ fv val sc) = do
-    env' <- bind env fv val
-    tailExp env' again sc
-  tailExp env again (FCase _ scr alts def) = dispatch env scr alts def (\env', b => tailExp env' again b)
-  tailExp env (Just again) e@(FCall _ n args) =
-    if n /= self.name then returned env e else do
-      xs <- traverse (\a => snd <$> expr env a) args
-      maybe (unsupported "a call of the form itself with arguments of other layouts") again
-            (regsAs (paramsLayout self.params) (concatValues xs))
-  tailExp env _ (FCrash _ msg) = crash msg
-  tailExp env _ e = returned env e
+            alternative : Env enc v -> Placement -> Value enc v -> List FlatVar -> Exp ->
+                          (Env enc v -> Exp -> E) -> E
+            alternative env p x vs b k = case fieldsOf p x >>= bindFields env vs of
+              Just env' => k env' b
+              Nothing => unsupported "an alternative whose fields are not its constructor's"
 
   ||| The form's body, from the parameters' registers.
   formBody : Maybe Again -> All (Opnd v) (tys (paramsLayout self.params)) -> E
   formBody again xs = case bindFields empty self.params (MkValue (paramsLayout self.params) xs) of
     Just env => tailExp env again self.body
     Nothing => unsupported "parameters whose layouts are not their types'"
+    where
+      ||| An expression in tail position: its value is the result, and a call of
+      ||| the form itself jumps back to its start.
+      tailExp : Env enc v -> Maybe Again -> Exp -> E
+      tailExp env x exp = case (x, exp) of
+        (again, FLet _ fv val sc) => do
+          env' <- bind env fv val
+          tailExp env' again sc
+        (again, FCase _ scr alts def) => dispatch env scr alts def (\env', b => tailExp env' again b)
+        (Just again, e@(FCall _ n args)) =>
+          if n /= self.name then returned env e else do
+            xs <- traverse (\a => snd <$> expr env a) args
+            maybe (unsupported "a call of the form itself with arguments of other layouts") again
+                  (regsAs (paramsLayout self.params) (concatValues xs))
+        (_, FCrash _ msg) => crash msg
+        (_, e) => returned env e
+        where
+          ||| The expression's value, returned.
+          returned : Env enc v -> Exp -> E
+          returned env e = do
+            (_, x) <- expr env e
+            maybe (unsupported "a result whose layout is not the form's") ret (regsAs self.result x)
 
 ||| A form as the body of its `Direct` function. A form that calls itself
 ||| is a loop, which a call in tail position jumps back to.
@@ -789,3 +772,20 @@ lowerForm d pr fd = build $ \xs =>
   if calls fd.name fd.body
      then loop (tys (paramsLayout fd.params)) xs $ \again, ys => formBody d pr fd (convertsIn fd.name) (Just again) ys
      else formBody d pr fd (convertsIn fd.name) Nothing xs
+  where
+    ||| Whether the expression calls the form.
+    calls : Name -> Exp -> Bool
+    calls n (FVar _ _) = False
+    calls n (FLet _ _ val sc) = calls n val || calls n sc
+    calls n (Flat.FConst _ _) = False
+    calls n (Flat.FOp _ _ as) = any (calls n) (toList as)
+    calls n (FCall _ f as) = f == n || any (calls n) as
+    calls n (FPrim _ _ _ _ as) = any (calls n) as
+    calls n (FCon _ _ _ _ _ as) = any (calls n) as
+    calls n (FCase _ sc alts def) = calls n sc || any alt alts || maybe False (calls n) def
+      where
+        alt : FlatAlt -> Bool
+        alt (FConAlt _ _ _ b) = calls n b
+        alt (FConstAlt _ b) = calls n b
+    calls n (FCrash _ _) = False
+    calls n (FNone _) = False

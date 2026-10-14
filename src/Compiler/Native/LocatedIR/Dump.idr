@@ -28,106 +28,108 @@ import Data.String
 
 %default covering
 
-regs : List (Reg enc) -> String
-regs rs = "[" ++ joinBy ", " (map show rs) ++ "]"
-
-ops : List (Opnd enc) -> String
-ops xs = joinBy ", " (map show xs)
-
--- The registers an instruction defines, before its `:=`.
-assigned : List (Reg enc) -> String
-assigned [] = ""
-assigned ds = joinBy ", " (map show ds) ++ " := "
-
--- `w`: the access's width, the unit of the index.
-mem : Nat -> Mem enc -> String
-mem w m = "[" ++ show m.base ++ maybe "" (\i => " + " ++ show i ++ "*" ++ show w) m.index
-            ++ " + " ++ show m.offset ++ "]"
-
-rel : Rel -> String
-rel EqR = "=="
-rel NeR = "!="
-rel LtS = "<s"
-rel LeS = "<=s"
-rel GtS = ">s"
-rel GeS = ">=s"
-rel LtU = "<u"
-rel LeU = "<=u"
-rel GtU = ">u"
-rel GeU = ">=u"
-
-instr : Instr enc -> String
-instr (Const d c) = show d ++ " := Const " ++ show c
-instr (FConst d c) = show d ++ " := FConst " ++ show c
-instr (CodeAddr d f) = show d ++ " := CodeAddr " ++ show f
-instr (StaticAddr d s) = show d ++ " := StaticAddr " ++ show s
-instr (AreaAddr d _) = show d ++ " := AreaAddr"
-instr (Arith o d x y) = show d ++ " := " ++ show o ++ " " ++ ops [x, y]
-instr i@(Unary _ d x) = show d ++ " := " ++ instrName i ++ " " ++ show x
-instr (ArithOv o d x y l) = show d ++ " := " ++ show o ++ "Ov " ++ ops [x, y] ++ " overflow " ++ show l
-instr (Ext _ s d x) = show d ++ " := Ext" ++ (if s then "S " else "Z ") ++ show x
-instr i@(FArith _ d x y) = show d ++ " := " ++ instrName i ++ " " ++ show x ++ ", " ++ show y
-instr (FNeg d x) = show d ++ " := FNeg " ++ show x
-instr (FCmp r d x y) = show d ++ " := FCmp " ++ show x ++ " " ++ rel r ++ " " ++ show y
-instr (Convert _ d x) = show d ++ " := Convert " ++ show x
-instr (Cmp r d x y) = show d ++ " := Cmp " ++ show x ++ " " ++ rel r ++ " " ++ show y
-instr (Load t d m) = show d ++ " := Load " ++ show t ++ " " ++ mem 8 m
-instr (Store t m x) = "Store " ++ show t ++ " " ++ mem 8 m ++ " := " ++ show x
-instr (LoadN sw _ d m) = show d ++ " := LoadN " ++ mem (subWordBytes sw) m
-instr (StoreN sw m x) = "StoreN " ++ mem (subWordBytes sw) m ++ " := " ++ show x
-instr (Tag d x) = show d ++ " := Tag " ++ show x
-instr (Untag d x) = show d ++ " := Untag " ++ show x
-instr (TagOv d x l) = show d ++ " := TagOv " ++ show x ++ " overflow " ++ show l
-instr (Narrow t d x) = show d ++ " := Narrow " ++ show t ++ " " ++ show x
-instr (Widen d x) = show d ++ " := Widen " ++ show x
-instr (AddrToWord d x) = show d ++ " := AddrToWord " ++ show x
-instr (WordToAddr k d x) = show d ++ " := WordToAddr " ++ show k ++ " " ++ show x
-instr (LoadHeader d x) = show d ++ " := LoadHeader " ++ show x
-instr (LoadPart p d x) = show d ++ " := LoadPart " ++ show p ++ " " ++ show x
-instr (AllocObj d h fs live) = show d ++ " := AllocObj " ++ show h ++ " (" ++ ops fs ++ ") live " ++ regs live
-instr (AllocSized d p n f live)
-    = show d ++ " := AllocSized " ++ show p ++ "=" ++ show n
-        ++ maybe "" (\o => " fill " ++ show o) f ++ " live " ++ regs live
-instr (DirectCall f xs ds m live) =
-  assigned ds ++ "DirectCall " ++ show f ++ " (" ++ ops xs ++ ")"
-  ++ (if m then " mayCollect" else "") ++ " live " ++ regs live
-instr i@(Intrinsic _ ds xs) = assigned ds ++ instrName i ++ " (" ++ ops xs ++ ")"
-instr (Move d s) = show d ++ " := " ++ show s
-instr (Loc _) = "Loc"
-instr (Comment s) = "-- " ++ s
-
-cont : Cont enc -> String
-cont c = "resume " ++ show c.resume ++ " live " ++ regs c.live
-
-term : Terminator enc -> String
-term (Jump l) = "Jump " ++ show l
-term (IfFixnums rs y n) = "IfFixnums " ++ regs rs ++ " " ++ show y ++ " " ++ show n
-term (Branch r x y t f) = "Branch " ++ show x ++ " " ++ rel r ++ " " ++ show y ++ " " ++ show t ++ " " ++ show f
-term (Switch r cs d) =
-  "Switch " ++ show r ++ " [" ++ joinBy ", " (map (\c => show (fst c) ++ " -> " ++ show (snd c)) cs) ++ "] else " ++ show d
-term (Call f xs c) = "Call " ++ show f ++ " (" ++ ops xs ++ ") " ++ cont c
-term (TailCall f xs) = "TailCall " ++ show f ++ " (" ++ ops xs ++ ")"
-term (Apply f x c) = "Apply " ++ show f ++ " " ++ show x ++ " " ++ cont c
-term (TailApply f x) = "TailApply " ++ show f ++ " " ++ show x
-term (Return v) = "Return " ++ show v
-term (Enter c xs) = "Enter " ++ show c ++ " (" ++ ops xs ++ ")"
-term (Ret vs) = "Ret" ++ (if null vs then "" else " " ++ ops vs)
-term (Crash s) = "Crash " ++ show s
-term (Unsupported s) = "Unsupported " ++ show s
-
--- A block's text, a line a piece.
-blockPieces : Block enc -> Builder String
-blockPieces b =
-  single ("  " ++ show b.label ++ (if null b.params then "" else " " ++ regs b.params) ++ ":\n")
-  <+> concatMap (\i => single ("    " ++ instr i ++ "\n")) b.body
-  <+> single ("    " ++ term b.term ++ "\n")
-
 functionPieces : Function enc -> Builder String
 functionPieces f =
   single ("function " ++ show f.name ++ " " ++ show f.conv ++ " " ++ regs f.params
           ++ (if null (results f.conv) then "" else " -> " ++ show (results f.conv))
           ++ " entry " ++ show f.entry ++ "\n")
   <+> concatMap blockPieces f.blocks
+  where
+    regs : List (Reg enc') -> String
+    regs rs = "[" ++ joinBy ", " (map show rs) ++ "]"
+
+    -- A block's text, a line a piece.
+    blockPieces : Block enc''' -> Builder String
+    blockPieces b =
+      single ("  " ++ show b.label ++ (if null b.params then "" else " " ++ regs b.params) ++ ":\n")
+      <+> concatMap (\i => single ("    " ++ instr i ++ "\n")) b.body
+      <+> single ("    " ++ term b.term ++ "\n")
+      where
+        ops : List (Opnd enc') -> String
+        ops xs = joinBy ", " (map show xs)
+
+        rel : Rel -> String
+        rel EqR = "=="
+        rel NeR = "!="
+        rel LtS = "<s"
+        rel LeS = "<=s"
+        rel GtS = ">s"
+        rel GeS = ">=s"
+        rel LtU = "<u"
+        rel LeU = "<=u"
+        rel GtU = ">u"
+        rel GeU = ">=u"
+
+        instr : Instr enc'' -> String
+        instr instr' = case instr' of
+          Const d c => show d ++ " := Const " ++ show c
+          FConst d c => show d ++ " := FConst " ++ show c
+          CodeAddr d f => show d ++ " := CodeAddr " ++ show f
+          StaticAddr d s => show d ++ " := StaticAddr " ++ show s
+          AreaAddr d _ => show d ++ " := AreaAddr"
+          Arith o d x y => show d ++ " := " ++ show o ++ " " ++ ops [x, y]
+          i@(Unary _ d x) => show d ++ " := " ++ instrName i ++ " " ++ show x
+          ArithOv o d x y l => show d ++ " := " ++ show o ++ "Ov " ++ ops [x, y] ++ " overflow " ++ show l
+          Ext _ s d x => show d ++ " := Ext" ++ (if s then "S " else "Z ") ++ show x
+          i@(FArith _ d x y) => show d ++ " := " ++ instrName i ++ " " ++ show x ++ ", " ++ show y
+          FNeg d x => show d ++ " := FNeg " ++ show x
+          FCmp r d x y => show d ++ " := FCmp " ++ show x ++ " " ++ rel r ++ " " ++ show y
+          Convert _ d x => show d ++ " := Convert " ++ show x
+          Cmp r d x y => show d ++ " := Cmp " ++ show x ++ " " ++ rel r ++ " " ++ show y
+          Load t d m => show d ++ " := Load " ++ show t ++ " " ++ mem 8 m
+          Store t m x => "Store " ++ show t ++ " " ++ mem 8 m ++ " := " ++ show x
+          LoadN sw _ d m => show d ++ " := LoadN " ++ mem (subWordBytes sw) m
+          StoreN sw m x => "StoreN " ++ mem (subWordBytes sw) m ++ " := " ++ show x
+          Tag d x => show d ++ " := Tag " ++ show x
+          Untag d x => show d ++ " := Untag " ++ show x
+          TagOv d x l => show d ++ " := TagOv " ++ show x ++ " overflow " ++ show l
+          Narrow t d x => show d ++ " := Narrow " ++ show t ++ " " ++ show x
+          Widen d x => show d ++ " := Widen " ++ show x
+          AddrToWord d x => show d ++ " := AddrToWord " ++ show x
+          WordToAddr k d x => show d ++ " := WordToAddr " ++ show k ++ " " ++ show x
+          LoadHeader d x => show d ++ " := LoadHeader " ++ show x
+          LoadPart p d x => show d ++ " := LoadPart " ++ show p ++ " " ++ show x
+          AllocObj d h fs live => show d ++ " := AllocObj " ++ show h ++ " (" ++ ops fs ++ ") live " ++ regs live
+          AllocSized d p n f live
+             => show d ++ " := AllocSized " ++ show p ++ "=" ++ show n
+                  ++ maybe "" (\o => " fill " ++ show o) f ++ " live " ++ regs live
+          DirectCall f xs ds m live =>
+            assigned ds ++ "DirectCall " ++ show f ++ " (" ++ ops xs ++ ")"
+            ++ (if m then " mayCollect" else "") ++ " live " ++ regs live
+          i@(Intrinsic _ ds xs) => assigned ds ++ instrName i ++ " (" ++ ops xs ++ ")"
+          Move d s => show d ++ " := " ++ show s
+          Loc _ => "Loc"
+          Comment s => "-- " ++ s
+          where
+            -- The registers an instruction defines, before its `:=`.
+            assigned : List (Reg enc') -> String
+            assigned [] = ""
+            assigned ds = joinBy ", " (map show ds) ++ " := "
+
+            -- `w`: the access's width, the unit of the index.
+            mem : Nat -> Mem enc' -> String
+            mem w m = "[" ++ show m.base ++ maybe "" (\i => " + " ++ show i ++ "*" ++ show w) m.index
+                        ++ " + " ++ show m.offset ++ "]"
+
+        term : Terminator enc'' -> String
+        term terminator = case terminator of
+          Jump l => "Jump " ++ show l
+          IfFixnums rs y n => "IfFixnums " ++ regs rs ++ " " ++ show y ++ " " ++ show n
+          Branch r x y t f => "Branch " ++ show x ++ " " ++ rel r ++ " " ++ show y ++ " " ++ show t ++ " " ++ show f
+          Switch r cs d =>
+            "Switch " ++ show r ++ " [" ++ joinBy ", " (map (\c => show (fst c) ++ " -> " ++ show (snd c)) cs) ++ "] else " ++ show d
+          Call f xs c => "Call " ++ show f ++ " (" ++ ops xs ++ ") " ++ cont c
+          TailCall f xs => "TailCall " ++ show f ++ " (" ++ ops xs ++ ")"
+          Apply f x c => "Apply " ++ show f ++ " " ++ show x ++ " " ++ cont c
+          TailApply f x => "TailApply " ++ show f ++ " " ++ show x
+          Return v => "Return " ++ show v
+          Enter c xs => "Enter " ++ show c ++ " (" ++ ops xs ++ ")"
+          Ret vs => "Ret" ++ (if null vs then "" else " " ++ ops vs)
+          Crash s => "Crash " ++ show s
+          Unsupported s => "Unsupported " ++ show s
+          where
+            cont : Cont enc' -> String
+            cont c = "resume " ++ show c.resume ++ " live " ++ regs c.live
 
 ||| One function: its name, convention, parameters and blocks.
 export

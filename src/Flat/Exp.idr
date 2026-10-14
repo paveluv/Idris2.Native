@@ -136,14 +136,14 @@ mutual
   Show Shape where
     show (PrimShape t) = show t
     show (DataShape cs) = "{" ++ concat (intersperse " | " (map showCon cs)) ++ "}"
+      where
+        covering
+        showCon : ConShape -> String
+        showCon c = show c.name ++ "#" ++ show c.tag ++ " as " ++ show c.ordinary
+                    ++ (case c.fields of
+                             [] => ""
+                             fs => " (" ++ concat (intersperse ", " (map show fs)) ++ ")")
     show UniformShape = "uniform"
-
-  covering
-  showCon : ConShape -> String
-  showCon c = show c.name ++ "#" ++ show c.tag ++ " as " ++ show c.ordinary
-              ++ (case c.fields of
-                       [] => ""
-                       fs => " (" ++ concat (intersperse ", " (map show fs)) ++ ")")
 
 mutual
   ||| The registers a value of the shape takes, as the judgement of its type
@@ -250,48 +250,48 @@ mutual
     ||| A constant.
     FConstAlt : Constant -> Exp -> FlatAlt
 
-mutual
-  -- The text of an expression in pieces, joined once by `showExp`:
-  -- appending strings level by level copies the text below at each level.
-  covering
-  expPieces : Nat -> Exp -> Builder String
-  expPieces i (FVar _ n) = single (show n)
-  expPieces i (FLet _ v val sc)
-      = single ("let " ++ show v ++ " = ") <+> expPieces (i + 2) val <+> single "\n"
-        <+> single (showIndent i) <+> expPieces i sc
-  expPieces i (FConst _ c) = single (show c)
-  expPieces i (FOp _ op as) = single (show op) <+> argPieces i (toList as)
-  expPieces i (FCall _ n as) = single (show n) <+> argPieces i as
-  expPieces i (FPrim _ n _ _ as) = single ("%prim " ++ show n) <+> argPieces i as
-  expPieces i (FCon _ c t s l as)
-      = single (show c ++ maybe "" (\t => "{" ++ show t ++ "}") t) <+> argPieces i as
-  expPieces i (FCase _ sc alts def)
-      = single "case " <+> expPieces i sc <+> single " of"
-        <+> concatMap (\a => single ("\n" ++ showIndent (i + 2)) <+> altPieces (i + 4) a) alts
-        <+> maybe neutral (\d => single ("\n" ++ showIndent (i + 2) ++ "_ => ") <+> expPieces (i + 4) d) def
-  expPieces i (FCrash _ msg) = single ("crash " ++ show msg)
-  expPieces i (FNone _) = single "()"
-
-  covering
-  altPieces : Nat -> FlatAlt -> Builder String
-  altPieces i (FConAlt c t vs sc)
-      = single (show c ++ maybe "" (\t => "{" ++ show t ++ "}") t
-                ++ fastConcat (map (\v => " (" ++ show v ++ ")") vs) ++ " => ")
-        <+> expPieces i sc
-  altPieces i (FConstAlt c sc) = single (show c ++ " => ") <+> expPieces i sc
-
-  covering
-  argPieces : Nat -> List Exp -> Builder String
-  argPieces i [] = neutral
-  argPieces i as = single "(" <+> concat (intersperse (single ", ") (map (expPieces i) as)) <+> single ")"
-
-  showIndent : Nat -> String
-  showIndent i = pack (replicate i ' ')
-
 ||| An expression as text, each line after the first indented by `i`.
 covering
 showExp : Nat -> Exp -> String
 showExp i e = fastConcat (contents (expPieces i e))
+  where
+    -- The text of an expression in pieces, joined once by `showExp`:
+    -- appending strings level by level copies the text below at each level.
+    covering
+    expPieces : Nat -> Exp -> Builder String
+    expPieces i exp = case exp of
+      FVar _ n => single (show n)
+      FLet _ v val sc
+         => single ("let " ++ show v ++ " = ") <+> expPieces (i + 2) val <+> single "\n"
+            <+> single (showIndent i) <+> expPieces i sc
+      FConst _ c => single (show c)
+      FOp _ op as => single (show op) <+> argPieces i (toList as)
+      FCall _ n as => single (show n) <+> argPieces i as
+      FPrim _ n _ _ as => single ("%prim " ++ show n) <+> argPieces i as
+      FCon _ c t s l as
+         => single (show c ++ maybe "" (\t => "{" ++ show t ++ "}") t) <+> argPieces i as
+      FCase _ sc alts def
+         => single "case " <+> expPieces i sc <+> single " of"
+            <+> concatMap (\a => single ("\n" ++ showIndent (i + 2)) <+> altPieces (i + 4) a) alts
+            <+> maybe neutral (\d => single ("\n" ++ showIndent (i + 2) ++ "_ => ") <+> expPieces (i + 4) d) def
+      FCrash _ msg => single ("crash " ++ show msg)
+      FNone _ => single "()"
+      where
+        covering
+        altPieces : Nat -> FlatAlt -> Builder String
+        altPieces i (FConAlt c t vs sc)
+            = single (show c ++ maybe "" (\t => "{" ++ show t ++ "}") t
+                      ++ fastConcat (map (\v => " (" ++ show v ++ ")") vs) ++ " => ")
+              <+> expPieces i sc
+        altPieces i (FConstAlt c sc) = single (show c ++ " => ") <+> expPieces i sc
+
+        covering
+        argPieces : Nat -> List Exp -> Builder String
+        argPieces i [] = neutral
+        argPieces i as = single "(" <+> concat (intersperse (single ", ") (map (expPieces i) as)) <+> single ")"
+
+        showIndent : Nat -> String
+        showIndent i = pack (replicate i ' ')
 
 export covering
 Show Exp where
@@ -325,27 +325,6 @@ primLayout DoubleType = [Dbl]
 primLayout WorldType = []
 primLayout _ = [Word]
 
--- The type of a primitive operation's result.
-opResult : PrimFn n -> Maybe PrimType
-opResult (Add t) = Just t
-opResult (Sub t) = Just t
-opResult (Mul t) = Just t
-opResult (Div t) = Just t
-opResult (Mod t) = Just t
-opResult (Neg t) = Just t
-opResult (ShiftL t) = Just t
-opResult (ShiftR t) = Just t
-opResult (BAnd t) = Just t
-opResult (BOr t) = Just t
-opResult (BXOr t) = Just t
-opResult (LT _) = Just IntType
-opResult (LTE _) = Just IntType
-opResult (EQ _) = Just IntType
-opResult (GTE _) = Just IntType
-opResult (GT _) = Just IntType
-opResult (Cast _ t) = Just t
-opResult _ = Nothing
-
 ||| The skeleton and layout of an expression's value, from its variables'
 ||| (`var`) and the results of the forms it calls (`form`). Nothing if no
 ||| value comes of it, a crash or every alternative one, or a form's result
@@ -362,6 +341,27 @@ expType var form (FLet _ fv _ sc) = expType (bound [fv]) form sc
       Nothing => var y
 expType var form (FConst _ k) = (\t => (SPrim t, primLayout t)) <$> constType k
 expType var form (FOp _ op _) = (\t => (SPrim t, primLayout t)) <$> opResult op
+  where
+    -- The type of a primitive operation's result.
+    opResult : PrimFn n -> Maybe PrimType
+    opResult (Add t) = Just t
+    opResult (Sub t) = Just t
+    opResult (Mul t) = Just t
+    opResult (Div t) = Just t
+    opResult (Mod t) = Just t
+    opResult (Neg t) = Just t
+    opResult (ShiftL t) = Just t
+    opResult (ShiftR t) = Just t
+    opResult (BAnd t) = Just t
+    opResult (BOr t) = Just t
+    opResult (BXOr t) = Just t
+    opResult (LT _) = Just IntType
+    opResult (LTE _) = Just IntType
+    opResult (EQ _) = Just IntType
+    opResult (GTE _) = Just IntType
+    opResult (GT _) = Just IntType
+    opResult (Cast _ t) = Just t
+    opResult _ = Nothing
 expType var form (FCall _ n _) = form n
 expType var form (FPrim _ _ sk lay _) = Just (sk, lay)
 expType var form (FCon _ _ _ sk lay _) = Just (sk, lay)

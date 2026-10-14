@@ -59,13 +59,6 @@ sizeAt a = do
      then do l <- loadAt h (0 - 8); pure (continuationWords l)
      else pure (objectWords (kindOfHeader h) h)
 
-scannedAt : Bits64 -> Op Heap (Bits64, Bits64)
-scannedAt a = do
-  h <- firstWord a
-  if isContinuation h
-     then do l <- loadAt h (0 - 8); pure (continuationScanned l)
-     else pure (scannedWords (kindOfHeader h) h)
-
 export
 Memory Heap where
   collectable v = do
@@ -82,6 +75,13 @@ Memory Heap where
     pure (a + tag)
   objectSize = sizeAt
   objectScanned = scannedAt
+    where
+      scannedAt : Bits64 -> Op Heap (Bits64, Bits64)
+      scannedAt a = do
+        h <- firstWord a
+        if isContinuation h
+           then do l <- loadAt h (0 - 8); pure (continuationScanned l)
+           else pure (scannedWords (kindOfHeader h) h)
   forwarded a = do
     h <- firstWord a
     pure (if kindOfHeader h == forwardingId then Just (forwardedTo h) else Nothing)

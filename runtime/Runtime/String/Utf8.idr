@@ -142,21 +142,21 @@ countChars s i end count =
     b <- byteAt s i
     countChars s (i + 1) end (if b .&. 0xC0 == 0x80 then count else count + 1)
 
-||| The byte offset `n` characters after `i`, or `end` if there are fewer.
-||| Ends: `n` falls to 0, or `i` climbs to `end`.
-covering
-skipChars : Addr STRING -> (i, end, n : Bits64) -> Op Heap Bits64
-skipChars s i end n =
-  if n == 0 || i >= end then pure (if i > end then end else i) else do
-    b <- byteAt s i
-    skipChars s (i + seqLength b) end (n - 1)
-
 ||| The byte offset of the `n`th character of a string of the header.
 covering
 offsetOf : Addr STRING -> (header, n : Bits64) -> Op Heap Bits64
 offsetOf s h n =
   if asciiOf h then pure (if n > bytesOf h then bytesOf h else n)
   else skipChars s 0 (bytesOf h) n
+  where
+    ||| The byte offset `n` characters after `i`, or `end` if there are fewer.
+    ||| Ends: `n` falls to 0, or `i` climbs to `end`.
+    covering
+    skipChars : Addr STRING -> (i, end, n : Bits64) -> Op Heap Bits64
+    skipChars s i end n =
+      if n == 0 || i >= end then pure (if i > end then end else i) else do
+        b <- byteAt s i
+        skipChars s (i + seqLength b) end (n - 1)
 
 ||| Copy `n` bytes from `i` in one string to `j` in another; the OR of the
 ||| bytes, whose top bit says whether any is not ASCII. Ends: `n` falls to 0.
@@ -177,27 +177,6 @@ slice s h from to = do
   r <- newString n
   seen <- copyBytes s from r 0 n 0
   finish r (asciiOf h || seen < 0x80) n
-
-||| The characters of a string from byte `i` to `n`, each written at the
-||| mirror of its place in `r`. Ends: `i` climbs to `n`.
-covering
-reverseFrom : Addr STRING -> (i, n : Bits64) -> Addr STRING -> Op Heap ()
-reverseFrom s i n r =
-  if i >= n then pure () else do
-    b <- byteAt s i
-    let k = seqLength b
-    _ <- copyBytes s i r (n - i - k) k 0
-    reverseFrom s (i + k) n r
-
-||| Compare two strings' bytes from `i`: the first difference, else the
-||| shorter first. Ends: `i` climbs to the shorter's length.
-covering
-compareFrom : Addr STRING -> Addr STRING -> (i, na, nb : Bits64) -> Op Heap Int
-compareFrom a b i na nb =
-  if i >= na || i >= nb then pure (if na < nb then -1 else if na > nb then 1 else 0) else do
-    p <- byteAt a i
-    q <- byteAt b i
-    if p < q then pure (-1) else if p > q then pure 1 else compareFrom a b (i + 1) na nb
 
 ------------------------------------------------------------------------------
 -- The primitives
@@ -283,6 +262,17 @@ reverse str = do
   r <- newString n
   reverseFrom s 0 n r
   finish r (asciiOf h) n
+  where
+    ||| The characters of a string from byte `i` to `n`, each written at the
+    ||| mirror of its place in `r`. Ends: `i` climbs to `n`.
+    covering
+    reverseFrom : Addr STRING -> (i, n : Bits64) -> Addr STRING -> Op Heap ()
+    reverseFrom s i n r =
+      if i >= n then pure () else do
+        b <- byteAt s i
+        let k = seqLength b
+        _ <- copyBytes s i r (n - i - k) k 0
+        reverseFrom s (i + k) n r
 
 %cg native flat Runtime.String.Utf8.substr
 ||| `len` characters from `start`, both clamped to the string, as Chez's
@@ -314,6 +304,16 @@ compare x y = do
   ha <- headerOf a
   hb <- headerOf b
   compareFrom a b 0 (bytesOf ha) (bytesOf hb)
+  where
+    ||| Compare two strings' bytes from `i`: the first difference, else the
+    ||| shorter first. Ends: `i` climbs to the shorter's length.
+    covering
+    compareFrom : Addr STRING -> Addr STRING -> (i, na, nb : Bits64) -> Op Heap Int
+    compareFrom a b i na nb =
+      if i >= na || i >= nb then pure (if na < nb then -1 else if na > nb then 1 else 0) else do
+        p <- byteAt a i
+        q <- byteAt b i
+        if p < q then pure (-1) else if p > q then pure 1 else compareFrom a b (i + 1) na nb
 
 ------------------------------------------------------------------------------
 -- Lists of characters and of strings: `prelude`'s `fastPack`, `fastUnpack`
@@ -321,137 +321,137 @@ compare x y = do
 -- no fields, often the static one; `(::)` of id 1, its head then its tail.
 -- A character in a field is its fixnum, a string or a list a pointer.
 
-||| The header of a list's `(::)`.
-consHeader : Bits64
-consHeader = kindId CON + shiftL 1 (fst (place ConId)) + shiftL 2 (fst (place ConArity))
-
-||| The header of a list's `[]`.
-nilHeader : Bits64
-nilHeader = kindId CON
-
 ||| Whether a list's cell is `[]`.
 isNil : Addr CON -> Op Heap Bool
 isNil cell = do
   h <- load64 cell 0
   pure (part ConId h == 0)
 
-||| The bytes the characters of a list take, and the OR of their code
-||| points. Ends: the list is finite, each step one cell on.
-covering
-packMeasure : Addr CON -> (bytes, seen : Bits64) -> Op Heap (Bits64, Bits64)
-packMeasure cell bytes seen = do
-  end <- isNil cell
-  if end then pure (bytes, seen) else do
-    c <- load64 cell 8
-    t <- load64 cell 16
-    next <- fieldObject {k = CON} t
-    let ch = fixnumOf c
-    packMeasure next (bytes + charBytes ch) (seen .|. ch)
-
-||| The characters of a list written from `j`. Ends: as `packMeasure`.
-covering
-packWrite : Addr CON -> Addr STRING -> (j : Bits64) -> Op Heap ()
-packWrite cell s j = do
-  end <- isNil cell
-  if end then pure () else do
-    c <- load64 cell 8
-    t <- load64 cell 16
-    next <- fieldObject {k = CON} t
-    let ch = fixnumOf c
-    encodeAt s j ch
-    packWrite next s (j + charBytes ch)
-
-||| A list of characters as a string.
-covering
-packOp : Uniform (List Char) -> Op Heap (Uniform String)
-packOp xs = do
-  cell <- conObject xs
-  (n, seen) <- packMeasure cell 0 0
-  s <- newString n
-  packWrite cell s 0
-  finish s (seen < 0x80) n
-
 %cg native flat Runtime.String.Utf8.fastPack
 ||| `fastPack`: a list of characters as a string.
 export covering
 fastPack : Uniform (List Char) -> Uniform String
 fastPack xs = let (MkHeap # r) = packOp xs MkHeap in r
+  where
+    ||| A list of characters as a string.
+    covering
+    packOp : Uniform (List Char) -> Op Heap (Uniform String)
+    packOp xs = do
+      cell <- conObject xs
+      (n, seen) <- packMeasure cell 0 0
+      s <- newString n
+      packWrite cell s 0
+      finish s (seen < 0x80) n
+      where
+        ||| The bytes the characters of a list take, and the OR of their code
+        ||| points. Ends: the list is finite, each step one cell on.
+        covering
+        packMeasure : Addr CON -> (bytes, seen : Bits64) -> Op Heap (Bits64, Bits64)
+        packMeasure cell bytes seen = do
+          end <- isNil cell
+          if end then pure (bytes, seen) else do
+            c <- load64 cell 8
+            t <- load64 cell 16
+            next <- fieldObject {k = CON} t
+            let ch = fixnumOf c
+            packMeasure next (bytes + charBytes ch) (seen .|. ch)
 
-||| The cells of a list of `n` characters, one block: `[]` first, then each
-||| `(::)`, 24 bytes, its tail the next, the last's tail the `[]`. Fills the
-||| `k`th cell on from byte `i` of the string. Ends: `k` climbs to `n`.
-covering
-unpackFill : Addr STRING -> (i, k, n : Bits64) -> (block : Bits64) -> Op Heap ()
-unpackFill s i k n block =
-  if k >= n then pure () else do
-    c <- decodeAt s i
-    b <- byteAt s i
-    let cell = fromWord {k = CON} (block + 8 + 24 * k)
-    store64 cell 0 consHeader
-    w <- fixnumWord c
-    store64 cell 8 w
-    tail <- fieldPointer (fromWord {k = CON} (if k + 1 == n then block else block + 8 + 24 * (k + 1)))
-    store64 cell 16 tail
-    unpackFill s (i + seqLength b) (k + 1) n block
-
-||| A string as a list of characters.
-covering
-unpackOp : Uniform String -> Op Heap (Uniform (List Char))
-unpackOp str = do
-  s <- stringObject str
-  h <- headerOf s
-  n <- if asciiOf h then pure (bytesOf h) else countChars s 0 (bytesOf h) 0
-  block <- allocate (8 + 24 * n)
-  store64 (fromWord {k = CON} block) 0 nilHeader
-  unpackFill s 0 0 n block
-  conValue (fromWord (if n == 0 then block else block + 8))
+        ||| The characters of a list written from `j`. Ends: as `packMeasure`.
+        covering
+        packWrite : Addr CON -> Addr STRING -> (j : Bits64) -> Op Heap ()
+        packWrite cell s j = do
+          end <- isNil cell
+          if end then pure () else do
+            c <- load64 cell 8
+            t <- load64 cell 16
+            next <- fieldObject {k = CON} t
+            let ch = fixnumOf c
+            encodeAt s j ch
+            packWrite next s (j + charBytes ch)
 
 %cg native flat Runtime.String.Utf8.fastUnpack
 ||| `fastUnpack`: a string as a list of characters.
 export covering
 fastUnpack : Uniform String -> Uniform (List Char)
 fastUnpack str = let (MkHeap # r) = unpackOp str MkHeap in r
+  where
+    ||| A string as a list of characters.
+    covering
+    unpackOp : Uniform String -> Op Heap (Uniform (List Char))
+    unpackOp str = do
+      s <- stringObject str
+      h <- headerOf s
+      n <- if asciiOf h then pure (bytesOf h) else countChars s 0 (bytesOf h) 0
+      block <- allocate (8 + 24 * n)
+      store64 (fromWord {k = CON} block) 0 nilHeader
+      unpackFill s 0 0 n block
+      conValue (fromWord (if n == 0 then block else block + 8))
+      where
+        ||| The header of a list's `[]`.
+        nilHeader : Bits64
+        nilHeader = kindId CON
 
-||| The bytes of a list of strings, and whether all are ASCII. Ends: the list
-||| is finite.
-covering
-concatMeasure : Addr CON -> (bytes : Bits64) -> (ascii : Bool) -> Op Heap (Bits64, Bool)
-concatMeasure cell bytes ascii = do
-  end <- isNil cell
-  if end then pure (bytes, ascii) else do
-    w <- load64 cell 8
-    t <- load64 cell 16
-    s <- fieldObject {k = STRING} w
-    h <- headerOf s
-    next <- fieldObject {k = CON} t
-    concatMeasure next (bytes + bytesOf h) (ascii && asciiOf h)
-
-||| The strings of a list copied from `j`. Ends: as `concatMeasure`.
-covering
-concatWrite : Addr CON -> Addr STRING -> (j : Bits64) -> Op Heap ()
-concatWrite cell r j = do
-  end <- isNil cell
-  if end then pure () else do
-    w <- load64 cell 8
-    t <- load64 cell 16
-    s <- fieldObject {k = STRING} w
-    h <- headerOf s
-    _ <- copyBytes s 0 r j (bytesOf h) 0
-    next <- fieldObject {k = CON} t
-    concatWrite next r (j + bytesOf h)
-
-||| A list of strings as one.
-covering
-concatOp : Uniform (List String) -> Op Heap (Uniform String)
-concatOp xs = do
-  cell <- conObject xs
-  (n, ascii) <- concatMeasure cell 0 True
-  r <- newString n
-  concatWrite cell r 0
-  finish r ascii n
+        ||| The cells of a list of `n` characters, one block: `[]` first, then each
+        ||| `(::)`, 24 bytes, its tail the next, the last's tail the `[]`. Fills the
+        ||| `k`th cell on from byte `i` of the string. Ends: `k` climbs to `n`.
+        covering
+        unpackFill : Addr STRING -> (i, k, n : Bits64) -> (block : Bits64) -> Op Heap ()
+        unpackFill s i k n block =
+          if k >= n then pure () else do
+            c <- decodeAt s i
+            b <- byteAt s i
+            let cell = fromWord {k = CON} (block + 8 + 24 * k)
+            store64 cell 0 consHeader
+            w <- fixnumWord c
+            store64 cell 8 w
+            tail <- fieldPointer (fromWord {k = CON} (if k + 1 == n then block else block + 8 + 24 * (k + 1)))
+            store64 cell 16 tail
+            unpackFill s (i + seqLength b) (k + 1) n block
+          where
+            ||| The header of a list's `(::)`.
+            consHeader : Bits64
+            consHeader = kindId CON + shiftL 1 (fst (place ConId)) + shiftL 2 (fst (place ConArity))
 
 %cg native flat Runtime.String.Utf8.fastConcat
 ||| `fastConcat`: a list of strings as one.
 export covering
 fastConcat : Uniform (List String) -> Uniform String
 fastConcat xs = let (MkHeap # r) = concatOp xs MkHeap in r
+  where
+    ||| A list of strings as one.
+    covering
+    concatOp : Uniform (List String) -> Op Heap (Uniform String)
+    concatOp xs = do
+      cell <- conObject xs
+      (n, ascii) <- concatMeasure cell 0 True
+      r <- newString n
+      concatWrite cell r 0
+      finish r ascii n
+      where
+        ||| The bytes of a list of strings, and whether all are ASCII. Ends: the list
+        ||| is finite.
+        covering
+        concatMeasure : Addr CON -> (bytes : Bits64) -> (ascii : Bool) -> Op Heap (Bits64, Bool)
+        concatMeasure cell bytes ascii = do
+          end <- isNil cell
+          if end then pure (bytes, ascii) else do
+            w <- load64 cell 8
+            t <- load64 cell 16
+            s <- fieldObject {k = STRING} w
+            h <- headerOf s
+            next <- fieldObject {k = CON} t
+            concatMeasure next (bytes + bytesOf h) (ascii && asciiOf h)
+
+        ||| The strings of a list copied from `j`. Ends: as `concatMeasure`.
+        covering
+        concatWrite : Addr CON -> Addr STRING -> (j : Bits64) -> Op Heap ()
+        concatWrite cell r j = do
+          end <- isNil cell
+          if end then pure () else do
+            w <- load64 cell 8
+            t <- load64 cell 16
+            s <- fieldObject {k = STRING} w
+            h <- headerOf s
+            _ <- copyBytes s 0 r j (bytesOf h) 0
+            next <- fieldObject {k = CON} t
+            concatWrite next r (j + bytesOf h)

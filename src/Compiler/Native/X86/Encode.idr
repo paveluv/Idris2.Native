@@ -26,61 +26,6 @@ export
 fitsInt32 : Integer -> Bool
 fitsInt32 x = x >= -2147483648 && x <= 2147483647
 
-||| A 64-bit immediate: a word, read as signed or unsigned.
-fitsWord64 : Integer -> Bool
-fitsWord64 x = x >= -9223372036854775808 && x <= 18446744073709551615
-
-------------------------------------------------------------------------------
--- REX, ModRM, SIB
-
-hi : Bits8 -> Bits8            -- bit 3 of a register number
-hi n = shiftR n 3
-
-lo : Bits8 -> Bits8            -- low three bits
-lo n = n .&. 7
-
-||| REX prefix, or nothing when no bit is needed. `force` requests a bare
-||| 0x40 (needed to address spl/bpl/sil/dil as byte registers).
-rex : (w : Bool) -> (r : Bits8) -> (x : Bits8) -> (b : Bits8) -> (force : Bool) -> List Bits8
-rex w r x b force =
-  let v = (if w then 8 else 0) .|. shiftL (hi r) 2 .|. shiftL (hi x) 1 .|. hi b
-  in if v == 0 && not force then [] else [0x40 .|. v]
-
-modrm : (md : Bits8) -> (reg : Bits8) -> (rm : Bits8) -> Bits8
-modrm md reg rm = shiftL md 6 .|. shiftL (lo reg) 3 .|. lo rm
-
-||| ModRM (+ SIB + displacement) for a register-or-memory operand.
-||| For `MRip`, the caller supplies the already-computed rel32.
-rmBytes : (reg : Bits8) -> Either Reg64 Mem -> (rip : Int) -> List Bits8
-rmBytes reg (Left r) _ = [modrm 3 reg (regNum r)]
-rmBytes reg (Right (MRip _ _)) rip = modrm 0 reg 5 :: le32 rip
-rmBytes reg (Right (MBase base d)) _ =
-  let b = regNum base
-      sib : List Bits8
-      sib = if lo b == 4 then [0x24] else []         -- rsp/r12 need a SIB
-  in if d == 0 && lo b /= 5 then modrm 0 reg b :: sib     -- rbp/r13 cannot use mod 00
-     else if fitsInt8 d then (modrm 1 reg b :: sib) ++ le8 d
-     else (modrm 2 reg b :: sib) ++ le32 d
-
-||| The B/X extension bits contributed by a register-or-memory operand.
-rmExt : Either Reg64 Mem -> (Bits8, Bits8)
-rmExt (Left r) = (regNum r, 0)
-rmExt (Right (MBase b _)) = (regNum b, 0)
-rmExt (Right (MRip _ _)) = (0, 0)
-
-||| One instruction of the form  prefixes · REX · opcode · ModRM[·SIB·disp] · imm.
-form : (prefixes : List Bits8) -> (w : Bool) -> (opcode : List Bits8)
-    -> (reg : Bits8) -> Either Reg64 Mem -> (rip : Int) -> (forceRex : Bool)
-    -> (imm : List Bits8) -> List Bits8
-form prefixes w opcode reg rm rip forceRex imm =
-  let (b, x) = rmExt rm
-  in prefixes ++ rex w reg x b forceRex ++ opcode ++ rmBytes reg rm rip ++ imm
-
-||| Byte-register operands 4..7 (spl, bpl, sil, dil) need a REX to be
-||| addressed at all.
-byteRegNeedsRex : Reg64 -> Bool
-byteRegNeedsRex r = regNum r >= 4 && regNum r <= 7
-
 ------------------------------------------------------------------------------
 -- The encoder
 
@@ -179,12 +124,57 @@ encodeRaw pc rel instr = case instr of
     padding at n = let m = cast {to = Int} n in
                    if m <= 1 then 0 else cast ((m - (at `mod` m)) `mod` m)
 
+    ||| Byte-register operands 4..7 (spl, bpl, sil, dil) need a REX to be
+    ||| addressed at all.
+    byteRegNeedsRex : Reg64 -> Bool
+    byteRegNeedsRex r = regNum r >= 4 && regNum r <= 7
+
+    lo : Bits8 -> Bits8            -- low three bits
+    lo n = n .&. 7
+
+    ||| REX prefix, or nothing when no bit is needed. `force` requests a bare
+    ||| 0x40 (needed to address spl/bpl/sil/dil as byte registers).
+    rex : (w : Bool) -> (r : Bits8) -> (x : Bits8) -> (b : Bits8) -> (force : Bool) -> List Bits8
+    rex w r x b force =
+      let v = (if w then 8 else 0) .|. shiftL (hi r) 2 .|. shiftL (hi x) 1 .|. hi b
+      in if v == 0 && not force then [] else [0x40 .|. v]
+      where
+        hi : Bits8 -> Bits8            -- bit 3 of a register number
+        hi n = shiftR n 3
+
+    ||| One instruction of the form  prefixes · REX · opcode · ModRM[·SIB·disp] · imm.
+    form : (prefixes : List Bits8) -> (w : Bool) -> (opcode : List Bits8)
+        -> (reg : Bits8) -> Either Reg64 Mem -> (rip : Int) -> (forceRex : Bool)
+        -> (imm : List Bits8) -> List Bits8
+    form prefixes w opcode reg rm rip forceRex imm =
+      let (b, x) = rmExt rm
+      in prefixes ++ rex w reg x b forceRex ++ opcode ++ rmBytes reg rm rip ++ imm
+      where
+        ||| The B/X extension bits contributed by a register-or-memory operand.
+        rmExt : Either Reg64 Mem -> (Bits8, Bits8)
+        rmExt (Left r) = (regNum r, 0)
+        rmExt (Right (MBase b _)) = (regNum b, 0)
+        rmExt (Right (MRip _ _)) = (0, 0)
+
+        ||| ModRM (+ SIB + displacement) for a register-or-memory operand.
+        ||| For `MRip`, the caller supplies the already-computed rel32.
+        rmBytes : (reg : Bits8) -> Either Reg64 Mem -> (rip : Int) -> List Bits8
+        rmBytes reg x rip = case x of
+          Left r => [modrm 3 reg (regNum r)]
+          Right (MRip _ _) => modrm 0 reg 5 :: le32 rip
+          Right (MBase base d) =>
+            let b = regNum base
+                sib : List Bits8
+                sib = if lo b == 4 then [0x24] else []         -- rsp/r12 need a SIB
+            in if d == 0 && lo b /= 5 then modrm 0 reg b :: sib     -- rbp/r13 cannot use mod 00
+               else if fitsInt8 d then (modrm 1 reg b :: sib) ++ le8 d
+               else (modrm 2 reg b :: sib) ++ le32 d
+          where
+            modrm : (md : Bits8) -> (reg : Bits8) -> (rm : Bits8) -> Bits8
+            modrm md reg rm = shiftL md 6 .|. shiftL (lo reg) 3 .|. lo rm
+
 ------------------------------------------------------------------------------
 -- What does not fit
-
-memFits : Mem -> Bool
-memFits (MBase _ d) = fitsInt32 (cast d)
-memFits (MRip _ d) = fitsInt32 (cast d)
 
 ||| Whether every field the encoder writes in fewer bits than its type holds
 ||| fits them: a displacement or an immediate in 32 bits, a 64-bit immediate
@@ -193,24 +183,33 @@ memFits (MRip _ d) = fitsInt32 (cast d)
 ||| label is checked there, once the label's address is known.
 export
 fieldsFit : Instr -> Bool
-fieldsFit (MovRI _ i) = fitsWord64 i
-fieldsFit (MovRM _ m) = memFits m
-fieldsFit (MovMR m _) = memFits m
-fieldsFit (MovMI m i) = memFits m && fitsInt32 (cast i)
-fieldsFit (Lea _ m) = memFits m
-fieldsFit (Load _ _ _ m) = memFits m
-fieldsFit (Store _ m _) = memFits m
-fieldsFit (AluI _ _ i) = fitsInt32 (cast i)
-fieldsFit (AluRM _ _ m) = memFits m
-fieldsFit (AluMR _ m _) = memFits m
-fieldsFit (TestI _ i) = fitsInt32 (cast i)
-fieldsFit (ImulI _ _ i) = fitsInt32 (cast i)
-fieldsFit (JmpM m) = memFits m
-fieldsFit (MovsdRM _ m) = memFits m
-fieldsFit (MovsdMR m _) = memFits m
-fieldsFit (LockCmpxchg m _) = memFits m
-fieldsFit (Quad v) = fitsWord64 v
-fieldsFit _ = True
+fieldsFit instr = case instr of
+  MovRI _ i => fitsWord64 i
+  MovRM _ m => memFits m
+  MovMR m _ => memFits m
+  MovMI m i => memFits m && fitsInt32 (cast i)
+  Lea _ m => memFits m
+  Load _ _ _ m => memFits m
+  Store _ m _ => memFits m
+  AluI _ _ i => fitsInt32 (cast i)
+  AluRM _ _ m => memFits m
+  AluMR _ m _ => memFits m
+  TestI _ i => fitsInt32 (cast i)
+  ImulI _ _ i => fitsInt32 (cast i)
+  JmpM m => memFits m
+  MovsdRM _ m => memFits m
+  MovsdMR m _ => memFits m
+  LockCmpxchg m _ => memFits m
+  Quad v => fitsWord64 v
+  _ => True
+  where
+    ||| A 64-bit immediate: a word, read as signed or unsigned.
+    fitsWord64 : Integer -> Bool
+    fitsWord64 x = x >= -9223372036854775808 && x <= 18446744073709551615
+
+    memFits : Mem -> Bool
+    memFits (MBase _ d) = fitsInt32 (cast d)
+    memFits (MRip _ d) = fitsInt32 (cast d)
 
 ||| What `assembleWith` could not encode faithfully.
 public export
@@ -234,25 +233,6 @@ instrSize pc i = cast (length (encodeRaw pc 0 i))
 
 ------------------------------------------------------------------------------
 -- Two-pass assembly
-
-||| The label an instruction refers to, if any, and the constant added to it.
-labelOf : Instr -> Maybe (Label, Int)
-labelOf (Jmp l) = Just (l, 0)
-labelOf (Jcc _ l) = Just (l, 0)
-labelOf (Call l) = Just (l, 0)
-labelOf (MovRM _ (MRip l d)) = Just (l, d)
-labelOf (MovMR (MRip l d) _) = Just (l, d)
-labelOf (MovMI (MRip l d) _) = Just (l, d)
-labelOf (Lea _ (MRip l d)) = Just (l, d)
-labelOf (Load _ _ _ (MRip l d)) = Just (l, d)
-labelOf (Store _ (MRip l d) _) = Just (l, d)
-labelOf (AluRM _ _ (MRip l d)) = Just (l, d)
-labelOf (AluMR _ (MRip l d) _) = Just (l, d)
-labelOf (JmpM (MRip l d)) = Just (l, d)
-labelOf (MovsdRM _ (MRip l d)) = Just (l, d)
-labelOf (MovsdMR (MRip l d) _) = Just (l, d)
-labelOf (LockCmpxchg (MRip l d) _) = Just (l, d)
-labelOf _ = Nothing
 
 ||| Pass one: addresses of labels, given the address of the first instruction.
 export
@@ -282,6 +262,25 @@ assembleWith env base is =
   let labels = foldl (\m, (l, a) => insert l a m) env (SortedMap.toList (layout base is))
   in go labels base [<] [<] is
   where
+    ||| The label an instruction refers to, if any, and the constant added to it.
+    labelOf : Instr -> Maybe (Label, Int)
+    labelOf (Jmp l) = Just (l, 0)
+    labelOf (Jcc _ l) = Just (l, 0)
+    labelOf (Call l) = Just (l, 0)
+    labelOf (MovRM _ (MRip l d)) = Just (l, d)
+    labelOf (MovMR (MRip l d) _) = Just (l, d)
+    labelOf (MovMI (MRip l d) _) = Just (l, d)
+    labelOf (Lea _ (MRip l d)) = Just (l, d)
+    labelOf (Load _ _ _ (MRip l d)) = Just (l, d)
+    labelOf (Store _ (MRip l d) _) = Just (l, d)
+    labelOf (AluRM _ _ (MRip l d)) = Just (l, d)
+    labelOf (AluMR _ (MRip l d) _) = Just (l, d)
+    labelOf (JmpM (MRip l d)) = Just (l, d)
+    labelOf (MovsdRM _ (MRip l d)) = Just (l, d)
+    labelOf (MovsdMR (MRip l d) _) = Just (l, d)
+    labelOf (LockCmpxchg (MRip l d) _) = Just (l, d)
+    labelOf _ = Nothing
+
     -- the bytes and the problems accumulate at their ends, instruction by
     -- instruction
     go : SortedMap Label Int -> Int -> SnocList Bits8 -> SnocList AsmProblem -> List Instr

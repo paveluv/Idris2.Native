@@ -63,20 +63,6 @@ record Judging where
   ||| specialisation of the function, where it is judged in turn.
   deferred : List Name
 
-mentions : List Name -> ClosedTerm -> Bool
-mentions ns tm
-    = let refs = getRefs (UN Underscore) tm in
-          any (\n => isJust (lookup n refs)) ns
-
-argAt : Nat -> List a -> Maybe a
-argAt _ [] = Nothing
-argAt Z (x :: _) = Just x
-argAt (S k) (_ :: xs) = argAt k xs
-
--- A name for the i-th binder of a constructor's type.
-binderName : Nat -> Name
-binderName i = MN "flat" (cast i)
-
 ||| The run-time fields of a constructor at a type's arguments `args`, each
 ||| with its name and type, and the constructor's erased binders that `args`
 ||| do not determine.
@@ -95,6 +81,10 @@ conFields args conTy
     = do positions <- resultPositions 0 conTy
          fields positions [] [] 0 conTy
   where
+    -- A name for the i-th binder of a constructor's type.
+    binderName : Nat -> Name
+    binderName i = MN "flat" (cast i)
+
     own : FC -> Nat -> ClosedClosure
     own fc i = toClosure defaultOpts Env.empty (Ref fc Bound (binderName i))
 
@@ -114,6 +104,11 @@ conFields args conTy
              pure (mapMaybe (\(k, v) => map (\b => (b, k)) (given v))
                             (zip [0 .. length vals] vals))
     resultPositions i _ = pure []
+
+    argAt : Nat -> List a -> Maybe a
+    argAt _ [] = Nothing
+    argAt Z (x :: _) = Just x
+    argAt (S k) (_ :: xs) = argAt k xs
 
     fields : List (Nat, Nat) -> (undetermined : List Name) ->
              (acc : List (Name, ClosedNF)) -> Nat -> ClosedNF ->
@@ -142,55 +137,6 @@ fieldTypes args cdef
          (fs, _) <- conFields args !(nf defs Env.empty (type cdef))
          traverse (\f => toFullNames !(quote defs Env.empty (snd f))) fs
 
--- Constructors flagged as a type of natural numbers' zero and successor.
-natural : List GlobalDef -> Bool
-natural [] = False
-natural cdefs = all (any isNatFlag . flags) cdefs
-  where
-    isNatFlag : DefFlag -> Bool
-    isNatFlag (ConType ZERO) = True
-    isNatFlag (ConType SUCC) = True
-    isNatFlag _ = False
-
-||| Whether the type constructor `tn` is recursive: whether the run-time
-||| fields of its constructors, at its own parameters, reach it again through
-||| the declarations of the type constructors they mention, mutual recursion
-||| included. A type constructor nested in itself at other arguments, as in
-||| `Pair Bits64 (Pair Bits64 Bits64)`, is not recursion: the declaration of
-||| `Pair` mentions no type constructor at all.
-recursive : {auto c : Ref Ctxt Defs} -> Name -> Core Bool
-recursive tn = reaches [] [tn]
-  where
-    isTyCon : Name -> Core Bool
-    isTyCon n
-        = do defs <- get Ctxt
-             Just gdef <- lookupCtxtExact n (gamma defs)
-               | Nothing => pure False
-             pure $ case definition gdef of
-                         TCon {} => True
-                         _ => False
-
-    -- The type constructors the run-time fields of `n`'s constructors
-    -- mention, at `n`'s own parameters.
-    fieldTyCons : Name -> Core (List Name)
-    fieldTyCons n
-        = do defs <- get Ctxt
-             Just gdef <- lookupCtxtExact n (gamma defs)
-               | Nothing => pure []
-             let TCon _ _ _ _ _ (Just cons) _ = definition gdef
-               | _ => pure []
-             cdefs <- catMaybes <$> traverse (\cn => lookupCtxtExact cn (gamma defs)) cons
-             tys <- joinMap id <$> traverse (fieldTypes []) cdefs
-             let refs = joinMap (\t => keys (getRefs (UN Underscore) t)) tys
-             traverse toFullNames !(filterM isTyCon refs)
-
-    reaches : (visited : List Name) -> (todo : List Name) -> Core Bool
-    reaches visited [] = pure False
-    reaches visited (n :: todo)
-        = if n `elem` visited then reaches visited todo else
-            do ms <- fieldTyCons n
-               if tn `elem` ms then pure True else reaches (n :: visited) (ms ++ todo)
-
 ||| What judging a type finds.
 public export
 data Judgement
@@ -203,79 +149,132 @@ data Judgement
   | ||| The type is not flat, for this reason.
     Rejected NotFlatReason
 
--- The judgements of a value's parts in turn: the first rejection, else
--- deferred if any part is, else the parts' layouts concatenated.
-concatJudgements : List Judgement -> Judgement
-concatJudgements = go [<] False
-  where
-    -- the layouts accumulate at their end, a part at a time
-    go : SnocList Rep -> (deferred : Bool) -> List Judgement -> Judgement
-    go acc d [] = if d then Deferred else LaidOut (acc <>> [])
-    go acc d (Rejected why :: _) = Rejected why
-    go acc d (Deferred :: js) = go acc True js
-    go acc d (LaidOut l :: js) = go (acc <>< l) d js
-
 mutual
   ||| Judge a type: its layout if it is flat, or why it is not.
   judge : {auto c : Ref Ctxt Defs} ->
           Judging -> ClosedNF -> Core Judgement
-  judge j (NPrimVal _ (PrT IntegerType)) = pure (Rejected (BoxedPrimitive IntegerType))
-  judge j (NPrimVal _ (PrT StringType)) = pure (Rejected (BoxedPrimitive StringType))
-  judge j (NPrimVal _ (PrT DoubleType)) = pure (LaidOut [Dbl])
-  judge j (NPrimVal _ (PrT WorldType)) = pure (LaidOut [])
-  judge j (NPrimVal _ (PrT _)) = pure (LaidOut [Word])
-  judge j (NTCon _ n _ args)
-      = if !(toFullNames n) == uniformType then pure (LaidOut [Uniform]) else judgeTyCon j n args
-  judge j (NType {}) = pure (Rejected RuntimeType)
-  judge j (NBind _ _ (Pi {}) _) = pure (Rejected FunctionType)
-  judge j (NDelayed {}) = pure (Rejected LazyType)
-  judge j (NErased {}) = pure (LaidOut [])
-  judge j ty
-      = do defs <- get Ctxt
-           tm <- quote defs Env.empty ty
-           pure (if mentions j.deferred tm then Deferred else Rejected StuckType)
-
-  -- A type constructor `n` applied to `args`.
-  judgeTyCon : {auto c : Ref Ctxt Defs} ->
-               Judging -> Name -> List (FC, ClosedClosure) ->
-               Core Judgement
-  judgeTyCon j n args
-      = do defs <- get Ctxt
-           Just gdef <- lookupCtxtExact n (gamma defs)
-             | Nothing => pure (Rejected StuckType)
-           let TCon _ _ _ tyflags _ (Just cons) _ = definition gdef
-             | _ => pure (Rejected StuckType)
-           tn <- toFullNames n
-           cdefs <- catMaybes <$> traverse (\cn => lookupCtxtExact cn (gamma defs)) cons
-           if natural cdefs then pure (Rejected (NaturalType tn)) else
-             if !(recursive tn) then pure (Rejected (RecursiveType tn)) else
-               case cdefs of
-                    [] => pure (if tyflags.external then Rejected (ExternalType tn) else LaidOut [])
-                    [cdef] => judgeCon j cdef args
-                    _ => do js <- traverse (\cdef => judgeCon j cdef args) cdefs
-                            pure (concatJudgements (LaidOut [Word] :: js))
-
-  -- The layout of constructor `cdef`'s run-time fields, at the type's
-  -- arguments `args`, or why one of them is not flat.
-  judgeCon : {auto c : Ref Ctxt Defs} ->
-             Judging -> GlobalDef -> List (FC, ClosedClosure) ->
-             Core Judgement
-  judgeCon j cdef args
-      = do defs <- get Ctxt
-           (fs, undet) <- conFields args !(nf defs Env.empty (type cdef))
-           concatJudgements <$> traverse (field undet) fs
+  judge j f = case f of
+    NPrimVal _ (PrT IntegerType) => pure (Rejected (BoxedPrimitive IntegerType))
+    NPrimVal _ (PrT StringType) => pure (Rejected (BoxedPrimitive StringType))
+    NPrimVal _ (PrT DoubleType) => pure (LaidOut [Dbl])
+    NPrimVal _ (PrT WorldType) => pure (LaidOut [])
+    NPrimVal _ (PrT _) => pure (LaidOut [Word])
+    NTCon _ n _ args
+       => if !(toFullNames n) == uniformType then pure (LaidOut [Uniform]) else judgeTyCon j n args
+    NType {} => pure (Rejected RuntimeType)
+    NBind _ _ (Pi {}) _ => pure (Rejected FunctionType)
+    NDelayed {} => pure (Rejected LazyType)
+    NErased {} => pure (LaidOut [])
+    ty
+       => do defs <- get Ctxt
+             tm <- quote defs Env.empty ty
+             pure (if mentions j.deferred tm then Deferred else Rejected StuckType)
     where
-      field : List Name -> (Name, ClosedNF) -> Core Judgement
-      field undet (x, ty)
-          = do Rejected why <- judge j ty
-                 | other => pure other
-               defs <- get Ctxt
-               tm <- quote defs Env.empty ty
-               pure $ Rejected $ case why of
-                 StuckType => if mentions undet tm
-                                 then UndeterminedField (fullname cdef) x
-                                 else InField (fullname cdef) x tm why
-                 _ => InField (fullname cdef) x tm why
+      mentions : List Name -> ClosedTerm -> Bool
+      mentions ns tm
+          = let refs = getRefs (UN Underscore) tm in
+                any (\n => isJust (lookup n refs)) ns
+
+      -- A type constructor `n` applied to `args`.
+      judgeTyCon : Judging -> Name -> List (FC, ClosedClosure) ->
+                   Core Judgement
+      judgeTyCon j n args
+          = do defs <- get Ctxt
+               Just gdef <- lookupCtxtExact n (gamma defs)
+                 | Nothing => pure (Rejected StuckType)
+               let TCon _ _ _ tyflags _ (Just cons) _ = definition gdef
+                 | _ => pure (Rejected StuckType)
+               tn <- toFullNames n
+               cdefs <- catMaybes <$> traverse (\cn => lookupCtxtExact cn (gamma defs)) cons
+               if natural cdefs then pure (Rejected (NaturalType tn)) else
+                 if !(recursive tn) then pure (Rejected (RecursiveType tn)) else
+                   case cdefs of
+                        [] => pure (if tyflags.external then Rejected (ExternalType tn) else LaidOut [])
+                        [cdef] => judgeCon j cdef args
+                        _ => do js <- traverse (\cdef => judgeCon j cdef args) cdefs
+                                pure (concatJudgements (LaidOut [Word] :: js))
+        where
+          -- Constructors flagged as a type of natural numbers' zero and successor.
+          natural : List GlobalDef -> Bool
+          natural [] = False
+          natural cdefs = all (any isNatFlag . flags) cdefs
+            where
+              isNatFlag : DefFlag -> Bool
+              isNatFlag (ConType ZERO) = True
+              isNatFlag (ConType SUCC) = True
+              isNatFlag _ = False
+
+          ||| Whether the type constructor `tn` is recursive: whether the run-time
+          ||| fields of its constructors, at its own parameters, reach it again through
+          ||| the declarations of the type constructors they mention, mutual recursion
+          ||| included. A type constructor nested in itself at other arguments, as in
+          ||| `Pair Bits64 (Pair Bits64 Bits64)`, is not recursion: the declaration of
+          ||| `Pair` mentions no type constructor at all.
+          recursive : Name -> Core Bool
+          recursive tn = reaches [] [tn]
+            where
+              isTyCon : Name -> Core Bool
+              isTyCon n
+                  = do defs <- get Ctxt
+                       Just gdef <- lookupCtxtExact n (gamma defs)
+                         | Nothing => pure False
+                       pure $ case definition gdef of
+                                   TCon {} => True
+                                   _ => False
+
+              -- The type constructors the run-time fields of `n`'s constructors
+              -- mention, at `n`'s own parameters.
+              fieldTyCons : Name -> Core (List Name)
+              fieldTyCons n
+                  = do defs <- get Ctxt
+                       Just gdef <- lookupCtxtExact n (gamma defs)
+                         | Nothing => pure []
+                       let TCon _ _ _ _ _ (Just cons) _ = definition gdef
+                         | _ => pure []
+                       cdefs <- catMaybes <$> traverse (\cn => lookupCtxtExact cn (gamma defs)) cons
+                       tys <- joinMap id <$> traverse (fieldTypes []) cdefs
+                       let refs = joinMap (\t => keys (getRefs (UN Underscore) t)) tys
+                       traverse toFullNames !(filterM isTyCon refs)
+
+              reaches : (visited : List Name) -> (todo : List Name) -> Core Bool
+              reaches visited [] = pure False
+              reaches visited (n :: todo)
+                  = if n `elem` visited then reaches visited todo else
+                      do ms <- fieldTyCons n
+                         if tn `elem` ms then pure True else reaches (n :: visited) (ms ++ todo)
+
+          -- The judgements of a value's parts in turn: the first rejection, else
+          -- deferred if any part is, else the parts' layouts concatenated.
+          concatJudgements : List Judgement -> Judgement
+          concatJudgements = go [<] False
+            where
+              -- the layouts accumulate at their end, a part at a time
+              go : SnocList Rep -> (deferred : Bool) -> List Judgement -> Judgement
+              go acc d [] = if d then Deferred else LaidOut (acc <>> [])
+              go acc d (Rejected why :: _) = Rejected why
+              go acc d (Deferred :: js) = go acc True js
+              go acc d (LaidOut l :: js) = go (acc <>< l) d js
+
+          -- The layout of constructor `cdef`'s run-time fields, at the type's
+          -- arguments `args`, or why one of them is not flat.
+          judgeCon : Judging -> GlobalDef -> List (FC, ClosedClosure) ->
+                     Core Judgement
+          judgeCon j cdef args
+              = do defs <- get Ctxt
+                   (fs, undet) <- conFields args !(nf defs Env.empty (type cdef))
+                   concatJudgements <$> traverse (field undet) fs
+            where
+              field : List Name -> (Name, ClosedNF) -> Core Judgement
+              field undet (x, ty)
+                  = do Rejected why <- judge j ty
+                         | other => pure other
+                       defs <- get Ctxt
+                       tm <- quote defs Env.empty ty
+                       pure $ Rejected $ case why of
+                         StuckType => if mentions undet tm
+                                         then UndeterminedField (fullname cdef) x
+                                         else InField (fullname cdef) x tm why
+                         _ => InField (fullname cdef) x tm why
 
 ||| The layout of a closed type, or why it is not flat. A type made of the
 ||| names in `deferred`, the erased arguments of a function being judged, is

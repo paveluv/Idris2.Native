@@ -286,32 +286,6 @@ data Lvl : Ty enc -> Type where
 data LLvl : List (Ty enc) -> Type where
   MkLLvl : {ps : List (Ty enc)} -> Nat -> LLvl ps
 
--- The position of level n in a context of d entries is d - 1 - n. The
--- depth comes with the context, so that a variable costs its distance from
--- the top of the context and not the context's length, which made a long
--- body cost the square of its length; the erased proof keeps the two in
--- step.
-var : (ctx : List (Ty enc)) -> (dc : Nat) -> (0 _ : dc = length ctx) -> Lvl t -> Maybe (Var ctx t)
-var ctx dc _ (MkLvl n) = if n < dc then varAt (minus dc (S n)) t ctx else Nothing
-
-label : (ls : List (List (Ty enc))) -> (dl : Nat) -> (0 _ : dl = length ls) -> LLvl ps -> Maybe (Var ls ps)
-label ls dl _ (MkLLvl n) = if n < dl then varAt (minus dl (S n)) ps ls else Nothing
-
-opnd : (ctx : List (Ty enc)) -> (dc : Nat) -> (0 _ : dc = length ctx) -> Opnd Lvl t -> Maybe (Op ctx t)
-opnd ctx dc pc (V x) = V <$> var ctx dc pc x
-opnd ctx dc _ (W i) = Just (W i)
-opnd ctx dc _ (Fx {fx} {ok} i) = Just (Fx {fx} {ok} i)
-opnd ctx dc _ (Vx {fx} {ok} i) = Just (Vx {fx} {ok} i)
-opnd ctx dc _ Erased = Just Erased
-
-appendLength : (xs, ys : List a) -> length (xs ++ ys) = length xs + length ys
-appendLength [] ys = Refl
-appendLength (x :: xs) ys = cong S (appendLength xs ys)
-
--- The depth of a context extended at the top.
-plusLength : {ts, ctx : List a} -> dc = length ctx -> length ts + dc = length (ts ++ ctx)
-plusLength Refl = sym (appendLength ts ctx)
-
 -- The variables bound in front of a context of d entries, as levels.
 levels : (d : Nat) -> (ts : List (Ty enc)) -> All Lvl ts
 levels d ts = go ts (length ts)
@@ -327,49 +301,76 @@ cases : (ls : List (List (Ty enc))) -> (dl : Nat) -> (0 _ : dl = length ls) ->
 toBody : (ls : List (List (Ty enc))) -> (dl : Nat) -> (0 _ : dl = length ls) ->
          (ctx : List (Ty enc)) -> (dc : Nat) -> (0 _ : dc = length ctx) ->
          PBody d c m Lvl LLvl -> Maybe (Body d c m ls ctx)
-toBody ls dl pl ctx dc pc (PBind {ts} i k) =
-  [| Bind (traverseInstr (opnd ctx dc pc) i)
-          (toBody ls dl pl (ts ++ ctx) (length ts + dc) (plusLength pc) (k (levels dc ts))) |]
-toBody ls dl pl ctx dc pc (PJoin ps b r) = do
-  let lbl = MkLLvl {ps} dl
-  b' <- toBody (ps :: ls) (S dl) (cong S pl) (ps ++ ctx) (length ps + dc) (plusLength pc) (b lbl (levels dc ps))
-  r' <- toBody (ps :: ls) (S dl) (cong S pl) ctx dc pc (r lbl)
-  pure (Join ps b' r')
-toBody ls dl pl ctx dc pc (PJump lbl xs) = [| Jump (label ls dl pl lbl) (traverseAll (opnd ctx dc pc) xs) |]
-toBody ls dl pl ctx dc pc (PBranch {int} r x y a b) =
-  [| (\x', y', a', b' => Branch {int} r x' y' a' b')
-       (opnd ctx dc pc x) (opnd ctx dc pc y) (toBody ls dl pl ctx dc pc a) (toBody ls dl pl ctx dc pc b) |]
-toBody ls dl pl ctx dc pc (PIfFixnums {fx} {n} vs y no) =
-  [| (\vs', y', no' => IfFixnums {fx} vs' y' no')
-       (traverse (opnd ctx dc pc) vs)
-       (toBody ls dl pl (replicate (S n) (Fix {enc}) ++ ctx) (length (the (List (Ty enc)) (replicate (S n) Fix)) + dc)
-               (plusLength {ts = replicate (S n) (Fix {enc})} pc)
-               (y (levels dc _)))
-       (toBody ls dl pl ctx dc pc no) |]
-toBody ls dl pl ctx dc pc (PArithOv {t} {int} o x y ok ovf) =
-  [| (\x', y', ok', ovf' => ArithOv {t} {int} o x' y' ok' ovf')
-       (opnd ctx dc pc x) (opnd ctx dc pc y)
-       (toBody ls dl pl (t :: ctx) (S dc) (cong S pc) (ok (MkLvl dc))) (toBody ls dl pl ctx dc pc ovf) |]
-toBody ls dl pl ctx dc pc (PTagOv {fx} x ok ovf) =
-  [| (\x', ok', ovf' => TagOv {fx} x' ok' ovf')
-       (opnd ctx dc pc x)
-       (toBody ls dl pl (Fix {enc} :: ctx) (S dc) (cong S pc) (ok (MkLvl dc))) (toBody ls dl pl ctx dc pc ovf) |]
-toBody ls dl pl ctx dc pc (PSwitch {int} {ok} x keys bs dflt) = do
-  x' <- opnd ctx dc pc x
-  bs' <- cases ls dl pl ctx dc pc bs
-  dflt' <- toBody ls dl pl ctx dc pc dflt
-  pure (Switch {int} x' keys {ok} bs' dflt')
-toBody ls dl pl ctx dc pc (PCall f xs k) =
-  [| Call (pure f) (traverseAll (opnd ctx dc pc) xs) (toBody ls dl pl (Val :: ctx) (S dc) (cong S pc) (k (MkLvl dc))) |]
-toBody ls dl pl ctx dc pc (PTailCall f xs) = TailCall f <$> traverseAll (opnd ctx dc pc) xs
-toBody ls dl pl ctx dc pc (PApply f x k) =
-  [| Apply (opnd ctx dc pc f) (opnd ctx dc pc x) (toBody ls dl pl (Val :: ctx) (S dc) (cong S pc) (k (MkLvl dc))) |]
-toBody ls dl pl ctx dc pc (PTailApply f x) = [| TailApply (opnd ctx dc pc f) (opnd ctx dc pc x) |]
-toBody ls dl pl ctx dc pc (PReturn x) = Return <$> opnd ctx dc pc x
-toBody ls dl pl ctx dc pc (PEnter f xs) = [| Enter (opnd ctx dc pc f) (traverse (opnd ctx dc pc) xs) |]
-toBody ls dl pl ctx dc pc (PRet xs) = Ret <$> traverseAll (opnd ctx dc pc) xs
-toBody ls dl pl ctx dc pc (PCrash s) = Just (Crash s)
-toBody ls dl pl ctx dc pc (PUnsupported s) = Just (Unsupported s)
+toBody ls dl pl ctx dc pc body = case body of
+  PBind {ts} i k =>
+    [| Bind (traverseInstr (opnd ctx dc pc) i)
+            (toBody ls dl pl (ts ++ ctx) (length ts + dc) (plusLength pc) (k (levels dc ts))) |]
+  PJoin ps b r => do
+    let lbl = MkLLvl {ps} dl
+    b' <- toBody (ps :: ls) (S dl) (cong S pl) (ps ++ ctx) (length ps + dc) (plusLength pc) (b lbl (levels dc ps))
+    r' <- toBody (ps :: ls) (S dl) (cong S pl) ctx dc pc (r lbl)
+    pure (Join ps b' r')
+  PJump lbl xs => [| Jump (label ls dl pl lbl) (traverseAll (opnd ctx dc pc) xs) |]
+  PBranch {int} r x y a b =>
+    [| (\x', y', a', b' => Branch {int} r x' y' a' b')
+         (opnd ctx dc pc x) (opnd ctx dc pc y) (toBody ls dl pl ctx dc pc a) (toBody ls dl pl ctx dc pc b) |]
+  PIfFixnums {fx} {n} vs y no =>
+    [| (\vs', y', no' => IfFixnums {fx} vs' y' no')
+         (traverse (opnd ctx dc pc) vs)
+         (toBody ls dl pl (replicate (S n) (Fix {enc}) ++ ctx) (length (the (List (Ty enc)) (replicate (S n) Fix)) + dc)
+                 (plusLength {ts = replicate (S n) (Fix {enc})} pc)
+                 (y (levels dc _)))
+         (toBody ls dl pl ctx dc pc no) |]
+  PArithOv {t} {int} o x y ok ovf =>
+    [| (\x', y', ok', ovf' => ArithOv {t} {int} o x' y' ok' ovf')
+         (opnd ctx dc pc x) (opnd ctx dc pc y)
+         (toBody ls dl pl (t :: ctx) (S dc) (cong S pc) (ok (MkLvl dc))) (toBody ls dl pl ctx dc pc ovf) |]
+  PTagOv {fx} x ok ovf =>
+    [| (\x', ok', ovf' => TagOv {fx} x' ok' ovf')
+         (opnd ctx dc pc x)
+         (toBody ls dl pl (Fix {enc} :: ctx) (S dc) (cong S pc) (ok (MkLvl dc))) (toBody ls dl pl ctx dc pc ovf) |]
+  PSwitch {int} {ok} x keys bs dflt => do
+    x' <- opnd ctx dc pc x
+    bs' <- cases ls dl pl ctx dc pc bs
+    dflt' <- toBody ls dl pl ctx dc pc dflt
+    pure (Switch {int} x' keys {ok} bs' dflt')
+  PCall f xs k =>
+    [| Call (pure f) (traverseAll (opnd ctx dc pc) xs) (toBody ls dl pl (Val :: ctx) (S dc) (cong S pc) (k (MkLvl dc))) |]
+  PTailCall f xs => TailCall f <$> traverseAll (opnd ctx dc pc) xs
+  PApply f x k =>
+    [| Apply (opnd ctx dc pc f) (opnd ctx dc pc x) (toBody ls dl pl (Val :: ctx) (S dc) (cong S pc) (k (MkLvl dc))) |]
+  PTailApply f x => [| TailApply (opnd ctx dc pc f) (opnd ctx dc pc x) |]
+  PReturn x => Return <$> opnd ctx dc pc x
+  PEnter f xs => [| Enter (opnd ctx dc pc f) (traverse (opnd ctx dc pc) xs) |]
+  PRet xs => Ret <$> traverseAll (opnd ctx dc pc) xs
+  PCrash s => Just (Crash s)
+  PUnsupported s => Just (Unsupported s)
+  where
+    label : (ls : List (List (Ty enc'))) -> (dl : Nat) -> (0 _ : dl = length ls) -> LLvl ps -> Maybe (Var ls ps)
+    label ls dl _ (MkLLvl n) = if n < dl then varAt (minus dl (S n)) ps ls else Nothing
+
+    opnd : (ctx : List (Ty enc'')) -> (dc : Nat) -> (0 _ : dc = length ctx) -> Opnd Lvl t -> Maybe (Op ctx t)
+    opnd ctx dc pc (V x) = V <$> var ctx dc pc x
+      where
+        -- The position of level n in a context of d entries is d - 1 - n. The
+        -- depth comes with the context, so that a variable costs its distance from
+        -- the top of the context and not the context's length, which made a long
+        -- body cost the square of its length; the erased proof keeps the two in
+        -- step.
+        var : (ctx : List (Ty enc')) -> (dc : Nat) -> (0 _ : dc = length ctx) -> Lvl t' -> Maybe (Var ctx t')
+        var ctx dc _ (MkLvl n) = if n < dc then varAt (minus dc (S n)) t' ctx else Nothing
+    opnd ctx dc _ (W i) = Just (W i)
+    opnd ctx dc _ (Fx {fx} {ok} i) = Just (Fx {fx} {ok} i)
+    opnd ctx dc _ (Vx {fx} {ok} i) = Just (Vx {fx} {ok} i)
+    opnd ctx dc _ Erased = Just Erased
+
+    -- The depth of a context extended at the top.
+    plusLength : {ts, ctx' : List a} -> dc' = length ctx' -> length ts + dc' = length (ts ++ ctx')
+    plusLength Refl = sym (appendLength ts ctx')
+      where
+        appendLength : (xs, ys : List a') -> length (xs ++ ys) = length xs + length ys
+        appendLength [] ys = Refl
+        appendLength (x :: xs) ys = cong S (appendLength xs ys)
 
 cases ls dl pl ctx dc pc [] = Just []
 cases ls dl pl ctx dc pc (b :: bs) = [| toBody ls dl pl ctx dc pc b :: cases ls dl pl ctx dc pc bs |]

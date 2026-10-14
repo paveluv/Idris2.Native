@@ -150,12 +150,6 @@ public export
 fits : {0 k : Kind} -> Header enc k -> Bool
 fits h = all (\pv => cast (snd pv) < prim__shl_Integer 1 (cast (snd (place (fst pv))))) (parts h)
 
-unsigned : Int64 -> Integer
-unsigned w = if w < 0 then cast w + prim__shl_Integer 1 64 else cast w
-
-signed : Integer -> Int64
-signed u = cast (if u >= prim__shl_Integer 1 63 then u - prim__shl_Integer 1 64 else u)
-
 ||| The header word, with flags 0.
 export
 encodeHeader : {k : Kind} -> Header enc k -> Int64
@@ -163,6 +157,9 @@ encodeHeader h = signed (cast (kindId k) + sum (map part (parts h)))
   where
     part : (HeaderPart k', Nat) -> Integer
     part (p, v) = (cast v `mod` prim__shl_Integer 1 (cast (snd (place p)))) * prim__shl_Integer 1 (cast (fst (place p)))
+
+    signed : Integer -> Int64
+    signed u = cast (if u >= prim__shl_Integer 1 63 then u - prim__shl_Integer 1 64 else u)
 
 ||| The header a word encodes, if the word is exactly what `encodeHeader`
 ||| makes of some header: a kind's id other than `CONT`'s, flags 0, and no
@@ -176,6 +173,9 @@ decodeHeader enc w = do
   r <- parse (kindOfId (cast (u `mod` 16)))
   if encodeHeader (snd r) == w then Just r else Nothing
   where
+    unsigned : Int64 -> Integer
+    unsigned w = if w < 0 then cast w + prim__shl_Integer 1 64 else cast w
+
     u : Integer
     u = unsigned w
 

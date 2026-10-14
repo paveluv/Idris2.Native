@@ -23,12 +23,6 @@ import System
 
 %default covering
 
-||| The incremental code generators the environment names, and `flat-check`.
-incremental : Maybe String -> String
-incremental Nothing = "flat-check"
-incremental (Just cgs)
-    = if "flat-check" `elem` map trim (forget (split (== ',') cgs)) then cgs else cgs ++ ",flat-check"
-
 main : IO ()
 main = do
   cgs <- getEnv "IDRIS2_INC_CGS"
@@ -37,3 +31,9 @@ main = do
                    , ("native", codegenNative)
                    , ("flat-oracle", codegenFlatOracle)
                    , ("flat-check", codegenFlatCheck) ]
+  where
+    ||| The incremental code generators the environment names, and `flat-check`.
+    incremental : Maybe String -> String
+    incremental Nothing = "flat-check"
+    incremental (Just cgs)
+        = if "flat-check" `elem` map trim (forget (split (== ',') cgs)) then cgs else cgs ++ ",flat-check"

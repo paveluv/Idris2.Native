@@ -45,12 +45,6 @@ export
 markingCG : CG
 markingCG = Other "native"
 
--- Where an error is, to report errors in the order of the source.
-place : FlatError -> (Int, Int)
-place (UnknownFlatName _ _) = (0, 0)
-place (NotFlat fc _ _ _ _) = maybe (0, 0) startPos (isNonEmptyFC fc)
-place (NotFlatBody fc _ _ _) = maybe (0, 0) startPos (isNonEmptyFC fc)
-
 ||| Report the errors, in the order of the source, as one error of Idris's:
 ||| at the last error's location, with every error in its text as Idris
 ||| prints one, without colour. A code generator sees neither the REPL's
@@ -99,6 +93,12 @@ report errs
         = do setCurrentElabSource !(sourceOf e)
              doc <- if i == 0 then perror e else display e
              pure (renderString (layoutPretty (MkLayoutOptions Unbounded) doc))
+
+    -- Where an error is, to report errors in the order of the source.
+    place : FlatError -> (Int, Int)
+    place (UnknownFlatName _ _) = (0, 0)
+    place (NotFlat fc _ _ _ _) = maybe (0, 0) startPos (isNonEmptyFC fc)
+    place (NotFlatBody fc _ _ _) = maybe (0, 0) startPos (isNonEmptyFC fc)
 
 -- The session directive that records that a module's check (`checkModule`)
 -- has reported errors in this run of the compiler.
