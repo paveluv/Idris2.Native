@@ -59,22 +59,40 @@
 ||| that asked for them.
 module Flat.Translate
 
+import Algebra
+import Algebra.Preorder
+import Algebra.Semiring
+import Algebra.ZeroOneOmega
 import Compiler.Opts.Constructor
 import Core.Case.CaseTree
 import Core.CompileExpr
 import Core.Context
+import Core.Context.Context
 import Core.Core
 import Core.Env
-import Core.Normalise
+import Core.FC
+import Core.Name
+import Core.Name.Namespace
+import Core.Name.Scoped
+import Core.Normalise.Eval
+import Core.Normalise.Quote
 import Core.Primitives
 import Core.TT
+import Core.TT.Binder
+import Core.TT.Primitive
+import Core.TT.Subst
+import Core.TT.Term
+import Core.TT.Term.Subst
+import Core.TT.Var
 import Core.Value
 import Data.Builder
 import Data.List
 import Data.List1
+import Data.Maybe
 import Data.SnocList
 import Data.String
 import Data.Vect
+import Data.Zippable
 import Flat.Exp
 import Flat.Judgement
 import Flat.Problem
@@ -82,6 +100,7 @@ import Libraries.Data.List.SizeOf
 import Libraries.Data.NameMap
 import Libraries.Data.WithDefault
 import System.File
+import System.File.ReadWrite
 
 %default covering
 

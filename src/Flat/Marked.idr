@@ -16,12 +16,16 @@ module Flat.Marked
 
 import Compiler.Common
 import Core.Context
+import Core.Context.Context
 import Core.Core
 import Core.Directory
 import Core.FC
 import Core.Name
+import Core.Name.Namespace
+import Core.Options
 import Data.List
 import Data.Maybe
+import Data.Zippable
 import Flat.Exp
 import Flat.Problem
 import Flat.Report
@@ -31,7 +35,7 @@ import Idris.Pretty
 import Idris.REPL.Opts
 import Idris.Syntax
 import Libraries.Data.NameMap
-import Libraries.Text.PrettyPrint.Prettyprinter
+import Libraries.Text.PrettyPrint.Prettyprinter.Doc
 import Libraries.Text.PrettyPrint.Prettyprinter.Render.String
 
 %default covering

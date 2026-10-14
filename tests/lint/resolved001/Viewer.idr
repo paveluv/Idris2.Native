@@ -1,6 +1,7 @@
 ||| `Viewer` reaches `Shape` through the façade `Shapes`, and `Data.Fin`
-||| (`FZ`) through `Data.Vect`, a package's module that re-exports it: what
-||| a package re-exports is its own design. No finding.
+||| (`FZ`) through `Data.Vect`, a package's module that re-exports it: a
+||| module imports directly what it uses, whoever re-exports it, so both are
+||| `import-indirect`.
 module Viewer
 
 import Data.Vect

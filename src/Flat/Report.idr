@@ -3,16 +3,25 @@
 module Flat.Report
 
 import Core.Context
+import Core.Context.Context
 import Core.Core
 import Core.Env
-import Core.TT
+import Core.FC
+import Core.Name
+import Core.Name.Scoped
+import Core.Normalise
+import Core.TT.Primitive
+import Core.TT.Term
+import Data.List
 import Data.String
 import Flat.Problem
 import Idris.Pretty
 import Idris.Resugar
 import Idris.Syntax
-import Libraries.Text.PrettyPrint.Prettyprinter
+import Libraries.Text.PrettyPrint.Prettyprinter.Doc
 import Libraries.Text.PrettyPrint.Prettyprinter.Render.String
+import Libraries.Text.PrettyPrint.Prettyprinter.Symbols
+import Libraries.Text.PrettyPrint.Prettyprinter.Util
 
 %default covering
 

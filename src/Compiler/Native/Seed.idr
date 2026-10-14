@@ -25,6 +25,7 @@ import Compiler.Native.X86.Target
 import Data.List
 import Data.Maybe
 import Data.SortedMap
+import Data.Zippable
 
 %default total
 

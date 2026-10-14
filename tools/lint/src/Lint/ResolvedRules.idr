@@ -1,15 +1,18 @@
 ||| The rules over what our modules use, resolved from their TTCs, and the
 ||| components of the health score they measure.
 |||
-||| A module imports what it uses: an import none of whose names the module
-||| uses is a finding, and so is a module used but reached only through
-||| another of ours re-exporting it. What the packages' modules re-export is
-||| their own design, and a façade of ours re-exports by design: a module
-||| reached through those is reached as meant.
+||| A module imports directly what it uses: a module used but reached only
+||| through another's re-export is a finding, whoever re-exports it, a
+||| package's module, a façade or another of ours; only what the implicit
+||| `Prelude` re-exports needs no import. And an import that gives the
+||| module nothing it does not import directly is a finding.
 module Lint.ResolvedRules
 
 import Core.FC
+import Core.Name
+import Core.Name.Namespace
 import Data.List
+import Data.Maybe
 import Data.SortedMap
 import Data.SortedSet
 import Data.String
@@ -34,6 +37,16 @@ visibleThrough imports follow m = go empty [m]
       else let next = if follow i then map (\(j, _) => j) (filter (\(_, reexported) => reexported) (fromMaybe [] (lookup i imports))) else [] in
            go (insert i acc) (next ++ is)
 
+||| What a private import gives the module.
+data Usage
+  = ||| Something the module uses that no other of its imports gives it
+    ||| directly: the imported module's own, or one it re-exports.
+    Needed
+  | ||| Only what the module also imports directly: the modules named.
+    Redundant (List String)
+  | ||| Nothing the module uses.
+    Unused
+
 ||| One of our modules with what its text writes and what it uses, as the
 ||| rules over it see it.
 record Linted where
@@ -43,28 +56,27 @@ record Linted where
   ||| The other modules whose names the module's text writes, or whose
   ||| implementations it uses, found by search, each with the names.
   writtenUses : SortedMap String (List String)
-  ||| The modules its imports reach as meant: through the packages'
-  ||| re-exports and our façades', not those of our other modules; the
-  ||| implicit `Prelude` included.
+  ||| The modules it may use: those it imports, and those the implicit
+  ||| `Prelude` re-exports, which no module imports. Any other re-export,
+  ||| a package's, a façade's or one of our modules', is not leaned on: a
+  ||| module imports directly what it uses.
   reached : SortedSet String
   ||| The types it defines.
   types : List String
-  ||| Its private imports, each with whether it is used: whether the module
-  ||| refers to anything it makes visible, written or not (a type an
-  ||| implicit argument names, an implementation found by search).
-  privateImports : List (Import, Bool)
+  ||| Its private imports, each with what it gives the module: of what it
+  ||| makes visible, what the module refers to, written or not (a type an
+  ||| implicit argument names, an implementation found by search), and
+  ||| whether another import gives that directly.
+  privateImports : List (Import, Usage)
 
 ||| Our modules, each with its file and what it writes.
 modulesOf : List (SourceFile, List Declared, Mentions) -> Resolution -> List Linted
 modulesOf fms r =
   let byPath = the (SortedMap String ResolvedModule) (fromList (map (\rm => (rm.path, rm)) r.modules))
-      -- our modules whose re-exports a module may not lean on: all but the
-      -- façades
-      leanedOn = the (SortedSet String) (fromList [ show f.mod.moduleNS | (f, _, _) <- fms, not (facade f) ])
-  in mapMaybe (one byPath leanedOn) fms
+  in mapMaybe (one byPath) fms
   where
-    one : SortedMap String ResolvedModule -> SortedSet String -> (SourceFile, List Declared, Mentions) -> Maybe Linted
-    one byPath leanedOn (f, ds, ms) = case lookup f.path byPath of
+    one : SortedMap String ResolvedModule -> (SourceFile, List Declared, Mentions) -> Maybe Linted
+    one byPath (f, ds, ms) = case lookup f.path byPath of
       Nothing => Nothing
       Just rm =>
         let written = the (SortedSet String) (fromList (map (\(_, n) => nameRoot n) ms.refs))
@@ -72,26 +84,38 @@ modulesOf fms r =
                        empty rm.uses
             used = the (SortedSet String) (fromList (map (.definer) rm.uses))
             reached = foldl Data.SortedSet.union empty
-                            (map (\(i, _) => visibleThrough r.importsOf (\m => not (contains m leanedOn)) i) rm.imports)
-            privates = [ (i, any (\v => contains v used) (Prelude.toList (visibleThrough r.importsOf (const True) (show i.path))))
-                       | i <- f.mod.imports, not i.reexport ]
+                            (map (\(i, _) => if i == "Prelude" then visibleThrough r.importsOf (const True) i else singleton i) rm.imports)
+            direct = the (SortedSet String) (fromList (map (show . (.path)) f.mod.imports))
+            usage : String -> Usage
+            usage p = case filter (\v => contains v used) (Prelude.toList (visibleThrough r.importsOf (const True) p)) of
+              [] => Unused
+              vs => if any (\v => v == p || not (contains v direct)) vs then Needed else Redundant vs
+            privates = [ (i, usage (show i.path)) | i <- f.mod.imports, not i.reexport ]
         in Just (MkLinted f rm ws reached (typesOf ds) privates)
 
 ------------------------------------------------------------------------------
 -- The rules
 
-||| `import-unused`: a private import none of whose names the module uses,
-||| neither the module's own nor any it re-exports. A façade's imports are
-||| for its importers, and so is a public import: neither is reported.
+||| `import-unused`: a private import that gives the module nothing it does
+||| not import directly: none of the names it makes visible used, neither
+||| the module's own nor any it re-exports, or only those of modules
+||| imported directly too. A façade's imports are for its importers, and so
+||| is a public import: neither is reported.
 importUnused : Linted -> List Finding
-importUnused m =
-  if facade m.file then [] else
-    [ finding m.file "import-unused" i.loc (show i.path)
-        ("`" ++ show i.path ++ "` is imported, and nothing it makes visible is used")
-    | i <- map (\(i, _) => i) (filter (\(_, isUsed) => not isUsed) m.privateImports) ]
+importUnused m = if facade m.file then [] else mapMaybe report m.privateImports
+  where
+    report : (Import, Usage) -> Maybe Finding
+    report (_, Needed) = Nothing
+    report (i, Redundant vs) =
+      Just (finding m.file "import-unused" i.loc (show i.path)
+              ("`" ++ show i.path ++ "` is imported, and of what it makes visible only "
+               ++ listed vs ++ " is used, which the module imports directly"))
+    report (i, Unused) =
+      Just (finding m.file "import-unused" i.loc (show i.path)
+              ("`" ++ show i.path ++ "` is imported, and nothing it makes visible is used"))
 
 ||| `import-indirect`: a module whose names the module writes, or whose
-||| implementations it uses, reached only through one of our modules
+||| implementations it uses, reached only through another module
 ||| re-exporting it. Search finds an implementation only where its module
 ||| is visible, so a module that uses one imports its module, as it does
 ||| one whose names it writes.
@@ -163,8 +187,8 @@ resolvedRules fms r =
 -- Health
 
 ||| The components the resolution measures: of the other modules whose names
-||| our modules write, the share imported directly (or through a façade or a
-||| package); of the private imports, the share used; and of the
+||| our modules write, the share imported directly; of the private imports,
+||| the share needed; and of the
 ||| accumulations, the share written with the structure their shape asks
 ||| for, a snoc-list or a builder, rather than lists.
 export
@@ -174,17 +198,25 @@ resolvedHealth fms r =
       pairs = joined [ map (m,) (keys m.writtenUses) | m <- ms ]
       indirect = [ (m, u) | (m, u) <- pairs, not (contains u m.reached) ]
       imports = joined [ map (m,) m.privateImports | m <- ms, not (facade m.file) ]
-      unused = [ (m, i) | (m, (i, isUsed)) <- imports, not isUsed ]
+      unneeded = [ (m, i, u) | (m, (i, u)) <- imports, not (needed u) ]
       unstructured = sum [ a.atEnd + a.leftFolds | m <- ms, a <- m.resolved.accumulations ]
       structured = sum [ a.structured | m <- ms, a <- m.resolved.accumulations ]
   in [ MkComponent "structure" "directness" (percent (minus (length pairs) (length indirect)) (length pairs))
          ("modules used that are imported directly: " ++ show (minus (length pairs) (length indirect)) ++ " of " ++ show (length pairs))
          [ MkOffender m.resolved.name 1 ("uses `" ++ u ++ "` through another's re-export") | (m, u) <- indirect ]
-     , MkComponent "structure" "leanness" (percent (minus (length imports) (length unused)) (length imports))
-         ("private imports used: " ++ show (minus (length imports) (length unused)) ++ " of " ++ show (length imports))
-         [ MkOffender m.resolved.name 1 ("imports `" ++ show i.path ++ "` and uses nothing it makes visible") | (m, i) <- unused ]
+     , MkComponent "structure" "leanness" (percent (minus (length imports) (length unneeded)) (length imports))
+         ("private imports needed: " ++ show (minus (length imports) (length unneeded)) ++ " of " ++ show (length imports))
+         [ MkOffender m.resolved.name 1 ("imports `" ++ show i.path ++ "` and " ++ uses u) | (m, i, u) <- unneeded ]
      , MkComponent "efficiency" "accumulation" (percent structured (structured + unstructured))
          ("accumulations in a snoc-list or a builder: " ++ show structured ++ " of " ++ show (structured + unstructured))
          [ MkOffender (m.resolved.name ++ "." ++ a.subject) (a.atEnd + a.leftFolds)
              (show a.atEnd ++ " grown at an end with `++`, " ++ show a.leftFolds ++ " joined by a left fold")
          | m <- ms, a <- m.resolved.accumulations, a.atEnd + a.leftFolds > 0 ] ]
+  where
+    needed : Usage -> Bool
+    needed Needed = True
+    needed _ = False
+
+    uses : Usage -> String
+    uses (Redundant vs) = "uses of it only " ++ listed vs ++ ", which it imports directly"
+    uses _ = "uses nothing it makes visible"

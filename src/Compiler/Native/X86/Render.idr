@@ -87,13 +87,15 @@ import Compiler.Native.LocatedIR.Terminator as LocatedIR
 import Compiler.Native.Target as Native
 import Compiler.Native.X86.Asm as X86
 import Compiler.Native.X86.Target
-import Control.Monad.State
+import Control.Monad.State.Interface
+import Control.Monad.State.State
+import Control.Monad.Trans
 import Core.Name
 import Data.Builder
 import Data.List
 import Data.Maybe
 import Data.SortedMap
-import Data.String
+import Data.Zippable
 
 %default covering
 

@@ -5,7 +5,8 @@ module Flat.Problem
 
 import Core.FC
 import Core.Name
-import Core.TT
+import Core.TT.Primitive
+import Core.TT.Term
 
 %default covering
 

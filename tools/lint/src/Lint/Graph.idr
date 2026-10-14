@@ -7,12 +7,18 @@
 ||| shares with the compiler.
 module Lint.Graph
 
+import Core.FC
+import Core.Name
+import Core.Name.Namespace
+import Core.WithData
 import Data.List
 import Data.List1
+import Data.Maybe
 import Data.SortedMap
 import Data.SortedSet
 import Data.String
 import Idris.Syntax
+import Libraries.Data.WithData
 import Lint.Finding
 import Lint.Rules
 import Lint.Source
@@ -317,19 +323,28 @@ reaches g m = go empty (fromMaybe [] (lookup m g))
       if contains n seen then go seen ns
       else go (insert n seen) (fromMaybe [] (lookup n g) ++ ns)
 
+||| One import between our modules, by how much the importer uses: the names
+||| the import makes visible (the module's own and its public re-exports')
+||| that the importer mentions, and all of them.
+public export
+record ImportEdge where
+  constructor MkImportEdge
+  importer : String
+  imported : String
+  used : Nat
+  offered : Nat
+
 ||| Of what our modules import from each other, how much they use, import
-||| by import: the importer, the imported module, the names the import
-||| makes visible (the module's own and its public re-exports') that the
-||| importer mentions, and all of them. Weighted by size, so that a large
-||| bundle imported for a few names costs more than a small module.
-precision : List (SourceFile, List Declared) -> List (String, String, Nat, Nat)
-precision fds =
+||| by import. Weighted by size, so that a large bundle imported for a few
+||| names costs more than a small module.
+importEdges : List (SourceFile, List Declared) -> List ImportEdge
+importEdges fds =
   let ours = ourModules (map fst fds)
       visibleIn = the (SortedMap String (List String)) (fromList [ (moduleOf f, joined (map (.visible) ds)) | (f, ds) <- fds ])
       reexports = the (SortedMap String (List String))
                     (fromList [ (moduleOf f, filter (\i => contains i ours) (map (show . (.path)) (filter (.reexport) f.mod.imports))) | (f, _) <- fds ])
-      edges = joined [ map (f, ds,) (filter (\i => contains i ours) (map (show . (.path)) f.mod.imports)) | (f, ds) <- fds ]
-  in map (edge visibleIn reexports) edges
+      pairs = joined [ map (f, ds,) (filter (\i => contains i ours) (map (show . (.path)) f.mod.imports)) | (f, ds) <- fds ]
+  in map (edge visibleIn reexports) pairs
   where
     exposed : SortedMap String (List String) -> String -> SortedSet String
     exposed reexports b = go (singleton b) (fromMaybe [] (lookup b reexports))
@@ -339,95 +354,199 @@ precision fds =
         go acc (i :: is) = if contains i acc then go acc is else go (insert i acc) (fromMaybe [] (lookup i reexports) ++ is)
 
     edge : SortedMap String (List String) -> SortedMap String (List String) ->
-           (SourceFile, List Declared, String) -> (String, String, Nat, Nat)
+           (SourceFile, List Declared, String) -> ImportEdge
     edge visibleIn reexports (f, ds, b) =
       let names = the (SortedSet String) (fromList (joined (map (\m => fromMaybe [] (lookup m visibleIn)) (Prelude.toList (exposed reexports b)))))
           mentioned = the (SortedSet String) (fromList (joined (map (.mentions) ds)))
           used = length (filter (\n => contains n mentioned) (Prelude.toList names))
-      in (moduleOf f, b, used, length (Prelude.toList names))
+      in MkImportEdge (moduleOf f) b used (length (Prelude.toList names))
+
+||| A module left out of a component of the score, by a comment of its own,
+||| `-- lint: exclude <component>: <reason>`: the component, the reason, and
+||| where the comment is. Only precision leaves modules out, as imported
+||| ones: a module whose names are offered in bulk until its importers are
+||| reshaped. The score names what it leaves out.
+public export
+record Exclusion where
+  constructor MkExclusion
+  componentName : String
+  reason : String
+  line : Int
+  col : Int
+
+||| The components a module may be left out of.
+export
+excludable : List String
+excludable = ["precision"]
+
+||| A file's exclusions, as its comments write them.
+export
+exclusions : SourceFile -> List Exclusion
+exclusions f = mapMaybe one f.comments
+  where
+    one : SourceComment -> Maybe Exclusion
+    one c =
+      if c.isDoc || not (isPrefixOf "lint: exclude " c.text) then Nothing else
+        let rest = substr 14 (length c.text) c.text
+            (comp, why) = break (== ':') rest
+        in Just (MkExclusion (trim comp) (trim (substr 1 (length why) why)) c.line c.col)
+
+||| `exclusion`: an exclusion of no component that leaves modules out, or
+||| without a reason.
+export
+exclusionRules : SourceFile -> List Finding
+exclusionRules f = mapMaybe check (exclusions f)
+  where
+    check : Exclusion -> Maybe Finding
+    check e =
+      let at = MkFinding "exclusion" f.path e.line e.col e.componentName in
+      if not (e.componentName `elem` excludable) then Just (at ("no component `" ++ e.componentName ++ "` leaves modules out"))
+      else if e.reason == "" then Just (at ("an exclusion from `" ++ e.componentName ++ "` says why"))
+      else Nothing
 
 ||| The offenders of precision: each imported module, by the names its
 ||| importers leave unused, with the importers that use the fewest.
-precisionOffenders : List (String, String, Nat, Nat) -> List Offender
+precisionOffenders : List ImportEdge -> List Offender
 precisionOffenders edges =
-  let byImported = foldl (\acc, (a, b, u, o) => insert b ((a, u, o) :: fromMaybe [] (lookup b acc)) acc)
-                         (the (SortedMap String (List (String, Nat, Nat))) empty) edges
+  let byImported = foldl (\acc, e => insert e.imported (e :: fromMaybe [] (lookup e.imported acc)) acc)
+                         (the (SortedMap String (List ImportEdge)) empty) edges
   in map offender (SortedMap.toList byImported)
   where
-    offender : (String, List (String, Nat, Nat)) -> Offender
+    offender : (String, List ImportEdge) -> Offender
     offender (b, importers) =
-      let offered = foldl (\m, (_, _, o) => max m o) (the Nat 0) importers
-          unused = sum (map (\(_, u, o) => minus o u) importers)
-          fewest = sortBy (\(_, u, _), (_, v, _) => compare u v) importers
+      let offered = foldl (\m, e => max m e.offered) (the Nat 0) importers
+          unused = sum (map (\e => minus e.offered e.used) importers)
+          fewest = sortBy (\e, e' => compare e.used e'.used) importers
       in MkOffender b unused
            (show (length importers) ++ (if length importers == 1 then " importer" else " importers") ++ " of its " ++ show offered ++ " names; fewest used: "
-            ++ fastConcat (intersperse ", " (map (\(a, u, _) => a ++ " " ++ show u) (take 4 fewest))))
+            ++ fastConcat (intersperse ", " (map (\e => e.importer ++ " " ++ show e.used) (take 4 fewest))))
 
 ||| The components of the architectural health of the files' modules, in
 ||| their groups: structure (the import graph), readability (what a reader
 ||| reading linearly meets), each with its offenders.
+|||
+||| Each component is a function of its own, with a short `let`: in one long
+||| `let`, each binding that passes a lambda or a polymorphic function to
+||| `map` or `filter` creates metavariables that carry every binding before
+||| it, and typechecking costs exponentially in the length of the chain.
 export
 health : List (SourceFile, List Declared) -> List Component
 health fds =
   let fs = map fst fds in
-  let ours = ourModules fs
-      notFacades = filter (\f => not (all directive f.mod.decls)) fs
-      imports = foldr (\f, rest => f.mod.imports ++ rest) [] notFacades
-      privates = length (filter (not . (.reexport)) imports)
-      checked = joined [ mapMaybe (\i => map (f, i,) (allowed ours (moduleOf f) (show i.path))) f.mod.imports | f <- fs ]
-      good = length (filter (\(_, _, ok) => ok) checked)
-      g = fromList [ (moduleOf f, [ show i.path | i <- f.mod.imports, contains (show i.path) ours ]) | f <- fs ]
-      n = length fs
-      reachOf = [ (moduleOf f, Prelude.toList (reaches g (moduleOf f))) | f <- fs ]
-      reached = sum (map (\(_, r) => length r) reachOf)
-      adjacencies = foldr (\(_, ds), rest => adjacency ds ++ rest) (the (List Adjacency) []) fds
-      adjacent = length (filter (\a => isNothing a.intruder) adjacencies)
-      unnamed = filter (\fd => not (namedAfterSymbol (fst fd) (snd fd))) fds
-      exportedNames = foldr (\(f, ds), rest => map (\n => (n, moduleOf f)) (joined (map (.visible) ds)) ++ rest) (the (List (String, String)) []) fds
-      ms = meetings fds
-      meetingNames = map (.name) ms
-      unique = length (filter (\nm => not (fst nm `elem` meetingNames)) exportedNames)
-      edges = precision fds
-      usedNames = sum (map (\(_, _, u, _) => u) edges)
-      offered = sum (map (\(_, _, _, o) => o) edges)
-      perModuleHelpers = map (\(f, ds) => (f, helpers ds)) fds
-      single = sum (map (\(_, (s, _)) => length s) perModuleHelpers)
-      scopedHelpers = sum (map (\(_, (_, c)) => c) perModuleHelpers)
-  in [ MkComponent "structure" "encapsulation" (percent privates (length imports))
-         ("private imports, façades exempt: " ++ show privates ++ " of " ++ show (length imports))
-         [ MkOffender (moduleOf f) (length pub) ("imports publicly " ++ listed pub)
-         | f <- notFacades, let pub = [ show i.path | i <- f.mod.imports, i.reexport ], not (null pub) ]
-     , MkComponent "structure" "layering" (percent good (length checked))
-         ("imports the layers allow: " ++ show good ++ " of " ++ show (length checked))
-         [ MkOffender (moduleOf f) 1 ("imports `" ++ show i.path ++ "`, which its layer may not") | (f, i, ok) <- checked, not ok ]
-     , MkComponent "structure" "coupling" (percent (n * n `minus` reached) (n * n))
-         ("module pairs a change cannot reach: " ++ show (n * n `minus` reached) ++ " of " ++ show (n * n))
-         [ MkOffender m (length r) ("its imports reach " ++ show (length r) ++ " of our " ++ show n ++ " modules") | (m, r) <- reachOf ]
-     , MkComponent "structure" "precision" (percent usedNames offered)
-         ("imported names a module uses: " ++ show usedNames ++ " of " ++ show offered)
-         (precisionOffenders edges)
-     , MkComponent "readability" "cohesion" (percent adjacent (length adjacencies))
-         ("implementations next to their types: " ++ show adjacent ++ " of " ++ show (length adjacencies))
-         [ MkOffender (maybe "" fst a.impl.implementing ++ " " ++ a.type) 1 ("apart from `" ++ a.type ++ "`")
-         | a <- adjacencies, isJust a.intruder ]
-     , MkComponent "readability" "names" (percent (minus n (length unnamed)) n)
-         ("modules named after a symbol they define: " ++ show (minus n (length unnamed)) ++ " of " ++ show n)
-         [ MkOffender (moduleOf f) 1 ("defines " ++ listed (joined (map (.visible) ds))) | (f, ds) <- unnamed ]
-     , MkComponent "readability" "uniqueness" (percent unique (length exportedNames))
-         ("exported names never written bare where another of the name is seen: " ++ show unique ++ " of " ++ show (length exportedNames))
-         [ MkOffender mt.name (length (filter (\nm => fst nm == mt.name) exportedNames))
-             ("defined in " ++ listed mt.definers ++ "; they meet bare in " ++ listed mt.inModules)
-         | mt <- ms ]
-     , MkComponent "readability" "scoping" (percent scopedHelpers (scopedHelpers + single))
-         ("helpers local to a function or a namespace block, of those and the ones a single user leaves module-wide: "
-          ++ show scopedHelpers ++ " of " ++ show (scopedHelpers + single))
-         [ MkOffender (moduleOf f) (length s) ("module-wide, each used by one: " ++ listed (joined (map (\(h, _) => h.defines) s)))
-         | (f, (s, _)) <- perModuleHelpers, not (null s) ] ]
+  [ encapsulation fs, layering fs, coupling fs, precision fs, cohesion, names, uniqueness, scoping ]
   where
     directive : PDecl -> Bool
     directive d = case d.val of
       PDirective _ => True
       _ => False
+
+    leftOut : List String -> String
+    leftOut [] = ""
+    leftOut ms = "; left out: " ++ listed ms
+
+    encapsulation : List SourceFile -> Component
+    encapsulation fs =
+      let notFacades = filter (\f => not (all directive f.mod.decls)) fs
+          imports = joined (map (\f => f.mod.imports) notFacades)
+          privates = length (filter (not . (.reexport)) imports)
+      in MkComponent "structure" "encapsulation" (percent privates (length imports))
+           ("private imports, façades exempt: " ++ show privates ++ " of " ++ show (length imports))
+           [ MkOffender (moduleOf f) (length pub) ("imports publicly " ++ listed pub)
+           | f <- notFacades, let pub = [ show i.path | i <- f.mod.imports, i.reexport ], not (null pub) ]
+
+    -- an import with whether the layers allow it
+    allowedImport : (SourceFile, Import, Bool) -> Bool
+    allowedImport (_, _, ok) = ok
+
+    disallowed : (SourceFile, Import, Bool) -> Offender
+    disallowed (f, i, _) = MkOffender (moduleOf f) 1 ("imports `" ++ show i.path ++ "`, which its layer may not")
+
+    layering : List SourceFile -> Component
+    layering fs =
+      let ours = ourModules fs
+          checked = joined [ mapMaybe (\i => map (f, i,) (allowed ours (moduleOf f) (show i.path))) f.mod.imports | f <- fs ]
+          good = length (filter allowedImport checked)
+      in MkComponent "structure" "layering" (percent good (length checked))
+           ("imports the layers allow: " ++ show good ++ " of " ++ show (length checked))
+           (map disallowed (filter (not . allowedImport) checked))
+
+    reaching : (ourCount : Nat) -> (String, List String) -> Offender
+    reaching ourCount (m, r) = MkOffender m (length r) ("its imports reach " ++ show (length r) ++ " of our " ++ show ourCount ++ " modules")
+
+    coupling : List SourceFile -> Component
+    coupling fs =
+      let ours = ourModules fs
+          g = the (SortedMap String (List String)) (fromList [ (moduleOf f, [ show i.path | i <- f.mod.imports, contains (show i.path) ours ]) | f <- fs ])
+          n = length fs
+          reachOf = [ (moduleOf f, Prelude.toList (reaches g (moduleOf f))) | f <- fs ]
+          reached = sum (map (\mr => length (snd mr)) reachOf)
+      in MkComponent "structure" "coupling" (percent (n * n `minus` reached) (n * n))
+           ("module pairs a change cannot reach: " ++ show (n * n `minus` reached) ++ " of " ++ show (n * n))
+           (map (reaching n) reachOf)
+
+    -- modules left out of precision, as imported ones
+    excluded : List SourceFile -> List String
+    excluded fs = [ moduleOf f | f <- fs, any (\e => e.componentName == "precision" && e.reason /= "") (exclusions f) ]
+
+    precision : List SourceFile -> Component
+    precision fs =
+      let out = excluded fs
+          edges = filter (\e => not (e.imported `elem` out)) (importEdges fds)
+          usedNames = sum (map (.used) edges)
+          offered = sum (map (.offered) edges)
+      in MkComponent "structure" "precision" (percent usedNames offered)
+           ("imported names a module uses: " ++ show usedNames ++ " of " ++ show offered ++ leftOut out)
+           (precisionOffenders edges)
+
+    cohesion : Component
+    cohesion =
+      let adjacencies = joined (map (\fd => adjacency (snd fd)) fds)
+          adjacent = length (filter (\a => isNothing a.intruder) adjacencies)
+      in MkComponent "readability" "cohesion" (percent adjacent (length adjacencies))
+           ("implementations next to their types: " ++ show adjacent ++ " of " ++ show (length adjacencies))
+           [ MkOffender (maybe "" fst a.impl.implementing ++ " " ++ a.type) 1 ("apart from `" ++ a.type ++ "`")
+           | a <- adjacencies, isJust a.intruder ]
+
+    unnamedModule : (SourceFile, List Declared) -> Offender
+    unnamedModule (f, ds) = MkOffender (moduleOf f) 1 ("defines " ++ listed (joined (map (.visible) ds)))
+
+    names : Component
+    names =
+      let n = length fds
+          unnamed = filter (\fd => not (namedAfterSymbol (fst fd) (snd fd))) fds
+      in MkComponent "readability" "names" (percent (minus n (length unnamed)) n)
+           ("modules named after a symbol they define: " ++ show (minus n (length unnamed)) ++ " of " ++ show n)
+           (map unnamedModule unnamed)
+
+    -- the names a module exports, each with the module
+    exportsOf : (SourceFile, List Declared) -> List (String, String)
+    exportsOf (f, ds) = map (\n => (n, moduleOf f)) (joined (map (.visible) ds))
+
+    uniqueness : Component
+    uniqueness =
+      let exportedNames = joined (map exportsOf fds)
+          ms = meetings fds
+          meetingNames = map (.name) ms
+          unique = length (filter (\nm => not (fst nm `elem` meetingNames)) exportedNames)
+      in MkComponent "readability" "uniqueness" (percent unique (length exportedNames))
+           ("exported names never written bare where another of the name is seen: " ++ show unique ++ " of " ++ show (length exportedNames))
+           [ MkOffender mt.name (length (filter (\nm => fst nm == mt.name) exportedNames))
+               ("defined in " ++ listed mt.definers ++ "; they meet bare in " ++ listed mt.inModules)
+           | mt <- ms ]
+
+    moduleWide : (SourceFile, (List (Declared, Declared), Nat)) -> Maybe Offender
+    moduleWide (_, ([], _)) = Nothing
+    moduleWide (f, (s, _)) = Just (MkOffender (moduleOf f) (length s) ("module-wide, each used by one: " ++ listed (joined (map (\hu => (fst hu).defines) s))))
+
+    scoping : Component
+    scoping =
+      let perModule = map (\fd => (fst fd, helpers (snd fd))) fds
+          single = sum (map (\pm => length (fst (snd pm))) perModule)
+          scoped = sum (map (\pm => snd (snd pm)) perModule)
+      in MkComponent "readability" "scoping" (percent scoped (scoped + single))
+           ("helpers local to a function or a namespace block, of those and the ones a single user leaves module-wide: "
+            ++ show scoped ++ " of " ++ show (scoped + single))
+           (mapMaybe moduleWide perModule)
 
 ||| The groups of the components, in the order they first appear.
 export

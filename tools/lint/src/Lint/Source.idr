@@ -13,9 +13,13 @@ import Data.String
 import Idris.Parser
 import Idris.Syntax
 import Libraries.Text.Bounded
+import Libraries.Text.Lexer.Core
 import Parser.Lexer.Source
+import Parser.Rule.Source
 import Parser.Source
-import System.File
+import Protocol.IDE.Decoration
+import System.File.Error
+import System.File.ReadWrite
 
 %default covering
 

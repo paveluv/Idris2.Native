@@ -29,14 +29,27 @@
 ||| layouts in turn, sharing no register between constructors.
 module Flat.Judgement
 
+import Algebra.Semiring
+import Algebra.ZeroOneOmega
 import Core.CompileExpr
 import Core.Context
+import Core.Context.Context
 import Core.Core
 import Core.Env
-import Core.Normalise
+import Core.FC
+import Core.Name
+import Core.Name.Scoped
+import Core.Normalise.Eval
+import Core.Normalise.Quote
 import Core.TT
+import Core.TT.Binder
+import Core.TT.Primitive
+import Core.TT.Term
 import Core.Value
 import Data.Builder
+import Data.List
+import Data.Maybe
+import Data.Zippable
 import Flat.Exp
 import Flat.Problem
 import Libraries.Data.NameMap

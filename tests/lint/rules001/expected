@@ -8,6 +8,8 @@
 ./Escapes.idr:16:1 suppression: a suppression of `trust-escape` says why
 ./Escapes.idr:20:1 suppression: no rule `no-such-rule`
 ./Escapes.idr:24:1 suppression: the suppression of `trust-escape` suppresses nothing
+./Excludes.idr:7:1 exclusion: no component `cohesion` leaves modules out
+./Excludes.idr:9:1 exclusion: an exclusion from `precision` says why
 ./Flat/Upward.idr:5:1 layering: `Flat.Upward` may not import `Compiler.Native.Thing`: the layers
 ./Headless.idr:1:1 header-comment: no comment says what the file is before its first import or declaration
 ./NoDefault.idr:1:1 default-totality: no `%default` directive

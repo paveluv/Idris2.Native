@@ -11,7 +11,10 @@ module Flat.Oracle
 import Compiler.Common
 import Compiler.Scheme.Chez
 import Core.Context
+import Core.Context.Context
 import Core.Core
+import Core.Options
+import Core.TT.Term
 import Data.List1
 import Data.String
 import Flat.Exp

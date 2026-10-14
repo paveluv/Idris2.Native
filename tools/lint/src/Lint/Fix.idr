@@ -3,6 +3,7 @@
 module Lint.Fix
 
 import Core.FC
+import Core.Name.Namespace
 import Data.List
 import Data.String
 import Idris.Syntax

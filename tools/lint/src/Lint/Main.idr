@@ -27,13 +27,17 @@
 ||| A finding is suppressed by a comment, `-- lint: allow <rule>: <reason>`,
 ||| on its line or in the lines above it up to a blank line: a suppression
 ||| covers its paragraph from where it stands. A suppression without a
-||| reason, of no rule, or that suppresses nothing, is a finding itself.
+||| reason, of no rule, or that suppresses nothing, is a finding itself. A
+||| module is left out of a component of the score by another comment,
+||| `-- lint: exclude <component>: <reason>` (`Exclusion`).
 module Lint.Main
 
+import Core.Name.Namespace
 import Data.Either
 import Data.List
 import Data.SortedSet
 import Data.String
+import Data.Zippable
 import Idris.Syntax
 import Lint.Finding
 import Lint.Fix
@@ -44,6 +48,8 @@ import Lint.Rules
 import Lint.Source
 import System
 import System.Directory
+import System.File.Error
+import System.File.ReadWrite
 
 %default covering
 
@@ -149,7 +155,7 @@ lint fdms ps res =
       ours = the (SortedSet String) (fromList (map (\f => show f.mod.moduleNS) fs))
       aliases = joined (map (\(f, _, ms) => importAlias ours f ms.refs) fdms)
       all = joined (map (\(f, ds, ms) => fileRules f ms ds) fdms) ++ joined (map programRules ps) ++ graphRules fs ++ sameName fds
-            ++ parentUnique fs ++ aliases ++ resolved
+            ++ parentUnique fs ++ aliases ++ joined (map exclusionRules fs) ++ resolved
   in sort (foldl (\acc, f => suppress f acc) all (fs ++ ps))
 
 ||| The files under the paths, parsed, and a finding for each that does not

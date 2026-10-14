@@ -8,6 +8,7 @@ module Compiler.Native.Linkage.ForeignFunctions
 import Compiler.Native.HeapObject.Enc
 import Compiler.Native.Linkage.Routine
 import Core.Name
+import Core.Name.Namespace
 
 %default total
 

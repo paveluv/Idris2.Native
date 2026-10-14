@@ -56,7 +56,6 @@ import Core.Name
 import Data.Distinct
 import Data.List.Quantifiers
 import Data.So
-import Data.Vect
 
 %default total
 

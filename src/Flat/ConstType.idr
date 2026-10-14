@@ -2,7 +2,7 @@
 ||| flat expressions and their lowering both read.
 module Flat.ConstType
 
-import Core.TT
+import Core.TT.Primitive
 
 %default total
 

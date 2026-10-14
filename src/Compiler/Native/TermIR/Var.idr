@@ -5,7 +5,7 @@
 module Compiler.Native.TermIR.Var
 
 import Data.List.Quantifiers
-import Data.Vect
+import Data.Nat
 import Decidable.Equality.Core
 
 %default total

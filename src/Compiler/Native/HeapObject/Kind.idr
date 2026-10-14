@@ -7,6 +7,7 @@
 module Compiler.Native.HeapObject.Kind
 
 import Decidable.Equality
+import Decidable.Equality.Core
 
 %default total
 

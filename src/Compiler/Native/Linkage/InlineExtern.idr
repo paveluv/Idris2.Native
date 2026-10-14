@@ -12,6 +12,7 @@ import Compiler.Native.IRCommon.Intrinsic
 import Compiler.Native.IRCommon.Operators.SubWord
 import Compiler.Native.IRCommon.Ty
 import Core.Name
+import Core.Name.Namespace
 import Data.Fin
 import Data.List
 

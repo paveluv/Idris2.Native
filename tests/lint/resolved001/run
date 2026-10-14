@@ -3,9 +3,10 @@
 # The rules over what modules use, resolved from the TTCs their build
 # writes, so the fixtures are built first. `Gallery` and `Report` use
 # `Shape` (a name written, an implementation found by search) reached only
-# through `Canvas`'s re-export; `Viewer` reaches it through a façade, and a
-# package's module through a package's re-export, as meant; `Spare` imports
-# a module it does not use; `JoinAll` accumulates lists in each shape, the
+# through `Canvas`'s re-export, and `Viewer` through a façade, and a
+# package's module through a package's re-export, all reported; `Spare` imports
+# a module it does not use, and `Frame` one that gives it only what it
+# imports directly; `JoinAll` accumulates lists in each shape, the
 # superlinear ones reported, a warning; `Shape` exports a generic helper. Then the score's components that
 # the resolution measures.
 idris2 --build fixtures.ipkg > /dev/null

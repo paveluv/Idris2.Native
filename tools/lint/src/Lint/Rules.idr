@@ -4,16 +4,22 @@
 ||| names. The rules over the import graph are `Lint.Graph`'s.
 module Lint.Rules
 
+import Core.Context.Context
 import Core.Core
 import Core.FC
 import Core.Name
+import Core.Name.Namespace
 import Core.TT
+import Core.WithData
 import Data.List
 import Data.List1
+import Data.Maybe
 import Data.String
+import Data.Zippable
 import Idris.Syntax
 import Idris.Syntax.Pragmas
 import Idris.Syntax.Traversals
+import Libraries.Data.WithData
 import Libraries.Data.WithDefault
 import Lint.Finding
 import Lint.Source

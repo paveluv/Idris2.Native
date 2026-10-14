@@ -1,3 +1,4 @@
+./Frame.idr:7:1 import-unused: `Canvas` is imported, and of what it makes visible only `Shape` is used, which the module imports directly
 ./Gallery.idr:5:1 import-indirect: `Shape` is used (`Shape`, `Circle`) only through `Canvas`: import it
 ./JoinAll.idr:18:5 list-accumulation: `go` grows a list at its end with `++` once: a `SnocList` grows there in constant time (`:<`, `<><`)
 ./JoinAll.idr:22:1 list-accumulation: `foldAll` grows a list at its end with `++` once: a `SnocList` grows there in constant time (`:<`, `<><`)
@@ -5,7 +6,9 @@
 ./Report.idr:6:1 import-indirect: `Shape` is used (`Show Shape`) only through `Canvas`: import it
 ./Shape.idr:22:1 generic-export: `pow2` is exported from `Shape`, a module about its type, and refers to nothing of ours: a generic helper, private to the module or in a module of helpers
 ./Spare.idr:5:1 import-unused: `Data.List` is imported, and nothing it makes visible is used
-    directness     89  modules used that are imported directly: 17 of 19
-    leanness       83  private imports used: 5 of 6
+./Viewer.idr:7:1 import-indirect: `Data.Fin` is used (`Fin`, `FZ`) only through `Data.Vect`: import it
+./Viewer.idr:8:1 import-indirect: `Shape` is used (`Square`, `Shape`) only through `Shapes`: import it
+    directness     82  modules used that are imported directly: 18 of 22
+    leanness       75  private imports needed: 6 of 8
     accumulation   40  accumulations in a snoc-list or a builder: 2 of 5
 ./Spare.idr:1:1 resolution: the TTC of `Spare` is older than its source: build it first

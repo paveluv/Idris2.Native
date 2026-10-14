@@ -4,7 +4,10 @@ module Flat.Check
 
 import Compiler.Common
 import Core.Context
+import Core.Context.Context
 import Core.Core
+import Core.FC
+import Core.TT.Term
 import Flat.Marked
 import Idris.Syntax
 

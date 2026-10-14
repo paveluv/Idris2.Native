@@ -57,12 +57,15 @@ import Compiler.Native.TermIR.Var
 import Compiler.Native.Words
 import Core.Name
 import Core.TT
+import Core.TT.Primitive
 import Data.Distinct
 import Data.List
 import Data.List.Quantifiers
+import Data.So
 import Data.SortedMap
 import Data.Vect
 import Decidable.Equality
+import Decidable.Equality.Core
 import Flat.ConstType
 import Flat.Exp as Flat
 

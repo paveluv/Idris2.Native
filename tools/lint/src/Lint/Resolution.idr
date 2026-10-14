@@ -13,34 +13,44 @@
 module Lint.Resolution
 
 import Core.Binary
+import Core.Binary.Prims
 import Core.Case.CaseTree
 import Core.Context
+import Core.Context.Context
 import Core.Core
 import Core.Directory
 import Core.Env
+import Core.FC
 import Core.Name
+import Core.Name.Namespace
 import Core.Options
 import Core.TT
+import Core.TT.Binder
+import Core.TT.Primitive
+import Core.TT.Term
 import Core.TTC
 import Core.UnifyState
 import Data.List
 import Data.List1
+import Data.Maybe
 import Data.SortedMap
 import Data.SortedSet
 import Data.String
+import Data.Zippable
 import Idris.Package.Types
 import Idris.ProcessIdr
 import Idris.SetOptions
 import Idris.Syntax
-import Idris.Syntax.TTC
 import Libraries.Data.NameMap
 import Libraries.Data.WithDefault
+import Libraries.Utils.Binary
 import Libraries.Utils.Path
 import Lint.Finding
 import Lint.Source
 import System
 import System.Directory
 import System.File
+import System.File.Meta
 
 %default covering
 

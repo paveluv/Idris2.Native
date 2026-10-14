@@ -19,7 +19,8 @@ module Flat.Exp
 
 import Core.FC
 import Core.Name
-import Core.TT
+import Core.Name.Namespace
+import Core.TT.Primitive
 import Data.Builder
 import Data.List
 import Data.Vect

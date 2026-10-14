@@ -9,6 +9,7 @@ import Compiler.Native.HeapObject.Enc
 import Compiler.Native.IRCommon.Ty
 import Compiler.Native.Platform
 import Core.Name
+import Core.Name.Namespace
 
 %default total
 

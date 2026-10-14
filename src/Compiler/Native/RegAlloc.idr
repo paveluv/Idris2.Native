@@ -58,7 +58,9 @@ import Compiler.Native.TermIR.Sizes as TermIR
 import Compiler.Native.TermIR.StaticDef as TermIR
 import Compiler.Native.TermIR.StaticSig as TermIR
 import Compiler.Native.TermIR.Var as TermIR
-import Control.Monad.State
+import Control.Monad.Identity
+import Control.Monad.State.Interface
+import Control.Monad.State.State
 import Core.FC
 import Core.Name
 import Data.Builder

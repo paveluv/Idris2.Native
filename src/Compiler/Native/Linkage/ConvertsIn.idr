@@ -5,6 +5,7 @@
 module Compiler.Native.Linkage.ConvertsIn
 
 import Core.Name
+import Core.Name.Namespace
 
 %default total
 

@@ -16,6 +16,8 @@
 ||| compiled into every program with the program's own forms.
 module Compiler.Native.Native
 
+import Algebra.Semiring
+import Algebra.ZeroOneOmega
 import Compiler.Common
 import Compiler.Native.ELF
 import Compiler.Native.HeapObject.BignumEnc
@@ -42,17 +44,24 @@ import Compiler.Native.X86.Render
 import Compiler.Native.X86.Target
 import Compiler.VMCode
 import Core.Context
+import Core.Context.Context
 import Core.Core
 import Core.Directory
 import Core.Env
+import Core.FC
 import Core.Name
-import Core.Normalise
-import Core.TT
+import Core.Name.Namespace
+import Core.Name.Scoped
+import Core.Normalise.Eval
+import Core.Options
+import Core.TT.Binder
+import Core.TT.Term
 import Core.UnifyState
 import Core.Value
 import Data.Builder
 import Data.List
 import Data.List1
+import Data.Maybe
 import Data.SortedMap
 import Data.String
 import Flat.Exp
@@ -68,6 +77,7 @@ import Libraries.Utils.Path
 import System
 import System.Clock
 import System.File
+import System.File.ReadWrite
 
 %default covering
 

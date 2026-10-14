@@ -8,7 +8,6 @@ import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.Ty
 import Data.List.Quantifiers
 import Data.So
-import Data.Vect
 
 %default total
 

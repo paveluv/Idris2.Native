@@ -4,6 +4,7 @@ depends = idris2-native
 
 modules =
     Canvas,
+    Frame,
     Gallery,
     JoinAll,
     Report,
