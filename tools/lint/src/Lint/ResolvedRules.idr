@@ -47,22 +47,24 @@ record Linted where
   ||| re-exports and our façades', not those of our other modules; the
   ||| implicit `Prelude` included.
   reached : SortedSet String
+  ||| The types it defines.
+  types : List String
   ||| Its private imports, each with whether it is used: whether the module
   ||| refers to anything it makes visible, written or not (a type an
   ||| implicit argument names, an implementation found by search).
   privateImports : List (Import, Bool)
 
 ||| Our modules, each with its file and what it writes.
-modulesOf : List (SourceFile, Mentions) -> Resolution -> List Linted
+modulesOf : List (SourceFile, List Declared, Mentions) -> Resolution -> List Linted
 modulesOf fms r =
   let byPath = the (SortedMap String ResolvedModule) (fromList (map (\rm => (rm.path, rm)) r.modules))
       -- our modules whose re-exports a module may not lean on: all but the
       -- façades
-      leanedOn = the (SortedSet String) (fromList [ show f.mod.moduleNS | (f, _) <- fms, not (facade f) ])
+      leanedOn = the (SortedSet String) (fromList [ show f.mod.moduleNS | (f, _, _) <- fms, not (facade f) ])
   in mapMaybe (one byPath leanedOn) fms
   where
-    one : SortedMap String ResolvedModule -> SortedSet String -> (SourceFile, Mentions) -> Maybe Linted
-    one byPath leanedOn (f, ms) = case lookup f.path byPath of
+    one : SortedMap String ResolvedModule -> SortedSet String -> (SourceFile, List Declared, Mentions) -> Maybe Linted
+    one byPath leanedOn (f, ds, ms) = case lookup f.path byPath of
       Nothing => Nothing
       Just rm =>
         let written = the (SortedSet String) (fromList (map (\(_, n) => nameRoot n) ms.refs))
@@ -73,7 +75,7 @@ modulesOf fms r =
                             (map (\(i, _) => visibleThrough r.importsOf (\m => not (contains m leanedOn)) i) rm.imports)
             privates = [ (i, any (\v => contains v used) (Prelude.toList (visibleThrough r.importsOf (const True) (show i.path))))
                        | i <- f.mod.imports, not i.reexport ]
-        in Just (MkLinted f rm ws reached privates)
+        in Just (MkLinted f rm ws reached (typesOf ds) privates)
 
 ------------------------------------------------------------------------------
 -- The rules
@@ -131,11 +133,31 @@ listAccumulation m =
                     ["joins lists by a left fold " ++ times a.leftFolds ++ ": `joinMap` joins them in linear time"]
       in "`" ++ a.subject ++ "` " ++ fastConcat (intersperse "; " (atEnd ++ folds))
 
+||| `generic-export`: in a module named after a type it defines,
+||| an exported function whose type and body refer to nothing of ours, its
+||| own recursion aside, and write no string, is a generic helper. (A string
+||| names something, a namespace or a symbol: a function that writes one,
+||| such as a routine's name, is a fact of its module.) A reader who wants it looks
+||| for it among helpers, not in a module about a type, and writes it again
+||| when it is not there: it belongs private to the module, or in a module
+||| of helpers. A constant, which takes no arguments, is a fact of its
+||| module, and is left out.
+genericExport : Linted -> List Finding
+genericExport m =
+  if not aboutAType then [] else
+    [ MkFinding "generic-export" m.file.path line col name
+        ("`" ++ name ++ "` is exported from `" ++ m.resolved.name ++ "`, a module about its type, and refers to nothing of ours: a generic helper, private to the module or in a module of helpers")
+    | (name, line, col) <- m.resolved.generics ]
+  where
+    -- whether the module is named after a type it defines
+    aboutAType : Bool
+    aboutAType = any (\t => toLower t == toLower (lastPart (show m.file.mod.moduleNS))) m.types
+
 ||| The rules over the program resolved.
 export
-resolvedRules : List (SourceFile, Mentions) -> Resolution -> List Finding
+resolvedRules : List (SourceFile, List Declared, Mentions) -> Resolution -> List Finding
 resolvedRules fms r =
-  joined [ importUnused m ++ importIndirect r m ++ listAccumulation m | m <- modulesOf fms r ]
+  joined [ importUnused m ++ importIndirect r m ++ listAccumulation m ++ genericExport m | m <- modulesOf fms r ]
 
 ------------------------------------------------------------------------------
 -- Health
@@ -146,7 +168,7 @@ resolvedRules fms r =
 ||| accumulations, the share written with the structure their shape asks
 ||| for, a snoc-list or a builder, rather than lists.
 export
-resolvedHealth : List (SourceFile, Mentions) -> Resolution -> List Component
+resolvedHealth : List (SourceFile, List Declared, Mentions) -> Resolution -> List Component
 resolvedHealth fms r =
   let ms = modulesOf fms r
       pairs = joined [ map (m,) (keys m.writtenUses) | m <- ms ]

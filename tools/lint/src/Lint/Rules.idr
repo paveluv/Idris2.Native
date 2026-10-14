@@ -277,6 +277,7 @@ declared f = coreRun (traverse one leaves) (\_ => pure []) pure
       pure (MkDeclared d (definesOf d) ms impl (visibleOf d) bareNames ns)
 
 ||| The types a file defines (data types and records), by name.
+export
 typesOf : List Declared -> List String
 typesOf ds = foldr (\d, rest => case d.decl.val of
                                    PData _ _ _ _ => d.defines ++ rest
@@ -576,4 +577,5 @@ ruleNames : List String
 ruleNames =
   [ "import-order", "public-import", "default-totality", "elab-reflection"
   , "trust-escape", "cites-plan", "todo", "header-comment", "implementation-adjacent", "module-name"
-  , "layering", "syscall", "same-name", "import-unused", "import-indirect", "list-accumulation" ]
+  , "layering", "syscall", "same-name", "import-unused", "import-indirect", "list-accumulation", "generic-export"
+  , "parent-unique", "import-alias" ]

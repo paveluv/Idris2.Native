@@ -1,4 +1,4 @@
--- The header encoding of Compiler.Native.HeapObject. Decoding a header's encoding
+-- The header encoding of Compiler.Native.HeapObject.Header. Decoding a header's encoding
 -- gives the header back, for every kind with each part at 0, 1 and its
 -- largest value; a part one beyond its width does not fit; words that no
 -- header encodes are rejected; and under bignums in two's complement, whose
@@ -13,7 +13,13 @@
 -- a `case`; the collector reads the size and which words to scan.
 module Main
 
-import Compiler.Native.HeapObject
+import Compiler.Native.HeapObject.BignumEnc
+import Compiler.Native.HeapObject.Enc
+import Compiler.Native.HeapObject.Header
+import Compiler.Native.HeapObject.Kind
+import Compiler.Native.HeapObject.LayoutWord
+import Compiler.Native.HeapObject.StringEnc
+import Compiler.Native.HeapObject.ValEnc
 import Data.List
 
 ||| The encodings the headers are under: bignums in sign-magnitude, whose

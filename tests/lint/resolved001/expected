@@ -3,8 +3,9 @@
 ./JoinAll.idr:22:1 list-accumulation: `foldAll` grows a list at its end with `++` once: a `SnocList` grows there in constant time (`:<`, `<><`)
 ./JoinAll.idr:47:1 list-accumulation: `flatten` joins lists by a left fold once: `joinMap` joins them in linear time
 ./Report.idr:6:1 import-indirect: `Shape` is used (`Show Shape`) only through `Canvas`: import it
+./Shape.idr:22:1 generic-export: `pow2` is exported from `Shape`, a module about its type, and refers to nothing of ours: a generic helper, private to the module or in a module of helpers
 ./Spare.idr:5:1 import-unused: `Data.List` is imported, and nothing it makes visible is used
-    directness     89  modules used that are imported directly: 16 of 18
+    directness     89  modules used that are imported directly: 17 of 19
     leanness       83  private imports used: 5 of 6
     accumulation   40  accumulations in a snoc-list or a builder: 2 of 5
 ./Spare.idr:1:1 resolution: the TTC of `Spare` is older than its source: build it first

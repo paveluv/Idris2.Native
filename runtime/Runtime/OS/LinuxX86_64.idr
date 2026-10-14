@@ -7,7 +7,7 @@
 ||| this module for it; nothing in the generic runtime imports it.
 module Runtime.OS.LinuxX86_64
 
-import Compiler.Native.HeapObject
+import Compiler.Native.HeapObject.Kind
 import Runtime.Heap
 import Runtime.Memory
 import Runtime.OS.Syscall

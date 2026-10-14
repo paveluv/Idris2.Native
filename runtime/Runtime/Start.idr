@@ -4,7 +4,7 @@
 ||| lowering of continuations enters code.
 module Runtime.Start
 
-import Compiler.Native.HeapObject
+import Compiler.Native.HeapObject.Kind
 import Runtime.Bits
 import Runtime.Heap
 import Runtime.Memory

@@ -55,12 +55,37 @@
 module Compiler.Native.X86.Render
 
 import Compiler.Native.Bytes
-import Compiler.Native.HeapObject
-import Compiler.Native.IRCommon
-import Compiler.Native.Linkage
-import Compiler.Native.LocatedIR
-import Compiler.Native.Target
-import Compiler.Native.X86.Asm
+import Compiler.Native.HeapObject.Enc
+import Compiler.Native.HeapObject.Header as HeapObject
+import Compiler.Native.HeapObject.Kind
+import Compiler.Native.HeapObject.LayoutWord
+import Compiler.Native.HeapObject.ValEnc
+import Compiler.Native.IRCommon.Intrinsic as IRCommon
+import Compiler.Native.IRCommon.Operators.ArithOp as Operators
+import Compiler.Native.IRCommon.Operators.ConvOp
+import Compiler.Native.IRCommon.Operators.FOp
+import Compiler.Native.IRCommon.Operators.Rel
+import Compiler.Native.IRCommon.Operators.SubWord
+import Compiler.Native.IRCommon.Operators.UnOp
+import Compiler.Native.IRCommon.Ty
+import Compiler.Native.Linkage.Areas
+import Compiler.Native.Linkage.ResumePoint
+import Compiler.Native.Linkage.Routine
+import Compiler.Native.Linkage.Sym
+import Compiler.Native.LocatedIR.Block
+import Compiler.Native.LocatedIR.BlockLabel
+import Compiler.Native.LocatedIR.BlockTerminator as LocatedIR
+import Compiler.Native.LocatedIR.CallingConvention
+import Compiler.Native.LocatedIR.Cont
+import Compiler.Native.LocatedIR.Function
+import Compiler.Native.LocatedIR.Instr as LocatedIR
+import Compiler.Native.LocatedIR.MemRef
+import Compiler.Native.LocatedIR.Operand as LocatedIR
+import Compiler.Native.LocatedIR.Program
+import Compiler.Native.LocatedIR.Reg
+import Compiler.Native.LocatedIR.Static
+import Compiler.Native.Target as Native
+import Compiler.Native.X86.Asm as X86
 import Compiler.Native.X86.Target
 import Control.Monad.State
 import Core.Name
@@ -78,7 +103,7 @@ import Data.String
 public export
 record Rendered where
   constructor MkRendered
-  text : List Instr
+  text : List X86.Instr
   rodata : List (Label, List Bits8)
   areas : Areas
 
@@ -91,33 +116,33 @@ record RS (enc : Enc) where
   params : SortedMap Name (List (Ty enc))
   statics : SortedMap Name Label
   ||| The code so far, accumulating at its end.
-  text : SnocList Instr
+  text : SnocList X86.Instr
   ||| Slow paths, placed after the function being rendered.
-  cold : SnocList Instr
+  cold : SnocList X86.Instr
   rodata : SnocList (Label, List Bits8)
   ||| The most of each per-thread area the code so far uses.
   areas : Areas
 
-R : Enc -> Type -> Type
-R enc = StateT (RS enc) (Either String)
+Render : Enc -> Type -> Type
+Render enc = StateT (RS enc) (Either String)
 
-failWith : String -> R enc a
+failWith : String -> Render enc a
 failWith = lift . Left
 
-emit : Instr -> R enc ()
+emit : X86.Instr -> Render enc ()
 emit i = modify { text $= (:< i) }
 
-emits : List Instr -> R enc ()
+emits : List X86.Instr -> Render enc ()
 emits = traverse_ emit
 
-coldEmit : Instr -> R enc ()
+coldEmit : X86.Instr -> Render enc ()
 coldEmit i = modify { cold $= (:< i) }
 
 ||| Record that the code uses at least these areas.
-uses : Areas -> R enc ()
+uses : Areas -> Render enc ()
 uses a = modify { areas $= maxAreas a }
 
-fresh : R enc Label
+fresh : Render enc Label
 fresh = do
   s <- get
   put ({ nextLabel := S s.nextLabel } s)
@@ -144,23 +169,25 @@ parameters (enc : Enc)
   abi = x86_64.abi
 
   ||| Where values of the types travel between functions.
-  placeTys : List (Ty enc) -> List Loc
-  placeTys tys = place abi (map classOf tys)
+  placeTys : List (Ty enc) -> List Native.Loc
+  placeTys tys = Native.place abi (map classOf tys)
 
   ||| The type of an operand: its register's, or a word for an immediate.
   opTy : Operand enc -> Ty enc
   opTy (R r) = regTy r
   opTy (Imm _) = W64
-  opTy (S _) = Val
+  opTy (LocatedIR.S _) = Val
 
-  slotOf : Reg enc -> R enc Nat
-  slotOf (Slot n _) = do uses (MkAreas 0 0 (S n)); pure n
-  slotOf r = failWith ("the rendering expects slots, not " ++ show r)
+  ||| The register's slot, recorded as used.
+  useSlot : Reg enc -> Render enc Nat
+  useSlot r = do let n = slotOf r
+                 uses (MkAreas 0 0 (S n))
+                 pure n
 
   slotMem : Nat -> Mem
   slotMem n = MBase RBX (cast (8 * n))
 
-  staticLabel : Name -> R enc Label
+  staticLabel : Name -> Render enc Label
   staticLabel n = do
     s <- get
     case lookup n s.statics of
@@ -183,10 +210,10 @@ parameters (enc : Enc)
   immWord _ i = cast i
 
   ||| Load an operand where a value of the type is expected.
-  loadAs : Ty enc -> Reg64 -> Operand enc -> R enc ()
+  loadAs : Ty enc -> Reg64 -> Operand enc -> Render enc ()
   loadAs t r (Imm i) = emit (MovRI r (immWord t i))
-  loadAs _ r (S s) = do l <- staticLabel s; emit (Lea r (MRip l ptag))
-  loadAs _ r (R x) = do n <- slotOf x; emit (MovRM r (slotMem n))
+  loadAs _ r (LocatedIR.S s) = do l <- staticLabel s; emit (Lea r (MRip l ptag))
+  loadAs _ r (R x) = do n <- useSlot x; emit (MovRM r (slotMem n))
 
   ||| What a load or store through the register subtracts: the pointer tag if
   ||| the register holds a pointer word, nothing if it holds an address.
@@ -194,28 +221,28 @@ parameters (enc : Enc)
   baseTag r = if gcVisible (regTy r) then ptag else 0
 
   ||| Turn the object address in `s` into its pointer word in `d`.
-  tagPointer : (d, s : Reg64) -> List Instr
+  tagPointer : (d, s : Reg64) -> List X86.Instr
   tagPointer d s = if ptag == 0 then (if d == s then [] else [MovRR d s]) else [Lea d (MBase s ptag)]
 
   ||| Load a raw operand.
-  load : Reg64 -> Operand enc -> R enc ()
+  load : Reg64 -> Operand enc -> Render enc ()
   load = loadAs W64
 
   ||| The type two compared operands share: the register's, if either is one.
   pairTy : Operand enc -> Operand enc -> Ty enc
   pairTy (R x) _ = regTy x
   pairTy _ (R y) = regTy y
-  pairTy (S _) _ = Val
-  pairTy _ (S _) = Val
+  pairTy (LocatedIR.S _) _ = Val
+  pairTy _ (LocatedIR.S _) = Val
   pairTy _ _ = W64
 
-  loadReg : Reg64 -> Reg enc -> R enc ()
+  loadReg : Reg64 -> Reg enc -> Render enc ()
   loadReg r x = load r (R x)
 
-  store : Reg enc -> Reg64 -> R enc ()
-  store d r = do n <- slotOf d; emit (MovMR (slotMem n) r)
+  store : Reg enc -> Reg64 -> Render enc ()
+  store d r = do n <- useSlot d; emit (MovMR (slotMem n) r)
 
-  setBase : List Instr
+  setBase : List X86.Instr
   setBase = [Lea RBX (MRip (sym SymScratch) 0)]
 
   cond : Rel -> Cond
@@ -235,21 +262,21 @@ parameters (enc : Enc)
 
   ||| Compare rax with the operand, where a value of the type is expected:
   ||| `test` against the word 0, an immediate compare where the word fits.
-  compareWith : Ty enc -> Operand enc -> R enc ()
+  compareWith : Ty enc -> Operand enc -> Render enc ()
   compareWith t (Imm c) =
     let w = immWord t c in
     if w == 0 then emit (Test RAX RAX)
     else if fitsImm32 w then emit (AluI CMP RAX (cast w))
     else emits [MovRI RCX w, Alu CMP RAX RCX]
   compareWith _ (R y) = do loadReg RCX y; emit (Alu CMP RAX RCX)
-  compareWith _ (S s) = do l <- staticLabel s; emits [Lea RCX (MRip l ptag), Alu CMP RAX RCX]
+  compareWith _ (LocatedIR.S s) = do l <- staticLabel s; emits [Lea RCX (MRip l ptag), Alu CMP RAX RCX]
 
   ------------------------------------------------------------------------------
   -- Arithmetic
 
   ||| Arithmetic on raw words, into rax.
   wordArith : ArithOp -> Operand enc -> Operand enc ->
-              (overflow : Maybe Label) -> R enc ()
+              (overflow : Maybe Label) -> Render enc ()
   wordArith o x y ov = do
     load RAX x
     load RCX y
@@ -265,33 +292,33 @@ parameters (enc : Enc)
       Sar => emit (ShiftCl SAR RAX)
       DivS => emits [Cqo, Idiv RCX]
       RemS => emits [Cqo, Idiv RCX, MovRR RAX RDX]
-      DivU => emits [Alu XOR RDX RDX, DivU RCX]
-      RemU => emits [Alu XOR RDX RDX, DivU RCX, MovRR RAX RDX]
+      Operators.DivU => emits [Alu XOR RDX RDX, X86.DivU RCX]
+      RemU => emits [Alu XOR RDX RDX, X86.DivU RCX, MovRR RAX RDX]
     maybe (pure ()) (\l => emit (Jcc O l)) ov
 
   ||| Turn twice a value, in the register, into the fixnum's word: `or` in
   ||| the fixnum tag, since the low bit is clear.
-  addTag : {auto 0 fx : HasFixnums enc.val} -> Reg64 -> List Instr
+  addTag : {auto 0 fx : HasFixnums enc.val} -> Reg64 -> List X86.Instr
   addTag r = if fixnumTag enc.val == 0 then [] else [AluI OR r (cast (fixnumTag enc.val))]
 
   ||| Load twice a fixnum's value: its word less the fixnum tag, or an
   ||| immediate doubled.
-  loadTwice : {auto 0 fx : HasFixnums enc.val} -> Reg64 -> Operand enc -> R enc ()
+  loadTwice : {auto 0 fx : HasFixnums enc.val} -> Reg64 -> Operand enc -> Render enc ()
   loadTwice r (Imm c) = emit (MovRI r (2 * cast c))
-  loadTwice r (S _) = failWith "a static where a fixnum is expected"
+  loadTwice r (LocatedIR.S _) = failWith "a static where a fixnum is expected"
   loadTwice r (R x) = do
     loadReg r x
     when (fixnumTag enc.val /= 0) $ emit (AluI SUB r (cast (fixnumTag enc.val)))
 
   ||| Load a fixnum's value.
-  loadValue : Reg64 -> Operand enc -> R enc ()
+  loadValue : Reg64 -> Operand enc -> Render enc ()
   loadValue r (Imm c) = emit (MovRI r (cast c))
-  loadValue r (S _) = failWith "a static where a fixnum is expected"
+  loadValue r (LocatedIR.S _) = failWith "a static where a fixnum is expected"
   loadValue r (R x) = do loadReg r x; emit (ShiftI SAR r 1)
 
   ||| `op` of rax and twice the operand's value, an immediate folded into the
   ||| instruction where it fits.
-  aluTwice : {auto 0 fx : HasFixnums enc.val} -> AluOp -> Operand enc -> R enc ()
+  aluTwice : {auto 0 fx : HasFixnums enc.val} -> AluOp -> Operand enc -> Render enc ()
   aluTwice op (Imm c) =
     let v = 2 * cast c in
     if fitsImm32 v then emit (AluI op RAX (cast v)) else emits [MovRI RCX v, Alu op RAX RCX]
@@ -305,7 +332,7 @@ parameters (enc : Enc)
   ||| outside the fixnum range. A shift has no such identity: it takes the
   ||| values, shifts and tags.
   fixArith : {auto 0 fx : HasFixnums enc.val} -> ArithOp ->
-             Operand enc -> Operand enc -> (overflow : Maybe Label) -> R enc ()
+             Operand enc -> Operand enc -> (overflow : Maybe Label) -> Render enc ()
   fixArith o x y ov = case o of
       Add => do loadAs Fix RAX x; aluTwice ADD y; jo
       Sub => do loadAs Fix RAX x; aluTwice SUB y; jo
@@ -318,11 +345,11 @@ parameters (enc : Enc)
       Sar => shift SAR
       _ => failWith ("the rendering does not support " ++ show o ++ " yet")
     where
-      jo : R enc ()
+      jo : Render enc ()
       jo = maybe (pure ()) (\l => emit (Jcc O l)) ov
-      retag : R enc ()
+      retag : Render enc ()
       retag = emits (addTag RAX)
-      shift : ShiftOp -> R enc ()
+      shift : ShiftOp -> Render enc ()
       shift sh = do
         loadValue RAX x
         loadValue RCX y
@@ -348,7 +375,7 @@ parameters (enc : Enc)
   ||| Save the live slots across a call, as `saved` divides them, the ones on
   ||| the stack with a padding word when their number is odd so the call sees
   ||| a 16-aligned stack.
-  saveLive : (collects : Bool) -> (Instr -> R enc ()) -> List (Reg enc) -> R enc ()
+  saveLive : (collects : Bool) -> (X86.Instr -> Render enc ()) -> List (Reg enc) -> Render enc ()
   saveLive collects out live = do
     let (gc, raw) = saved collects live
     uses (MkAreas 0 (length gc) 0)
@@ -359,13 +386,13 @@ parameters (enc : Enc)
       out (ShiftI SHL RCX 3)
       out (Lea RDI (MRip (sym SymRoots) 0))
       out (Alu ADD RDI RCX)
-      traverse_ (\(j, r) => do n <- slotOf r
+      traverse_ (\(j, r) => do n <- useSlot r
                                out (MovRM RCX (slotMem n))
                                out (MovMR (MBase RDI (cast (8 * j))) RCX))
                 (zip (indices gc) gc)
       out (AluI ADD RDX (cast (length gc)))
       out (MovMR (MBase RSI 0) RDX)
-    traverse_ (\r => do n <- slotOf r
+    traverse_ (\r => do n <- useSlot r
                         out (MovRM RCX (slotMem n))
                         out (Push RCX)) raw
     when (isOdd (length raw)) $ out (Push RCX)
@@ -377,12 +404,12 @@ parameters (enc : Enc)
               go i (_ :: ys) = i :: go (S i) ys
 
   ||| Restore what `saveLive` saved, leaving rax alone.
-  restoreLive : (collects : Bool) -> (Instr -> R enc ()) -> List (Reg enc) -> R enc ()
+  restoreLive : (collects : Bool) -> (X86.Instr -> Render enc ()) -> List (Reg enc) -> Render enc ()
   restoreLive collects out live = do
     let (gc, raw) = saved collects live
     traverse_ out setBase
     when (isOdd (length raw)) $ out (Pop RCX)
-    traverse_ (\r => do n <- slotOf r
+    traverse_ (\r => do n <- useSlot r
                         out (Pop RCX)
                         out (MovMR (slotMem n) RCX)) (reverse raw)
     when (not (null gc)) $ do
@@ -393,7 +420,7 @@ parameters (enc : Enc)
       out (ShiftI SHL RDX 3)
       out (Lea RDI (MRip (sym SymRoots) 0))
       out (Alu ADD RDI RDX)
-      traverse_ (\(j, r) => do n <- slotOf r
+      traverse_ (\(j, r) => do n <- useSlot r
                                out (MovRM RCX (MBase RDI (cast (8 * j))))
                                out (MovMR (slotMem n) RCX))
                 (zip (indices gc) gc)
@@ -406,7 +433,7 @@ parameters (enc : Enc)
 
   ||| Allocate `bytes` into rax: the fast path inline, the slow path cold, with
   ||| `live` saved across it. Leaves rax pointing at the uninitialised object.
-  allocate : (bytes : Nat) -> (live : List (Reg enc)) -> R enc ()
+  allocate : (bytes : Nat) -> (live : List (Reg enc)) -> Render enc ()
   allocate bytes live = do
     slow <- fresh
     done <- fresh
@@ -415,7 +442,7 @@ parameters (enc : Enc)
     coldEmit (Lbl slow)
     saveLive True coldEmit live
     coldEmit (MovRI RDI (cast bytes))
-    coldEmit (Call (sym SymAllocSlow))
+    coldEmit (X86.Call (sym SymAllocSlow))
     coldEmit (MovRR RAX RDI)                   -- the routine's result, where a Direct result goes
     restoreLive True coldEmit live
     coldEmit (Jmp done)
@@ -433,11 +460,11 @@ parameters (enc : Enc)
   ||| Allocate a mutable object of the bytes `bytesInto` computes into a
   ||| register, by a call to `idris_alloc_mutable` with `live` saved across it.
   ||| Leaves rax pointing at the uninitialised object.
-  allocateMutable : (bytesInto : Reg64 -> R enc ()) -> (live : List (Reg enc)) -> R enc ()
+  allocateMutable : (bytesInto : Reg64 -> Render enc ()) -> (live : List (Reg enc)) -> Render enc ()
   allocateMutable bytesInto live = do
     saveLive True emit live
     bytesInto RDI
-    emit (Call (sym SymAllocMutable))
+    emit (X86.Call (sym SymAllocMutable))
     emit (MovRR RAX RDI)
     restoreLive True emit live
 
@@ -446,8 +473,8 @@ parameters (enc : Enc)
   ||| slow path computes the size again from the count's slot, after saving
   ||| `live`, which holds the count. Leaves rax pointing at the uninitialised
   ||| object.
-  allocateSized : (count : Reg enc) -> (size : Reg64 -> List Instr) ->
-                  (live : List (Reg enc)) -> R enc ()
+  allocateSized : (count : Reg enc) -> (size : Reg64 -> List X86.Instr) ->
+                  (live : List (Reg enc)) -> Render enc ()
   allocateSized count size live = do
     slow <- fresh
     done <- fresh
@@ -457,10 +484,10 @@ parameters (enc : Enc)
           , MovRR R15 RCX, Lbl done ]
     coldEmit (Lbl slow)
     saveLive True coldEmit live
-    n <- slotOf count
+    n <- useSlot count
     coldEmit (MovRM RDI (slotMem n))
     traverse_ coldEmit (size RDI)
-    coldEmit (Call (sym SymAllocSlow))
+    coldEmit (X86.Call (sym SymAllocSlow))
     coldEmit (MovRR RAX RDI)
     restoreLive True coldEmit live
     coldEmit (Jmp done)
@@ -468,7 +495,7 @@ parameters (enc : Enc)
   ||| The base of a memory operand into `r`, plus its index scaled by `width`,
   ||| the access's width in bytes: an address that lives only within the
   ||| instruction that computes it.
-  address : Reg64 -> MemRef enc -> (width : Nat) -> R enc ()
+  address : Reg64 -> MemRef enc -> (width : Nat) -> Render enc ()
   address r m width = do
     loadReg r m.base
     case m.index of
@@ -491,7 +518,7 @@ parameters (enc : Enc)
   ------------------------------------------------------------------------------
   -- Instructions
 
-  funLabel : Name -> R enc Label
+  funLabel : Name -> Render enc Label
   funLabel n = do
     s <- get
     case lookup n s.funs of
@@ -501,7 +528,7 @@ parameters (enc : Enc)
   ||| The label of a function outside the program: a routine of the runtime
   ||| contract that the runtime does not have yet, whose call ends the
   ||| program as `Unsupported` does.
-  runtimeRoutine : Name -> R enc Label
+  runtimeRoutine : Name -> Render enc Label
   runtimeRoutine n =
     if any (\r => not r.provided && r.name == n) (routines {enc})
        then pure (sym SymUnsupported)
@@ -509,15 +536,15 @@ parameters (enc : Enc)
 
   ||| Load an operand into a floating-point register: a slot's bits, or an
   ||| immediate's word, through rax.
-  loadFloat : Xmm -> Operand enc -> R enc ()
-  loadFloat x (R r) = do n <- slotOf r; emit (MovsdRM x (slotMem n))
+  loadFloat : Xmm -> Operand enc -> Render enc ()
+  loadFloat x (R r) = do n <- useSlot r; emit (MovsdRM x (slotMem n))
   loadFloat x (Imm i) = emits [MovRI RAX (cast i), MovqXR x RAX]
-  loadFloat x (S _) = failWith "a static where a double is expected"
+  loadFloat x (LocatedIR.S _) = failWith "a static where a double is expected"
 
   ||| Pass values of the types where `place` puts them, for a call or a
   ||| return: `ARGS` first, through rax and rcx, then the floating-point
   ||| registers, then the word registers, since rcx is one of them.
-  putValues : List (Ty enc) -> List (Operand enc) -> R enc ()
+  putValues : List (Ty enc) -> List (Operand enc) -> Render enc ()
   putValues tys xs = do
     uses (MkAreas (argsWords abi (map classOf tys)) 0 0)
     let items = zip3 (placeTys tys) tys xs
@@ -539,14 +566,14 @@ parameters (enc : Enc)
   ||| Take values from where `place` puts them into the registers' slots: a
   ||| function's parameters on entry, or a direct call's results after it.
   ||| The registers first, then `ARGS`, through rax and rcx.
-  takeValues : List (Reg enc) -> R enc ()
+  takeValues : List (Reg enc) -> Render enc ()
   takeValues ds = do
     let tys = map regTy ds
         items = zip (placeTys tys) ds
     uses (MkAreas (argsWords abi (map classOf tys)) 0 0)
     traverse_ (\(l, d) => case l of
                             InWordReg r => store d (reg64 r)
-                            InFloatReg f => do n <- slotOf d; emit (MovsdMR (slotMem n) (xmm f))
+                            InFloatReg f => do n <- useSlot d; emit (MovsdMR (slotMem n) (xmm f))
                             InArgs _ => pure ())
               items
     traverse_ (\(l, d) => case l of
@@ -558,12 +585,12 @@ parameters (enc : Enc)
 
   ||| A callee's parameter types, or, for a routine outside the program, the
   ||| arguments' own.
-  paramTys : Name -> List (Operand enc) -> R enc (List (Ty enc))
+  paramTys : Name -> List (Operand enc) -> Render enc (List (Ty enc))
   paramTys f args = do
     s <- get
     pure (fromMaybe (map opTy args) (lookup f s.params))
 
-  instr : (Nat -> Label) -> Instr enc -> R enc ()
+  instr : (Nat -> Label) -> LocatedIR.Instr enc -> Render enc ()
   instr blk (Const d c) = do emit (MovRI RAX (immWord (regTy d) c)); store d RAX
   instr blk (CodeAddr d f) = do l <- funLabel f; emit (Lea RAX (MRip l 0)); store d RAX
   instr blk (StaticAddr d s) = do l <- staticLabel s; emit (Lea RAX (MRip l ptag)); store d RAX
@@ -587,11 +614,11 @@ parameters (enc : Enc)
     compareWith (pairTy x y) y
     emit (Setcc (cond r) RDX)
     store d RDX
-  instr blk (Load _ d m) = do
+  instr blk (LocatedIR.Load _ d m) = do
     address RAX m 8
     emit (MovRM RCX (MBase RAX (m.offset - baseTag m.base)))
     store d RCX
-  instr blk (Store _ m x) = do
+  instr blk (LocatedIR.Store _ m x) = do
     address RAX m 8
     loadReg RCX x
     emit (MovMR (MBase RAX (m.offset - baseTag m.base)) RCX)
@@ -610,8 +637,8 @@ parameters (enc : Enc)
   -- A narrowing reads the low part of the slot, which a little-endian word
   -- keeps first, extending it as it loads.
   instr blk (Ext sw s d x) = do
-    n <- slotOf x
-    emit (Load (width sw) s RAX (slotMem n))
+    n <- useSlot x
+    emit (X86.Load (width sw) s RAX (slotMem n))
     store d RAX
   instr blk (Narrow _ d x) = do loadReg RAX x; store d RAX
   instr blk (Widen d x) = do loadReg RAX x; store d RAX
@@ -622,7 +649,7 @@ parameters (enc : Enc)
   instr blk (LoadPart p d o) = do
     loadReg RAX o
     emit (MovRM RAX (MBase RAX (negate (baseTag o))))
-    emits (extractField RAX (cast (fst (place p))) (cast (snd (place p))))
+    emits (extractField RAX (cast (fst (HeapObject.place p))) (cast (snd (HeapObject.place p))))
     store d RAX
   instr blk (AllocObj {k} d h fs live) = do
     if mutableKind k
@@ -650,15 +677,15 @@ parameters (enc : Enc)
     traverse_ coldEmit [ Lbl big, Lea RDI (MRip msg 0), MovRI RSI (cast (length bytes))
                        , Jmp (sym SymCrash) ]
     loadReg RCX count
-    emits [MovRI RDX (cast (pow2 (cast (snd (place p))) - 1)), Alu CMP RCX RDX, Jcc A big]
+    emits [MovRI RDX (cast (prim__shl_Integer 1 (cast (snd (HeapObject.place p))) - 1)), Alu CMP RCX RDX, Jcc A big]
     size <- sizeOf p
     if mutableKind k
-       then allocateMutable (\r => do n <- slotOf count
+       then allocateMutable (\r => do n <- useSlot count
                                       emit (MovRM r (slotMem n))
                                       emits (size r)) live
        else allocateSized count size live
     loadReg RDX count
-    emits [ ShiftI SHL RDX (cast (fst (place p))), AluI ADD RDX (cast (kindId k))
+    emits [ ShiftI SHL RDX (cast (fst (HeapObject.place p))), AluI ADD RDX (cast (kindId k))
           , MovMR (MBase RAX 0) RDX ]
     case fill of
       Nothing => pure ()
@@ -672,18 +699,14 @@ parameters (enc : Enc)
     emits (tagPointer RAX RAX)
     store d RAX
     where
-      pow2 : Nat -> Integer
-      pow2 Z = 1
-      pow2 (S n) = 2 * pow2 n
-
       -- The bytes of an object of `r` bytes of data: the header word, then the
       -- data rounded up to words.
-      bytesSize : Reg64 -> List Instr
+      bytesSize : Reg64 -> List X86.Instr
       bytesSize r = [AluI ADD r 15, ShiftI SHR r 3, ShiftI SHL r 3]
 
       -- The object's bytes, from the count in `r`: the header word, then the
       -- elements as words, or the bytes rounded up to words.
-      sizeOf : HeaderPart k' -> R enc (Reg64 -> List Instr)
+      sizeOf : HeaderPart k' -> Render enc (Reg64 -> List X86.Instr)
       sizeOf ArrayElems = pure (\r => [ShiftI SHL r 3, AluI ADD r 8])
       -- a string made by its count is not known to be ASCII: its bit is 0,
       -- which only costs the fast paths
@@ -697,17 +720,17 @@ parameters (enc : Enc)
     tys <- paramTys f args
     saveLive collects emit live
     putValues tys args
-    emit (Call callee)
+    emit (X86.Call callee)
     emits setBase
     takeValues ds
     restoreLive collects emit live
   instr blk (Convert I2F d x) = do
     loadReg RAX x
     emit (Cvtsi2sd XMM0 RAX)
-    n <- slotOf d
+    n <- useSlot d
     emit (MovsdMR (slotMem n) XMM0)
   instr blk (Convert F2I d x) = do
-    n <- slotOf x
+    n <- useSlot x
     emit (MovsdRM XMM0 (slotMem n))
     emit (Cvttsd2si RAX XMM0)
     store d RAX
@@ -730,7 +753,7 @@ parameters (enc : Enc)
     loadFloat XMM0 (R x)
     loadFloat XMM1 (R y)
     emit (Sse (case o of FAdd => ADDSD; FSub => SUBSD; FMul => MULSD; FDiv => DIVSD) XMM0 XMM1)
-    n <- slotOf d
+    n <- useSlot d
     emit (MovsdMR (slotMem n) XMM0)
   -- `ucomisd a, b` sets the flags as an unsigned comparison of a with b,
   -- and all of ZF, PF and CF when either is a NaN. So x < y is y above x and
@@ -754,32 +777,32 @@ parameters (enc : Enc)
     store d RDX
   instr blk (LoadN sw s d m) = do
     address RAX m (subWordBytes sw)
-    emit (Load (width sw) s RCX (MBase RAX (m.offset - baseTag m.base)))
+    emit (X86.Load (width sw) s RCX (MBase RAX (m.offset - baseTag m.base)))
     store d RCX
   instr blk (StoreN sw m x) = do
     address RAX m (subWordBytes sw)
     loadReg RCX x
-    emit (Store (width sw) (MBase RAX (m.offset - baseTag m.base)) RCX)
+    emit (X86.Store (width sw) (MBase RAX (m.offset - baseTag m.base)) RCX)
   -- The number in rax and the arguments where Linux takes them. The kernel
   -- keeps every register but rcx and r11, and the result is in rax.
   instr blk (AreaAddr d a) = do
     emit (Lea RAX (MRip (sym (areaSym a)) 0))
     store d RAX
   -- the pinned registers: the allocation window and the current continuation
-  instr blk (Intrinsic GetHp (Just d) []) = store d R15
-  instr blk (Intrinsic SetHp Nothing [x]) = load R15 x
-  instr blk (Intrinsic GetHpLim (Just d) []) = store d R14
-  instr blk (Intrinsic SetHpLim Nothing [x]) = load R14 x
-  instr blk (Intrinsic GetK (Just d) []) = store d R12
-  instr blk (Intrinsic SetK Nothing [x]) = load R12 x
-  instr blk (Intrinsic Syscall (Just d) (n :: args)) =
+  instr blk (LocatedIR.Intrinsic GetHp (Just d) []) = store d R15
+  instr blk (LocatedIR.Intrinsic SetHp Nothing [x]) = load R15 x
+  instr blk (LocatedIR.Intrinsic GetHpLim (Just d) []) = store d R14
+  instr blk (LocatedIR.Intrinsic SetHpLim Nothing [x]) = load R14 x
+  instr blk (LocatedIR.Intrinsic GetK (Just d) []) = store d R12
+  instr blk (LocatedIR.Intrinsic SetK Nothing [x]) = load R12 x
+  instr blk (LocatedIR.Intrinsic IRCommon.Syscall (Just d) (n :: args)) =
     if length args > 6 then failWith "a system call of more than six arguments" else do
       traverse_ (\(r, x) => load r x) (zip [RDI, RSI, RDX, R10, R8, R9] args)
       load RAX n
-      emits [Syscall]
+      emits [X86.Syscall]
       store d RAX
-  instr blk (Loc _) = pure ()
-  instr blk (Comment s) = emit (Comment s)
+  instr blk (LocatedIR.Loc _) = pure ()
+  instr blk (LocatedIR.Comment s) = emit (X86.Comment s)
   instr blk i = failWith ("the rendering does not support " ++ instrName i ++ " yet")
 
   ------------------------------------------------------------------------------
@@ -789,7 +812,7 @@ parameters (enc : Enc)
   ||| the current one. Its layout word counts fewer than 2^24 GC-visible and
   ||| fewer than 2^24 raw values (`layoutWord`); a continuation keeping more
   ||| is refused.
-  pushCont : (Nat -> Label) -> Cont enc -> (alsoLive : List (Reg enc)) -> R enc ()
+  pushCont : (Nat -> Label) -> Cont enc -> (alsoLive : List (Reg enc)) -> Render enc ()
   pushCont blk c alsoLive = do
     let vals = filter (gcVisible . regTy) c.live
         raws = filter (not . gcVisible . regTy) c.live
@@ -798,7 +821,7 @@ parameters (enc : Enc)
     allocate (16 + 8 * length c.live) (c.live ++ alsoLive)
     emits [ Lea RDX (MRip (blk c.resume) 0), MovMR (MBase RAX 0) RDX
           , MovMR (MBase RAX 8) R12 ]
-    traverse_ (\(i, r) => do n <- slotOf r
+    traverse_ (\(i, r) => do n <- useSlot r
                              emit (MovRM RDX (slotMem n))
                              emit (MovMR (MBase RAX (cast (16 + 8 * i))) RDX))
               (zip [0 .. length c.live] (vals ++ raws))
@@ -807,7 +830,7 @@ parameters (enc : Enc)
   argRegsOf : List (Operand enc) -> List (Reg enc)
   argRegsOf = joinMap opRegs
 
-  term : (Nat -> Label) -> (results : List (Ty enc)) -> BlockTerminator enc -> R enc ()
+  term : (Nat -> Label) -> (results : List (Ty enc)) -> BlockTerminator enc -> Render enc ()
   term blk res (Jump l) = emit (Jmp (blk l))
   -- Several tags in one test: under fixnum tag 1 every word is odd exactly
   -- when their `and` is, and under fixnum tag 0 every word is even exactly
@@ -828,7 +851,7 @@ parameters (enc : Enc)
     loadReg RAX r
     traverse_ (\(v, l) => do compareWith (regTy r) (Imm v); emit (Jcc E (blk l))) cs
     emit (Jmp (blk d))
-  term blk res (Call f args c) = do
+  term blk res (LocatedIR.Call f args c) = do
     l <- funLabel f
     pushCont blk c (argRegsOf args)
     putValues !(paramTys f args) args
@@ -855,9 +878,9 @@ parameters (enc : Enc)
     modify { rodata $= (:< (l, bytes)) }
     emits [Lea RDI (MRip l 0), MovRI RSI (cast (length bytes)), Jmp (sym SymCrash)]
   term blk res (Unsupported _) = emit (Jmp (sym SymUnsupported))
-  term blk res (Ret xs) = do
+  term blk res (LocatedIR.Ret xs) = do
     putValues res xs
-    emits [AluI ADD RSP 8, Asm.Ret]
+    emits [AluI ADD RSP 8, X86.Ret]
   term blk res t = failWith ("the rendering does not support " ++ show (termName t) ++ " yet")
 
   ------------------------------------------------------------------------------
@@ -876,7 +899,7 @@ parameters (enc : Enc)
         pure (c.resume, (vals ++ raws, layoutWord (cast (length vals)) (cast (length raws))))
 
   block : (Nat -> Label) -> (results : List (Ty enc)) ->
-          SortedMap BlockLabel (List (Reg enc), Integer) -> Block enc -> R enc ()
+          SortedMap BlockLabel (List (Reg enc), Integer) -> Block enc -> Render enc ()
   block blk res rs b = do
     case lookup b.label rs of
       Just (live, word) => do
@@ -885,7 +908,7 @@ parameters (enc : Enc)
         case reverse b.params of
           (result :: _) => store result RAX
           [] => pure ()
-        traverse_ (\(i, r) => do n <- slotOf r
+        traverse_ (\(i, r) => do n <- useSlot r
                                  emit (MovRM RCX (MBase R12 (cast (16 + 8 * i) - ptag)))
                                  emit (MovMR (slotMem n) RCX))
                   (zip [0 .. length live] live)
@@ -894,14 +917,14 @@ parameters (enc : Enc)
     traverse_ (instr blk) b.body
     term blk res b.term
 
-  function : Function enc -> R enc ()
+  function : Function enc -> Render enc ()
   function f = do
     fl <- funLabel f.name
     labels <- traverse (\b => map (\l => (b.label, l)) fresh) f.blocks
     let table = fromList labels
         blk : Nat -> Label
         blk n = fromMaybe 0 (lookup n table)
-    emits [Comment (show f.name), Lbl fl]
+    emits [X86.Comment (show f.name), Lbl fl]
     -- a routine reached by symbol: the symbol is its entry too
     whenJust (routineSymbol {enc} f.name) $ \s => emit (Lbl (sym s))
     -- a machine call pushed a word: keep the stack 16-aligned inside; and
@@ -919,12 +942,12 @@ parameters (enc : Enc)
     s <- get
     put ({ text := s.text ++ s.cold, cold := [<] } s)
 
-  staticBytes : Static enc -> R enc (List Bits8)
+  staticBytes : Static enc -> Render enc (List Bits8)
   staticBytes s = do
     fields <- traverse field s.fields
     pure (contents (piece (le64 (cast (encodeHeader s.header))) <+> concatMap piece fields))
     where
-      field : StaticField -> R enc (List Bits8)
+      field : StaticField -> Render enc (List Bits8)
       field (SWord w) = pure (le64 (cast w))
       field _ = failWith ("the rendering does not support code or static references in statics yet")
 

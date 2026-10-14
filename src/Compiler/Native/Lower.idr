@@ -1,5 +1,5 @@
 ||| The produce pass: VMCode and flat forms to the typed term
-||| (`Compiler.Native.TermIR`), from which register allocation
+||| (`Compiler.Native.TermIR.Program`), from which register allocation
 ||| (`Compiler.Native.RegAlloc`) makes the located IR.
 |||
 ||| Every VMCode function becomes a `CPS` function of `Val` parameters,
@@ -51,20 +51,48 @@
 ||| same static object.
 module Compiler.Native.Lower
 
-import Compiler.Native.HeapObject
-import Compiler.Native.IRCommon
-import Compiler.Native.Linkage
+import Compiler.Native.HeapObject.BignumEnc
+import Compiler.Native.HeapObject.Enc
+import Compiler.Native.HeapObject.Header
+import Compiler.Native.HeapObject.Kind
+import Compiler.Native.HeapObject.ValEnc
+import Compiler.Native.IRCommon.ConIds
+import Compiler.Native.IRCommon.Operators.ArithOp
+import Compiler.Native.IRCommon.Operators.Rel
+import Compiler.Native.IRCommon.Operators.SubWord
+import Compiler.Native.IRCommon.Operators.UnOp
+import Compiler.Native.IRCommon.Ty
+import Compiler.Native.Linkage.ConvertsIn
+import Compiler.Native.Linkage.ForeignFunctions
+import Compiler.Native.Linkage.OSService
+import Compiler.Native.Linkage.Routine
 import Compiler.Native.LowerFlat
 import Compiler.Native.Platform
 import Compiler.Native.Strings
-import Compiler.Native.TermIR
+import Compiler.Native.TermIR.Body
 import Compiler.Native.TermIR.Build
+import Compiler.Native.TermIR.Conv
+import Compiler.Native.TermIR.Decls
+import Compiler.Native.TermIR.Def
+import Compiler.Native.TermIR.FieldTys
+import Compiler.Native.TermIR.Instr
+import Compiler.Native.TermIR.IsInt
+import Compiler.Native.TermIR.Mem
+import Compiler.Native.TermIR.Opnd
+import Compiler.Native.TermIR.OvOp
+import Compiler.Native.TermIR.Program
+import Compiler.Native.TermIR.Sig
+import Compiler.Native.TermIR.Sizes
+import Compiler.Native.TermIR.StaticDef
+import Compiler.Native.TermIR.StaticSig
+import Compiler.Native.TermIR.Var
 import Compiler.Native.Words
 import Compiler.VMCode
 import Core.CompileExpr
 import Core.Name
 import Core.TT
 import Data.Builder
+import Data.Distinct
 import Data.List
 import Data.List.Quantifiers
 import Data.Maybe
@@ -1299,11 +1327,11 @@ cfAgrees _ _ = False
 ||| C types say; one that does not is an error.
 |||
 ||| The runtime's routines are forms among them, each checked against the
-||| runtime contract (`Compiler.Native.Linkage.routines`): a routine the
+||| runtime contract (`routines` in `Compiler.Native.Linkage.Routine`): a routine the
 ||| runtime has must have a form of the declared signature, or the program
 ||| is not lowered, and the error says which. One it does not have yet is
 ||| declared as outside the program. So are the functions that implement
-||| the OS services on the platform (`Compiler.Native.Linkage.osServices`),
+||| the OS services on the platform (`osServices` in `Compiler.Native.Linkage.OSService`),
 ||| each checked against its service where a form calls it.
 export
 lowerProgram : (enc : Enc) -> {auto 0 fx : HasFixnums enc.val} -> Platform -> List FlatDef -> Shapes ->

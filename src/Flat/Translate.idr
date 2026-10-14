@@ -207,7 +207,7 @@ isAtom tr (Erased {}) = True
 isAtom tr _ = False
 
 -- The term for a translated value that is an atom.
-atomOf : FlatExp -> Maybe ClosedTerm
+atomOf : Exp -> Maybe ClosedTerm
 atomOf (FVar fc x) = Just (Ref fc Bound x)
 atomOf (FConst fc k) = Just (PrimVal fc k)
 atomOf (FNone fc) = Just (Erased fc Placeholder)
@@ -620,13 +620,13 @@ conArgs tr cn cargs
 mutual
   ||| Translate a closed term applied to `ps`, whose value has a flat type.
   trTerm : {auto c : Ref Ctxt Defs} -> {auto s : Ref FlatSt FlatState} ->
-           Tr -> ClosedTerm -> List Pending -> Core FlatExp
+           Tr -> ClosedTerm -> List Pending -> Core Exp
   trTerm tr tm ps
       = let (h, args) = getFnArgs tm in
             trApp tr h (map PArg args ++ ps)
 
   trApp : {auto c : Ref Ctxt Defs} -> {auto s : Ref FlatSt FlatState} ->
-          Tr -> ClosedTerm -> List Pending -> Core FlatExp
+          Tr -> ClosedTerm -> List Pending -> Core Exp
   trApp tr (Ref fc Bound x) ps
       = case lookup x tr.vars of
              Just _ => case ps of
@@ -665,7 +665,7 @@ mutual
   trApp tr tm _ = fail tr (getLoc tm) (Unhandled "This term")
 
   constant : {auto c : Ref Ctxt Defs} -> {auto s : Ref FlatSt FlatState} ->
-             Tr -> FC -> Constant -> Core FlatExp
+             Tr -> FC -> Constant -> Core Exp
   constant tr fc (Str _)
       = fail tr fc (ValueNotFlat (PrimVal fc (PrT StringType)) (BoxedPrimitive StringType))
   constant tr fc (BI _)
@@ -678,7 +678,7 @@ mutual
   -- to a variable unless it is an atom, and a static one is substituted.
   bindValue : {auto c : Ref Ctxt Defs} -> {auto s : Ref FlatSt FlatState} ->
               Tr -> FC -> (x : Name) -> RigCount -> (ty : ClosedTerm) ->
-              (v : ClosedTerm) -> Term [x] -> List Pending -> Core FlatExp
+              (v : ClosedTerm) -> Term [x] -> List Pending -> Core Exp
   bindValue tr fc x rig ty v sc ps
       = if isErased rig || isAtom tr v then trTerm tr (subst v sc) ps else
           do defs <- get Ctxt
@@ -704,7 +704,7 @@ mutual
       formType sts n = (\fd => (fd.resultSkeleton, fd.result)) <$> lookup n sts.forms
 
       -- the value bound to a fresh flat variable, unless it is an atom
-      bindFlat : Skeleton -> Layout -> FlatExp -> Core FlatExp
+      bindFlat : Skeleton -> Layout -> Exp -> Core Exp
       bindFlat sk l v'
           = do let Nothing = atomOf v'
                  | Just a => trTerm tr (subst a sc) ps
@@ -716,7 +716,7 @@ mutual
   -- A constructor applied to `ps`: a flat value, or a newtype's function
   -- when the context unwraps it.
   conApp : {auto c : Ref Ctxt Defs} -> {auto s : Ref FlatSt FlatState} ->
-           Tr -> FC -> Name -> (tag : Int) -> (arity : Nat) -> List Pending -> Core FlatExp
+           Tr -> FC -> Name -> (tag : Int) -> (arity : Nat) -> List Pending -> Core Exp
   conApp tr fc n tag arity ps
       = do Just (cargs, rest) <- pure (takeArgs arity ps)
              | Nothing => fail tr fc NotStatic
@@ -738,7 +738,7 @@ mutual
                 _ => fail tr fc (Unhandled "A constructor applied to too many arguments")
 
   callGlobal : {auto c : Ref Ctxt Defs} -> {auto s : Ref FlatSt FlatState} ->
-               Tr -> FC -> Name -> List Pending -> Core FlatExp
+               Tr -> FC -> Name -> List Pending -> Core Exp
   callGlobal tr fc n ps
       = do defs <- get Ctxt
            Just gdef <- lookupCtxtExact n (gamma defs)
@@ -756,10 +756,10 @@ mutual
 
   -- The run-time arguments of a call of a primitive, which must be flat.
   primArgs : {auto c : Ref Ctxt Defs} -> {auto s : Ref FlatSt FlatState} ->
-             Tr -> FC -> Name -> List (Applied, ClosedTerm) -> Core (List FlatExp)
+             Tr -> FC -> Name -> List (Applied, ClosedTerm) -> Core (List Exp)
   primArgs tr fc fn bas = traverse arg (filter runtime bas)
     where
-      arg : (Applied, ClosedTerm) -> Core FlatExp
+      arg : (Applied, ClosedTerm) -> Core Exp
       arg (b, a)
           = do Right _ <- laidOut b.type
                  | Left why => fail tr fc (CalleeNotFlat fn b.position !(quoteClosed b.type) why)
@@ -767,7 +767,7 @@ mutual
 
   primOp : {auto c : Ref Ctxt Defs} -> {auto s : Ref FlatSt FlatState} ->
            {arity : Nat} ->
-           Tr -> FC -> Name -> GlobalDef -> PrimFn arity -> List Pending -> Core FlatExp
+           Tr -> FC -> Name -> GlobalDef -> PrimFn arity -> List Pending -> Core Exp
   primOp tr fc fn gdef op ps
       = do Just (args, rest) <- pure (takeArgs arity ps)
              | Nothing => fail tr fc NotStatic
@@ -787,7 +787,7 @@ mutual
                              [] => pure (FOp fc op vs)
                              _ => fail tr fc (Unhandled "A primitive applied to too many arguments")
     where
-      crash : List ClosedTerm -> Core FlatExp
+      crash : List ClosedTerm -> Core Exp
       crash [_, msg]
           = do (PrimVal _ (Str str), _) <- whnfStatic tr msg
                  | _ => fail tr fc (ValueNotFlat (PrimVal fc (PrT StringType))
@@ -796,7 +796,7 @@ mutual
       crash _ = fail tr fc (Unhandled "A crash of another arity")
 
       -- Between types of one layout, a value is its own coercion.
-      believe : List ClosedTerm -> List Pending -> Core FlatExp
+      believe : List ClosedTerm -> List Pending -> Core Exp
       believe [a, b, x] rest
           = do defs <- get Ctxt
                a' <- resolved a
@@ -812,7 +812,7 @@ mutual
 
   -- An `%extern` or `%foreign` primitive.
   primitive : {auto c : Ref Ctxt Defs} -> {auto s : Ref FlatSt FlatState} ->
-              Tr -> FC -> Name -> GlobalDef -> (arity : Nat) -> List Pending -> Core FlatExp
+              Tr -> FC -> Name -> GlobalDef -> (arity : Nat) -> List Pending -> Core Exp
   primitive tr fc fn gdef arity ps
       = do Just (args, rest) <- pure (takeArgs arity ps)
              | Nothing => fail tr fc NotStatic
@@ -832,7 +832,7 @@ mutual
   -- the call is applied to, is passed as a closure.
   unfold : {auto c : Ref Ctxt Defs} -> {auto s : Ref FlatSt FlatState} ->
            {targs : _} ->
-           Tr -> FC -> Name -> GlobalDef -> CaseTree targs -> List Pending -> Core FlatExp
+           Tr -> FC -> Name -> GlobalDef -> CaseTree targs -> List Pending -> Core Exp
   unfold tr fc fn gdef ct ps
       = do Just (args, rest) <- pure (takeArgs (length targs) ps)
              | Nothing => fail tr fc NotStatic
@@ -847,7 +847,7 @@ mutual
 
   bindArgs : {auto c : Ref Ctxt Defs} -> {auto s : Ref FlatSt FlatState} ->
              Tr -> FC -> List (Applied, ClosedTerm) ->
-             Core (List ClosedTerm, FlatExp -> FlatExp, Tr)
+             Core (List ClosedTerm, Exp -> Exp, Tr)
   bindArgs tr fc [] = pure ([], id, tr)
   bindArgs tr fc ((b, a) :: bas)
       = if isErased b.rig || isAtom tr a then keep a else
@@ -861,14 +861,14 @@ mutual
              (as, wrap, tr') <- bindArgs (addVar fv !(quoteClosed b.type) tr) fc bas
              pure (Ref fc Bound x :: as, FLet fc fv v . wrap, tr')
     where
-      keep : ClosedTerm -> Core (List ClosedTerm, FlatExp -> FlatExp, Tr)
+      keep : ClosedTerm -> Core (List ClosedTerm, Exp -> Exp, Tr)
       keep a' = do (as, wrap, tr') <- bindArgs tr fc bas
                    pure (a' :: as, wrap, tr')
 
   -- A call of a function that is not unfolded: a call of its flat form, or,
   -- at static arguments, of its copy at them.
   demand : {auto c : Ref Ctxt Defs} -> {auto s : Ref FlatSt FlatState} ->
-           Tr -> FC -> Name -> GlobalDef -> List Pending -> Core FlatExp
+           Tr -> FC -> Name -> GlobalDef -> List Pending -> Core Exp
   demand tr fc fn gdef ps
       = do sig <- signature (type gdef)
            Just (params, res) <- groundSignature sig
@@ -898,7 +898,7 @@ mutual
   -- ones, renamed in the copy so that one copy serves every call whose static
   -- arguments are the same terms.
   copy : {auto c : Ref Ctxt Defs} -> {auto s : Ref FlatSt FlatState} ->
-         Tr -> FC -> Name -> GlobalDef -> List Pending -> Core FlatExp
+         Tr -> FC -> Name -> GlobalDef -> List Pending -> Core Exp
   copy tr fc fn gdef ps
       = do defs <- get Ctxt
            (parts, params, actuals, res) <- walk [] 0 (mapMaybe pendingArg ps)
@@ -1031,7 +1031,7 @@ mutual
   ||| Translate a case tree, its variables bound to `env`, applied to `ps`.
   trTree : {auto c : Ref Ctxt Defs} -> {auto s : Ref FlatSt FlatState} ->
            {vars : _} ->
-           Tr -> SubstEnv vars Scope.empty -> CaseTree vars -> List Pending -> Core FlatExp
+           Tr -> SubstEnv vars Scope.empty -> CaseTree vars -> List Pending -> Core Exp
   trTree tr env (STerm _ t) ps = trTerm tr (instantiate env t) ps
   trTree tr env (Unmatched msg) ps = pure (FCrash tr.site msg)
   trTree tr env Impossible ps = pure (FCrash tr.site "Impossible case")
@@ -1051,14 +1051,14 @@ mutual
   flatCase : {auto c : Ref Ctxt Defs} -> {auto s : Ref FlatSt FlatState} ->
              {vars : _} ->
              Tr -> SubstEnv vars Scope.empty -> FC -> Name -> ClosedTerm ->
-             List (CaseAlt vars) -> List Pending -> Core FlatExp
+             List (CaseAlt vars) -> List Pending -> Core Exp
   flatCase tr env fc x ty alts ps
       = do defs <- get Ctxt
            tyNF <- nf defs Env.empty ty
            (cas, def) <- go tyNF alts
            pure (FCase fc (FVar fc x) cas def)
     where
-      go : ClosedNF -> List (CaseAlt vars) -> Core (List FlatAlt, Maybe FlatExp)
+      go : ClosedNF -> List (CaseAlt vars) -> Core (List FlatAlt, Maybe Exp)
       go tyNF [] = pure ([], Nothing)
       go tyNF (ConCase cn tag args sc :: as)
           = do (vals, fvs, tr') <- openCon tr fc tyNF cn args Nothing
@@ -1155,7 +1155,7 @@ mutual
   erasedCase : {auto c : Ref Ctxt Defs} -> {auto s : Ref FlatSt FlatState} ->
                {vars : _} ->
                Tr -> SubstEnv vars Scope.empty -> FC -> List (CaseAlt vars) ->
-               List Pending -> Core FlatExp
+               List Pending -> Core Exp
   erasedCase tr env fc [ConCase _ _ args sc] ps
       = do vals <- traverse (\a => Ref fc Bound <$> fresh a) args
            let Just env' = extendSubst args vals env
@@ -1170,7 +1170,7 @@ mutual
   staticCase : {auto c : Ref Ctxt Defs} -> {auto s : Ref FlatSt FlatState} ->
                {vars : _} ->
                Tr -> SubstEnv vars Scope.empty -> ClosedTerm -> Term vars ->
-               List (CaseAlt vars) -> List Pending -> Core FlatExp
+               List (CaseAlt vars) -> List Pending -> Core Exp
   staticCase tr env scr scTy alts ps
       = do (v, origin) <- whnfStatic tr scr
            case getFnArgs v of
@@ -1190,7 +1190,7 @@ mutual
                           | Nothing => fail tr (getLoc scr) (Unhandled "A constructor pattern of another arity")
                         trTree tr' env' sc ps
     where
-      conAlt : Name -> List ClosedTerm -> List (CaseAlt vars) -> Core FlatExp
+      conAlt : Name -> List ClosedTerm -> List (CaseAlt vars) -> Core Exp
       conAlt cn cargs [] = pure (FCrash (getLoc scr) "Unmatched case")
       conAlt cn cargs (ConCase n _ args sc :: as)
           = if !(toFullNames n) == cn
@@ -1201,7 +1201,7 @@ mutual
       conAlt cn cargs (DefaultCase sc :: _) = trTree tr env sc ps
       conAlt cn cargs (_ :: as) = conAlt cn cargs as
 
-      constAlt : Constant -> List (CaseAlt vars) -> Core FlatExp
+      constAlt : Constant -> List (CaseAlt vars) -> Core Exp
       constAlt k [] = pure (FCrash (getLoc scr) "Unmatched case")
       constAlt k (ConstCase k' sc :: as)
           = if k == k' then trTree tr env sc ps else constAlt k as
@@ -1524,7 +1524,7 @@ shape sk
       ordinary tag ci = AsObject (fromMaybe tag (intrinsicTag ci))
 
 mutual
-  forgetExp : {auto c : Ref Ctxt Defs} -> {vars : _} -> FlatExp -> Core (CExp vars)
+  forgetExp : {auto c : Ref Ctxt Defs} -> {vars : _} -> Exp -> Core (CExp vars)
   forgetExp (FVar fc x)
       = case isVar x vars of
              Just (MkVar p) => pure (CLocal fc p)
@@ -1580,7 +1580,7 @@ mutual
 
       -- The newtype's field is the scrutinee, and its other run-time fields,
       -- such as `MkIORes`'s world, are erased.
-      unwrap : {vars' : _} -> Maybe Nat -> List FlatVar -> FlatExp -> Core (CExp vars')
+      unwrap : {vars' : _} -> Maybe Nat -> List FlatVar -> Exp -> Core (CExp vars')
       unwrap k [] sc = forgetExp sc
       unwrap k (v :: vs) sc
           = do val <- if k == Just 0 then forgetExp scr else pure (CErased fc)
@@ -1606,7 +1606,7 @@ mutual
   forgetExp (FCrash fc msg) = pure (CCrash fc msg)
   forgetExp (FNone fc) = pure (CErased fc)
 
-  forgetArgs : {auto c : Ref Ctxt Defs} -> {vars : _} -> Vect n FlatExp -> Core (Vect n (CExp vars))
+  forgetArgs : {auto c : Ref Ctxt Defs} -> {vars : _} -> Vect n Exp -> Core (Vect n (CExp vars))
   forgetArgs [] = pure []
   forgetArgs (a :: as) = pure (!(forgetExp a) :: !(forgetArgs as))
 
@@ -1630,10 +1630,10 @@ forget d
          constructorCDef (MkFun args !(forgetExp {vars = args} d.body))
 
 -- The definitions a flat form refers to at run time.
-references : FlatExp -> List Name
+references : Exp -> List Name
 references e = contents (go e)
   where
-    go : FlatExp -> Builder Name
+    go : Exp -> Builder Name
     go (FVar _ _) = neutral
     go (FLet _ _ v sc) = go v <+> go sc
     go (FConst _ _) = neutral

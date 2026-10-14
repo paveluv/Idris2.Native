@@ -1,12 +1,18 @@
 -- The runtime reads objects as words, with rules restated from
--- Compiler.Native.HeapObject, which the compiler uses on typed headers:
+-- Compiler.Native.HeapObject.Header, which the compiler uses on typed headers:
 -- here the two are compared, for every kind with each part at its
 -- boundaries, so that a change to one that misses the other is caught.
 -- `objectWords` is the size including the header; `scannedWords` the
 -- first word that holds a value and how many do.
 module Main
 
-import Compiler.Native.HeapObject
+import Compiler.Native.HeapObject.BignumEnc
+import Compiler.Native.HeapObject.Enc
+import Compiler.Native.HeapObject.Header
+import Compiler.Native.HeapObject.Kind
+import Compiler.Native.HeapObject.LayoutWord
+import Compiler.Native.HeapObject.StringEnc
+import Compiler.Native.HeapObject.ValEnc
 import Runtime.Object
 
 TestEnc : Enc
@@ -37,7 +43,7 @@ check (k ** h) =
       (from, count) = scannedWords id w
       (from', count') = scanned h
   in (if id /= kindId k then [show h ++ ": the kind read is " ++ show id] else [])
-     ++ (if size /= cast (HeapObject.objectWords h) then [show h ++ ": " ++ show size ++ " words, not " ++ show (HeapObject.objectWords h)] else [])
+     ++ (if size /= cast (Header.objectWords h) then [show h ++ ": " ++ show size ++ " words, not " ++ show (Header.objectWords h)] else [])
      ++ (if (from, count) /= (cast from', cast count') then [show h ++ ": scanned " ++ show (from, count) ++ ", not " ++ show (from', count')] else [])
 
 main : IO ()

@@ -4,4 +4,8 @@
 # the producer is compiled: Rejected.idr typechecks exactly when each of its
 # `failing` blocks fails, for the reason it names. It uses the code
 # generator's modules, installed as the package `idris2-native`.
-idris2 -p idris2-native -p idris2 --check Rejected.idr > /dev/null && echo "every failing block was rejected"
+# `idris2 --check` can report an error and still exit with 0, so the output
+# is what says whether a block that should fail did not, or the rest failed.
+idris2 -p idris2-native -p idris2 --check Rejected.idr > check.out 2>&1
+if grep -q "Error" check.out; then grep -A6 "Error" check.out; else echo "every failing block was rejected"; fi
+rm -f check.out

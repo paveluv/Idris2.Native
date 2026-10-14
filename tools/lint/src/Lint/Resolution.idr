@@ -34,6 +34,7 @@ import Idris.SetOptions
 import Idris.Syntax
 import Idris.Syntax.TTC
 import Libraries.Data.NameMap
+import Libraries.Data.WithDefault
 import Libraries.Utils.Path
 import Lint.Finding
 import Lint.Source
@@ -87,6 +88,10 @@ record ResolvedModule where
   imports : List (String, Bool)
   uses : List Use
   accumulations : List Accumulations
+  ||| Its exported functions, those that take arguments, whose types and
+  ||| bodies refer to nothing of ours but themselves and write no string:
+  ||| each by its name and where it is.
+  generics : List (String, Int, Int)
 
 ||| The program resolved: our modules, and the imports of every module
 ||| loaded, ours and those of the packages, to follow their re-exports.
@@ -447,6 +452,23 @@ countIn js self d tm = case getFnArgs tm of
     inner (TForce _ _ t) = countIn js self d t
     inner _ = pure ()
 
+||| Whether a term writes a string: a string names something, a namespace or
+||| a symbol, and makes the definition a fact of its module.
+writesString : Term vs -> Bool
+writesString (PrimVal _ (Str _)) = True
+writesString (App _ f a) = writesString f || writesString a
+writesString (Bind _ _ b sc) = inBinder b || writesString sc
+  where
+    inBinder : Binder (Term vs) -> Bool
+    inBinder (Let _ _ v _) = writesString v
+    inBinder (PLet _ _ v _) = writesString v
+    inBinder _ = False
+writesString (As _ _ _ p) = writesString p
+writesString (TDelayed _ _ t) = writesString t
+writesString (TDelay _ _ _ t) = writesString t
+writesString (TForce _ _ t) = writesString t
+writesString _ = False
+
 ||| A definition's accumulations, counted in the right-hand sides of its
 ||| clauses: at its end, by left folds, and structured.
 accumulationsOf : {auto c : Ref Ctxt Defs} -> {auto n : Ref Counting Count} ->
@@ -509,14 +531,16 @@ setUp ours = do
 
 ||| A module of ours, resolved from the context it is loaded into.
 resolveModule : {auto c : Ref Ctxt Defs} -> {auto n : Ref Counting Count} ->
-                SortedSet String -> SortedSet String -> List (Name, List Nat) -> (SourceFile, List Name) -> Core ResolvedModule
-resolveModule mods implementations js (f, names) = do
+                (ours : SortedSet String) -> SortedSet String -> SortedSet String -> List (Name, List Nat) -> (SourceFile, List Name) ->
+                Core ResolvedModule
+resolveModule ours mods implementations js (f, names) = do
   let m = show f.mod.moduleNS
   defs <- get Ctxt
   is <- importsOf m
   perName <- traverse (definition defs) names
-  let uses = Prelude.toList (the (SortedSet (String, String, Bool)) (fromList (filter (\(u, _, _) => u /= m) (joined [ us | (us, _) <- perName ]))))
-  pure (MkResolvedModule m f.path is (map (\(u, r, s) => MkUse u r s) uses) (mapMaybe (\(_, a) => a) perName))
+  let uses = Prelude.toList (the (SortedSet (String, String, Bool)) (fromList (filter (\(u, _, _) => u /= m) (joined [ us | (us, _, _) <- perName ]))))
+  pure (MkResolvedModule m f.path is (map (\(u, r, s) => MkUse u r s) uses)
+          (mapMaybe (\(_, a, _) => a) perName) (mapMaybe (\(_, _, g) => g) perName))
   where
     -- the head of a type, as its name is written
     headOf : Defs -> Term vs -> Core String
@@ -546,17 +570,40 @@ resolveModule mods implementations js (f, names) = do
       pure (map (\u => (u, shown, searched)) (moduleOfName mods r'))
 
 
-    definition : Defs -> Name -> Core (List (String, String, Bool), Maybe Accumulations)
+    -- the explicit arguments a type takes
+    arguments : Term vs -> Nat
+    arguments (Bind _ _ (Pi _ _ Explicit _) sc) = S (arguments sc)
+    arguments (Bind _ _ (Pi _ _ _ _) sc) = arguments sc
+    arguments _ = Z
+
+    -- a function at a module's top, or in a namespace block, by its own name
+    atTop : Name -> Bool
+    atTop (NS _ (UN (Basic _))) = True
+    atTop _ = False
+
+    definition : Defs -> Name -> Core (List (String, String, Bool), Maybe Accumulations, Maybe (String, Int, Int))
     definition defs nm = do
       Just g <- lookupCtxtExact nm (gamma defs)
-        | Nothing => pure ([], Nothing)
+        | Nothing => pure ([], Nothing, Nothing)
       let refs = keys (fromMaybe empty g.refersToM) ++ keys (getRefs (UN Underscore) g.type) ++ clauseRefs g.definition
       us <- mapMaybe id <$> traverse (used defs) refs
       (atEnd, folds, structured) <- accumulationsOf js g
       let (line, col) = startOf g.location
+      me <- full (gamma defs) nm
+      resolvedRefs <- traverse (full (gamma defs)) refs
+      let ofOurs = any (\r => r /= me && maybe False (\u => contains u ours) (moduleOfName mods r)) resolvedRefs
+          isFunction = case g.definition of
+                         PMDef _ _ _ _ _ => arguments g.type > 0
+                         _ => False
+          names = case g.definition of
+                    PMDef _ _ _ _ pats => any (\(_ ** (_, _, rhs)) => writesString rhs) pats
+                    _ => False
+          generic = atTop me && collapseDefault g.visibility /= Private && isFunction
+                    && not (contains (show me) implementations) && not ofOurs && not names
       pure (us, case writtenName nm of
                   Just s => if atEnd + folds + structured > 0 then Just (MkAccumulations s line col atEnd folds structured) else Nothing
-                  Nothing => Nothing)
+                  Nothing => Nothing,
+                if generic then Just (nameRoot me, line, col) else Nothing)
       where
         -- what a definition's clauses name, the constructors its patterns
         -- match among them, which its references leave out
@@ -616,7 +663,7 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
         let implementations = the (SortedSet String) (fromList (map show found))
         js <- joiners
         n <- newRef Counting (MkCount 0 0 0 empty)
-        rs <- traverse (resolveModule mods implementations js)
+        rs <- traverse (resolveModule ours mods implementations js)
                        [ (f, fromMaybe [] (lookup (show f.mod.moduleNS) byModule)) | (f, _) <- located ]
         imports <- traverse (\m => (m,) <$> importsOf m) (Prelude.toList mods)
         pure (Right (MkResolution rs (fromList imports)))

@@ -26,12 +26,16 @@
 -- position; one taking a `Bits64` where `base` says `Int` is refused.
 module Main
 
-import Compiler.Native.HeapObject
-import Compiler.Native.IRCommon
-import Compiler.Native.Linkage
+import Compiler.Native.HeapObject.BignumEnc
+import Compiler.Native.HeapObject.Enc
+import Compiler.Native.HeapObject.StringEnc
+import Compiler.Native.HeapObject.ValEnc
+import Compiler.Native.IRCommon.Ty
+import Compiler.Native.Linkage.Routine
 import Compiler.Native.Lower
 import Compiler.Native.Platform
-import Compiler.Native.TermIR
+import Compiler.Native.TermIR.Decls
+import Compiler.Native.TermIR.Program
 import Compiler.VMCode
 import Core.CompileExpr
 import Core.FC

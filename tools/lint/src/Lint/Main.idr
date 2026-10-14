@@ -32,6 +32,7 @@ module Lint.Main
 
 import Data.Either
 import Data.List
+import Data.SortedSet
 import Data.String
 import Idris.Syntax
 import Lint.Finding
@@ -141,12 +142,14 @@ lint : List (SourceFile, List Declared, Mentions) -> List SourceFile -> Maybe (E
 lint fdms ps res =
   let fs = map (\(f, _, _) => f) fdms
       fds = map (\(f, ds, _) => (f, ds)) fdms
-      fms = map (\(f, _, ms) => (f, ms)) fdms
       resolved = case res of
         Nothing => []
         Just (Left problems) => problems
-        Just (Right r) => resolvedRules fms r
-      all = joined (map (\(f, ds, ms) => fileRules f ms ds) fdms) ++ joined (map programRules ps) ++ graphRules fs ++ sameName fds ++ resolved
+        Just (Right r) => resolvedRules fdms r
+      ours = the (SortedSet String) (fromList (map (\f => show f.mod.moduleNS) fs))
+      aliases = joined (map (\(f, _, ms) => importAlias ours f ms.refs) fdms)
+      all = joined (map (\(f, ds, ms) => fileRules f ms ds) fdms) ++ joined (map programRules ps) ++ graphRules fs ++ sameName fds
+            ++ parentUnique fs ++ aliases ++ resolved
   in sort (foldl (\acc, f => suppress f acc) all (fs ++ ps))
 
 ||| The files under the paths, parsed, and a finding for each that does not
@@ -206,7 +209,6 @@ main = do
   (ps, failedPrograms) <- parsed o.programs
   fdms <- traverse (\f => do ds <- declared f; ms <- mentions f.mod.decls; pure (f, ds, ms)) fs
   let fds = map (\(f, ds, _) => (f, ds)) fdms
-      fms = map (\(f, _, ms) => (f, ms)) fdms
   res <- if o.resolved then Just <$> resolve fs else pure Nothing
   if o.health
     then do
@@ -216,7 +218,7 @@ main = do
           exitWith (ExitFailure 2)
         Just (Right r) => pure (Just r)
         Nothing => pure Nothing
-      let cs = health fds ++ maybe [] (resolvedHealth fms) r
+      let cs = health fds ++ maybe [] (resolvedHealth fdms) r
           overall = score cs
       putStrLn ("architectural health: " ++ show overall)
       for_ (groups cs) $ \g => do

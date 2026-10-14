@@ -6,7 +6,7 @@
 # through `Canvas`'s re-export; `Viewer` reaches it through a façade, and a
 # package's module through a package's re-export, as meant; `Spare` imports
 # a module it does not use; `JoinAll` accumulates lists in each shape, the
-# superlinear ones reported, a warning. Then the score's components that
+# superlinear ones reported, a warning; `Shape` exports a generic helper. Then the score's components that
 # the resolution measures.
 idris2 --build fixtures.ipkg > /dev/null
 ../../../tools/lint/build/exec/idris2-native-lint --resolved --warnings .

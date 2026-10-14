@@ -8,6 +8,7 @@
 module Lint.Graph
 
 import Data.List
+import Data.List1
 import Data.SortedMap
 import Data.SortedSet
 import Data.String
@@ -44,13 +45,13 @@ layerOf m =
   else Nothing
 
 ||| The modules of other layers that a layer may import: a module of no layer
-||| among ours (a program) by none, and the runtime only the two modules it
-||| shares with the compiler.
+||| among ours (a program) by none, and the runtime only what it shares with
+||| the compiler: the heap-object model's modules, and `Flat.Uniform`.
 mayImport : Layer -> String -> Bool
 mayImport DataLayer m = False
 mayImport FlatLayer m = layerOf m == Just DataLayer || layerOf m == Just FlatLayer
 mayImport NativeLayer m = maybe False (\l => l == DataLayer || l == FlatLayer || l == NativeLayer) (layerOf m)
-mayImport RuntimeLayer m = layerOf m == Just RuntimeLayer || m == "Compiler.Native.HeapObject" || m == "Flat.Uniform"
+mayImport RuntimeLayer m = layerOf m == Just RuntimeLayer || isPrefixOf "Compiler.Native.HeapObject." m || m == "Flat.Uniform"
 mayImport LintLayer m = layerOf m == Just LintLayer
 
 ||| Whether an import is allowed by the layers, given the modules that are
@@ -92,16 +93,103 @@ graphRules fs =
         start EmptyFC = (0, 0)
 
 ------------------------------------------------------------------------------
+-- Groups and qualifiers
+--
+-- A module's group is its immediate parent component: `LocatedIR` for
+-- `Compiler.Native.LocatedIR.Instr`. Names of two groups may be the same;
+-- where they meet, a module qualifies one by its group, and one component
+-- is all a qualifier ever needs.
+
+||| A module's parent: its name without the last component.
+parentOf : String -> Maybe String
+parentOf m = case reverse (forget (Data.String.split (== '.') m)) of
+  (_ :: rest@(_ :: _)) => Just (fastConcat (intersperse "." (reverse rest)))
+  _ => Nothing
+
+||| A module's group: the last component of its parent.
+export
+groupOf : String -> Maybe String
+groupOf m = parentOf m >>= \p => last' (forget (Data.String.split (== '.') p))
+
+||| `parent-unique`: no two of our groups have the same name, so that a
+||| group's name, as a qualifier, means one group. Reported at a module of
+||| each.
+export
+parentUnique : List SourceFile -> List Finding
+parentUnique fs =
+  let parents = the (SortedSet String) (fromList (mapMaybe (parentOf . moduleOf) fs))
+      byName = foldl (\acc, p => let g = fromMaybe p (last' (forget (Data.String.split (== '.') p))) in
+                                   insert g (p :: fromMaybe [] (lookup g acc)) acc)
+                     (the (SortedMap String (List String)) empty) (Prelude.toList parents)
+  in joined [ mapMaybe (report g ps) ps | (g, ps) <- SortedMap.toList byName, length ps > 1 ]
+  where
+    report : String -> List String -> String -> Maybe Finding
+    report g ps p = case find (\f => parentOf (moduleOf f) == Just p) fs of
+      Nothing => Nothing
+      Just f => Just (MkFinding "parent-unique" f.path 0 0 g
+                        ("the group `" ++ g ++ "` is also " ++ fastConcat (intersperse ", " (map (\o => "`" ++ o ++ "`") (filter (/= p) ps)))
+                         ++ ": a group's name qualifies one group"))
+
+||| `import-alias`: a module is imported under another name only as its
+||| group, so that a qualifier is always a group's name; and a name of ours
+||| is qualified by one component at most, its group, never by a group and
+||| a module (`LocatedIR.Program.Program`): a module that must qualify a
+||| name imports its module as its group.
+export
+importAlias : SortedSet String -> SourceFile -> List (FC, Name) -> List Finding
+importAlias ours f refs =
+  [ MkFinding "import-alias" f.path l c (show i.path)
+      ("`" ++ show i.path ++ "` imported as `" ++ show i.nameAs ++ "`: a module is imported as its group, "
+       ++ maybe "and this one has none" (\g => "`" ++ g ++ "`") (groupOf (show i.path)))
+  | i <- f.mod.imports, show i.nameAs /= show i.path
+  , groupOf (show i.path) /= Just (show i.nameAs)
+  , let (l, c) = start i.loc ]
+  ++
+  mapMaybe deep refs
+  where
+    start : FC -> (Int, Int)
+    start (MkFC _ s _) = s
+    start (MkVirtualFC _ s _) = s
+    start EmptyFC = (0, 0)
+
+    -- the module of ours a qualifier names, if it names one
+    ofOurs : String -> Maybe String
+    ofOurs q = find (\m => m == q || isSuffixOf ("." ++ q) m) (Prelude.toList ours)
+
+    report : FC -> (qualifier, name, m : String) -> Finding
+    report fc q n m =
+      let (l, c) = start fc
+          g = fromMaybe m (groupOf m)
+      in MkFinding "import-alias" f.path l c (q ++ "." ++ n)
+           ("`" ++ q ++ "." ++ n ++ "` is qualified by more than its group: import `" ++ m
+            ++ "` as `" ++ g ++ "` and write `" ++ g ++ "." ++ n ++ "`")
+
+    deep : (FC, Name) -> Maybe Finding
+    deep (fc, NS ns n) =
+      let parts = reverse (unsafeUnfoldNamespace ns)
+          q = fastConcat (intersperse "." parts)
+      in if length parts < 2 then Nothing else map (report fc q (nameRoot n)) (ofOurs q)
+    deep _ = Nothing
+
+||| Names listed for a detail, the first few.
+export
+listed : List String -> String
+listed ns =
+  let shown = map (\n => "`" ++ n ++ "`") (take 6 ns)
+      more = if length ns > 6 then [show (minus (length ns) 6) ++ " more"] else []
+  in fastConcat (intersperse ", " (shown ++ more))
+
+------------------------------------------------------------------------------
 -- Names that meet
 
-||| A name defined in several of our modules and seen together in one: the
-||| modules that define it, and one where they meet.
+||| A name defined in several of our modules and seen together: the modules
+||| that define it, and those where they meet.
 public export
 record Meeting where
   constructor MkMeeting
   name : String
   definers : List String
-  inModule : String
+  inModules : List String
 
 ||| The modules whose names a module sees: those it imports, and those they
 ||| re-export publicly, in turn.
@@ -132,7 +220,8 @@ meetings fds =
       found = foldl (\acc, fd => meet acc imports reexports visibleIn fd) empty fds
       overloads = the (SortedSet (String, String))
                     (fromList (joined [ map (moduleOf f,) (d.defines ++ d.visible) | (f, ds) <- fds, d <- ds, typedOverload d ]))
-  in filter (\mt => not (exempt overloads mt.name mt.definers)) (map (\(n, (ds, m)) => MkMeeting n ds m) (SortedMap.toList found))
+  in filter (\mt => not (exempt overloads mt.name mt.definers))
+            (map (\(n, (ds, ms)) => MkMeeting n (Prelude.toList ds) (Prelude.toList ms)) (SortedMap.toList found))
   where
     exempt : SortedSet (String, String) -> String -> List String -> Bool
     exempt overloads n defs = all (\d => contains (d, n) overloads) defs
@@ -140,8 +229,8 @@ meetings fds =
     tag : String -> List String -> List (String, String)
     tag m = map (\n => (n, m))
 
-    meet : SortedMap String (List String, String) -> SortedMap String (List String) -> SortedMap String (List String) ->
-           SortedMap String (List String) -> (SourceFile, List Declared) -> SortedMap String (List String, String)
+    meet : SortedMap String (SortedSet String, SortedSet String) -> SortedMap String (List String) -> SortedMap String (List String) ->
+           SortedMap String (List String) -> (SourceFile, List Declared) -> SortedMap String (SortedSet String, SortedSet String)
     meet acc imports reexports visibleIn (f, ds) =
       let m = moduleOf f
           own = tag m (joined (map (.defines) ds))
@@ -149,12 +238,16 @@ meetings fds =
           written = the (SortedSet String) (fromList (joined (map (.bare) ds)))
           byName = foldl (\mp, (n, d) => if contains n written then insert n (insert d (fromMaybe empty (lookup n mp))) mp else mp)
                          (the (SortedMap String (SortedSet String)) empty) (own ++ others)
-      in foldl (\a, (n, defs) => let ds' = Prelude.toList defs in
-                                   if length ds' < 2 || isJust (lookup n a) then a else insert n (ds', m) a)
+      in foldl (\a, (n, defs) => if length (Prelude.toList defs) < 2 then a
+                                  else let (ds, ms) = fromMaybe (empty, empty) (lookup n a) in
+                                       insert n (union ds defs, insert m ms) a)
                acc (SortedMap.toList byName)
 
-||| `same-name`, a warning: one name, two meanings, meeting in a module: each
-||| definition is reported, with the others and where they meet.
+||| `same-name`, a warning: one name, two meanings, written bare in a module
+||| that sees both. Modules may define the same names; where they meet, a
+||| module writes one qualified, importing its module as its group
+||| (`import Compiler.Native.LocatedIR.Instr as LocatedIR`, `LocatedIR.Load`).
+||| Each definition is reported, with the others and where they meet.
 export
 sameName : List (SourceFile, List Declared) -> List Finding
 sameName fds = joined (map report (meetings fds))
@@ -180,7 +273,8 @@ sameName fds = joined (map report (meetings fds))
                 others = filter (/= d) mt.definers
             in Just (MkFinding "same-name" f.path l c mt.name
                       ("`" ++ mt.name ++ "` is also defined in " ++ fastConcat (intersperse ", " (map (\o => "`" ++ o ++ "`") others))
-                       ++ "; they meet in `" ++ mt.inModule ++ "`"))
+                       ++ "; they meet bare in " ++ listed mt.inModules
+                       ++ (case mt.inModules of [_] => ", which qualifies"; _ => ", each of which qualifies") ++ " one by its group"))
 
 ------------------------------------------------------------------------------
 -- Health
@@ -212,14 +306,6 @@ record Component where
   value : Nat
   counted : String
   offenders : List Offender
-
-||| Names listed for a detail, the first few.
-export
-listed : List String -> String
-listed ns =
-  let shown = map (\n => "`" ++ n ++ "`") (take 6 ns)
-      more = if length ns > 6 then [show (minus (length ns) 6) ++ " more"] else []
-  in fastConcat (intersperse ", " (shown ++ more))
 
 ||| The modules each module's imports reach, ours only.
 reaches : SortedMap String (List String) -> String -> SortedSet String
@@ -328,9 +414,9 @@ health fds =
          ("modules named after a symbol they define: " ++ show (minus n (length unnamed)) ++ " of " ++ show n)
          [ MkOffender (moduleOf f) 1 ("defines " ++ listed (joined (map (.visible) ds))) | (f, ds) <- unnamed ]
      , MkComponent "readability" "uniqueness" (percent unique (length exportedNames))
-         ("exported names that meet no other definition: " ++ show unique ++ " of " ++ show (length exportedNames))
+         ("exported names never written bare where another of the name is seen: " ++ show unique ++ " of " ++ show (length exportedNames))
          [ MkOffender mt.name (length (filter (\nm => fst nm == mt.name) exportedNames))
-             ("defined in " ++ listed mt.definers ++ "; they meet in `" ++ mt.inModule ++ "`")
+             ("defined in " ++ listed mt.definers ++ "; they meet bare in " ++ listed mt.inModules)
          | mt <- ms ]
      , MkComponent "readability" "scoping" (percent scopedHelpers (scopedHelpers + single))
          ("helpers local to a function or a namespace block, of those and the ones a single user leaves module-wide: "

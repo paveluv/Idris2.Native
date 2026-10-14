@@ -5,7 +5,39 @@
 -- program.
 module Rejected
 
+import Compiler.Native.HeapObject.Enc
+import Compiler.Native.HeapObject.Header
+import Compiler.Native.HeapObject.Kind
+import Compiler.Native.HeapObject.ValEnc
+import Compiler.Native.IRCommon.Area
+import Compiler.Native.IRCommon.ConIds
+import Compiler.Native.IRCommon.Operators.ArithOp
+import Compiler.Native.IRCommon.Operators.Rel
+import Compiler.Native.IRCommon.Operators.UnOp
+import Compiler.Native.IRCommon.Ty
+import Compiler.Native.TermIR.Body
 import Compiler.Native.TermIR.Build
+import Compiler.Native.TermIR.Conv
+import Compiler.Native.TermIR.Decls
+import Compiler.Native.TermIR.Def
+import Compiler.Native.TermIR.FieldTys
+import Compiler.Native.TermIR.Instr
+import Compiler.Native.TermIR.IsInt
+import Compiler.Native.TermIR.Mem
+import Compiler.Native.TermIR.Opnd
+import Compiler.Native.TermIR.OvOp
+import Compiler.Native.TermIR.Program
+import Compiler.Native.TermIR.Sig
+import Compiler.Native.TermIR.Sizes
+import Compiler.Native.TermIR.StaticDef
+import Compiler.Native.TermIR.StaticSig
+import Compiler.Native.TermIR.Var
+import Core.Name
+import Data.Distinct
+import Data.List
+import Data.List.Quantifiers
+import Data.So
+import Data.Vect
 
 %default total
 
@@ -108,12 +140,12 @@ failing "Mismatch between: Val and W64"
     return x
 
 -- A switch's keys repeat.
-failing "distinct (mapImpl fst [(1, return x), (1, return x)])"
+failing "(mapImpl fst [(1, return x), (1, return x)])"
   sameKey : Closed D InCPS False [Val]
   sameKey = build $ \[x] => switch (W 0) [(1, return x), (1, return x)] (return x)
 
 -- A program's names repeat.
-failing "So (distinct (mapImpl .name"
+failing "MkSig (nm \"f\") InCPS [] False, MkSig (nm \"f\")"
   twins : Program TestEnc (MkDecls [MkSig (nm "f") InCPS [] False, MkSig (nm "f") InCPS [] False] [])
   twins = MkProgram [Defined (Crash "a"), Defined (Crash "b")] [] (MkEntry here) noConIds
 

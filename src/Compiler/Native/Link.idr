@@ -1,13 +1,15 @@
 ||| Linking: one static executable from the runtime seed
 ||| (`Compiler.Native.Seed`) and a program's rendered instructions and
 ||| read-only data, the per-thread areas sized as the program needs
-||| (`Compiler.Native.Linkage`).
+||| (`Compiler.Native.Linkage.Areas`).
 module Compiler.Native.Link
 
 import Compiler.Native.Bytes
 import Compiler.Native.ELF
-import Compiler.Native.HeapObject
-import Compiler.Native.Linkage
+import Compiler.Native.HeapObject.Enc
+import Compiler.Native.HeapObject.ValEnc
+import Compiler.Native.Linkage.Areas
+import Compiler.Native.Linkage.Sym
 import Compiler.Native.Platform
 import Compiler.Native.Seed
 import Compiler.Native.X86.Asm
@@ -53,6 +55,14 @@ linkProgram enc window areas program items =
     offsetsFrom : Int -> List (Label, List Bits8) -> List (Label, Int)
     offsetsFrom _ [] = []
     offsetsFrom at ((l, item) :: rest) = (l, at) :: offsetsFrom (at + cast (length (pad8 item))) rest
+
+||| The default allocation window: 4 MiB, the bytes the inline bump may
+||| allocate before the runtime's slow path runs, which extends the window
+||| or collects. A tiny window, chosen with `linkWith` or the directive
+||| `nursery=`, makes tests take the slow path, and collect, often.
+export
+windowBytes : Int
+windowBytes = 4 * 1024 * 1024
 
 ||| `linkProgram` for a program that uses no per-thread area beyond the
 ||| seed's, with no read-only data of its own.

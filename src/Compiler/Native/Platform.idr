@@ -2,7 +2,7 @@
 ||| operating system. The architecture decides the instructions, the
 ||| registers and the conventions of calls (`Compiler.Native.Target`); the
 ||| operating system decides how a program reaches the system, which the
-||| runtime's OS services hide from the rest of it (`Compiler.Native.Linkage`),
+||| runtime's OS services hide from the rest of it (`Compiler.Native.Linkage.OSService`),
 ||| and the executable's format and branding.
 |||
 ||| How each operating system may be reached differs in kind, not only in

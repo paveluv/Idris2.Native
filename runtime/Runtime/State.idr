@@ -9,7 +9,7 @@
 ||| program sets decides how far the heap may grow.
 module Runtime.State
 
-import Compiler.Native.HeapObject
+import Compiler.Native.HeapObject.Kind
 import Runtime.Heap
 import Runtime.Memory
 

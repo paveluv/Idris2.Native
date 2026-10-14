@@ -1,0 +1,33 @@
+||| A static object's definition (`StaticDef`), and the words it holds.
+|||
+||| Part of the term IR (`Compiler.Native.TermIR.Program` says what it is).
+module Compiler.Native.TermIR.StaticDef
+
+import Compiler.Native.HeapObject.Enc
+import Compiler.Native.HeapObject.Header
+import Compiler.Native.HeapObject.Kind
+import Compiler.Native.IRCommon.Ty
+import Compiler.Native.TermIR.Conv
+import Compiler.Native.TermIR.Decls
+import Compiler.Native.TermIR.FieldTys
+import Compiler.Native.TermIR.Sig
+import Compiler.Native.TermIR.StaticSig
+import Compiler.Native.TermIR.Var
+import Core.Name
+import Data.So
+import Data.Vect
+
+%default total
+
+||| A word of a static object.
+public export
+data SField : Decls enc -> Type where
+  SWord : Int64 -> SField d
+  SRef : Var d.statics s -> SField d
+  SCode : Var d.sigs (MkSig n InCPS ps cv) -> SField d
+
+||| A static object's definition: its header and its words after it.
+public export
+data StaticDef : Decls enc -> StaticSig -> Type where
+  MkStaticDef : {0 d : Decls enc} -> {k : Kind} -> (h : Header enc k) -> {auto 0 ok : So (wellFormed h)} ->
+                Vect (fieldWords h) (SField d) -> StaticDef d (MkStaticSig s k)

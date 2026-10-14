@@ -12,7 +12,7 @@ module Runtime.Memory
 -- which use it, so it is loaded wherever this module is)
 import public Runtime.OS
 
-import Compiler.Native.HeapObject
+import Compiler.Native.HeapObject.Kind
 import Flat.Uniform
 -- the runtime's own, never re-exported: each module that uses it imports it
 import Runtime.Bits

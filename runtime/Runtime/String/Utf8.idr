@@ -24,7 +24,8 @@
 ||| string.
 module Runtime.String.Utf8
 
-import Compiler.Native.HeapObject
+import Compiler.Native.HeapObject.Header
+import Compiler.Native.HeapObject.Kind
 import Flat.Uniform
 import Runtime.Bits
 import Runtime.Heap

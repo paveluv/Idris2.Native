@@ -2,11 +2,16 @@
 ||| its header, or, for a continuation, the address of the code that resumes
 ||| it; from that word the collector learns the object's kind, its size and
 ||| which of its words hold values it must follow. These are the rules of
-||| `Compiler.Native.HeapObject`, restated over words for code that cannot
+||| `Compiler.Native.HeapObject.Header`, restated over words for code that cannot
 ||| hold a `Header`; the test `object001` keeps the two in step.
 module Runtime.Object
 
-import Compiler.Native.HeapObject
+-- lint: allow public-import: the flat translation reaches through this module
+-- (checking an importer's flat functions, it reaches this module's bodies,
+-- which use it, so it is loaded wherever this module is)
+import public Compiler.Native.HeapObject.Header
+
+import Compiler.Native.HeapObject.Kind
 import Runtime.Bits
 
 %default total

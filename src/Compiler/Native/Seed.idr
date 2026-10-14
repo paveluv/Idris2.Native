@@ -10,9 +10,15 @@
 module Compiler.Native.Seed
 
 import Compiler.Native.Bytes
-import Compiler.Native.HeapObject
-import Compiler.Native.IRCommon
-import Compiler.Native.Linkage
+import Compiler.Native.HeapObject.Enc
+import Compiler.Native.HeapObject.Header as HeapObject
+import Compiler.Native.HeapObject.Kind
+import Compiler.Native.HeapObject.LayoutWord
+import Compiler.Native.HeapObject.ValEnc
+import Compiler.Native.IRCommon.Area
+import Compiler.Native.Linkage.Areas
+import Compiler.Native.Linkage.ResumePoint
+import Compiler.Native.Linkage.Sym
 import Compiler.Native.Target
 import Compiler.Native.X86.Asm
 import Compiler.Native.X86.Target
@@ -21,6 +27,10 @@ import Data.Maybe
 import Data.SortedMap
 
 %default total
+
+-- the exit status of the abort stub, distinct from a crash's 1
+unsupportedStatus : Int
+unsupportedStatus = 70
 
 -- Linux x86-64 system calls and mmap arguments
 sysWrite, sysExitGroup : Integer
@@ -166,7 +176,7 @@ applyText abi venc =
 
     ||| A part of the closure header in `rax`, extracted into a register.
     part : Reg64 -> HeaderPart CLOSURE -> List Instr
-    part r p = extractField r (cast (fst (place p))) (cast (snd (place p)))
+    part r p = extractField r (cast (fst (HeapObject.place p))) (cast (snd (HeapObject.place p)))
 
     -- local labels, below the program's
     extend, copy, copied, copyArgs, regs, initClosure, pcopy, pdone, slow : Label

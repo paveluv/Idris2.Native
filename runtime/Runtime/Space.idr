@@ -20,7 +20,7 @@ module Runtime.Space
 -- which use it, so it is loaded wherever this module is)
 import public Runtime.State
 
-import Compiler.Native.HeapObject
+import Compiler.Native.HeapObject.Kind
 import Runtime.Bits
 import Runtime.Collect
 import Runtime.Heap

@@ -23,6 +23,7 @@ import Core.TT
 import Data.Builder
 import Data.List
 import Data.Vect
+import Flat.ConstType
 
 %default covering
 
@@ -214,45 +215,45 @@ FlatName = Name
 mutual
   ||| A term of the flat regime.
   public export
-  data FlatExp : Type where
+  data Exp : Type where
     ||| A variable.
-    FVar : FC -> Name -> FlatExp
+    FVar : FC -> Name -> Exp
     ||| A value bound to a variable, then the scope.
-    FLet : FC -> FlatVar -> FlatExp -> FlatExp -> FlatExp
+    FLet : FC -> FlatVar -> Exp -> Exp -> Exp
     ||| A constant of a machine type.
-    FConst : FC -> Constant -> FlatExp
+    FConst : FC -> Constant -> Exp
     ||| A primitive operation.
-    FOp : {arity : Nat} -> FC -> PrimFn arity -> Vect arity FlatExp -> FlatExp
+    FOp : {arity : Nat} -> FC -> PrimFn arity -> Vect arity Exp -> Exp
     ||| A call of a flat form, with its run-time arguments.
-    FCall : FC -> FlatName -> List FlatExp -> FlatExp
+    FCall : FC -> FlatName -> List Exp -> Exp
     ||| A call of an `%extern` or `%foreign` primitive, with the skeleton
     ||| and layout of its result's type, and its run-time arguments.
-    FPrim : FC -> Name -> Skeleton -> Layout -> List FlatExp -> FlatExp
+    FPrim : FC -> Name -> Skeleton -> Layout -> List Exp -> Exp
     ||| A constructor, with its tag if its type has several, the skeleton
     ||| and layout of its type, and its run-time fields.
     FCon : FC -> (con : Name) -> (tag : Maybe Int) -> Skeleton -> Layout ->
-           List FlatExp -> FlatExp
+           List Exp -> Exp
     ||| A case on a constructor or a constant, with a default.
-    FCase : FC -> FlatExp -> List FlatAlt -> Maybe FlatExp -> FlatExp
+    FCase : FC -> Exp -> List FlatAlt -> Maybe Exp -> Exp
     ||| The end of the program, with a message.
-    FCrash : FC -> String -> FlatExp
+    FCrash : FC -> String -> Exp
     ||| A value whose layout is empty, such as a token or `%World`.
-    FNone : FC -> FlatExp
+    FNone : FC -> Exp
 
   ||| An alternative of a case.
   public export
   data FlatAlt : Type where
     ||| A constructor, with its tag if its type has several, binding its
     ||| run-time fields.
-    FConAlt : (con : Name) -> (tag : Maybe Int) -> List FlatVar -> FlatExp -> FlatAlt
+    FConAlt : (con : Name) -> (tag : Maybe Int) -> List FlatVar -> Exp -> FlatAlt
     ||| A constant.
-    FConstAlt : Constant -> FlatExp -> FlatAlt
+    FConstAlt : Constant -> Exp -> FlatAlt
 
 mutual
   -- The text of an expression in pieces, joined once by `showExp`:
   -- appending strings level by level copies the text below at each level.
   covering
-  expPieces : Nat -> FlatExp -> Builder String
+  expPieces : Nat -> Exp -> Builder String
   expPieces i (FVar _ n) = single (show n)
   expPieces i (FLet _ v val sc)
       = single ("let " ++ show v ++ " = ") <+> expPieces (i + 2) val <+> single "\n"
@@ -279,7 +280,7 @@ mutual
   altPieces i (FConstAlt c sc) = single (show c ++ " => ") <+> expPieces i sc
 
   covering
-  argPieces : Nat -> List FlatExp -> Builder String
+  argPieces : Nat -> List Exp -> Builder String
   argPieces i [] = neutral
   argPieces i as = single "(" <+> concat (intersperse (single ", ") (map (expPieces i) as)) <+> single ")"
 
@@ -288,11 +289,11 @@ mutual
 
 ||| An expression as text, each line after the first indented by `i`.
 covering
-showExp : Nat -> FlatExp -> String
+showExp : Nat -> Exp -> String
 showExp i e = fastConcat (contents (expPieces i e))
 
 export covering
-Show FlatExp where
+Show Exp where
   show = showExp 0
 
 ||| A definition's flat form. Its parameters are the run-time arguments of its
@@ -304,7 +305,7 @@ record FlatDef where
   params : List FlatVar
   resultSkeleton : Skeleton
   result : Layout
-  body : FlatExp
+  body : Exp
   fc : FC
 
 export covering
@@ -323,27 +324,7 @@ primLayout DoubleType = [Dbl]
 primLayout WorldType = []
 primLayout _ = [Word]
 
-||| The type of a constant.
-public export
-constType : Constant -> Maybe PrimType
-constType (I _) = Just IntType
-constType (I8 _) = Just Int8Type
-constType (I16 _) = Just Int16Type
-constType (I32 _) = Just Int32Type
-constType (I64 _) = Just Int64Type
-constType (BI _) = Just IntegerType
-constType (B8 _) = Just Bits8Type
-constType (B16 _) = Just Bits16Type
-constType (B32 _) = Just Bits32Type
-constType (B64 _) = Just Bits64Type
-constType (Str _) = Just StringType
-constType (Ch _) = Just CharType
-constType (Db _) = Just DoubleType
-constType WorldVal = Just WorldType
-constType (PrT _) = Nothing
-
-||| The type of a primitive operation's result.
-public export
+-- The type of a primitive operation's result.
 opResult : PrimFn n -> Maybe PrimType
 opResult (Add t) = Just t
 opResult (Sub t) = Just t
@@ -370,7 +351,7 @@ opResult _ = Nothing
 ||| is not known.
 export
 expType : (var : Name -> Maybe (Skeleton, Layout)) -> (form : Name -> Maybe (Skeleton, Layout)) ->
-          FlatExp -> Maybe (Skeleton, Layout)
+          Exp -> Maybe (Skeleton, Layout)
 expType var form (FVar _ x) = var x
 expType var form (FLet _ fv _ sc) = expType (bound [fv]) form sc
   where
@@ -400,7 +381,7 @@ export
 formCallees : FlatDef -> List Name
 formCallees fd = contents (go fd.body)
   where
-    go : FlatExp -> Builder Name
+    go : Exp -> Builder Name
     go (FVar _ _) = neutral
     go (FLet _ _ val sc) = go val <+> go sc
     go (FConst _ _) = neutral
@@ -421,7 +402,7 @@ export
 formPrims : FlatDef -> List Name
 formPrims fd = contents (go fd.body)
   where
-    go : FlatExp -> Builder Name
+    go : Exp -> Builder Name
     go (FVar _ _) = neutral
     go (FLet _ _ val sc) = go val <+> go sc
     go (FConst _ _) = neutral
@@ -444,7 +425,7 @@ export
 formSkeletons : FlatDef -> List Skeleton
 formSkeletons fd = contents (single fd.resultSkeleton <+> piece (map skeleton fd.params) <+> go fd.body)
   where
-    go : FlatExp -> Builder Skeleton
+    go : Exp -> Builder Skeleton
     go (FVar _ _) = neutral
     go (FLet _ fv val sc) = single fv.skeleton <+> go val <+> go sc
     go (FConst _ _) = neutral

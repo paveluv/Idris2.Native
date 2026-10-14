@@ -1,4 +1,4 @@
-||| How producers build the term IR (`Compiler.Native.TermIR`).
+||| How producers build the term IR (`Compiler.Native.TermIR.Program`).
 |||
 ||| A producer writes a body in PHOAS: a binder is an Idris function over an
 ||| abstract type of variables `v` (and of labels `l`), so Idris checks the
@@ -15,10 +15,21 @@
 ||| has to say what it does then, which is to return `Nothing`.
 module Compiler.Native.TermIR.Build
 
-import Compiler.Native.HeapObject
-import Compiler.Native.IRCommon
-import Compiler.Native.TermIR
+import Compiler.Native.HeapObject.Enc
+import Compiler.Native.HeapObject.ValEnc
+import Compiler.Native.IRCommon.Operators.Rel
+import Compiler.Native.IRCommon.Ty
+import Compiler.Native.TermIR.Body as TermIR
+import Compiler.Native.TermIR.Conv as TermIR
+import Compiler.Native.TermIR.Decls as TermIR
+import Compiler.Native.TermIR.Instr as TermIR
+import Compiler.Native.TermIR.IsInt as TermIR
+import Compiler.Native.TermIR.Opnd as TermIR
+import Compiler.Native.TermIR.OvOp as TermIR
+import Compiler.Native.TermIR.Sig as TermIR
+import Compiler.Native.TermIR.Var as TermIR
 import Core.Name
+import Data.Distinct
 import Data.List
 import Data.List.Quantifiers
 import Data.So

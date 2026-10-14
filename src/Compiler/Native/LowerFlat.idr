@@ -1,5 +1,5 @@
 ||| The flat lowering: a flat form (`Flat.Exp`) to a `Direct` function of
-||| the term IR (`Compiler.Native.TermIR`), written in `Build`.
+||| the term IR (`Compiler.Native.TermIR.Program`), written in `Build`.
 |||
 ||| A flat value is its layout's registers: a `W64` for each `Word` and an
 ||| `F64` for each `Dbl`. An integer narrower than 64 bits is held extended
@@ -23,27 +23,47 @@
 ||| in tail position a join, whose parameters are the case's registers. A
 ||| call of a form is a `DirectCall`; a call of the form itself in tail
 ||| position jumps back to its start, so self tail recursion is a loop. The
-||| runtime's intrinsics (`Compiler.Native.Linkage.intrinsics`) lower to the
+||| runtime's intrinsics (`intrinsics` in `Compiler.Native.Linkage.Intrinsic`) lower to the
 ||| instructions they stand for, and its OS services to calls of the
 ||| functions that implement them on the platform; every other `%extern` and `%foreign` primitive (`FPrim`), the
 ||| operations on strings and the double functions of the C library lower to
 ||| `Unsupported`.
 module Compiler.Native.LowerFlat
 
-import Compiler.Native.HeapObject
-import Compiler.Native.IRCommon
-import Compiler.Native.Linkage
-import Compiler.Native.TermIR
+import Compiler.Native.HeapObject.Enc
+import Compiler.Native.HeapObject.Kind
+import Compiler.Native.HeapObject.ValEnc
+import Compiler.Native.IRCommon.Operators.ArithOp
+import Compiler.Native.IRCommon.Operators.ConvOp
+import Compiler.Native.IRCommon.Operators.FOp as Operators
+import Compiler.Native.IRCommon.Operators.Rel
+import Compiler.Native.IRCommon.Operators.SubWord
+import Compiler.Native.IRCommon.Operators.UnOp
+import Compiler.Native.IRCommon.Ty
+import Compiler.Native.Linkage.ConvertsIn
+import Compiler.Native.Linkage.Intrinsic
+import Compiler.Native.Linkage.Routine
+import Compiler.Native.TermIR.Body
 import Compiler.Native.TermIR.Build
+import Compiler.Native.TermIR.Conv
+import Compiler.Native.TermIR.Decls
+import Compiler.Native.TermIR.Instr as TermIR
+import Compiler.Native.TermIR.IsInt
+import Compiler.Native.TermIR.Mem
+import Compiler.Native.TermIR.Opnd
+import Compiler.Native.TermIR.Sig
+import Compiler.Native.TermIR.Var
 import Compiler.Native.Words
 import Core.Name
 import Core.TT
+import Data.Distinct
 import Data.List
 import Data.List.Quantifiers
 import Data.SortedMap
 import Data.Vect
 import Decidable.Equality
-import Flat.Exp
+import Flat.ConstType
+import Flat.Exp as Flat
 
 %default covering
 
@@ -165,7 +185,7 @@ export
 zeros : (a : Layout) -> Build d c m v l (All (Opnd v) (tys a))
 zeros [] = pure []
 zeros (Word :: rs) = (W 0 ::) <$> zeros rs
-zeros (Dbl :: rs) = do z <- emit1 (FConst 0.0); (z ::) <$> zeros rs
+zeros (Dbl :: rs) = do z <- emit1 (TermIR.FConst 0.0); (z ::) <$> zeros rs
 zeros (Uniform :: rs) = (Erased ::) <$> zeros rs
 
 ------------------------------------------------------------------------------
@@ -251,11 +271,11 @@ callees d fds = fromList (mapMaybe one (enumerate d.sigs))
     one _ = Nothing
 
 ||| Whether the expression calls the form.
-calls : Name -> FlatExp -> Bool
+calls : Name -> Exp -> Bool
 calls n (FVar _ _) = False
 calls n (FLet _ _ val sc) = calls n val || calls n sc
-calls n (FConst _ _) = False
-calls n (FOp _ _ as) = any (calls n) (toList as)
+calls n (Flat.FConst _ _) = False
+calls n (Flat.FOp _ _ as) = any (calls n) (toList as)
 calls n (FCall _ f as) = f == n || any (calls n) as
 calls n (FPrim _ _ _ _ as) = any (calls n) as
 calls n (FCon _ _ _ _ _ as) = any (calls n) as
@@ -413,7 +433,7 @@ parameters {enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef) (m 
   ||| converted less 2^63, which is added back to the word.
   doubleToWord : Held -> Opnd v F64 -> B (Opnd v W64)
   doubleToWord (Whole False) f = do
-    big <- emit1 (FConst 9223372036854775808.0)
+    big <- emit1 (TermIR.FConst 9223372036854775808.0)
     above <- emit1 (FCmp GeS f big)
     [w] <- joinPoint [W64] $ \done =>
       branch EqR above (W 0) (do w <- emit1 (Convert F2I f); done [w]) $ do
@@ -439,7 +459,7 @@ parameters {enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef) (m 
              w <- word x
              wordVal to <$> wrap h w
 
-  arith : PrimType -> ArithOp -> FOp -> (x, y : Value enc v) -> B (Skeleton, Value enc v)
+  arith : PrimType -> ArithOp -> Operators.FOp -> (x, y : Value enc v) -> B (Skeleton, Value enc v)
   arith DoubleType _ o x y = do a <- double x; b <- double y; doubleVal <$> emit1 (FArith o a b)
   arith t o _ x y = withHeld t "arithmetic" $ \h => do
     a <- word x
@@ -472,7 +492,7 @@ parameters {enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef) (m 
     wordVal IntType <$> emit1 (Cmp (if signed h then rel else unsignedRel rel) a b)
 
   constant : Constant -> B (Skeleton, Value enc v)
-  constant (Db x) = doubleVal <$> emit1 (FConst x)
+  constant (Db x) = doubleVal <$> emit1 (TermIR.FConst x)
   constant WorldVal = pure (SPrim WorldType, noRegs)
   constant k = case (constType k, constWord k) of
     (Just t, Just w) => pure (wordVal t (W w))
@@ -519,7 +539,7 @@ parameters {enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef) (m 
 
   ||| The skeleton and layout of an expression's value, from the variables'
   ||| and the callees' results.
-  typeOf : SortedMap Name (Skeleton, Layout) -> FlatExp -> Maybe (Skeleton, Layout)
+  typeOf : SortedMap Name (Skeleton, Layout) -> Exp -> Maybe (Skeleton, Layout)
   typeOf env = expType (\x => lookup x env)
                        (\n => (\c => (c.form.resultSkeleton, c.form.result)) <$> lookup n pr.callees)
 
@@ -536,15 +556,15 @@ parameters {enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef) (m 
 
   mutual
     ||| An expression's value, and its type's skeleton.
-    expr : Env enc v -> FlatExp -> B (Skeleton, Value enc v)
+    expr : Env enc v -> Exp -> B (Skeleton, Value enc v)
     expr env (FVar _ x) = case lookup x env of
       Just t => pure t
       Nothing => unsupported ("the unbound variable " ++ show x ++ " in a flat form")
     expr env (FLet _ fv val sc) = do
       env' <- bind env fv val
       expr env' sc
-    expr env (FConst _ k) = constant k
-    expr env (FOp _ op args) = do
+    expr env (Flat.FConst _ k) = constant k
+    expr env (Flat.FOp _ op args) = do
       xs <- traverse (\a => snd <$> expr env a) args
       primOp op xs
     expr env (FCall _ n args) = do
@@ -656,7 +676,7 @@ parameters {enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef) (m 
     wordIntrinsic n _ _ = unsupported ("the intrinsic " ++ show n ++ " with another number of arguments")
 
     ||| A `let`: the variable bound to the value.
-    bind : Env enc v -> FlatVar -> FlatExp -> B (Env enc v)
+    bind : Env enc v -> FlatVar -> Exp -> B (Env enc v)
     bind env fv val = do
       (_, x) <- expr env val
       case regsAs fv.layout x of
@@ -683,7 +703,7 @@ parameters {enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef) (m 
 
     ||| A case: the scrutinee, then each alternative's body as `k` lowers it,
     ||| in the environment of its variables.
-    dispatch : Env enc v -> FlatExp -> List FlatAlt -> Maybe FlatExp -> (Env enc v -> FlatExp -> E) -> E
+    dispatch : Env enc v -> Exp -> List FlatAlt -> Maybe Exp -> (Env enc v -> Exp -> E) -> E
     dispatch env scr alts def k = do
       (sk, x) <- expr env scr
       let other = maybe (crash "no case alternative matched") (k env) def
@@ -692,7 +712,7 @@ parameters {enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef) (m 
         FConstAlt _ _ :: _ => constCase env x alts other k
         FConAlt _ _ _ _ :: _ => conCase env sk x alts other k
 
-    constCase : Env enc v -> Value enc v -> List FlatAlt -> E -> (Env enc v -> FlatExp -> E) -> E
+    constCase : Env enc v -> Value enc v -> List FlatAlt -> E -> (Env enc v -> Exp -> E) -> E
     constCase env x alts other k = do
       w <- word x
       let cs = mapMaybe (\a => case a of
@@ -703,7 +723,7 @@ parameters {enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef) (m 
           Left ok => switch w cs other
           Right _ => unsupported "a case with repeated constants"
 
-    conCase : Env enc v -> Skeleton -> Value enc v -> List FlatAlt -> E -> (Env enc v -> FlatExp -> E) -> E
+    conCase : Env enc v -> Skeleton -> Value enc v -> List FlatAlt -> E -> (Env enc v -> Exp -> E) -> E
     conCase env sk x alts other k = case shapeOf pr.shapes sk of
       Just (DataShape [c]) => case find (named c.name) alts of
         Just (FConAlt _ _ vs b) => alternative env (MkPlacement Nothing [] (fieldsLayout c.fields) []) x vs b k
@@ -725,21 +745,21 @@ parameters {enc : Enc} (0 d : Decls enc) (pr : Forms enc d) (self : FlatDef) (m 
         named n (FConAlt cn _ _ _) = cn == n
         named _ _ = False
 
-    alternative : Env enc v -> Placement -> Value enc v -> List FlatVar -> FlatExp ->
-                  (Env enc v -> FlatExp -> E) -> E
+    alternative : Env enc v -> Placement -> Value enc v -> List FlatVar -> Exp ->
+                  (Env enc v -> Exp -> E) -> E
     alternative env p x vs b k = case fieldsOf p x >>= bindFields env vs of
       Just env' => k env' b
       Nothing => unsupported "an alternative whose fields are not its constructor's"
 
   ||| The expression's value, returned.
-  returned : Env enc v -> FlatExp -> E
+  returned : Env enc v -> Exp -> E
   returned env e = do
     (_, x) <- expr env e
     maybe (unsupported "a result whose layout is not the form's") ret (regsAs self.result x)
 
   ||| An expression in tail position: its value is the result, and a call of
   ||| the form itself jumps back to its start.
-  tailExp : Env enc v -> Maybe Again -> FlatExp -> E
+  tailExp : Env enc v -> Maybe Again -> Exp -> E
   tailExp env again (FLet _ fv val sc) = do
     env' <- bind env fv val
     tailExp env' again sc

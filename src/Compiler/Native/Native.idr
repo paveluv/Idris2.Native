@@ -12,23 +12,30 @@
 ||| The runtime is a library of flat functions, the package
 ||| `idris2-native-runtime`, which a program does not import: the backend
 ||| loads its modules into the context itself, and its routines, those the
-||| runtime contract names (`Compiler.Native.Linkage.routines`), are
+||| runtime contract names (`routines` in `Compiler.Native.Linkage.Routine`), are
 ||| compiled into every program with the program's own forms.
 module Compiler.Native.Native
 
 import Compiler.Common
 import Compiler.Native.ELF
-import Compiler.Native.HeapObject
-import Compiler.Native.IRCommon
+import Compiler.Native.HeapObject.BignumEnc
+import Compiler.Native.HeapObject.Enc
+import Compiler.Native.HeapObject.StringEnc
+import Compiler.Native.HeapObject.ValEnc
+import Compiler.Native.IRCommon.Ty
 import Compiler.Native.Link
-import Compiler.Native.Linkage
-import Compiler.Native.LocatedIR
+import Compiler.Native.Linkage.ForeignFunctions
+import Compiler.Native.Linkage.Intrinsic
+import Compiler.Native.Linkage.OSService
+import Compiler.Native.Linkage.Routine
 import Compiler.Native.LocatedIR.Dump
+import Compiler.Native.LocatedIR.Program
 import Compiler.Native.Lower
 import Compiler.Native.LowerFlat
 import Compiler.Native.Platform
 import Compiler.Native.RegAlloc
-import Compiler.Native.TermIR
+import Compiler.Native.TermIR.Decls
+import Compiler.Native.TermIR.Program
 import Compiler.Native.X86.Asm
 import Compiler.Native.X86.Encode
 import Compiler.Native.X86.Render
@@ -83,11 +90,11 @@ import System.File
 ||| * `dump-foreign=<file>`: write the foreign functions and externs of the
 |||   program's libraries, each with how this backend implements it.
 ||| * `val-encoding=tag1`, `tag0` or `nofixnums`: how a uniform value is a word
-|||   (`ValEnc` in `Compiler.Native.HeapObject`): fixnum tag 1, the
+|||   (`Compiler.Native.HeapObject.ValEnc`): fixnum tag 1, the
 |||   default; fixnum tag 0; or no fixnums, every integer boxed, which is not
 |||   implemented yet and so is refused.
 ||| * `string-encoding=utf8` or `utf32`: how a `String` is laid out
-|||   (`StringEncoding`): UTF-8 with the ASCII bit, the default, or UTF-32,
+|||   (`StringEnc`): UTF-8 with the ASCII bit, the default, or UTF-32,
 |||   which is not implemented yet and so is refused.
 ||| * `target=<arch>-<os>`: the platform the program is compiled for
 |||   (`Compiler.Native.Platform`), `x86_64-linux` by default; one not built
@@ -123,7 +130,7 @@ parseSettings = foldlM setting (MkSettings windowBytes Nothing Nothing Nothing N
       ["val-encoding", "tag0"] => Right ({ encodings.val := FixnumTag0 } o)
       ["val-encoding", "nofixnums"] => Left "the encoding nofixnums, every integer boxed, is not implemented"
       ["val-encoding", v] => Left ("val-encoding= takes tag1, tag0 or nofixnums, not " ++ show v)
-      ["string-encoding", "utf8"] => Right ({ encodings.strings := Utf8 } o)
+      ["string-encoding", "utf8"] => Right ({ encodings.string := Utf8 } o)
       ["string-encoding", "utf32"] => Left "the string encoding utf32 is not implemented"
       ["string-encoding", v] => Left ("string-encoding= takes utf8 or utf32, not " ++ show v)
       ["target", v] => case parsePlatform v of
@@ -223,8 +230,9 @@ pipeline enc settings table defs = do
   pure image
 
 ||| The intrinsics and the OS services the loaded runtime declares, each
-||| checked against the contract (`Compiler.Native.Linkage.intrinsics`,
-||| `osServices`): an `%extern` whose arguments lay out as the declared
+||| checked against the contract (`intrinsics` in
+||| `Compiler.Native.Linkage.Intrinsic`, `osServices` in
+||| `Compiler.Native.Linkage.OSService`): an `%extern` whose arguments lay out as the declared
 ||| registers, the token among them taking none, and whose result lays out
 ||| as the declared ones. What differs is reported; one the runtime does not
 ||| declare is not missed.
@@ -268,14 +276,15 @@ checkIntrinsics enc
 ||| services, and the string encoding's, which nothing generic imports
 ||| either, from the installed
 ||| package, with the backend's own package, whose
-||| `Compiler.Native.HeapObject` the runtime shares.
+||| heap-object model (the modules of `Compiler.Native.HeapObject`) the
+||| runtime shares.
 loadRuntime : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} -> Platform -> Enc -> Core ()
 loadRuntime platform enc = do
   addPkgDir "idris2-native-runtime" anyBounds
   addPkgDir "idris2-native" anyBounds
   u <- newRef UST initUState
   traverse_ (\ns => addImport (MkImport EmptyFC False (nsAsModuleIdent ns) ns))
-            (mkNamespace "Runtime" :: toList (platformModule platform) ++ toList (stringModule enc.strings))
+            (mkNamespace "Runtime" :: toList (platformModule platform) ++ toList (stringModule enc.string))
 
 ||| The foreign functions and externs of the libraries in the context, each
 ||| with how this backend implements it: by the runtime (`runtime`), by the

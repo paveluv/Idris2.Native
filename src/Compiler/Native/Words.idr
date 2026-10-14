@@ -1,13 +1,20 @@
 ||| Idris's operations on machine words, as every producer of the term IR
-||| (`Compiler.Native.TermIR`) writes them: what `div`, `mod` and the shifts
+||| (`Compiler.Native.TermIR.Program`) writes them: what `div`, `mod` and the shifts
 ||| of a 64-bit word mean. Each is `Build` code, in a function of either
 ||| convention, so that ordinary code and flat code compute the same.
 module Compiler.Native.Words
 
-import Compiler.Native.HeapObject
-import Compiler.Native.IRCommon
-import Compiler.Native.TermIR
+import Compiler.Native.HeapObject.Enc
+import Compiler.Native.IRCommon.Operators.ArithOp
+import Compiler.Native.IRCommon.Operators.Rel
+import Compiler.Native.IRCommon.Operators.UnOp
+import Compiler.Native.IRCommon.Ty
 import Compiler.Native.TermIR.Build
+import Compiler.Native.TermIR.Conv
+import Compiler.Native.TermIR.Decls
+import Compiler.Native.TermIR.Instr
+import Compiler.Native.TermIR.IsInt
+import Compiler.Native.TermIR.Opnd
 import Data.List.Quantifiers
 %default total
 

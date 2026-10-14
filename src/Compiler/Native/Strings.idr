@@ -7,7 +7,12 @@
 ||| well-formed under either.
 module Compiler.Native.Strings
 
-import Compiler.Native.HeapObject
+import Compiler.Native.HeapObject.BignumEnc
+import Compiler.Native.HeapObject.Enc
+import Compiler.Native.HeapObject.Header
+import Compiler.Native.HeapObject.Kind
+import Compiler.Native.HeapObject.StringEnc
+import Compiler.Native.HeapObject.ValEnc
 import Data.List
 import Data.Vect
 

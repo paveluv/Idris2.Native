@@ -1,0 +1,21 @@
+||| A function's definition (`Def`).
+|||
+||| Part of the term IR (`Compiler.Native.TermIR.Program` says what it is).
+module Compiler.Native.TermIR.Def
+
+import Compiler.Native.HeapObject.Enc
+import Compiler.Native.IRCommon.Ty
+import Compiler.Native.TermIR.Body
+import Compiler.Native.TermIR.Conv
+import Compiler.Native.TermIR.Decls
+import Compiler.Native.TermIR.Sig
+import Core.Name
+
+%default total
+
+||| A function's definition: a body over its parameters, or a Direct routine
+||| of the runtime, outside the program.
+public export
+data Def : Decls enc -> Sig enc -> Type where
+  Defined : Body d s.conv s.converts [] s.params -> Def d s
+  External : Def d (MkSig n (InDirect rs col) ps False)

@@ -1,0 +1,18 @@
+||| The operations that have an overflow form (`OvOp`).
+|||
+||| Part of the term IR (`Compiler.Native.TermIR.Program` says what it is).
+module Compiler.Native.TermIR.OvOp
+
+import Compiler.Native.IRCommon.Operators.ArithOp
+
+%default total
+
+||| The operations that have an overflow form.
+public export
+data OvOp = OvAdd | OvSub | OvMul
+
+public export
+ovArith : OvOp -> ArithOp
+ovArith OvAdd = Add
+ovArith OvSub = Sub
+ovArith OvMul = Mul

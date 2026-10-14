@@ -1,6 +1,6 @@
 . ../../testutils.sh
 
 # Each rule of the linter on files made to keep it or to break it: every
-# file says in its first comment which findings it should give. Ordered and
-# Facade give none.
+# file says in its first comment which findings it should give. Ordered,
+# Facade and Grouped give none.
 ../../../tools/lint/build/exec/idris2-native-lint .
