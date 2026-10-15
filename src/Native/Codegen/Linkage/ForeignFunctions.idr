@@ -26,9 +26,11 @@ import Native.HeapObj.Enc as HeapObj
 export
 foreignFunctions : HeapObj.Enc -> List (Name, Name)
 foreignFunctions enc =
-  [ mirrored (NS (mkNamespace "System") (UN (Basic "prim__exit"))) ]
-  ++ maybe [] (\ns => map (\f => (NS (mkNamespace "Prelude.Types") (UN (Basic f)), NS ns (UN (Basic f))))
-                          ["fastPack", "fastUnpack", "fastConcat"])
+  [ mirrored (NS (mkNamespace "System") (UN (Basic "prim__exit")))
+  , mirrored (NS (mkNamespace "Prelude.IO") (UN (Basic "prim__putChar"))) ]
+  ++ maybe [] (\ns => [ (NS (mkNamespace m) (UN (Basic f)), NS ns (UN (Basic f)))
+                      | (m, f) <- [ ("Prelude.Types", "fastPack"), ("Prelude.Types", "fastUnpack")
+                                  , ("Prelude.Types", "fastConcat"), ("Prelude.IO", "prim__putStr") ] ])
            (RuntimeModule.stringModule enc.string)
   where
     mirrored : Name -> (Name, Name)

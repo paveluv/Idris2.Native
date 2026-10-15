@@ -7,6 +7,7 @@ module Native.Runtime
 import public Native.Heap
 import public Native.Runtime.Bits
 import public Native.Runtime.Collect
+import public Native.Runtime.Foreign.Prelude.IO
 import public Native.Runtime.Foreign.System
 import public Native.Runtime.Memory
 import public Native.Runtime.Object

@@ -38,8 +38,6 @@ missing  Prelude.IO.prim__getStr
 missing  Prelude.IO.prim__getString
 missing  Prelude.IO.prim__onCollect
 missing  Prelude.IO.prim__onCollectAny
-missing  Prelude.IO.prim__putChar
-missing  Prelude.IO.prim__putStr
 missing  Prelude.IO.prim__threadWait
 missing  PrimIO.prim__getNullAnyPtr
 missing  PrimIO.prim__nullAnyPtr
@@ -158,8 +156,10 @@ missing  System.prim__system
 missing  System.prim__time
 missing  System.prim__unsetEnv
 missing  System.prim__usleep
+runtime  Prelude.IO.prim__putChar
+runtime  Prelude.IO.prim__putStr
 runtime  Prelude.Types.fastConcat
 runtime  Prelude.Types.fastPack
 runtime  Prelude.Types.fastUnpack
 runtime  System.prim__exit
-4 by the runtime, 3 lowered inline, 157 missing
+6 by the runtime, 3 lowered inline, 155 missing

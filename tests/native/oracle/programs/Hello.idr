@@ -1,5 +1,5 @@
--- The smallest program with output. Under the native backend it reaches
--- the abort stub, since output is not lowered yet.
+-- The smallest program with output: its `putStrLn` is the prelude's
+-- foreign `prim__putStr`, which the runtime implements.
 module Main
 
 main : IO ()

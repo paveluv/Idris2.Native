@@ -43,7 +43,7 @@ msgStackOverflow = map (cast . ord) (unpack "idris: stack overflow\n")
 ||| one under either.
 export
 seedText : (enc : HeapObj.Enc) -> {auto 0 _ : HeapObj.ValEnc.HasFixnums enc.val} -> (window : Int) -> List X86.Asm.Instr
-seedText enc window = startText enc.val window ++ haltText ++ unsupportedText
+seedText enc window = startText enc.val window ++ haltText enc.val ++ unsupportedText
                       ++ stackOverflowText
                       ++ applyText X86.Target.x86_64.abi enc.val
   where
@@ -70,14 +70,25 @@ seedText enc window = startText enc.val window ++ haltText ++ unsupportedText
     sysExitGroup = 231
 
     ||| `idris_halt`: HALT's code. Entered by `jmp [k]` with the final result in
-    ||| rax; a fixnum's value becomes the exit status. Superseded by the fragment
-    ||| runtime's halt, which prints non-fixnum results and flushes.
-    haltText : List X86.Asm.Instr
-    haltText =
-      [ X86.Asm.Comment "idris_halt: result in rax (fixnum) -> exit_group" ] ++
+    ||| rax: a fixnum's value becomes the exit status, as a program written to
+    ||| report through it gives; any other result, an object, ends the program
+    ||| with status 0, as it does under Chez when `main` returns. Superseded by
+    ||| the fragment runtime's halt, which prints non-fixnum results.
+    haltText : HeapObj.ValEnc -> List X86.Asm.Instr
+    haltText venc =
+      [ X86.Asm.Comment "idris_halt: result in rax, a fixnum's value or 0 -> exit_group" ] ++
       Linkage.ResumePoint.resumePoint (Linkage.Sym.symLabel Linkage.Sym.SymHalt) (HeapObj.LayoutWord.layoutWord 0 0) ++
-      [ X86.Asm.MovRR X86.Asm.RDI X86.Asm.RAX, X86.Asm.ShiftI X86.Asm.SAR X86.Asm.RDI 1
-      , X86.Asm.MovRI X86.Asm.RAX sysExitGroup, X86.Asm.Syscall ]
+      [ X86.Asm.MovRR X86.Asm.RDI X86.Asm.RAX, X86.Asm.AluI X86.Asm.AND X86.Asm.RDI 1
+      , X86.Asm.AluI X86.Asm.CMP X86.Asm.RDI (cast (HeapObj.ValEnc.pointerTag venc))
+      , X86.Asm.Jcc X86.Asm.E object
+      , X86.Asm.MovRR X86.Asm.RDI X86.Asm.RAX, X86.Asm.ShiftI X86.Asm.SAR X86.Asm.RDI 1, X86.Asm.Jmp exit
+      , X86.Asm.Lbl object, X86.Asm.MovRI X86.Asm.RDI 0
+      , X86.Asm.Lbl exit, X86.Asm.MovRI X86.Asm.RAX sysExitGroup, X86.Asm.Syscall ]
+      where
+        -- local labels, below the program's
+        object, exit : X86.Asm.Label
+        object = 49
+        exit = 50
 
     ||| `idris_stack_overflow`: where direct code goes when the stack pointer is
     ||| below `STACK_LIMIT`. Superseded by the fragment runtime's, which runs

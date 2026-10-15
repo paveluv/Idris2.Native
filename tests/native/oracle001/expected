@@ -3,8 +3,8 @@ Bignum: unsupported
 Case: unsupported
 Closure: unsupported
 Count: unsupported
-Exit: unsupported
-Hello: unsupported
+Exit: agree
+Hello: agree
 Interface: unsupported
 StatusArray: agree
 StatusCase: agree
@@ -24,4 +24,4 @@ StatusStrings: agree
 StatusWide: agree
 Strings: unsupported
 TailCall: unsupported
-26 programs: 16 agree, 10 unsupported, 0 mismatch, 0 error, 0 timeout
+26 programs: 18 agree, 8 unsupported, 0 mismatch, 0 error, 0 timeout

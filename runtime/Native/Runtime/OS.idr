@@ -67,3 +67,12 @@ osStackLimit = Services.prim__os_stackLimit
 export %inline
 osPageBytes : Heap.Op Heap Bits64
 osPageBytes = Services.prim__os_pageBytes
+
+||| Write all `bytes` at the address to a standard handle, in as many writes
+||| as it takes; a write that fails ends it, as nothing more would go.
+export covering
+osWriteAll : (handle, address, bytes : Bits64) -> Heap.Op Heap ()
+osWriteAll h a n =
+  if n == 0 then Heap.pure () else do
+    w <- osWrite h a n
+    if w == 0 then Heap.pure () else osWriteAll h (a + w) (n - w)

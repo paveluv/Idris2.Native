@@ -2,9 +2,9 @@
 
 Idris 2 with a native code generator: `--cg native` compiles a program to a
 static x86-64 Linux executable, with no C compiler, no assembler and no
-linker. It is a work in progress: programs that print or read do not run yet,
-and a construct the backend does not lower yet ends the program with status
-70 and `idris: unsupported`.
+linker. It is a work in progress: programs print strings, but not yet
+numbers, and do not read yet; a construct the backend does not lower yet
+ends the program with status 70 and `idris: unsupported`.
 
 `idris2-native` is the Idris 2 compiler of the `Idris2` submodule, unchanged,
 with this code generator added through Idris's API, the way any external

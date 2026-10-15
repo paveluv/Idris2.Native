@@ -1,7 +1,7 @@
 . ../../testutils.sh
 
 # The skeleton backend: the program links into a static ELF with no assembler
-# or linker, runs, and reaches the abort stub.
+# or linker, runs, and prints, its `putStrLn` the runtime's `prim__putStr`.
 idris2 --cg native -o hello Hello.idr
 ./build/exec/hello 2>&1
 echo "status: $?"

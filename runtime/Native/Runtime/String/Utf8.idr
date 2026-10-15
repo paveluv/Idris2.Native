@@ -31,8 +31,10 @@ import Native.HeapObj.Kind as HeapObj
 import Native.Port
 import Native.Routines
 import Native.Runtime.Bits
+import Native.Runtime.CodePoint
 import Native.Runtime.Memory
 import Native.Runtime.Object
+import Native.Runtime.OS
 import Native.Runtime.Space
 
 %hide Prelude.Interfaces.(>>=)
@@ -84,55 +86,24 @@ finish s ascii bytes = do
 byteAt : Memory.Addr HeapObj.Kind.STRING -> (i : Bits64) -> Heap.Op Heap Bits64
 byteAt s i = Memory.load8 s (8 + i)
 
-setByte : Memory.Addr HeapObj.Kind.STRING -> (i, b : Bits64) -> Heap.Op Heap ()
-setByte s i b = Memory.store8 s (8 + i) b
-
 ------------------------------------------------------------------------------
--- UTF-8
+-- UTF-8, at the string's bytes
 
 ||| The bytes of the character whose lead byte is `b`.
 seqLength : (lead : Bits64) -> Bits64
-seqLength b = if b < 0x80 then 1 else if b < 0xE0 then 2 else if b < 0xF0 then 3 else 4
+seqLength = CodePoint.utf8Length
 
 ||| The bytes of the character `c`, shortest form.
 charBytes : (c : Bits64) -> Bits64
-charBytes c = if c < 0x80 then 1 else if c < 0x800 then 2 else if c < 0x10000 then 3 else 4
+charBytes = CodePoint.utf8Bytes
 
 ||| The character whose lead byte is at `i`.
 decodeAt : Memory.Addr HeapObj.Kind.STRING -> (i : Bits64) -> Heap.Op Heap Bits64
-decodeAt s i = do
-  b0 <- byteAt s i
-  if b0 < 0x80 then Heap.pure b0 else
-    if b0 < 0xE0 then do
-      b1 <- byteAt s (i + 1)
-      Heap.pure (Bits.shiftL (b0 .&. 0x1F) 6 .|. b1 .&. 0x3F)
-    else if b0 < 0xF0 then do
-      b1 <- byteAt s (i + 1)
-      b2 <- byteAt s (i + 2)
-      Heap.pure (Bits.shiftL (b0 .&. 0x0F) 12 .|. Bits.shiftL (b1 .&. 0x3F) 6 .|. b2 .&. 0x3F)
-    else do
-      b1 <- byteAt s (i + 1)
-      b2 <- byteAt s (i + 2)
-      b3 <- byteAt s (i + 3)
-      Heap.pure (Bits.shiftL (b0 .&. 0x07) 18 .|. Bits.shiftL (b1 .&. 0x3F) 12
-            .|. Bits.shiftL (b2 .&. 0x3F) 6 .|. b3 .&. 0x3F)
+decodeAt s i = CodePoint.decodeUtf8 s (8 + i)
 
 ||| The character `c` written at `j`, its `charBytes c` bytes.
 encodeAt : Memory.Addr HeapObj.Kind.STRING -> (j, c : Bits64) -> Heap.Op Heap ()
-encodeAt s j c =
-  if c < 0x80 then setByte s j c
-  else if c < 0x800 then do
-    setByte s j (0xC0 .|. Bits.shiftR c 6)
-    setByte s (j + 1) (0x80 .|. c .&. 0x3F)
-  else if c < 0x10000 then do
-    setByte s j (0xE0 .|. Bits.shiftR c 12)
-    setByte s (j + 1) (0x80 .|. Bits.shiftR c 6 .&. 0x3F)
-    setByte s (j + 2) (0x80 .|. c .&. 0x3F)
-  else do
-    setByte s j (0xF0 .|. Bits.shiftR c 18)
-    setByte s (j + 1) (0x80 .|. Bits.shiftR c 12 .&. 0x3F)
-    setByte s (j + 2) (0x80 .|. Bits.shiftR c 6 .&. 0x3F)
-    setByte s (j + 3) (0x80 .|. c .&. 0x3F)
+encodeAt s j c = CodePoint.encodeUtf8 s (8 + j) c
 
 ------------------------------------------------------------------------------
 -- Loops
@@ -172,6 +143,9 @@ copyBytes from i to j n seen =
     b <- byteAt from i
     setByte to j b
     copyBytes from (i + 1) to (j + 1) (n - 1) (seen .|. b)
+  where
+    setByte : Memory.Addr HeapObj.Kind.STRING -> (i, b : Bits64) -> Heap.Op Heap ()
+    setByte s i b = Memory.store8 s (8 + i) b
 
 ||| The bytes from `from` to `to` of a string, as a new string: ASCII if the
 ||| string is, or if the bytes copied are.
@@ -475,3 +449,17 @@ strings =
   Routines.MkStringRoutines
     { length = Utf8.length, head = Utf8.head, tail = Utf8.tail, index = Utf8.index, cons = Utf8.cons
     , append = Utf8.append, reverse = Utf8.reverse, substr = Utf8.substr, compare = Utf8.compare }
+
+%cg native flat Runtime.String.Utf8.prim__putStr
+||| `putStr`: the string's bytes written to the standard output, all of
+||| them. Nothing is buffered, so nothing waits to be flushed.
+export covering
+prim__putStr : Flat.Uniform String -> PrimIO ()
+prim__putStr str w = let (Heap.MkHeap # ()) = putOp str Heap.MkHeap in MkIORes () w
+  where
+    covering
+    putOp : Flat.Uniform String -> Heap.Op Heap ()
+    putOp str = do
+      s <- Memory.stringObject str
+      h <- headerOf s
+      OS.osWriteAll OS.stdout (Memory.toWord s + 8) (bytesOf h)

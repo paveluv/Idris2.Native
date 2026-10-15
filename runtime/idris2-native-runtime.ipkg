@@ -10,7 +10,9 @@ depends = idris2-native
 modules =
     Native.Runtime,
     Native.Runtime.Bits,
+    Native.Runtime.CodePoint,
     Native.Runtime.Collect,
+    Native.Runtime.Foreign.Prelude.IO,
     Native.Runtime.Foreign.System,
     Native.Runtime.Memory,
     Native.Runtime.OS,
