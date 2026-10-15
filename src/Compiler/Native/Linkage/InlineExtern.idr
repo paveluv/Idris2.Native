@@ -9,7 +9,7 @@ import Compiler.Native.HeapObject.Enc as HeapObject
 import Compiler.Native.HeapObject.Kind as HeapObject
 import Compiler.Native.IRCommon.Area as IRCommon
 import Compiler.Native.IRCommon.Intrinsic as IRCommon
-import Compiler.Native.IRCommon.Operators
+import Compiler.Native.IRCommon.Op
 import Compiler.Native.IRCommon.Ty as IRCommon
 import Core.Name
 import Core.Name.Namespace
@@ -32,11 +32,11 @@ data InlineExtern
   | ||| Load a word.
     Load64
   | ||| Load 8, 16 or 32 bits.
-    LoadNarrow IRCommon.Operators.SubWord
+    LoadNarrow IRCommon.Op.SubWord
   | ||| Store a word.
     Store64
   | ||| Store a word's low 8, 16 or 32 bits.
-    StoreNarrow IRCommon.Operators.SubWord
+    StoreNarrow IRCommon.Op.SubWord
   | ||| The pointer tag of the program's encoding: what a pointer word is
     ||| beyond the object's address.
     PointerTag
@@ -63,13 +63,13 @@ inlineExterns : {0 enc : HeapObject.Enc} -> List (InlineExternSig enc)
 inlineExterns =
   [ machine "Runtime.OS.Syscall" "prim__syscall6" (IRCommon.Intrinsic.Syscall 6)
   , memory "prim__load64" Load64 [IRCommon.Ty.W64, IRCommon.Ty.W64] [IRCommon.Ty.W64]
-  , memory "prim__load32" (LoadNarrow IRCommon.Operators.Sub32) [IRCommon.Ty.W64, IRCommon.Ty.W64] [IRCommon.Ty.W64]
-  , memory "prim__load16" (LoadNarrow IRCommon.Operators.Sub16) [IRCommon.Ty.W64, IRCommon.Ty.W64] [IRCommon.Ty.W64]
-  , memory "prim__load8" (LoadNarrow IRCommon.Operators.Sub8) [IRCommon.Ty.W64, IRCommon.Ty.W64] [IRCommon.Ty.W64]
+  , memory "prim__load32" (LoadNarrow IRCommon.Op.Sub32) [IRCommon.Ty.W64, IRCommon.Ty.W64] [IRCommon.Ty.W64]
+  , memory "prim__load16" (LoadNarrow IRCommon.Op.Sub16) [IRCommon.Ty.W64, IRCommon.Ty.W64] [IRCommon.Ty.W64]
+  , memory "prim__load8" (LoadNarrow IRCommon.Op.Sub8) [IRCommon.Ty.W64, IRCommon.Ty.W64] [IRCommon.Ty.W64]
   , memory "prim__store64" Store64 [IRCommon.Ty.W64, IRCommon.Ty.W64, IRCommon.Ty.W64] []
-  , memory "prim__store32" (StoreNarrow IRCommon.Operators.Sub32) [IRCommon.Ty.W64, IRCommon.Ty.W64, IRCommon.Ty.W64] []
-  , memory "prim__store16" (StoreNarrow IRCommon.Operators.Sub16) [IRCommon.Ty.W64, IRCommon.Ty.W64, IRCommon.Ty.W64] []
-  , memory "prim__store8" (StoreNarrow IRCommon.Operators.Sub8) [IRCommon.Ty.W64, IRCommon.Ty.W64, IRCommon.Ty.W64] []
+  , memory "prim__store32" (StoreNarrow IRCommon.Op.Sub32) [IRCommon.Ty.W64, IRCommon.Ty.W64, IRCommon.Ty.W64] []
+  , memory "prim__store16" (StoreNarrow IRCommon.Op.Sub16) [IRCommon.Ty.W64, IRCommon.Ty.W64, IRCommon.Ty.W64] []
+  , memory "prim__store8" (StoreNarrow IRCommon.Op.Sub8) [IRCommon.Ty.W64, IRCommon.Ty.W64, IRCommon.Ty.W64] []
   , machine "Runtime.Memory" "prim__getHp" IRCommon.Intrinsic.GetHp
   , machine "Runtime.Memory" "prim__setHp" IRCommon.Intrinsic.SetHp
   , machine "Runtime.Memory" "prim__getHpLim" IRCommon.Intrinsic.GetHpLim

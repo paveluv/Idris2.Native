@@ -28,7 +28,7 @@ modules =
     Compiler.Native.IRCommon.ConIds,
     Compiler.Native.IRCommon.Conv,
     Compiler.Native.IRCommon.Intrinsic,
-    Compiler.Native.IRCommon.Operators,
+    Compiler.Native.IRCommon.Op,
     Compiler.Native.IRCommon.Ty,
     Compiler.Native.Link,
     Compiler.Native.Linkage.Areas,

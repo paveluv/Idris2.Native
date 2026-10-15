@@ -6,7 +6,7 @@ module Compiler.Native.Words
 
 import Compiler.Native.HeapObject.Enc as HeapObject
 import Compiler.Native.IRCommon.Conv as IRCommon
-import Compiler.Native.IRCommon.Operators
+import Compiler.Native.IRCommon.Op
 import Compiler.Native.IRCommon.Ty as IRCommon
 import Compiler.Native.TermIR.Build as TermIR
 import Compiler.Native.TermIR.Decls as TermIR
@@ -26,17 +26,17 @@ parameters {0 enc : HeapObject.Enc} {0 d : TermIR.Decls enc} {0 c : IRCommon.Con
   ||| negative word divided by −1 wraps to itself, with remainder 0.
   export
   divide : (signed, remainder : Bool) -> (a, b : TermIR.Opnd v IRCommon.Ty.W64) -> TermIR.Build d c m v l (TermIR.Opnd v IRCommon.Ty.W64)
-  divide False r a b = TermIR.Build.emit1 (TermIR.Instr.Arith (if r then IRCommon.Operators.RemU else IRCommon.Operators.DivU) a b)
+  divide False r a b = TermIR.Build.emit1 (TermIR.Instr.Arith (if r then IRCommon.Op.RemU else IRCommon.Op.DivU) a b)
   divide True r a b = do
     [w] <- TermIR.Build.joinPoint [IRCommon.Ty.W64] $ \done =>
-      TermIR.Build.branch IRCommon.Operators.EqR b (TermIR.Opnd.W (-1))
-        (if r then done [TermIR.Opnd.W 0] else do n <- TermIR.Build.emit1 (TermIR.Instr.Unary IRCommon.Operators.Negate a); done [n])
-        (do q <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Operators.DivS a b)
-            rm <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Operators.RemS a b)
-            TermIR.Build.branch IRCommon.Operators.LtS rm (TermIR.Opnd.W 0)
-              (TermIR.Build.branch IRCommon.Operators.GtS b (TermIR.Opnd.W 0)
-                 (do q' <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Operators.Sub q (TermIR.Opnd.W 1)); rm' <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Operators.Add rm b); done [if r then rm' else q'])
-                 (do q' <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Operators.Add q (TermIR.Opnd.W 1)); rm' <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Operators.Sub rm b); done [if r then rm' else q']))
+      TermIR.Build.branch IRCommon.Op.EqR b (TermIR.Opnd.W (-1))
+        (if r then done [TermIR.Opnd.W 0] else do n <- TermIR.Build.emit1 (TermIR.Instr.Unary IRCommon.Op.Negate a); done [n])
+        (do q <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.DivS a b)
+            rm <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.RemS a b)
+            TermIR.Build.branch IRCommon.Op.LtS rm (TermIR.Opnd.W 0)
+              (TermIR.Build.branch IRCommon.Op.GtS b (TermIR.Opnd.W 0)
+                 (do q' <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.Sub q (TermIR.Opnd.W 1)); rm' <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.Add rm b); done [if r then rm' else q'])
+                 (do q' <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.Add q (TermIR.Opnd.W 1)); rm' <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.Sub rm b); done [if r then rm' else q']))
               (done [if r then rm else q]))
     pure w
 
@@ -44,18 +44,18 @@ parameters {0 enc : HeapObject.Enc} {0 d : TermIR.Decls enc} {0 c : IRCommon.Con
   ||| here crashes.
   export
   nonZero : TermIR.Opnd v IRCommon.Ty.W64 -> TermIR.Build d c m v l ()
-  nonZero b = TermIR.Build.leaveIf IRCommon.Operators.EqR b (TermIR.Opnd.W 0) (TermIR.Build.crash "division by zero")
+  nonZero b = TermIR.Build.leaveIf IRCommon.Op.EqR b (TermIR.Opnd.W 0) (TermIR.Build.crash "division by zero")
 
   ||| A shift of the word `a` by the count `n`, a word, as Idris shifts: by 64
   ||| or more, a left or logical right shift gives 0 and an arithmetic one the
   ||| sign. A negative count counts as such a count.
   export
-  shiftBy : IRCommon.Operators.ArithOp -> (a, n : TermIR.Opnd v IRCommon.Ty.W64) -> TermIR.Build d c m v l (TermIR.Opnd v IRCommon.Ty.W64)
+  shiftBy : IRCommon.Op.ArithOp -> (a, n : TermIR.Opnd v IRCommon.Ty.W64) -> TermIR.Build d c m v l (TermIR.Opnd v IRCommon.Ty.W64)
   shiftBy o a n = do
     [w] <- TermIR.Build.joinPoint [IRCommon.Ty.W64] $ \done =>
-      TermIR.Build.branch IRCommon.Operators.GtU n (TermIR.Opnd.W 63)
+      TermIR.Build.branch IRCommon.Op.GtU n (TermIR.Opnd.W 63)
         (case o of
-           IRCommon.Operators.Sar => do w <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Operators.Sar a (TermIR.Opnd.W 63)); done [w]
+           IRCommon.Op.Sar => do w <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.Sar a (TermIR.Opnd.W 63)); done [w]
            _ => done [TermIR.Opnd.W 0])
         (do w <- TermIR.Build.emit1 (TermIR.Instr.Arith o a n); done [w])
     pure w

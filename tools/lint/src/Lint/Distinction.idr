@@ -2,9 +2,9 @@
 ||| that the same modules always import together could be one module, and
 ||| a group most of whose members could be joined so is oversplit.
 |||
-||| A group is the modules under one parent (`Compiler.Native.IRCommon.
-||| Operators`' `ConvOp`, `FOp`, ...); modules at the top are in none, and a
-||| module alone under its parent has no sibling to join. Two
+||| A group is the modules under one parent (`Compiler.Native.TermIR`'s
+||| `Opnd`, `Instr`, ...); modules at the top are in none, and a module
+||| alone under its parent has no sibling to join. Two
 ||| members with the same importers, at least two, are imported together
 ||| every time: no importer takes one without the other, so joining them
 ||| would cost none of them precision. One importer is no evidence: a module

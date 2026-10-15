@@ -5,7 +5,7 @@
 |||
 ||| Part of the vocabulary the native backend's two IRs share
 ||| (`Compiler.Native.IRCommon.Ty` says what it is).
-module Compiler.Native.IRCommon.Operators
+module Compiler.Native.IRCommon.Op
 
 %default total
 

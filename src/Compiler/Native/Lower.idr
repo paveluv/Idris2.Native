@@ -58,7 +58,7 @@ import Compiler.Native.HeapObject.Kind
 import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.ConIds
 import Compiler.Native.IRCommon.Conv
-import Compiler.Native.IRCommon.Operators
+import Compiler.Native.IRCommon.Op
 import Compiler.Native.IRCommon.Ty as IRCommon
 import Compiler.Native.Linkage.ConvertsIn
 import Compiler.Native.Linkage.ForeignFunctions
@@ -797,10 +797,10 @@ parameters {enc : HeapObject.Enc} {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.
               [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done => do
                 keep <- TermIR.Build.block [] $ \[] => do f <- TermIR.Build.emit1 (TermIR.Instr.Tag w); r <- widen f; done [r]
                 zero <- TermIR.Build.block [] $ \[] => done [TermIR.Opnd.Vx {enc} 0]
-                TermIR.Build.branch IRCommon.Operators.LtS w (TermIR.Opnd.W 0) (zero []) $
-                  TermIR.Build.branch IRCommon.Operators.LeS w (TermIR.Opnd.W 55295) (keep []) $
-                    TermIR.Build.branch IRCommon.Operators.LtS w (TermIR.Opnd.W 57344) (zero []) $
-                      TermIR.Build.branch IRCommon.Operators.LeS w (TermIR.Opnd.W 1114111) (keep []) (zero [])
+                TermIR.Build.branch IRCommon.Op.LtS w (TermIR.Opnd.W 0) (zero []) $
+                  TermIR.Build.branch IRCommon.Op.LeS w (TermIR.Opnd.W 55295) (keep []) $
+                    TermIR.Build.branch IRCommon.Op.LtS w (TermIR.Opnd.W 57344) (zero []) $
+                      TermIR.Build.branch IRCommon.Op.LeS w (TermIR.Opnd.W 1114111) (keep []) (zero [])
               pure r
 
             ||| A runtime routine's variable, with its results and parameters.
@@ -825,10 +825,10 @@ parameters {enc : HeapObject.Enc} {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.
               f <- TermIR.Build.emit1 (TermIR.Instr.Tag e)
               widen f
               where
-                subWord : Nat -> IRCommon.Operators.SubWord
-                subWord 8 = IRCommon.Operators.Sub8
-                subWord 16 = IRCommon.Operators.Sub16
-                subWord _ = IRCommon.Operators.Sub32
+                subWord : Nat -> IRCommon.Op.SubWord
+                subWord 8 = IRCommon.Op.Sub8
+                subWord 16 = IRCommon.Op.Sub16
+                subWord _ = IRCommon.Op.Sub32
 
             ||| A uniform integer of one width as one of another, wrapping as Idris's
             ||| casts do.
@@ -852,7 +852,7 @@ parameters {enc : HeapObject.Enc} {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.
                 (Wide False, Unbounded) => do
                   a <- wideWord x
                   [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done =>
-                    TermIR.Build.branch IRCommon.Operators.LtU a (TermIR.Opnd.W 4611686018427387904)
+                    TermIR.Build.branch IRCommon.Op.LtU a (TermIR.Opnd.W 4611686018427387904)
                       (do f <- TermIR.Build.emit1 (TermIR.Instr.Tag a); r <- widen f; done [r])
                       (do [r] <- callRoutine (Linkage.Routine.integerRoutine "from_bits64") {rs = [IRCommon.Ty.Val]} {ps = [IRCommon.Ty.W64]} [a]; done [r])
                   pure r
@@ -886,7 +886,7 @@ parameters {enc : HeapObject.Enc} {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.
             wordFix w = do f <- TermIR.Build.emit1 (TermIR.Instr.Tag w); TermIR.Build.emit1 (TermIR.Instr.WidenFix f)
 
             ||| A comparison of strings: the runtime's order, -1, 0 or 1, against 0.
-            stringOrder : IRCommon.Operators.Rel -> TermIR.Opnd v IRCommon.Ty.Val -> TermIR.Opnd v IRCommon.Ty.Val -> B (TermIR.Opnd v IRCommon.Ty.Val)
+            stringOrder : IRCommon.Op.Rel -> TermIR.Opnd v IRCommon.Ty.Val -> TermIR.Opnd v IRCommon.Ty.Val -> B (TermIR.Opnd v IRCommon.Ty.Val)
             stringOrder rel x y = do
               [o] <- strings "compare" {rs = [IRCommon.Ty.W64]} {ps = [IRCommon.Ty.Val, IRCommon.Ty.Val]} [x, y]
               b <- TermIR.Build.emit1 (TermIR.Instr.Cmp rel o (TermIR.Opnd.W 0))
@@ -902,12 +902,12 @@ parameters {enc : HeapObject.Enc} {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.
             negation : IntWidth -> TermIR.Opnd v IRCommon.Ty.Val -> B (TermIR.Opnd v IRCommon.Ty.Val)
             negation (Narrow n s) x = do
               a <- fixValue x
-              w <- TermIR.Build.emit1 (TermIR.Instr.Unary IRCommon.Operators.Negate a)
+              w <- TermIR.Build.emit1 (TermIR.Instr.Unary IRCommon.Op.Negate a)
               narrowVal n s w
             negation (Wide _) x = do
               [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done => do
                 word <- TermIR.Build.block [IRCommon.Ty.W64] $ \[wa] => do
-                  w <- TermIR.Build.emit1 (TermIR.Instr.Unary IRCommon.Operators.Negate wa)
+                  w <- TermIR.Build.emit1 (TermIR.Instr.Unary IRCommon.Op.Negate wa)
                   r <- wideVal w
                   done [r]
                 TermIR.Build.ifFixnums [x]
@@ -942,7 +942,7 @@ parameters {enc : HeapObject.Enc} {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.
                   (\[fa, fb] => do
                      a <- untag (fa)
                      b <- untag (fb)
-                     TermIR.Build.branch IRCommon.Operators.EqR b (TermIR.Opnd.W 0) (slow []) $ do
+                     TermIR.Build.branch IRCommon.Op.EqR b (TermIR.Opnd.W 0) (slow []) $ do
                        w <- Words.divide True m a b
                        TermIR.Build.tagOv w (\f => do r <- widen f; done [r]) (slow []))
                   (slow [])
@@ -953,12 +953,12 @@ parameters {enc : HeapObject.Enc} {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.
             shifting (Narrow n s) left x y = do
               a <- fixValue x
               k <- fixValue y
-              w <- Words.shiftBy (if left then IRCommon.Operators.Shl else if s then IRCommon.Operators.Sar else IRCommon.Operators.Shr) a k
+              w <- Words.shiftBy (if left then IRCommon.Op.Shl else if s then IRCommon.Op.Sar else IRCommon.Op.Shr) a k
               narrowVal n s w
             shifting (Wide s) left x y = do
               a <- wideWord x
               k <- wideWord y
-              w <- Words.shiftBy (if left then IRCommon.Operators.Shl else if s then IRCommon.Operators.Sar else IRCommon.Operators.Shr) a k
+              w <- Words.shiftBy (if left then IRCommon.Op.Shl else if s then IRCommon.Op.Sar else IRCommon.Op.Shr) a k
               wideVal w
             shifting Unbounded left x y = do
               [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done => do
@@ -967,17 +967,17 @@ parameters {enc : HeapObject.Enc} {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.
                   (\[fa, fk] => do
                      a <- untag (fa)
                      k <- untag (fk)
-                     TermIR.Build.branch IRCommon.Operators.LtS k (TermIR.Opnd.W 0) (slow []) $
+                     TermIR.Build.branch IRCommon.Op.LtS k (TermIR.Opnd.W 0) (slow []) $
                        if left
                           then -- shift by at most 62, and keep the result only if
                                -- shifting back gives the operand and it is a fixnum
-                               TermIR.Build.branch IRCommon.Operators.GtS k (TermIR.Opnd.W 62) (slow []) $ do
-                                 w <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Operators.Shl a k)
-                                 back <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Operators.Sar w k)
-                                 TermIR.Build.branch IRCommon.Operators.NeR back a (slow []) $
+                               TermIR.Build.branch IRCommon.Op.GtS k (TermIR.Opnd.W 62) (slow []) $ do
+                                 w <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.Shl a k)
+                                 back <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.Sar w k)
+                                 TermIR.Build.branch IRCommon.Op.NeR back a (slow []) $
                                    TermIR.Build.tagOv w (\f => do r <- widen f; done [r]) (slow [])
                           else do
-                            w <- Words.shiftBy IRCommon.Operators.Sar a k
+                            w <- Words.shiftBy IRCommon.Op.Sar a k
                             f <- TermIR.Build.emit1 (TermIR.Instr.Tag w)
                             r <- widen f
                             done [r])
@@ -991,7 +991,7 @@ parameters {enc : HeapObject.Enc} {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.
 
             ||| Addition, subtraction, multiplication and the bitwise operations; the
             ||| name is the operation's `Integer` routine.
-            arithmetic : IntWidth -> IRCommon.Operators.ArithOp -> (routine : String) -> (x, y : TermIR.Opnd v IRCommon.Ty.Val) -> B (TermIR.Opnd v IRCommon.Ty.Val)
+            arithmetic : IntWidth -> IRCommon.Op.ArithOp -> (routine : String) -> (x, y : TermIR.Opnd v IRCommon.Ty.Val) -> B (TermIR.Opnd v IRCommon.Ty.Val)
             arithmetic width o routine x y = case width of
               Narrow n s => do
                 a <- fixValue x
@@ -1022,14 +1022,14 @@ parameters {enc : HeapObject.Enc} {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.
                 pure r
               where
                 ||| The overflow form of an operation that has one.
-                ovOp : IRCommon.Operators.ArithOp -> Maybe TermIR.OvOp
+                ovOp : IRCommon.Op.ArithOp -> Maybe TermIR.OvOp
                 ovOp Add = Just TermIR.OvOp.OvAdd
                 ovOp Sub = Just TermIR.OvOp.OvSub
                 ovOp Mul = Just TermIR.OvOp.OvMul
                 ovOp _ = Nothing
 
             ||| A comparison, giving the `Int` 0 or 1.
-            comparison : IntWidth -> IRCommon.Operators.Rel -> (x, y : TermIR.Opnd v IRCommon.Ty.Val) -> B (TermIR.Opnd v IRCommon.Ty.Val)
+            comparison : IntWidth -> IRCommon.Op.Rel -> (x, y : TermIR.Opnd v IRCommon.Ty.Val) -> B (TermIR.Opnd v IRCommon.Ty.Val)
             comparison width rel x y = case width of
               Narrow _ _ => do
                 a <- asFix x
@@ -1053,11 +1053,11 @@ parameters {enc : HeapObject.Enc} {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.
                 boolVal c
               where
                 ||| The unsigned relation for a signed one.
-                unsignedRel : IRCommon.Operators.Rel -> IRCommon.Operators.Rel
-                unsignedRel IRCommon.Operators.LtS = IRCommon.Operators.LtU
-                unsignedRel IRCommon.Operators.LeS = IRCommon.Operators.LeU
-                unsignedRel IRCommon.Operators.GtS = IRCommon.Operators.GtU
-                unsignedRel IRCommon.Operators.GeS = IRCommon.Operators.GeU
+                unsignedRel : IRCommon.Op.Rel -> IRCommon.Op.Rel
+                unsignedRel IRCommon.Op.LtS = IRCommon.Op.LtU
+                unsignedRel IRCommon.Op.LeS = IRCommon.Op.LeU
+                unsignedRel IRCommon.Op.GtS = IRCommon.Op.GtU
+                unsignedRel IRCommon.Op.GeS = IRCommon.Op.GeU
                 unsignedRel r = r
 
                 ||| A comparison's 0 or 1, as the `Int` Idris's comparisons give.
@@ -1073,9 +1073,9 @@ parameters {enc : HeapObject.Enc} {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.
             value (Neg ty) [x] = withWidth ty "negation" (\w => negation w (get env x))
             value (ShiftL ty) [x, y] = withWidth ty "a left shift" (\w => shifting w True (get env x) (get env y))
             value (ShiftR ty) [x, y] = withWidth ty "a right shift" (\w => shifting w False (get env x) (get env y))
-            value (BAnd ty) [x, y] = withWidth ty "bitwise and" (\w => arithmetic w IRCommon.Operators.And "and" (get env x) (get env y))
-            value (BOr ty) [x, y] = withWidth ty "bitwise or" (\w => arithmetic w IRCommon.Operators.Or "or" (get env x) (get env y))
-            value (BXOr ty) [x, y] = withWidth ty "bitwise xor" (\w => arithmetic w IRCommon.Operators.Xor "xor" (get env x) (get env y))
+            value (BAnd ty) [x, y] = withWidth ty "bitwise and" (\w => arithmetic w IRCommon.Op.And "and" (get env x) (get env y))
+            value (BOr ty) [x, y] = withWidth ty "bitwise or" (\w => arithmetic w IRCommon.Op.Or "or" (get env x) (get env y))
+            value (BXOr ty) [x, y] = withWidth ty "bitwise xor" (\w => arithmetic w IRCommon.Op.Xor "xor" (get env x) (get env y))
             -- the string primitives: the runtime's routines under the encoding
             value StrLength [s] = do [n] <- strings "length" {rs = [IRCommon.Ty.W64]} {ps = [IRCommon.Ty.Val]} [get env s]; wordFix n
             value StrHead [s] = do [c] <- strings "head" {rs = [IRCommon.Ty.W64]} {ps = [IRCommon.Ty.Val]} [get env s]; wordFix c
@@ -1095,16 +1095,16 @@ parameters {enc : HeapObject.Enc} {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.
               wl <- wideWord (get env l)
               [r] <- strings "substr" {rs = [IRCommon.Ty.Val]} {ps = [IRCommon.Ty.W64, IRCommon.Ty.W64, IRCommon.Ty.Val]} [wo, wl, get env s]
               pure r
-            value (LT StringType) [x, y] = stringOrder IRCommon.Operators.LtS (get env x) (get env y)
-            value (LTE StringType) [x, y] = stringOrder IRCommon.Operators.LeS (get env x) (get env y)
-            value (EQ StringType) [x, y] = stringOrder IRCommon.Operators.EqR (get env x) (get env y)
-            value (GTE StringType) [x, y] = stringOrder IRCommon.Operators.GeS (get env x) (get env y)
-            value (GT StringType) [x, y] = stringOrder IRCommon.Operators.GtS (get env x) (get env y)
-            value (LT ty) [x, y] = withWidth ty "<" (\w => comparison w IRCommon.Operators.LtS (get env x) (get env y))
-            value (LTE ty) [x, y] = withWidth ty "<=" (\w => comparison w IRCommon.Operators.LeS (get env x) (get env y))
-            value (EQ ty) [x, y] = withWidth ty "==" (\w => comparison w IRCommon.Operators.EqR (get env x) (get env y))
-            value (GTE ty) [x, y] = withWidth ty ">=" (\w => comparison w IRCommon.Operators.GeS (get env x) (get env y))
-            value (GT ty) [x, y] = withWidth ty ">" (\w => comparison w IRCommon.Operators.GtS (get env x) (get env y))
+            value (LT StringType) [x, y] = stringOrder IRCommon.Op.LtS (get env x) (get env y)
+            value (LTE StringType) [x, y] = stringOrder IRCommon.Op.LeS (get env x) (get env y)
+            value (EQ StringType) [x, y] = stringOrder IRCommon.Op.EqR (get env x) (get env y)
+            value (GTE StringType) [x, y] = stringOrder IRCommon.Op.GeS (get env x) (get env y)
+            value (GT StringType) [x, y] = stringOrder IRCommon.Op.GtS (get env x) (get env y)
+            value (LT ty) [x, y] = withWidth ty "<" (\w => comparison w IRCommon.Op.LtS (get env x) (get env y))
+            value (LTE ty) [x, y] = withWidth ty "<=" (\w => comparison w IRCommon.Op.LeS (get env x) (get env y))
+            value (EQ ty) [x, y] = withWidth ty "==" (\w => comparison w IRCommon.Op.EqR (get env x) (get env y))
+            value (GTE ty) [x, y] = withWidth ty ">=" (\w => comparison w IRCommon.Op.GeS (get env x) (get env y))
+            value (GT ty) [x, y] = withWidth ty ">" (\w => comparison w IRCommon.Op.GtS (get env x) (get env y))
             value fn _ = TermIR.Build.unsupported ("the primitive " ++ show fn)
 
 ------------------------------------------------------------------------------

@@ -1,0 +1,27 @@
+./Store/Named.idr: 1 changed, 0 stay
+||| A shorthand, `Named v` for `Tag String v`, which `inline-alias` replaces
+||| by what it names, here as in `Plan`, and takes out.
+module Store.Named
+
+import Store.Tag
+
+%default total
+
+||| A value named after itself.
+export
+named : Show v => v -> Tag String v
+named x = MkTag (show x) x
+||| A module that writes the shorthand without importing what it names:
+||| after `inline-alias` it writes `Store.Tag.Tag String Nat`, the type's
+||| module by its path from here, and imports `Store.Tag`.
+module Plan
+
+import Store.Named
+import Store.Tag
+
+%default total
+
+export
+labels : List (Store.Tag.Tag String Nat) -> Nat
+labels xs = length xs
+Plan.idr checks

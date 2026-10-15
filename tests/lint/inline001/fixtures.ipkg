@@ -1,0 +1,8 @@
+package fixtures
+
+depends = idris2-native
+
+modules =
+    Plan,
+    Store.Named,
+    Store.Tag

@@ -25,7 +25,8 @@
 ||| path in the place of `{}` (`make check-source SOURCE={}`). A
 ||| refactoring may take arguments, each by `--arg` (`split-module`: the
 ||| module to make, then the concepts to move into it; `join-modules`: the
-||| module to make, then the modules to join), and one whose
+||| module to make, then the modules to join; `rename-module`: the module,
+||| then its new name; `inline-alias`: the function), and one whose
 ||| changes only the type checker can judge runs only with `--check`
 ||| (`prune-imports`). `--fix`
 ||| puts each file's imports in order first: the refactoring
@@ -50,6 +51,7 @@ module Lint.Main
 import Lint.Distinction
 import Lint.Finding
 import Lint.Graph
+import Lint.Refactor.InlineAlias
 import Lint.Refactor.JoinModules
 import Lint.Refactor.MergeClauses
 import Lint.Refactor.OrderImports
@@ -58,6 +60,7 @@ import Lint.Refactor.PruneImports
 import Lint.Refactor.QualifyNames
 import Lint.Refactor.Refactoring
 import Lint.Refactor.RemoveUnused
+import Lint.Refactor.RenameModule
 import Lint.Refactor.ScopeHelpers
 import Lint.Refactor.SplitModule
 import Lint.Resolution
@@ -265,7 +268,7 @@ main = do
     ||| those that take them read: `split-module` the module to make and the
     ||| concepts to move to it.
     refactorings : List String -> List Refactoring
-    refactorings args = [joinModules args, mergeClauses, orderImports, pruneImports, qualifyNames, removeUnused, scopeHelpers, splitModule args]
+    refactorings args = [inlineAlias args, joinModules args, mergeClauses, orderImports, pruneImports, qualifyNames, removeUnused, renameModule args, scopeHelpers, splitModule args]
 
     ||| The files of a run parsed once, and again only after a change: a wide
     ||| refactoring asks for them at every file it looks at.

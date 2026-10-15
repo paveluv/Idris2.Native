@@ -11,7 +11,7 @@ import Compiler.Native.LocatedIR.Reg
 
 import Compiler.Native.HeapObject.Enc as HeapObject
 import Compiler.Native.HeapObject.ValEnc
-import Compiler.Native.IRCommon.Operators
+import Compiler.Native.IRCommon.Op
 import Core.Name
 
 %default total
@@ -28,7 +28,7 @@ data Terminator : HeapObject.Enc -> Type where
   IfFixnums    : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} -> List (Reg enc) -> (ifYes, ifNo : Label) -> Terminator enc
   ||| Compare and branch, with the operand types of `Cmp`. Renderings fuse
   ||| the comparison and the branch.
-  Branch      : IRCommon.Operators.Rel -> Opnd enc -> Opnd enc -> (ifTrue, ifFalse : Label) -> Terminator enc
+  Branch      : IRCommon.Op.Rel -> Opnd enc -> Opnd enc -> (ifTrue, ifFalse : Label) -> Terminator enc
   ||| Branch on an integer to the block of the matching case, or else to the
   ||| default. The scrutinee is a `W64`, such as a constructor id from
   ||| `LoadPart`, or a `Fix`, whose cases are fixnums, as integers; the

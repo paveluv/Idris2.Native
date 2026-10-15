@@ -19,7 +19,7 @@ import Compiler.Native.HeapObject.Enc as HeapObject
 import Compiler.Native.HeapObject.Header as HeapObject
 import Compiler.Native.HeapObject.Kind as HeapObject
 import Compiler.Native.IRCommon.Conv as IRCommon
-import Compiler.Native.IRCommon.Operators
+import Compiler.Native.IRCommon.Op
 import Compiler.Native.IRCommon.Ty as IRCommon
 import Core.Name
 import Data.Builder as Data
@@ -47,17 +47,17 @@ functionPieces f =
         ops : List (Opnd enc') -> String
         ops xs = joinBy ", " (map show xs)
 
-        rel : IRCommon.Operators.Rel -> String
-        rel IRCommon.Operators.EqR = "=="
-        rel IRCommon.Operators.NeR = "!="
-        rel IRCommon.Operators.LtS = "<s"
-        rel IRCommon.Operators.LeS = "<=s"
-        rel IRCommon.Operators.GtS = ">s"
-        rel IRCommon.Operators.GeS = ">=s"
-        rel IRCommon.Operators.LtU = "<u"
-        rel IRCommon.Operators.LeU = "<=u"
-        rel IRCommon.Operators.GtU = ">u"
-        rel IRCommon.Operators.GeU = ">=u"
+        rel : IRCommon.Op.Rel -> String
+        rel IRCommon.Op.EqR = "=="
+        rel IRCommon.Op.NeR = "!="
+        rel IRCommon.Op.LtS = "<s"
+        rel IRCommon.Op.LeS = "<=s"
+        rel IRCommon.Op.GtS = ">s"
+        rel IRCommon.Op.GeS = ">=s"
+        rel IRCommon.Op.LtU = "<u"
+        rel IRCommon.Op.LeU = "<=u"
+        rel IRCommon.Op.GtU = ">u"
+        rel IRCommon.Op.GeU = ">=u"
 
         instr : Instr enc'' -> String
         instr instr' = case instr' of
@@ -77,8 +77,8 @@ functionPieces f =
           Instr.Cmp r d x y => show d ++ " := Cmp " ++ show x ++ " " ++ rel r ++ " " ++ show y
           Instr.Load t d m => show d ++ " := Load " ++ show t ++ " " ++ mem 8 m
           Instr.Store t m x => "Store " ++ show t ++ " " ++ mem 8 m ++ " := " ++ show x
-          Instr.LoadN sw _ d m => show d ++ " := LoadN " ++ mem (IRCommon.Operators.subWordBytes sw) m
-          Instr.StoreN sw m x => "StoreN " ++ mem (IRCommon.Operators.subWordBytes sw) m ++ " := " ++ show x
+          Instr.LoadN sw _ d m => show d ++ " := LoadN " ++ mem (IRCommon.Op.subWordBytes sw) m
+          Instr.StoreN sw m x => "StoreN " ++ mem (IRCommon.Op.subWordBytes sw) m ++ " := " ++ show x
           Instr.Tag d x => show d ++ " := Tag " ++ show x
           Instr.Untag d x => show d ++ " := Untag " ++ show x
           Instr.TagOv d x l => show d ++ " := TagOv " ++ show x ++ " overflow " ++ show l

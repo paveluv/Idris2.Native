@@ -1,0 +1,15 @@
+. ../../testutils.sh
+
+# rename-module: a module given another name, its file moved to the new
+# name's path, the package's list and the importers rewritten. A copy of
+# the fixtures is changed, and checked after.
+rm -rf work
+mkdir work
+cp -r Old Plan.idr fixtures.ipkg work
+cd work
+../../../../tools/lint/build/exec/idris2-native-lint --refactor rename-module --arg Old.Thing --arg New.Item --check 'idris2 --check {} > /dev/null 2>&1' .
+ls Old 2>/dev/null || echo "Old is gone"
+cat fixtures.ipkg New/Item.idr Plan.idr
+idris2 --check Plan.idr > /dev/null && echo "Plan.idr checks"
+cd ..
+rm -rf work

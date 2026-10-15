@@ -28,7 +28,7 @@ import Compiler.Native.HeapObject.Kind as HeapObject
 import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.Conv as IRCommon
 import Compiler.Native.IRCommon.Intrinsic
-import Compiler.Native.IRCommon.Operators
+import Compiler.Native.IRCommon.Op
 import Compiler.Native.IRCommon.Ty as IRCommon
 import Compiler.Native.LocatedIR.Block as LocatedIR
 import Compiler.Native.LocatedIR.Cont
@@ -131,11 +131,11 @@ one : Held enc -> RegMap enc
 one (InReg r) = singleton (LocatedIR.Reg.slotOf r) r
 one (OfStatic _) = empty
 
-uses : All (HV enc) ctx -> TermIR.Body.Op ctx t -> RegMap enc
+uses : All (HV enc) ctx -> TermIR.Opnd (TermIR.Var ctx) t -> RegMap enc
 uses env (TermIR.Opnd.V x) = one (TermIR.Var.fetch x env)
 uses _ _ = empty
 
-usesAll : All (HV enc) ctx -> All (TermIR.Body.Op ctx) ts -> RegMap enc
+usesAll : All (HV enc) ctx -> All (TermIR.Opnd (TermIR.Var ctx)) ts -> RegMap enc
 usesAll env [] = empty
 usesAll env (x :: xs) = mergeLeft (uses env x) (usesAll env xs)
 
@@ -200,7 +200,7 @@ Lowered enc = (RegMap enc, Code enc)
 ------------------------------------------------------------------------------
 -- Operands
 
-operand : All (HV enc) ctx -> TermIR.Body.Op ctx t -> LocatedIR.Opnd enc
+operand : All (HV enc) ctx -> TermIR.Opnd (TermIR.Var ctx) t -> LocatedIR.Opnd enc
 operand env (TermIR.Opnd.V x) = case TermIR.Var.fetch x env of
   InReg r => LocatedIR.Opnd.R r
   OfStatic s => LocatedIR.Opnd.StaticRef s
@@ -209,13 +209,13 @@ operand env (TermIR.Opnd.Fx i) = LocatedIR.Opnd.Imm i
 operand env (TermIR.Opnd.Vx i) = LocatedIR.Opnd.Imm i
 operand env TermIR.Opnd.Erased = LocatedIR.Opnd.Imm 0
 
-operands : All (HV enc) ctx -> All (TermIR.Body.Op ctx) ts -> List (LocatedIR.Opnd enc)
+operands : All (HV enc) ctx -> All (TermIR.Opnd (TermIR.Var ctx)) ts -> List (LocatedIR.Opnd enc)
 operands env [] = []
 operands env (x :: xs) = operand env x :: operands env xs
 
 ||| An operand in a register, with the instruction that materialises an
 ||| immediate.
-asReg : All (HV enc) ctx -> TermIR.Body.Op ctx t -> M enc (List (LocatedIR.Instr enc), LocatedIR.Reg enc)
+asReg : All (HV enc) ctx -> TermIR.Opnd (TermIR.Var ctx) t -> M enc (List (LocatedIR.Instr enc), LocatedIR.Reg enc)
 asReg env (TermIR.Opnd.V x) = case TermIR.Var.fetch x env of
   InReg r => pure ([], r)
   OfStatic s => do r <- fresh IRCommon.Ty.Val; pure ([LocatedIR.Instr.StaticAddr r s], r)
@@ -295,7 +295,7 @@ parameters (d : TermIR.Decls enc)
         ||| A jump to a block: the arguments into its parameters. When an argument
         ||| reads one of those parameters, every argument goes into a fresh
         ||| register first, so that none is overwritten before it is read.
-        jump : All (HV enc) ctx'' -> LabelInfo enc -> All (TermIR.Body.Op ctx'') ps -> M enc (Code enc)
+        jump : All (HV enc) ctx'' -> LabelInfo enc -> All (TermIR.Opnd (TermIR.Var ctx'')) ps -> M enc (Code enc)
         jump env info xs =
           if any (\r => isJust (lookup (LocatedIR.Reg.slotOf r) (usesAll env xs))) info.params
              then do
@@ -304,7 +304,7 @@ parameters (d : TermIR.Decls enc)
              else pure (Data.Builder.piece (direct info.params xs), LocatedIR.Terminator.Jump info.label)
           where
             ||| An operand into a given register.
-            moveInto : All (HV enc') ctx' -> LocatedIR.Reg enc' -> TermIR.Body.Op ctx' t -> LocatedIR.Instr enc'
+            moveInto : All (HV enc') ctx' -> LocatedIR.Reg enc' -> TermIR.Opnd (TermIR.Var ctx') t -> LocatedIR.Instr enc'
             moveInto env d (TermIR.Opnd.V x) = case TermIR.Var.fetch x env of
               InReg r => LocatedIR.Instr.Move d r
               OfStatic s => LocatedIR.Instr.StaticAddr d s
@@ -313,11 +313,11 @@ parameters (d : TermIR.Decls enc)
             moveInto env d (TermIR.Opnd.Vx i) = LocatedIR.Instr.Const d i
             moveInto env d TermIR.Opnd.Erased = LocatedIR.Instr.Const d 0
 
-            direct : List (LocatedIR.Reg enc) -> All (TermIR.Body.Op ctx'') qs -> List (LocatedIR.Instr enc)
+            direct : List (LocatedIR.Reg enc) -> All (TermIR.Opnd (TermIR.Var ctx'')) qs -> List (LocatedIR.Instr enc)
             direct (p :: ps) (x :: xs) = moveInto env p x :: direct ps xs
             direct _ _ = []
 
-            moves : List (LocatedIR.Reg enc) -> All (TermIR.Body.Op ctx'') qs -> M enc (List (LocatedIR.Instr enc), List (LocatedIR.Reg enc))
+            moves : List (LocatedIR.Reg enc) -> All (TermIR.Opnd (TermIR.Var ctx'')) qs -> M enc (List (LocatedIR.Instr enc), List (LocatedIR.Reg enc))
             moves (p :: ps) (x :: xs) = do
               t <- fresh (LocatedIR.Reg.regTy p)
               (is, ts) <- moves ps xs
@@ -339,7 +339,7 @@ parameters (d : TermIR.Decls enc)
       pure (mergeLeft (usesVect env vs) (mergeLeft (without (regs fs) fy) fn),
             (concatMap (Data.Builder.piece . fst) (toList loaded), LocatedIR.Terminator.IfFixnums (toList rs) ly ln))
       where
-        usesVect : All (HV enc') ctx' -> Vect n (TermIR.Body.Op ctx' t) -> RegMap enc'
+        usesVect : All (HV enc') ctx' -> Vect n (TermIR.Opnd (TermIR.Var ctx') t) -> RegMap enc'
         usesVect env = foldr (\x, m => mergeLeft (uses env x) m) empty
 
         narrowAll : Vect n (LocatedIR.Reg enc) ->
@@ -407,7 +407,7 @@ parameters (d : TermIR.Decls enc)
       (pf, rf) <- asReg env f
       pure (mergeLeft (uses env f) (usesList env xs), (Data.Builder.piece pf, LocatedIR.Terminator.Enter rf (map (operand env) xs)))
       where
-        usesList : All (HV enc') ctx' -> List (TermIR.Body.Op ctx' t) -> RegMap enc'
+        usesList : All (HV enc') ctx' -> List (TermIR.Opnd (TermIR.Var ctx') t) -> RegMap enc'
         usesList env = foldr (\x, m => mergeLeft (uses env x) m) empty
     body (TermIR.Body.Ret xs) env li = pure (usesAll env xs, (neutral, LocatedIR.Terminator.Ret (operands env xs)))
     body (TermIR.Body.Crash s) env li = pure (empty, (neutral, LocatedIR.Terminator.Crash s))
@@ -427,7 +427,7 @@ parameters (d : TermIR.Decls enc)
         instrUses : All (HV enc'') ctx'' -> TermIR.Instr d' m' (TermIR.Var ctx'') ts' -> RegMap enc''
         instrUses env i = execState empty (TermIR.Instr.traverseInstr (collect env) i)
           where
-            collect : All (HV enc') ctx' -> {0 t : IRCommon.Ty enc'} -> TermIR.Body.Op ctx' t -> State (RegMap enc') (TermIR.Body.Op ctx' t)
+            collect : All (HV enc') ctx' -> {0 t : IRCommon.Ty enc'} -> TermIR.Opnd (TermIR.Var ctx') t -> State (RegMap enc') (TermIR.Opnd (TermIR.Var ctx') t)
             collect env x = do modify (mergeLeft (uses env x)); pure x
 
         ||| The IR of an instruction binding the registers `ds`, given what is live
@@ -507,10 +507,10 @@ parameters (d : TermIR.Decls enc)
                 baseReg env (TermIR.Mem.AtPtr x) = asReg env x
 
             ||| One register, through an instruction that reads it from an operand.
-            unary : All (HV enc) ctx' -> TermIR.Body.Op ctx' t -> (LocatedIR.Reg enc -> LocatedIR.Instr enc) -> M enc (List (LocatedIR.Instr enc))
+            unary : All (HV enc) ctx' -> TermIR.Opnd (TermIR.Var ctx') t -> (LocatedIR.Reg enc -> LocatedIR.Instr enc) -> M enc (List (LocatedIR.Instr enc))
             unary env x f = do (p, r) <- asReg env x; pure (p ++ [f r])
 
-            binary : All (HV enc) ctx' -> TermIR.Body.Op ctx' t -> TermIR.Body.Op ctx' u -> (LocatedIR.Reg enc -> LocatedIR.Reg enc -> LocatedIR.Instr enc) ->
+            binary : All (HV enc) ctx' -> TermIR.Opnd (TermIR.Var ctx') t -> TermIR.Opnd (TermIR.Var ctx') u -> (LocatedIR.Reg enc -> LocatedIR.Reg enc -> LocatedIR.Instr enc) ->
                      M enc (List (LocatedIR.Instr enc))
             binary env x y f = do (px, rx) <- asReg env x; (py, ry) <- asReg env y; pure (px ++ py ++ [f rx ry])
 
@@ -581,7 +581,7 @@ parameters (d : TermIR.Decls enc)
             TermIR.Body.Crash _ => (empty, id)
             TermIR.Body.Unsupported _ => (empty, id)
             where
-              opLevel : (depth : Nat) -> TermIR.Body.Op ctx'' t -> SortedSet Level
+              opLevel : (depth : Nat) -> TermIR.Opnd (TermIR.Var ctx'') t -> SortedSet Level
               opLevel depth (TermIR.Opnd.V x) = singleton (level depth x)
                 where
                   ||| The level of a variable in a context of `depth` entries.
@@ -593,7 +593,7 @@ parameters (d : TermIR.Decls enc)
               instrLevels : (depth : Nat) -> TermIR.Instr d' m' (TermIR.Var ctx') ts' -> SortedSet Level
               instrLevels depth i = execState empty (TermIR.Instr.traverseInstr (\x => do modify (union (opLevel depth x)); pure x) i)
 
-              vectLevels : (depth : Nat) -> Vect n' (TermIR.Body.Op ctx' t) -> SortedSet Level
+              vectLevels : (depth : Nat) -> Vect n' (TermIR.Opnd (TermIR.Var ctx') t) -> SortedSet Level
               vectLevels depth = foldr (union . opLevel depth) empty
 
               freesCases : All (\_ => TermIR.Body d' c' m' ls' ctx') ks -> (depth : Nat) -> All (\_ => SortedSet Level) ls' ->
@@ -604,10 +604,10 @@ parameters (d : TermIR.Decls enc)
                     (fs, js) = freesCases bs depth lf
                 in (union fb fs, jb . js)
 
-              listLevels : (depth : Nat) -> List (TermIR.Body.Op ctx' t) -> SortedSet Level
+              listLevels : (depth : Nat) -> List (TermIR.Opnd (TermIR.Var ctx') t) -> SortedSet Level
               listLevels depth = foldr (union . opLevel depth) empty
 
-              opsLevels : (depth : Nat) -> All (TermIR.Body.Op ctx') ts -> SortedSet Level
+              opsLevels : (depth : Nat) -> All (TermIR.Opnd (TermIR.Var ctx')) ts -> SortedSet Level
               opsLevels depth [] = empty
               opsLevels depth (x :: xs) = union (opLevel depth x) (opsLevels depth xs)
 

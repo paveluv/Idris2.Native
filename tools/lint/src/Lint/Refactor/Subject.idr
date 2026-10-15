@@ -23,6 +23,8 @@ record Subject where
   text : String
   ||| The names its declarations write, each where it is written.
   written : List (FC, Name)
+  ||| The names its declarations apply, each with its arguments.
+  applied : List Applied
 
 ||| The file's text, line by line.
 export
@@ -51,4 +53,4 @@ load path = do
   Right t <- readFile path
     | Left e => pure (Left (show e))
   ms <- mentions f.mod.decls
-  pure (Right (MkSubject f ds t ms.refs))
+  pure (Right (MkSubject f ds t ms.refs ms.applied))

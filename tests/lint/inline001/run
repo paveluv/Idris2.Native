@@ -1,0 +1,17 @@
+. ../../testutils.sh
+
+# inline-alias: a function that only names a term of its parameters
+# (`Named v = Tag String v`) replaced by that term at each use, in its
+# module and in others, and taken out. It reads which module each name of
+# the term comes from in the TTCs, so the fixtures are built first; a copy
+# of them is changed, and checked after.
+rm -rf work
+mkdir work
+cp -r Store Plan.idr fixtures.ipkg work
+cd work
+idris2 --build fixtures.ipkg > /dev/null
+../../../../tools/lint/build/exec/idris2-native-lint --refactor inline-alias --arg Store.Named.Named --check 'idris2 --check {} > /dev/null 2>&1' .
+cat Store/Named.idr Plan.idr
+idris2 --check Plan.idr > /dev/null && echo "Plan.idr checks"
+cd ..
+rm -rf work

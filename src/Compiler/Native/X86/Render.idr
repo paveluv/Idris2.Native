@@ -65,7 +65,7 @@ import Compiler.Native.HeapObject.LayoutWord
 import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.Conv as IRCommon
 import Compiler.Native.IRCommon.Intrinsic
-import Compiler.Native.IRCommon.Operators
+import Compiler.Native.IRCommon.Op
 import Compiler.Native.IRCommon.Ty as IRCommon
 import Compiler.Native.Linkage.Areas as Linkage
 import Compiler.Native.Linkage.ResumePoint
@@ -314,17 +314,17 @@ parameters (enc : HeapObject.Enc)
           pairTy _ (LocatedIR.Opnd.StaticRef _) = IRCommon.Ty.Val
           pairTy _ _ = IRCommon.Ty.W64
 
-          cond : IRCommon.Operators.Rel -> Asm.Cond
-          cond IRCommon.Operators.EqR = Asm.E
-          cond IRCommon.Operators.NeR = Asm.NE
-          cond IRCommon.Operators.LtS = Asm.L
-          cond IRCommon.Operators.LeS = Asm.LE
-          cond IRCommon.Operators.GtS = Asm.G
-          cond IRCommon.Operators.GeS = Asm.GE
-          cond IRCommon.Operators.LtU = Asm.B
-          cond IRCommon.Operators.LeU = Asm.BE
-          cond IRCommon.Operators.GtU = Asm.A
-          cond IRCommon.Operators.GeU = Asm.AE
+          cond : IRCommon.Op.Rel -> Asm.Cond
+          cond IRCommon.Op.EqR = Asm.E
+          cond IRCommon.Op.NeR = Asm.NE
+          cond IRCommon.Op.LtS = Asm.L
+          cond IRCommon.Op.LeS = Asm.LE
+          cond IRCommon.Op.GtS = Asm.G
+          cond IRCommon.Op.GeS = Asm.GE
+          cond IRCommon.Op.LtU = Asm.B
+          cond IRCommon.Op.LeU = Asm.BE
+          cond IRCommon.Op.GtU = Asm.A
+          cond IRCommon.Op.GeU = Asm.AE
 
           ||| The word of an immediate where a value of the type is expected: in a
           ||| `Val` or `Fix` position the immediate is an integer, and the value
@@ -611,7 +611,7 @@ parameters (enc : HeapObject.Enc)
                                   store d Asm.RAX
                 LocatedIR.Instr.Unary o d x => do
                                   loadReg Asm.RAX x
-                                  emit (case o of IRCommon.Operators.Negate => Asm.Neg Asm.RAX; IRCommon.Operators.Complement => Asm.Not Asm.RAX)
+                                  emit (case o of IRCommon.Op.Negate => Asm.Neg Asm.RAX; IRCommon.Op.Complement => Asm.Not Asm.RAX)
                                   store d Asm.RAX
                 LocatedIR.Instr.ArithOv o d x y l => do
                                   case LocatedIR.Reg.regTy d of
@@ -718,20 +718,20 @@ parameters (enc : HeapObject.Enc)
                                   emits setBase
                                   takeValues ds
                                   restoreLive collects emit live
-                LocatedIR.Instr.Convert IRCommon.Operators.I2F d x => do
+                LocatedIR.Instr.Convert IRCommon.Op.I2F d x => do
                                   loadReg Asm.RAX x
                                   emit (Asm.Cvtsi2sd Asm.XMM0 Asm.RAX)
                                   n <- useSlot d
                                   emit (Asm.MovsdMR (slotMem n) Asm.XMM0)
-                LocatedIR.Instr.Convert IRCommon.Operators.F2I d x => do
+                LocatedIR.Instr.Convert IRCommon.Op.F2I d x => do
                                   n <- useSlot x
                                   emit (Asm.MovsdRM Asm.XMM0 (slotMem n))
                                   emit (Asm.Cvttsd2si Asm.RAX Asm.XMM0)
                                   store d Asm.RAX
-                LocatedIR.Instr.Convert IRCommon.Operators.FBits d x => do
+                LocatedIR.Instr.Convert IRCommon.Op.FBits d x => do
                                   loadReg Asm.RAX x
                                   store d Asm.RAX
-                LocatedIR.Instr.Convert IRCommon.Operators.BitsF d x => do
+                LocatedIR.Instr.Convert IRCommon.Op.BitsF d x => do
                                   loadReg Asm.RAX x
                                   store d Asm.RAX
                 -- A double's slot holds its bits, so a constant is a word and a negation
@@ -746,7 +746,7 @@ parameters (enc : HeapObject.Enc)
                 LocatedIR.Instr.FArith o d x y => do
                                   loadFloat Asm.XMM0 (LocatedIR.Opnd.R x)
                                   loadFloat Asm.XMM1 (LocatedIR.Opnd.R y)
-                                  emit (Asm.Sse (case o of IRCommon.Operators.FAdd => Asm.ADDSD; IRCommon.Operators.FSub => Asm.SUBSD; IRCommon.Operators.FMul => Asm.MULSD; IRCommon.Operators.FDiv => Asm.DIVSD) Asm.XMM0 Asm.XMM1)
+                                  emit (Asm.Sse (case o of IRCommon.Op.FAdd => Asm.ADDSD; IRCommon.Op.FSub => Asm.SUBSD; IRCommon.Op.FMul => Asm.MULSD; IRCommon.Op.FDiv => Asm.DIVSD) Asm.XMM0 Asm.XMM1)
                                   n <- useSlot d
                                   emit (Asm.MovsdMR (slotMem n) Asm.XMM0)
                 -- `ucomisd a, b` sets the flags as an unsigned comparison of a with b,
@@ -758,23 +758,23 @@ parameters (enc : HeapObject.Enc)
                                   loadFloat Asm.XMM0 (LocatedIR.Opnd.R x)
                                   loadFloat Asm.XMM1 (LocatedIR.Opnd.R y)
                                   emits $ case r of
-                                    IRCommon.Operators.EqR => [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.E Asm.RDX, Asm.Setcc Asm.NP Asm.RCX, Asm.Alu Asm.AND Asm.RDX Asm.RCX]
-                                    IRCommon.Operators.NeR => [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.NE Asm.RDX, Asm.Setcc Asm.P Asm.RCX, Asm.Alu Asm.OR Asm.RDX Asm.RCX]
-                                    IRCommon.Operators.LtS => [Asm.Ucomisd Asm.XMM1 Asm.XMM0, Asm.Setcc Asm.A Asm.RDX]
-                                    IRCommon.Operators.LtU => [Asm.Ucomisd Asm.XMM1 Asm.XMM0, Asm.Setcc Asm.A Asm.RDX]
-                                    IRCommon.Operators.LeS => [Asm.Ucomisd Asm.XMM1 Asm.XMM0, Asm.Setcc Asm.AE Asm.RDX]
-                                    IRCommon.Operators.LeU => [Asm.Ucomisd Asm.XMM1 Asm.XMM0, Asm.Setcc Asm.AE Asm.RDX]
-                                    IRCommon.Operators.GtS => [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.A Asm.RDX]
-                                    IRCommon.Operators.GtU => [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.A Asm.RDX]
-                                    IRCommon.Operators.GeS => [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.AE Asm.RDX]
-                                    IRCommon.Operators.GeU => [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.AE Asm.RDX]
+                                    IRCommon.Op.EqR => [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.E Asm.RDX, Asm.Setcc Asm.NP Asm.RCX, Asm.Alu Asm.AND Asm.RDX Asm.RCX]
+                                    IRCommon.Op.NeR => [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.NE Asm.RDX, Asm.Setcc Asm.P Asm.RCX, Asm.Alu Asm.OR Asm.RDX Asm.RCX]
+                                    IRCommon.Op.LtS => [Asm.Ucomisd Asm.XMM1 Asm.XMM0, Asm.Setcc Asm.A Asm.RDX]
+                                    IRCommon.Op.LtU => [Asm.Ucomisd Asm.XMM1 Asm.XMM0, Asm.Setcc Asm.A Asm.RDX]
+                                    IRCommon.Op.LeS => [Asm.Ucomisd Asm.XMM1 Asm.XMM0, Asm.Setcc Asm.AE Asm.RDX]
+                                    IRCommon.Op.LeU => [Asm.Ucomisd Asm.XMM1 Asm.XMM0, Asm.Setcc Asm.AE Asm.RDX]
+                                    IRCommon.Op.GtS => [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.A Asm.RDX]
+                                    IRCommon.Op.GtU => [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.A Asm.RDX]
+                                    IRCommon.Op.GeS => [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.AE Asm.RDX]
+                                    IRCommon.Op.GeU => [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.AE Asm.RDX]
                                   store d Asm.RDX
                 LocatedIR.Instr.LoadN sw s d m => do
-                                  address Asm.RAX m (IRCommon.Operators.subWordBytes sw)
+                                  address Asm.RAX m (IRCommon.Op.subWordBytes sw)
                                   emit (Asm.Load (width sw) s Asm.RCX (Asm.MBase Asm.RAX (m.offset - baseTag m.base)))
                                   store d Asm.RCX
                 LocatedIR.Instr.StoreN sw m x => do
-                                  address Asm.RAX m (IRCommon.Operators.subWordBytes sw)
+                                  address Asm.RAX m (IRCommon.Op.subWordBytes sw)
                                   loadReg Asm.RCX x
                                   emit (Asm.Store (width sw) (Asm.MBase Asm.RAX (m.offset - baseTag m.base)) Asm.RCX)
                 -- The number in rax and the arguments where Linux takes them. The kernel
@@ -854,25 +854,25 @@ parameters (enc : HeapObject.Enc)
                   baseTag r = if IRCommon.Ty.gcVisible (LocatedIR.Reg.regTy r) then ptag else 0
 
                   ||| Arithmetic on raw words, into rax.
-                  wordArith : IRCommon.Operators.ArithOp -> LocatedIR.Opnd enc -> LocatedIR.Opnd enc ->
+                  wordArith : IRCommon.Op.ArithOp -> LocatedIR.Opnd enc -> LocatedIR.Opnd enc ->
                               (overflow : Maybe Asm.Label) -> Render enc ()
                   wordArith o x y ov = do
                     load Asm.RAX x
                     load Asm.RCX y
                     case o of
-                      IRCommon.Operators.Add => emit (Asm.Alu Asm.ADD Asm.RAX Asm.RCX)
-                      IRCommon.Operators.Sub => emit (Asm.Alu Asm.SUB Asm.RAX Asm.RCX)
-                      IRCommon.Operators.And => emit (Asm.Alu Asm.AND Asm.RAX Asm.RCX)
-                      IRCommon.Operators.Or => emit (Asm.Alu Asm.OR Asm.RAX Asm.RCX)
-                      IRCommon.Operators.Xor => emit (Asm.Alu Asm.XOR Asm.RAX Asm.RCX)
-                      IRCommon.Operators.Mul => emit (Asm.Imul Asm.RAX Asm.RCX)
-                      IRCommon.Operators.Shl => emit (Asm.ShiftCl Asm.SHL Asm.RAX)
-                      IRCommon.Operators.Shr => emit (Asm.ShiftCl Asm.SHR Asm.RAX)
-                      IRCommon.Operators.Sar => emit (Asm.ShiftCl Asm.SAR Asm.RAX)
-                      IRCommon.Operators.DivS => emits [Asm.Cqo, Asm.Idiv Asm.RCX]
-                      IRCommon.Operators.RemS => emits [Asm.Cqo, Asm.Idiv Asm.RCX, Asm.MovRR Asm.RAX Asm.RDX]
-                      IRCommon.Operators.DivU => emits [Asm.Alu Asm.XOR Asm.RDX Asm.RDX, Asm.DivU Asm.RCX]
-                      IRCommon.Operators.RemU => emits [Asm.Alu Asm.XOR Asm.RDX Asm.RDX, Asm.DivU Asm.RCX, Asm.MovRR Asm.RAX Asm.RDX]
+                      IRCommon.Op.Add => emit (Asm.Alu Asm.ADD Asm.RAX Asm.RCX)
+                      IRCommon.Op.Sub => emit (Asm.Alu Asm.SUB Asm.RAX Asm.RCX)
+                      IRCommon.Op.And => emit (Asm.Alu Asm.AND Asm.RAX Asm.RCX)
+                      IRCommon.Op.Or => emit (Asm.Alu Asm.OR Asm.RAX Asm.RCX)
+                      IRCommon.Op.Xor => emit (Asm.Alu Asm.XOR Asm.RAX Asm.RCX)
+                      IRCommon.Op.Mul => emit (Asm.Imul Asm.RAX Asm.RCX)
+                      IRCommon.Op.Shl => emit (Asm.ShiftCl Asm.SHL Asm.RAX)
+                      IRCommon.Op.Shr => emit (Asm.ShiftCl Asm.SHR Asm.RAX)
+                      IRCommon.Op.Sar => emit (Asm.ShiftCl Asm.SAR Asm.RAX)
+                      IRCommon.Op.DivS => emits [Asm.Cqo, Asm.Idiv Asm.RCX]
+                      IRCommon.Op.RemS => emits [Asm.Cqo, Asm.Idiv Asm.RCX, Asm.MovRR Asm.RAX Asm.RDX]
+                      IRCommon.Op.DivU => emits [Asm.Alu Asm.XOR Asm.RDX Asm.RDX, Asm.DivU Asm.RCX]
+                      IRCommon.Op.RemU => emits [Asm.Alu Asm.XOR Asm.RDX Asm.RDX, Asm.DivU Asm.RCX, Asm.MovRR Asm.RAX Asm.RDX]
                     maybe (pure ()) (\l => emit (Asm.Jcc Asm.O l)) ov
 
                   ||| Turn twice a value, in the register, into the fixnum's word: `or` in
@@ -887,18 +887,18 @@ parameters (enc : HeapObject.Enc)
                   ||| subtraction and multiplication overflows exactly when its result is
                   ||| outside the fixnum range. A shift has no such identity: it takes the
                   ||| values, shifts and tags.
-                  fixArith : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} -> IRCommon.Operators.ArithOp ->
+                  fixArith : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} -> IRCommon.Op.ArithOp ->
                              LocatedIR.Opnd enc -> LocatedIR.Opnd enc -> (overflow : Maybe Asm.Label) -> Render enc ()
                   fixArith o x y ov = case o of
-                      IRCommon.Operators.Add => do loadAs IRCommon.Ty.Fix Asm.RAX x; aluTwice Asm.ADD y; jo
-                      IRCommon.Operators.Sub => do loadAs IRCommon.Ty.Fix Asm.RAX x; aluTwice Asm.SUB y; jo
-                      IRCommon.Operators.Xor => do loadAs IRCommon.Ty.Fix Asm.RAX x; aluTwice Asm.XOR y
-                      IRCommon.Operators.And => do loadAs IRCommon.Ty.Fix Asm.RAX x; loadAs IRCommon.Ty.Fix Asm.RCX y; emit (Asm.Alu Asm.AND Asm.RAX Asm.RCX)
-                      IRCommon.Operators.Or => do loadAs IRCommon.Ty.Fix Asm.RAX x; loadAs IRCommon.Ty.Fix Asm.RCX y; emit (Asm.Alu Asm.OR Asm.RAX Asm.RCX)
-                      IRCommon.Operators.Mul => do loadTwice Asm.RAX x; loadValue Asm.RCX y; emit (Asm.Imul Asm.RAX Asm.RCX); jo; retag
-                      IRCommon.Operators.Shl => shift Asm.SHL
-                      IRCommon.Operators.Shr => shift Asm.SHR
-                      IRCommon.Operators.Sar => shift Asm.SAR
+                      IRCommon.Op.Add => do loadAs IRCommon.Ty.Fix Asm.RAX x; aluTwice Asm.ADD y; jo
+                      IRCommon.Op.Sub => do loadAs IRCommon.Ty.Fix Asm.RAX x; aluTwice Asm.SUB y; jo
+                      IRCommon.Op.Xor => do loadAs IRCommon.Ty.Fix Asm.RAX x; aluTwice Asm.XOR y
+                      IRCommon.Op.And => do loadAs IRCommon.Ty.Fix Asm.RAX x; loadAs IRCommon.Ty.Fix Asm.RCX y; emit (Asm.Alu Asm.AND Asm.RAX Asm.RCX)
+                      IRCommon.Op.Or => do loadAs IRCommon.Ty.Fix Asm.RAX x; loadAs IRCommon.Ty.Fix Asm.RCX y; emit (Asm.Alu Asm.OR Asm.RAX Asm.RCX)
+                      IRCommon.Op.Mul => do loadTwice Asm.RAX x; loadValue Asm.RCX y; emit (Asm.Imul Asm.RAX Asm.RCX); jo; retag
+                      IRCommon.Op.Shl => shift Asm.SHL
+                      IRCommon.Op.Shr => shift Asm.SHR
+                      IRCommon.Op.Sar => shift Asm.SAR
                       _ => failWith ("the rendering does not support " ++ show o ++ " yet")
                     where
                       jo : Render enc ()
@@ -974,7 +974,7 @@ parameters (enc : HeapObject.Enc)
                       shiftFor _ = 3
 
                   ||| The width of a sub-word access.
-                  width : IRCommon.Operators.SubWord -> Asm.Width
-                  width IRCommon.Operators.Sub8 = Asm.W8
-                  width IRCommon.Operators.Sub16 = Asm.W16
-                  width IRCommon.Operators.Sub32 = Asm.W32
+                  width : IRCommon.Op.SubWord -> Asm.Width
+                  width IRCommon.Op.Sub8 = Asm.W8
+                  width IRCommon.Op.Sub16 = Asm.W16
+                  width IRCommon.Op.Sub32 = Asm.W32

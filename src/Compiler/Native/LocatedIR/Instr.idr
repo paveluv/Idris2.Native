@@ -15,7 +15,7 @@ import Compiler.Native.HeapObject.Kind as HeapObject
 import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.Area as IRCommon
 import Compiler.Native.IRCommon.Intrinsic as IRCommon
-import Compiler.Native.IRCommon.Operators
+import Compiler.Native.IRCommon.Op
 import Compiler.Native.IRCommon.Ty as IRCommon
 import Core.FC
 import Core.Name
@@ -50,39 +50,39 @@ data Instr : HeapObject.Enc -> Type where
   ||| computes it on the words, without untagging where the value encoding has
   ||| an identity for it. There is no arithmetic on `Val`s: a `Val` is narrowed
   ||| to a `Fix` first.
-  Arith      : IRCommon.Operators.ArithOp -> Reg enc -> Opnd enc -> Opnd enc -> Instr enc
+  Arith      : IRCommon.Op.ArithOp -> Reg enc -> Opnd enc -> Opnd enc -> Instr enc
   ||| Negation or complement of a `W64`.
-  Unary      : IRCommon.Operators.UnOp -> Reg enc -> Reg enc -> Instr enc
+  Unary      : IRCommon.Op.UnOp -> Reg enc -> Reg enc -> Instr enc
   ||| `Add`, `Sub` or `Mul`, with the operand types of `Arith`, then a branch
   ||| to the label if the result does not fit: in 64 signed bits for `W64`s,
   ||| in the fixnum range for `Fix`es, which is the fixnum fast path. The
   ||| label is a successor of the block at this instruction, not at the
   ||| block's end.
-  ArithOv    : IRCommon.Operators.ArithOp -> Reg enc -> Opnd enc -> Opnd enc -> Label -> Instr enc
+  ArithOv    : IRCommon.Op.ArithOp -> Reg enc -> Opnd enc -> Opnd enc -> Label -> Instr enc
   ||| Narrow a `W64` to the width, then sign- or zero-extend it back to 64
   ||| bits.
-  Ext        : IRCommon.Operators.SubWord -> (signed : Bool) -> Reg enc -> Reg enc -> Instr enc
+  Ext        : IRCommon.Op.SubWord -> (signed : Bool) -> Reg enc -> Reg enc -> Instr enc
   ||| Double arithmetic on `F64`s.
-  FArith     : IRCommon.Operators.FOp -> Reg enc -> Reg enc -> Reg enc -> Instr enc
+  FArith     : IRCommon.Op.FOp -> Reg enc -> Reg enc -> Reg enc -> Instr enc
   ||| Double negation.
   FNeg       : Reg enc -> Reg enc -> Instr enc
   ||| Compare two `F64`s; the destination, a `W64`, is 1 or 0.
-  FCmp       : IRCommon.Operators.Rel -> Reg enc -> Reg enc -> Reg enc -> Instr enc
+  FCmp       : IRCommon.Op.Rel -> Reg enc -> Reg enc -> Reg enc -> Instr enc
   ||| Convert between a `W64` and an `F64`.
-  Convert    : IRCommon.Operators.ConvOp -> Reg enc -> Reg enc -> Instr enc
+  Convert    : IRCommon.Op.ConvOp -> Reg enc -> Reg enc -> Instr enc
   ||| Compare two integers; the destination, a `W64`, is 1 or 0. The operands
   ||| are both `W64`s or both `Fix`es, compared as `Rel` says; a comparison
   ||| never makes a value.
-  Cmp        : IRCommon.Operators.Rel -> Reg enc -> Opnd enc -> Opnd enc -> Instr enc
+  Cmp        : IRCommon.Op.Rel -> Reg enc -> Opnd enc -> Opnd enc -> Instr enc
   ||| Load a word of the given type.
   Load       : IRCommon.Ty enc -> Reg enc -> Mem enc -> Instr enc
   ||| Store a register of the given type.
   Store      : IRCommon.Ty enc -> Mem enc -> Reg enc -> Instr enc
   ||| Load 8, 16 or 32 bits into a `W64`, zero- or sign-extended: the bytes
   ||| of strings and buffers, the limbs of bignums.
-  LoadN      : IRCommon.Operators.SubWord -> (signed : Bool) -> Reg enc -> Mem enc -> Instr enc
+  LoadN      : IRCommon.Op.SubWord -> (signed : Bool) -> Reg enc -> Mem enc -> Instr enc
   ||| Store the low 8, 16 or 32 bits of a `W64`.
-  StoreN     : IRCommon.Operators.SubWord -> Mem enc -> Reg enc -> Instr enc
+  StoreN     : IRCommon.Op.SubWord -> Mem enc -> Reg enc -> Instr enc
   ||| The fixnum of a `W64`, as a `Fix`. The producer guarantees that the
   ||| value is in the fixnum range.
   Tag        : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} -> Reg enc -> Reg enc -> Instr enc
@@ -182,8 +182,8 @@ instrName (CodeAddr _ _) = "CodeAddr"
 instrName (StaticAddr _ _) = "StaticAddr"
 instrName (AreaAddr _ _) = "AreaAddr"
 instrName (Arith op _ _ _) = show op
-instrName (Unary IRCommon.Operators.Negate _ _) = "Negate"
-instrName (Unary IRCommon.Operators.Complement _ _) = "Complement"
+instrName (Unary IRCommon.Op.Negate _ _) = "Negate"
+instrName (Unary IRCommon.Op.Complement _ _) = "Complement"
 instrName (ArithOv op _ _ _ _) = show op ++ "Ov"
 instrName (Ext _ _ _ _) = "Ext"
 instrName (FArith op _ _ _) = show op

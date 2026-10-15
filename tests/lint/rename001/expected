@@ -1,0 +1,31 @@
+./Old/Thing.idr: 1 changed, 0 stay
+Old is gone
+package fixtures
+
+depends = idris2-native
+
+modules =
+    New.Item,
+    Plan
+||| A module that `rename-module` renames `New.Item`.
+module New.Item
+
+%default total
+
+export
+width : Nat
+width = 1
+||| An importer of the renamed module: it imports `New.Item`, and a name
+||| written by the old name's last parts is written by as many of the new
+||| one's: `Thing.width` is `Item.width`, `Old.Thing.width` is
+||| `New.Item.width`.
+module Plan
+
+import New.Item
+
+%default total
+
+export
+twice : Nat
+twice = Item.width + New.Item.width
+Plan.idr checks

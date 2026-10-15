@@ -20,7 +20,7 @@ import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.Area as IRCommon
 import Compiler.Native.IRCommon.Conv
 import Compiler.Native.IRCommon.Intrinsic as IRCommon
-import Compiler.Native.IRCommon.Operators
+import Compiler.Native.IRCommon.Op
 import Compiler.Native.IRCommon.Ty as IRCommon
 import Core.FC
 import Core.Name
@@ -31,19 +31,19 @@ import Data.So
 
 ||| What a conversion takes.
 public export
-convFrom : IRCommon.Operators.ConvOp -> IRCommon.Ty enc
-convFrom IRCommon.Operators.I2F = IRCommon.Ty.W64
-convFrom IRCommon.Operators.F2I = IRCommon.Ty.F64
-convFrom IRCommon.Operators.FBits = IRCommon.Ty.F64
-convFrom IRCommon.Operators.BitsF = IRCommon.Ty.W64
+convFrom : IRCommon.Op.ConvOp -> IRCommon.Ty enc
+convFrom IRCommon.Op.I2F = IRCommon.Ty.W64
+convFrom IRCommon.Op.F2I = IRCommon.Ty.F64
+convFrom IRCommon.Op.FBits = IRCommon.Ty.F64
+convFrom IRCommon.Op.BitsF = IRCommon.Ty.W64
 
 ||| What a conversion makes.
 public export
-convTo : IRCommon.Operators.ConvOp -> IRCommon.Ty enc
-convTo IRCommon.Operators.I2F = IRCommon.Ty.F64
-convTo IRCommon.Operators.F2I = IRCommon.Ty.W64
-convTo IRCommon.Operators.FBits = IRCommon.Ty.W64
-convTo IRCommon.Operators.BitsF = IRCommon.Ty.F64
+convTo : IRCommon.Op.ConvOp -> IRCommon.Ty enc
+convTo IRCommon.Op.I2F = IRCommon.Ty.F64
+convTo IRCommon.Op.F2I = IRCommon.Ty.W64
+convTo IRCommon.Op.FBits = IRCommon.Ty.W64
+convTo IRCommon.Op.BitsF = IRCommon.Ty.F64
 
 ||| An instruction of a function that may (`True`) or may not convert between
 ||| words and addresses, with the types of the results it binds.
@@ -57,23 +57,23 @@ data Instr : Decls enc -> Bool -> (var : IRCommon.Ty enc -> Type) -> List (IRCom
   AreaAddr : IRCommon.Area -> Instr d m var [IRCommon.Ty.W64]
   ||| Integer arithmetic on two `W64`s or two `Fix`es; on `Fix`es the
   ||| producer guarantees the result is a fixnum.
-  Arith : {auto 0 int : IsInt t} -> IRCommon.Operators.ArithOp -> Opnd var t -> Opnd var t -> Instr d m var [t]
-  Unary : IRCommon.Operators.UnOp -> Opnd var IRCommon.Ty.W64 -> Instr d m var [IRCommon.Ty.W64]
+  Arith : {auto 0 int : IsInt t} -> IRCommon.Op.ArithOp -> Opnd var t -> Opnd var t -> Instr d m var [t]
+  Unary : IRCommon.Op.UnOp -> Opnd var IRCommon.Ty.W64 -> Instr d m var [IRCommon.Ty.W64]
   ||| Narrow a word to the width, then extend it back, signed or not.
-  Ext : IRCommon.Operators.SubWord -> (signed : Bool) -> Opnd var IRCommon.Ty.W64 -> Instr d m var [IRCommon.Ty.W64]
-  FArith : IRCommon.Operators.FOp -> Opnd var IRCommon.Ty.F64 -> Opnd var IRCommon.Ty.F64 -> Instr d m var [IRCommon.Ty.F64]
+  Ext : IRCommon.Op.SubWord -> (signed : Bool) -> Opnd var IRCommon.Ty.W64 -> Instr d m var [IRCommon.Ty.W64]
+  FArith : IRCommon.Op.FOp -> Opnd var IRCommon.Ty.F64 -> Opnd var IRCommon.Ty.F64 -> Instr d m var [IRCommon.Ty.F64]
   FNeg : Opnd var IRCommon.Ty.F64 -> Instr d m var [IRCommon.Ty.F64]
   ||| Compare two doubles: 1 or 0.
-  FCmp : IRCommon.Operators.Rel -> Opnd var IRCommon.Ty.F64 -> Opnd var IRCommon.Ty.F64 -> Instr d m var [IRCommon.Ty.W64]
-  Convert : (op : IRCommon.Operators.ConvOp) -> Opnd var (convFrom op) -> Instr d m var [convTo op]
+  FCmp : IRCommon.Op.Rel -> Opnd var IRCommon.Ty.F64 -> Opnd var IRCommon.Ty.F64 -> Instr d m var [IRCommon.Ty.W64]
+  Convert : (op : IRCommon.Op.ConvOp) -> Opnd var (convFrom op) -> Instr d m var [convTo op]
   ||| Compare two integers: 1 or 0.
-  Cmp : {auto 0 int : IsInt t} -> IRCommon.Operators.Rel -> Opnd var t -> Opnd var t -> Instr d m var [IRCommon.Ty.W64]
+  Cmp : {auto 0 int : IsInt t} -> IRCommon.Op.Rel -> Opnd var t -> Opnd var t -> Instr d m var [IRCommon.Ty.W64]
   Load : (t : IRCommon.Ty enc) -> Mem var -> Instr d m var [t]
   Store : (t : IRCommon.Ty enc) -> Mem var -> Opnd var t -> Instr d m var []
   ||| Load 8, 16 or 32 bits, extended to a word.
-  LoadN : IRCommon.Operators.SubWord -> (signed : Bool) -> Mem var -> Instr d m var [IRCommon.Ty.W64]
+  LoadN : IRCommon.Op.SubWord -> (signed : Bool) -> Mem var -> Instr d m var [IRCommon.Ty.W64]
   ||| Store a word's low 8, 16 or 32 bits.
-  StoreN : IRCommon.Operators.SubWord -> Mem var -> Opnd var IRCommon.Ty.W64 -> Instr d m var []
+  StoreN : IRCommon.Op.SubWord -> Mem var -> Opnd var IRCommon.Ty.W64 -> Instr d m var []
   ||| The fixnum of a word the producer knows is in range.
   Tag : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} -> Opnd var IRCommon.Ty.W64 -> Instr d m var [IRCommon.Ty.Fix {enc}]
   Untag : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} -> Opnd var (IRCommon.Ty.Fix {enc}) -> Instr d m var [IRCommon.Ty.W64]

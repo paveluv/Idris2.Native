@@ -64,29 +64,49 @@ writes term = case term of
     operator : WithFC (OpStr' Name) -> (FC, Name)
     operator o = (o.fc, either id id (opNameToEither o.val))
 
-||| What the terms of a file mention: every name it writes, with where, and
-||| every `%runElab` in a term.
+||| A name applied to arguments as written (`f a b`): the name called,
+||| where it is written, and where each explicit argument is, in order.
+||| Each prefix of an application is one too (`f a`), as Idris's parse
+||| nests them.
+public export
+record Applied where
+  constructor MkApplied
+  called : (FC, Name)
+  args : List FC
+
+||| What the terms of a file mention: every name it writes, with where,
+||| every name it applies, and every `%runElab` in a term.
 public export
 record Mentions where
   constructor MkMentions
   refs : List (FC, Name)
+  applied : List Applied
   runElabs : List FC
 
 ||| The mentions of a module's declarations: Idris's own traversal of terms,
 ||| over the declarations quoted as one term.
 export
 mentions : List PDecl -> IO Mentions
-mentions ds = coreRun walk (\_ => pure (MkMentions [] [])) pure
+mentions ds = coreRun walk (\_ => pure (MkMentions [] [] [])) pure
   where
     walk : Core Mentions
     walk = do
-      r <- newRef Collected (MkMentions [] [])
+      r <- newRef Collected (MkMentions [] [] [])
       ignore $ mapPTermM (\t => do note r t; pure t) (PQuoteDecl EmptyFC ds)
       m <- get Collected
-      pure ({ refs $= reverse, runElabs $= reverse } m)
+      pure ({ refs $= reverse, applied $= reverse, runElabs $= reverse } m)
       where
+        -- an application's head, if a name, and its explicit arguments
+        spine : PTerm -> Maybe ((FC, Name), List FC)
+        spine (PRef fc n) = Just ((fc, n), [])
+        spine (PApp _ f x) = map (\(h, as) => (h, as ++ [getPTermLoc x])) (spine f)
+        spine _ = Nothing
+
         note : Ref Collected Mentions -> PTerm -> Core ()
         note r (PRunElab fc _) = update Collected { runElabs $= (fc ::) }
+        note r t@(PApp _ _ _) = case spine t of
+          Just (h, as) => update Collected { applied $= (MkApplied h as ::) }
+          Nothing => pure ()
         note r t = update Collected { refs $= (reverse (writes t) ++) }
 
 ------------------------------------------------------------------------------
@@ -211,7 +231,7 @@ definesOf d = case d.val of
 export
 namesWritten : PTerm -> Core (List Name)
 namesWritten t = do
-  r <- newRef Collected (MkMentions [] [])
+  r <- newRef Collected (MkMentions [] [] [])
   ignore $ mapPTermM (\u => do note u; pure u) t
   m <- get Collected
   pure (map snd m.refs)

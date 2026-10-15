@@ -27,7 +27,7 @@ import Compiler.Native.TermIR.Var
 import Compiler.Native.HeapObject.Enc as HeapObject
 import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.Conv as IRCommon
-import Compiler.Native.IRCommon.Operators
+import Compiler.Native.IRCommon.Op
 import Compiler.Native.IRCommon.Ty as IRCommon
 import Core.Name
 import Data.Distinct
@@ -49,7 +49,7 @@ data PBody : Decls enc -> IRCommon.Conv enc -> Bool -> (v : IRCommon.Ty enc -> T
   PJoin : (ps : List (IRCommon.Ty enc)) -> (l ps -> All v ps -> PBody d c m v l) -> (l ps -> PBody d c m v l) ->
           PBody d c m v l
   PJump : l ps -> All (Opnd v) ps -> PBody d c m v l
-  PBranch : {auto 0 int : IsInt t} -> IRCommon.Operators.Rel -> Opnd v t -> Opnd v t -> (yes, no : PBody d c m v l) -> PBody d c m v l
+  PBranch : {auto 0 int : IsInt t} -> IRCommon.Op.Rel -> Opnd v t -> Opnd v t -> (yes, no : PBody d c m v l) -> PBody d c m v l
   PIfFixnums : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} ->
                {n : Nat} -> Vect (S n) (Opnd v IRCommon.Ty.Val) ->
                (All v (replicate (S n) (IRCommon.Ty.Fix {enc})) -> PBody d c m v l) -> PBody d c m v l -> PBody d c m v l
@@ -210,12 +210,12 @@ loop ps init body =
 
 ||| Compare two integers and branch.
 export
-branch : {auto 0 int : IsInt t} -> IRCommon.Operators.Rel -> Opnd v t -> Opnd v t -> (yes, no : End d c m v l) -> End d c m v l
+branch : {auto 0 int : IsInt t} -> IRCommon.Op.Rel -> Opnd v t -> Opnd v t -> (yes, no : End d c m v l) -> End d c m v l
 branch r x y yes no = MkBuild (\_ => PBranch r x y (finish yes) (finish no))
 
 ||| Leave by the code given when the relation holds; else go on.
 export
-leaveIf : {auto 0 int : IsInt t} -> IRCommon.Operators.Rel -> Opnd v t -> Opnd v t -> End d c m v l -> Build d c m v l ()
+leaveIf : {auto 0 int : IsInt t} -> IRCommon.Op.Rel -> Opnd v t -> Opnd v t -> End d c m v l -> Build d c m v l ()
 leaveIf r x y out = MkBuild (\k => PBranch r x y (finish out) (k ()))
 
 ||| Whether every value is a fixnum; the yes branch has them as `Fix`es.
@@ -350,7 +350,7 @@ toBody ls dl pl ctx dc pc body = case body of
     label : (ls : List (List (IRCommon.Ty enc'))) -> (dl : Nat) -> (0 _ : dl = length ls) -> LLvl ps -> Maybe (Var ls ps)
     label ls dl _ (MkLLvl n) = if n < dl then Var.varAt (minus dl (S n)) ps ls else Nothing
 
-    opnd : (ctx : List (IRCommon.Ty enc'')) -> (dc : Nat) -> (0 _ : dc = length ctx) -> Opnd Lvl t -> Maybe (Body.Op ctx t)
+    opnd : (ctx : List (IRCommon.Ty enc'')) -> (dc : Nat) -> (0 _ : dc = length ctx) -> Opnd Lvl t -> Maybe (Opnd (Var ctx) t)
     opnd ctx dc pc (Opnd.V x) = Opnd.V <$> var ctx dc pc x
       where
         -- The position of level n in a context of d entries is d - 1 - n. The

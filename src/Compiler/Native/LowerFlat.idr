@@ -35,7 +35,7 @@ import Compiler.Native.HeapObject.Kind as HeapObject
 import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.Conv as IRCommon
 import Compiler.Native.IRCommon.Intrinsic as IRCommon
-import Compiler.Native.IRCommon.Operators
+import Compiler.Native.IRCommon.Op
 import Compiler.Native.IRCommon.Ty as IRCommon
 import Compiler.Native.Linkage.ConvertsIn
 import Compiler.Native.Linkage.InlineExtern as Linkage
@@ -290,7 +290,7 @@ constWord _ = Nothing
 
 ||| How a machine integer type is held in a word: narrower than it, extended
 ||| from the width as the type is signed or not, or the whole word.
-data Held = Narrower IRCommon.Operators.SubWord Bool | Whole Bool
+data Held = Narrower IRCommon.Op.SubWord Bool | Whole Bool
 
 ------------------------------------------------------------------------------
 -- The lowering
@@ -501,10 +501,10 @@ parameters {enc : HeapObject.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (s
         ||| A primitive operation.
         primOp : PrimFn n -> Vect n (Value enc v) -> B (Flat.Exp.Skeleton, Value enc v)
         primOp fn vect = case (fn, vect) of
-          (Add t, [x, y]) => arith t Add IRCommon.Operators.FAdd x y
-          (Sub t, [x, y]) => arith t Sub IRCommon.Operators.FSub x y
-          (Mul t, [x, y]) => arith t Mul IRCommon.Operators.FMul x y
-          (Div DoubleType, [x, y]) => do a <- double x; b <- double y; doubleVal <$> TermIR.Build.emit1 (TermIR.Instr.FArith IRCommon.Operators.FDiv a b)
+          (Add t, [x, y]) => arith t Add IRCommon.Op.FAdd x y
+          (Sub t, [x, y]) => arith t Sub IRCommon.Op.FSub x y
+          (Mul t, [x, y]) => arith t Mul IRCommon.Op.FMul x y
+          (Div DoubleType, [x, y]) => do a <- double x; b <- double y; doubleVal <$> TermIR.Build.emit1 (TermIR.Instr.FArith IRCommon.Op.FDiv a b)
           (Div t, [x, y]) => withHeld t "division" $ \h => do
             a <- word x
             b <- word y
@@ -520,18 +520,18 @@ parameters {enc : HeapObject.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (s
           (Neg DoubleType, [x]) => do a <- double x; doubleVal <$> TermIR.Build.emit1 (TermIR.Instr.FNeg a)
           (Neg t, [x]) => withHeld t "negation" $ \h => do
             a <- word x
-            w <- TermIR.Build.emit1 (TermIR.Instr.Unary IRCommon.Operators.Negate a)
+            w <- TermIR.Build.emit1 (TermIR.Instr.Unary IRCommon.Op.Negate a)
             wordVal t <$> wrap h w
           (ShiftL t, [x, y]) => shifting t True x y
           (ShiftR t, [x, y]) => shifting t False x y
-          (BAnd t, [x, y]) => bitwise t IRCommon.Operators.And x y
-          (BOr t, [x, y]) => bitwise t IRCommon.Operators.Or x y
-          (BXOr t, [x, y]) => bitwise t IRCommon.Operators.Xor x y
-          (LT t, [x, y]) => comparison t IRCommon.Operators.LtS x y
-          (LTE t, [x, y]) => comparison t IRCommon.Operators.LeS x y
-          (EQ t, [x, y]) => comparison t IRCommon.Operators.EqR x y
-          (GTE t, [x, y]) => comparison t IRCommon.Operators.GeS x y
-          (GT t, [x, y]) => comparison t IRCommon.Operators.GtS x y
+          (BAnd t, [x, y]) => bitwise t IRCommon.Op.And x y
+          (BOr t, [x, y]) => bitwise t IRCommon.Op.Or x y
+          (BXOr t, [x, y]) => bitwise t IRCommon.Op.Xor x y
+          (LT t, [x, y]) => comparison t IRCommon.Op.LtS x y
+          (LTE t, [x, y]) => comparison t IRCommon.Op.LeS x y
+          (EQ t, [x, y]) => comparison t IRCommon.Op.EqR x y
+          (GTE t, [x, y]) => comparison t IRCommon.Op.GeS x y
+          (GT t, [x, y]) => comparison t IRCommon.Op.GtS x y
           (Cast from to, [x]) => castTo from to x
           (op, _) => TermIR.Build.unsupported ("the primitive " ++ show op ++ " in a flat form")
           where
@@ -553,13 +553,13 @@ parameters {enc : HeapObject.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (s
                 held IntType = Just (Whole True)
                 held Int64Type = Just (Whole True)
                 held Bits64Type = Just (Whole False)
-                held Int8Type = Just (Narrower IRCommon.Operators.Sub8 True)
-                held Int16Type = Just (Narrower IRCommon.Operators.Sub16 True)
-                held Int32Type = Just (Narrower IRCommon.Operators.Sub32 True)
-                held Bits8Type = Just (Narrower IRCommon.Operators.Sub8 False)
-                held Bits16Type = Just (Narrower IRCommon.Operators.Sub16 False)
-                held Bits32Type = Just (Narrower IRCommon.Operators.Sub32 False)
-                held CharType = Just (Narrower IRCommon.Operators.Sub32 False)
+                held Int8Type = Just (Narrower IRCommon.Op.Sub8 True)
+                held Int16Type = Just (Narrower IRCommon.Op.Sub16 True)
+                held Int32Type = Just (Narrower IRCommon.Op.Sub32 True)
+                held Bits8Type = Just (Narrower IRCommon.Op.Sub8 False)
+                held Bits16Type = Just (Narrower IRCommon.Op.Sub16 False)
+                held Bits32Type = Just (Narrower IRCommon.Op.Sub32 False)
+                held CharType = Just (Narrower IRCommon.Op.Sub32 False)
                 held _ = Nothing
 
             ||| A cast between the primitive types.
@@ -581,10 +581,10 @@ parameters {enc : HeapObject.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (s
                   [r] <- TermIR.Build.joinPoint [IRCommon.Ty.W64] $ \done => do
                     keep <- TermIR.Build.block [] $ \[] => done [w]
                     zero <- TermIR.Build.block [] $ \[] => done [TermIR.Opnd.W 0]
-                    TermIR.Build.branch IRCommon.Operators.LtS w (TermIR.Opnd.W 0) (zero []) $
-                      TermIR.Build.branch IRCommon.Operators.LeS w (TermIR.Opnd.W 55295) (keep []) $
-                        TermIR.Build.branch IRCommon.Operators.LtS w (TermIR.Opnd.W 57344) (zero []) $
-                          TermIR.Build.branch IRCommon.Operators.LeS w (TermIR.Opnd.W 1114111) (keep []) (zero [])
+                    TermIR.Build.branch IRCommon.Op.LtS w (TermIR.Opnd.W 0) (zero []) $
+                      TermIR.Build.branch IRCommon.Op.LeS w (TermIR.Opnd.W 55295) (keep []) $
+                        TermIR.Build.branch IRCommon.Op.LtS w (TermIR.Opnd.W 57344) (zero []) $
+                          TermIR.Build.branch IRCommon.Op.LeS w (TermIR.Opnd.W 1114111) (keep []) (zero [])
                   pure r
 
                 ||| A word of the integer type as a double. A `Bits64` at or above 2^63
@@ -592,34 +592,34 @@ parameters {enc : HeapObject.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (s
                 wordToDouble : Held -> TermIR.Opnd v IRCommon.Ty.W64 -> B (TermIR.Opnd v IRCommon.Ty.F64)
                 wordToDouble (Whole False) w = do
                   [f] <- TermIR.Build.joinPoint [IRCommon.Ty.F64] $ \done =>
-                    TermIR.Build.branch IRCommon.Operators.GeS w (TermIR.Opnd.W 0) (do f <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Operators.I2F w); done [f]) $ do
-                      h <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Operators.Shr w (TermIR.Opnd.W 1))
-                      b <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Operators.And w (TermIR.Opnd.W 1))
-                      hb <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Operators.Or h b)
-                      f <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Operators.I2F hb)
-                      f2 <- TermIR.Build.emit1 (TermIR.Instr.FArith IRCommon.Operators.FAdd f f)
+                    TermIR.Build.branch IRCommon.Op.GeS w (TermIR.Opnd.W 0) (do f <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.I2F w); done [f]) $ do
+                      h <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.Shr w (TermIR.Opnd.W 1))
+                      b <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.And w (TermIR.Opnd.W 1))
+                      hb <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.Or h b)
+                      f <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.I2F hb)
+                      f2 <- TermIR.Build.emit1 (TermIR.Instr.FArith IRCommon.Op.FAdd f f)
                       done [f2]
                   pure f
-                wordToDouble _ w = TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Operators.I2F w)
+                wordToDouble _ w = TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.I2F w)
 
                 ||| A double truncated to the integer type. A `Bits64` at or above 2^63 is
                 ||| converted less 2^63, which is added back to the word.
                 doubleToWord : Held -> TermIR.Opnd v IRCommon.Ty.F64 -> B (TermIR.Opnd v IRCommon.Ty.W64)
                 doubleToWord (Whole False) f = do
                   big <- TermIR.Build.emit1 (TermIR.Instr.FConst 9223372036854775808.0)
-                  above <- TermIR.Build.emit1 (TermIR.Instr.FCmp IRCommon.Operators.GeS f big)
+                  above <- TermIR.Build.emit1 (TermIR.Instr.FCmp IRCommon.Op.GeS f big)
                   [w] <- TermIR.Build.joinPoint [IRCommon.Ty.W64] $ \done =>
-                    TermIR.Build.branch IRCommon.Operators.EqR above (TermIR.Opnd.W 0) (do w <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Operators.F2I f); done [w]) $ do
-                      g <- TermIR.Build.emit1 (TermIR.Instr.FArith IRCommon.Operators.FSub f big)
-                      w <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Operators.F2I g)
+                    TermIR.Build.branch IRCommon.Op.EqR above (TermIR.Opnd.W 0) (do w <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.F2I f); done [w]) $ do
+                      g <- TermIR.Build.emit1 (TermIR.Instr.FArith IRCommon.Op.FSub f big)
+                      w <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.F2I g)
                       w' <- TermIR.Build.emit1 (TermIR.Instr.Arith Add w (TermIR.Opnd.W (-9223372036854775808)))
                       done [w']
                   pure w
                 doubleToWord h f = do
-                  w <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Operators.F2I f)
+                  w <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.F2I f)
                   wrap h w
 
-            arith : PrimType -> IRCommon.Operators.ArithOp -> IRCommon.Operators.FOp -> (x, y : Value enc v) -> B (Flat.Exp.Skeleton, Value enc v)
+            arith : PrimType -> IRCommon.Op.ArithOp -> IRCommon.Op.FOp -> (x, y : Value enc v) -> B (Flat.Exp.Skeleton, Value enc v)
             arith DoubleType _ o x y = do a <- double x; b <- double y; doubleVal <$> TermIR.Build.emit1 (TermIR.Instr.FArith o a b)
             arith t o _ x y = withHeld t "arithmetic" $ \h => do
               a <- word x
@@ -627,7 +627,7 @@ parameters {enc : HeapObject.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (s
               w <- TermIR.Build.emit1 (TermIR.Instr.Arith o a b)
               wordVal t <$> wrap h w
 
-            bitwise : PrimType -> IRCommon.Operators.ArithOp -> (x, y : Value enc v) -> B (Flat.Exp.Skeleton, Value enc v)
+            bitwise : PrimType -> IRCommon.Op.ArithOp -> (x, y : Value enc v) -> B (Flat.Exp.Skeleton, Value enc v)
             bitwise t o x y = withHeld t "a bitwise operation" $ \h => do
               a <- word x
               b <- word y
@@ -642,10 +642,10 @@ parameters {enc : HeapObject.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (s
             shifting t left x y = withHeld t "a shift" $ \h => do
               a <- word x
               k <- word y
-              w <- Words.shiftBy (if left then IRCommon.Operators.Shl else if signed h then IRCommon.Operators.Sar else IRCommon.Operators.Shr) a k
+              w <- Words.shiftBy (if left then IRCommon.Op.Shl else if signed h then IRCommon.Op.Sar else IRCommon.Op.Shr) a k
               wordVal t <$> wrap h w
 
-            comparison : PrimType -> IRCommon.Operators.Rel -> (x, y : Value enc v) -> B (Flat.Exp.Skeleton, Value enc v)
+            comparison : PrimType -> IRCommon.Op.Rel -> (x, y : Value enc v) -> B (Flat.Exp.Skeleton, Value enc v)
             comparison DoubleType rel x y = do
               a <- double x
               b <- double y
@@ -656,11 +656,11 @@ parameters {enc : HeapObject.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (s
               wordVal IntType <$> TermIR.Build.emit1 (TermIR.Instr.Cmp (if signed h then rel else unsignedRel rel) a b)
               where
                 ||| The unsigned relation for a signed one.
-                unsignedRel : IRCommon.Operators.Rel -> IRCommon.Operators.Rel
-                unsignedRel IRCommon.Operators.LtS = IRCommon.Operators.LtU
-                unsignedRel IRCommon.Operators.LeS = IRCommon.Operators.LeU
-                unsignedRel IRCommon.Operators.GtS = IRCommon.Operators.GtU
-                unsignedRel IRCommon.Operators.GeS = IRCommon.Operators.GeU
+                unsignedRel : IRCommon.Op.Rel -> IRCommon.Op.Rel
+                unsignedRel IRCommon.Op.LtS = IRCommon.Op.LtU
+                unsignedRel IRCommon.Op.LeS = IRCommon.Op.LeU
+                unsignedRel IRCommon.Op.GtS = IRCommon.Op.GtU
+                unsignedRel IRCommon.Op.GeS = IRCommon.Op.GeU
                 unsignedRel r = r
 
         ||| A call of a form.
