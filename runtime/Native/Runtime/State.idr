@@ -12,6 +12,7 @@ module Native.Runtime.State
 import Native.Runtime.Heap
 import Native.Runtime.Memory
 
+import Native.Area
 import Native.HeapObj.Kind as HeapObj
 
 %hide Prelude.Interfaces.(>>=)
@@ -25,37 +26,50 @@ public export
 State : Type
 State = Bits64
 
+||| The state's word `i`, which the area holds: a word past the area's
+||| (`Area.runtimeWords`) does not typecheck.
+public export
+word : (i : Bits64) -> {auto 0 fits : i < Area.runtimeWords = True} -> State
+word i = i
+
+||| The first of the `n` words of the state from its word `i`, all of which
+||| the area holds.
+public export
+words : (i, n : Bits64) -> {auto 0 fits : i + n <= Area.runtimeWords = True} -> State
+words i _ = i
+
 ||| The from-space: its first address, the end of its reservation, and the
 ||| end of the memory committed to it.
 public export
 fromBase, fromEnd, fromCommitted : State
-fromBase = 0
-fromEnd = 1
-fromCommitted = 2
+fromBase = word 0
+fromEnd = word 1
+fromCommitted = word 2
 
 ||| The to-space: the same, and during a collection the end of what has
 ||| been copied into it and the address of the next copy to scan.
 public export
 toBase, toEnd, toCommitted, toTop, scanCursor : State
-toBase = 3
-toEnd = 4
-toCommitted = 5
-toTop = 6
-scanCursor = 7
+toBase = word 3
+toEnd = word 4
+toCommitted = word 5
+toTop = word 6
+scanCursor = word 7
 
 ||| The bytes the last collection left live; the most bytes the heap may
 ||| commit, 0 for no limit; the window's size; the collections so far.
 export
 liveBytes, heapLimit, windowBytes, collections : State
-liveBytes = 8
-heapLimit = 9
-windowBytes = 10
-collections = 11
+liveBytes = word 8
+heapLimit = word 9
+windowBytes = word 10
+collections = word 11
 
-||| Sixteen bytes for a system call to write into: getrlimit's answer.
+||| Two words, sixteen bytes, for a system call to write into: getrlimit's
+||| answer.
 public export
-scratchBytes : Bits64
-scratchBytes = 8 * 16
+scratch : State
+scratch = words 16 2
 
 ||| The word of the state.
 export
@@ -75,4 +89,4 @@ export
 scratchArea : Heap.Op Heap (Memory.Addr k)
 scratchArea = do
   rt <- Memory.runtimeArea
-  Heap.pure (Memory.fromWord (rt + scratchBytes))
+  Heap.pure (Memory.fromWord (rt + 8 * scratch))

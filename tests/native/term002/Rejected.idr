@@ -10,7 +10,7 @@ import Data.List
 import Data.List.Quantifiers
 import Data.So
 import Data.Vect
-import Native.Codegen.IRCommon.Area
+import Native.Area
 import Native.Codegen.IRCommon.ConIds
 import Native.Codegen.IRCommon.Conv
 import Native.Codegen.IRCommon.Op

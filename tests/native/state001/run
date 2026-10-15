@@ -1,0 +1,9 @@
+. ../../testutils.sh
+
+# The runtime's state fits its area: each word of `RUNTIME` the runtime
+# names (`Native.Runtime.State.word`) carries an erased proof that the area,
+# `Native.Area.runtimeWords` words, holds it. The last word checks; the
+# first past the area does not.
+idris2 -p idris2-native -p idris2-native-runtime --check Last.idr > /dev/null && echo "Last.idr checks"
+idris2 -p idris2-native -p idris2-native-runtime --check Past.idr 2>&1 | grep -o "Can't find an implementation for [^.]*" | head -1
+rm -rf build

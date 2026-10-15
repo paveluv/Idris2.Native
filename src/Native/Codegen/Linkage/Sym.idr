@@ -5,7 +5,7 @@
 ||| (`Native.Codegen.Linkage.Routine` says what it is).
 module Native.Codegen.Linkage.Sym
 
-import Native.Codegen.IRCommon.Area as IRCommon
+import Native.Area
 import Native.Codegen.X86.Asm
 
 %default total
@@ -82,14 +82,14 @@ symName SymRuntime = "RUNTIME"
 
 ||| The symbol of a per-thread area.
 public export
-areaSym : IRCommon.Area -> Sym
-areaSym IRCommon.Area.ARGS = SymArgs
-areaSym IRCommon.Area.ROOTS = SymRoots
-areaSym IRCommon.Area.NROOTS = SymNRoots
-areaSym IRCommon.Area.SCRATCH = SymScratch
-areaSym IRCommon.Area.STACK_LIMIT = SymStackLimit
-areaSym IRCommon.Area.ARGV = SymArgv
-areaSym IRCommon.Area.RUNTIME = SymRuntime
+areaSym : Area -> Sym
+areaSym Area.ARGS = SymArgs
+areaSym Area.ROOTS = SymRoots
+areaSym Area.NROOTS = SymNRoots
+areaSym Area.SCRATCH = SymScratch
+areaSym Area.STACK_LIMIT = SymStackLimit
+areaSym Area.ARGV = SymArgv
+areaSym Area.RUNTIME = SymRuntime
 
 ||| The first label a program may use for itself.
 public export

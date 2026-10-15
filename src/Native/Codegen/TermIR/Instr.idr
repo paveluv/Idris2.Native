@@ -17,7 +17,7 @@ import Core.FC
 import Core.Name
 import Data.List.Quantifiers
 import Data.So
-import Native.Codegen.IRCommon.Area as IRCommon
+import Native.Area
 import Native.Codegen.IRCommon.Conv
 import Native.Codegen.IRCommon.Intrinsic as IRCommon
 import Native.Codegen.IRCommon.Op
@@ -54,7 +54,7 @@ data Instr : Decls enc -> Bool -> (var : IRCommon.Ty enc -> Type) -> List (IRCom
   CodeAddr : Var d.sigs (Sig.MkSig n IRCommon.Conv.CPS ps cv) -> Instr d m var [IRCommon.Ty.W64]
   ||| The address of a static object, as a pointer to its kind.
   StaticAddr : Var d.statics (StaticSig.MkStaticSig s k) -> Instr d m var [IRCommon.Ty.PtrTo k]
-  AreaAddr : IRCommon.Area -> Instr d m var [IRCommon.Ty.W64]
+  AreaAddr : Area -> Instr d m var [IRCommon.Ty.W64]
   ||| Integer arithmetic on two `W64`s or two `Fix`es; on `Fix`es the
   ||| producer guarantees the result is a fixnum.
   Arith : {auto 0 int : IsInt t} -> IRCommon.Op.ArithOp -> Opnd var t -> Opnd var t -> Instr d m var [t]

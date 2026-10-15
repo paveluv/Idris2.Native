@@ -10,7 +10,7 @@ import Native.Codegen.Linkage.RuntimeModule
 import Core.Name
 import Data.Fin
 import Data.List
-import Native.Codegen.IRCommon.Area as IRCommon
+import Native.Area
 import Native.Codegen.IRCommon.Intrinsic as IRCommon
 import Native.Codegen.IRCommon.Op
 import Native.Codegen.IRCommon.Ty as IRCommon
@@ -42,7 +42,7 @@ data InlineExtern
     ||| beyond the object's address.
     PointerTag
   | ||| The address of a per-thread area.
-    AreaAddress IRCommon.Area
+    AreaAddress Area
   | ||| The pointer word of a uniform value known to be an object of the kind.
     ObjectWord HeapObj.Kind
   | ||| The uniform value of a pointer word to an object of the kind.
@@ -78,11 +78,11 @@ inlineExterns =
   , machine "Memory" "prim__getK" IRCommon.Intrinsic.GetK
   , machine "Memory" "prim__setK" IRCommon.Intrinsic.SetK
   , memory "prim__pointerTag" PointerTag [] [IRCommon.Ty.W64]
-  , memory "prim__stackLimitArea" (AreaAddress IRCommon.Area.STACK_LIMIT) [] [IRCommon.Ty.W64]
-  , memory "prim__argvArea" (AreaAddress IRCommon.Area.ARGV) [] [IRCommon.Ty.W64]
-  , memory "prim__rootsArea" (AreaAddress IRCommon.Area.ROOTS) [] [IRCommon.Ty.W64]
-  , memory "prim__nrootsArea" (AreaAddress IRCommon.Area.NROOTS) [] [IRCommon.Ty.W64]
-  , memory "prim__runtimeArea" (AreaAddress IRCommon.Area.RUNTIME) [] [IRCommon.Ty.W64]
+  , memory "prim__stackLimitArea" (AreaAddress Area.STACK_LIMIT) [] [IRCommon.Ty.W64]
+  , memory "prim__argvArea" (AreaAddress Area.ARGV) [] [IRCommon.Ty.W64]
+  , memory "prim__rootsArea" (AreaAddress Area.ROOTS) [] [IRCommon.Ty.W64]
+  , memory "prim__nrootsArea" (AreaAddress Area.NROOTS) [] [IRCommon.Ty.W64]
+  , memory "prim__runtimeArea" (AreaAddress Area.RUNTIME) [] [IRCommon.Ty.W64]
   , memory "prim__stringWord" (ObjectWord HeapObj.Kind.STRING) [IRCommon.Ty.Val] [IRCommon.Ty.W64]
   , memory "prim__wordString" (WordObject HeapObj.Kind.STRING) [IRCommon.Ty.W64] [IRCommon.Ty.Val]
   , memory "prim__conWord" (ObjectWord HeapObj.Kind.CON) [IRCommon.Ty.Val] [IRCommon.Ty.W64]

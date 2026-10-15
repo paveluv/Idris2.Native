@@ -1,8 +1,15 @@
-||| The per-thread memory areas the runtime keeps outside the heap (`Area`).
+||| The per-thread memory areas the runtime keeps outside the heap (`Area`),
+||| and what generated code and the runtime agree on of them: the words of
+||| the runtime's state (`runtimeWords`), and where the root buffer holds an
+||| entry (`rootOffset`).
 |||
-||| Part of the vocabulary the native backend's two IRs share
-||| (`Native.Codegen.IRCommon.Ty` says what it is).
-module Native.Codegen.IRCommon.Area
+||| Part of the contract between compiled code and the runtime, with the
+||| heap-object model (`HeapObj.Enc` says what it is), and like it of
+||| neither: the code generator sizes and lays the areas out, in the image's
+||| bss, and reaches them by their symbols; the runtime reaches them by the
+||| inline externs that give their addresses. It imports nothing, so that
+||| the runtime's own Idris can import it.
+module Native.Area
 
 %default total
 
@@ -37,7 +44,21 @@ data Area
     ||| left live. `runtimeWords` words, which the runtime library lays out.
     RUNTIME
 
-||| The words of `RUNTIME`.
+||| The words of `RUNTIME`. The runtime's state names each of its words
+||| with a proof that the area holds it.
 public export
-runtimeWords : Nat
+runtimeWords : Bits64
 runtimeWords = 32
+
+||| The bytes of an entry of `ROOTS`, as the power of two they are: an entry
+||| is a word.
+public export
+rootShift : Bits64
+rootShift = 3
+
+||| Where `ROOTS` holds its entry `i`, in bytes from its start: the entries
+||| in order from the start, `2 ^ rootShift` bytes each. Inline, so that a
+||| flat function computes it where it uses it.
+public export %inline
+rootOffset : (i : Bits64) -> Bits64
+rootOffset i = prim__shl_Bits64 i rootShift

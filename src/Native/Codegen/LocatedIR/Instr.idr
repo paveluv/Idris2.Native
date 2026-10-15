@@ -11,7 +11,7 @@ import Native.Codegen.LocatedIR.Reg
 
 import Core.FC
 import Core.Name
-import Native.Codegen.IRCommon.Area as IRCommon
+import Native.Area
 import Native.Codegen.IRCommon.Intrinsic as IRCommon
 import Native.Codegen.IRCommon.Op
 import Native.Codegen.IRCommon.Ty as IRCommon
@@ -43,7 +43,7 @@ data Instr : HeapObj.Enc -> Type where
   ||| `PtrTo k` of the static's kind.
   StaticAddr : Reg enc -> Name -> Instr enc
   ||| The address of a per-thread area, into a `W64`.
-  AreaAddr   : Reg enc -> IRCommon.Area -> Instr enc
+  AreaAddr   : Reg enc -> Area -> Instr enc
   ||| Integer arithmetic: the operands and the result are all `W64`s, or all
   ||| `Fix`es. On `Fix`es it is the operation on the fixnums' values, which
   ||| the producer guarantees is in the fixnum range, and the rendering

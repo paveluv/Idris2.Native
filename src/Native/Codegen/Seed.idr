@@ -10,7 +10,6 @@
 module Native.Codegen.Seed
 
 import Native.Codegen.Bytes
-import Native.Codegen.IRCommon.Area
 import Native.Codegen.Linkage.Areas as Linkage
 import Native.Codegen.Linkage.ResumePoint
 import Native.Codegen.Linkage.Sym as Linkage
@@ -22,6 +21,7 @@ import Data.List
 import Data.Maybe
 import Data.SortedMap
 import Data.Zippable
+import Native.Area
 import Native.HeapObj.Enc as HeapObj
 import Native.HeapObj.Header
 import Native.HeapObj.Kind
@@ -180,19 +180,21 @@ seedText enc window = startText enc.val window ++ haltText ++ unsupportedText
       , X86.Asm.Lbl slow
       , X86.Asm.Lea X86.Asm.RSI (X86.Asm.MRip (Linkage.Sym.symLabel Linkage.Sym.SymNRoots) 0),
         X86.Asm.MovRM X86.Asm.RAX (X86.Asm.MBase X86.Asm.RSI 0)
-      , X86.Asm.MovRR X86.Asm.RDX X86.Asm.RAX, X86.Asm.ShiftI X86.Asm.SHL X86.Asm.RDX 3,
+      , X86.Asm.MovRR X86.Asm.RDX X86.Asm.RAX, X86.Asm.ShiftI X86.Asm.SHL X86.Asm.RDX (cast Area.rootShift),
         X86.Asm.Lea X86.Asm.RDI (X86.Asm.MRip (Linkage.Sym.symLabel Linkage.Sym.SymRoots) 0),
           X86.Asm.Alu X86.Asm.ADD X86.Asm.RDI X86.Asm.RDX
-      , X86.Asm.MovMR (X86.Asm.MBase X86.Asm.RDI 0) X86.Asm.R10, X86.Asm.MovMR (X86.Asm.MBase X86.Asm.RDI 8) X86.Asm.R11
+      , X86.Asm.MovMR (X86.Asm.MBase X86.Asm.RDI (root 0)) X86.Asm.R10,
+        X86.Asm.MovMR (X86.Asm.MBase X86.Asm.RDI (root 1)) X86.Asm.R11
       , X86.Asm.AluI X86.Asm.ADD X86.Asm.RAX 2, X86.Asm.MovMR (X86.Asm.MBase X86.Asm.RSI 0) X86.Asm.RAX
       , X86.Asm.MovRR X86.Asm.RDI X86.Asm.RCX, X86.Asm.Call (Linkage.Sym.symLabel Linkage.Sym.SymAllocSlow)
       , X86.Asm.Lea X86.Asm.RSI (X86.Asm.MRip (Linkage.Sym.symLabel Linkage.Sym.SymNRoots) 0),
         X86.Asm.MovRM X86.Asm.RDX (X86.Asm.MBase X86.Asm.RSI 0), X86.Asm.AluI X86.Asm.SUB X86.Asm.RDX 2,
           X86.Asm.MovMR (X86.Asm.MBase X86.Asm.RSI 0) X86.Asm.RDX
-      , X86.Asm.ShiftI X86.Asm.SHL X86.Asm.RDX 3,
+      , X86.Asm.ShiftI X86.Asm.SHL X86.Asm.RDX (cast Area.rootShift),
         X86.Asm.Lea X86.Asm.RCX (X86.Asm.MRip (Linkage.Sym.symLabel Linkage.Sym.SymRoots) 0),
           X86.Asm.Alu X86.Asm.ADD X86.Asm.RCX X86.Asm.RDX
-      , X86.Asm.MovRM X86.Asm.R10 (X86.Asm.MBase X86.Asm.RCX 0), X86.Asm.MovRM X86.Asm.R11 (X86.Asm.MBase X86.Asm.RCX 8)
+      , X86.Asm.MovRM X86.Asm.R10 (X86.Asm.MBase X86.Asm.RCX (root 0)),
+        X86.Asm.MovRM X86.Asm.R11 (X86.Asm.MBase X86.Asm.RCX (root 1))
       , X86.Asm.Jmp
         initClosure ]                                            -- the new space in rdi, the routine's result
       where
@@ -200,6 +202,10 @@ seedText enc window = startText enc.val window ++ haltText ++ unsupportedText
         ||| pointer words, the closure allocated in rdi an address.
         pt : Int
         pt = cast (HeapObj.ValEnc.pointerTag venc)
+
+        ||| Where the root buffer holds its entry `i`, as a displacement.
+        root : Bits64 -> Int
+        root i = cast (Area.rootOffset i)
 
         ||| The address in `s` as a pointer word in `d`.
         toPointer : (d, s : X86.Asm.Reg64) -> X86.Asm.Instr
@@ -270,4 +276,4 @@ seedBss a =
 
 export
 seedBssSize : Linkage.Areas -> Int
-seedBssSize a = 8 * cast (a.args + a.roots + 1 + a.scratch + 2 + IRCommon.Area.runtimeWords)
+seedBssSize a = 8 * (cast (a.args + a.roots + 1 + a.scratch + 2) + cast Area.runtimeWords)

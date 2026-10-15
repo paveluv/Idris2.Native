@@ -26,6 +26,7 @@ import Native.Runtime.Heap
 import Native.Runtime.Memory
 import Native.Runtime.Object
 
+import Native.Area
 import Native.HeapObj.Kind as HeapObj
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
@@ -107,10 +108,10 @@ Memory Heap where
     Memory.loadAt nr 0
   readRoot i = do
     r <- Memory.rootsArea
-    Memory.loadAt r (8 * i)
+    Memory.loadAt r (Area.rootOffset i)
   writeRoot i v = do
     r <- Memory.rootsArea
-    Memory.storeAt r (8 * i) v
+    Memory.storeAt r (Area.rootOffset i) v
   rootContinuation = Memory.continuation
   setRootContinuation = Memory.setContinuation
   flipSpaces = do

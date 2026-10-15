@@ -65,6 +65,7 @@ import Data.List
 import Data.Maybe
 import Data.SortedMap
 import Data.Zippable
+import Native.Area
 import Native.Codegen.Bytes
 import Native.Codegen.IRCommon.Conv as IRCommon
 import Native.Codegen.IRCommon.Intrinsic
@@ -405,12 +406,12 @@ parameters (enc : HeapObj.Enc)
               out (Asm.Lea Asm.RSI (Asm.MRip (sym Linkage.Sym.SymNRoots) 0))
               out (Asm.MovRM Asm.RDX (Asm.MBase Asm.RSI 0))
               out (Asm.MovRR Asm.RCX Asm.RDX)
-              out (Asm.ShiftI Asm.SHL Asm.RCX 3)
+              out (Asm.ShiftI Asm.SHL Asm.RCX (cast Area.rootShift))
               out (Asm.Lea Asm.RDI (Asm.MRip (sym Linkage.Sym.SymRoots) 0))
               out (Asm.Alu Asm.ADD Asm.RDI Asm.RCX)
               traverse_ (\(j, r) => do n <- useSlot r
                                        out (Asm.MovRM Asm.RCX (slotMem n))
-                                       out (Asm.MovMR (Asm.MBase Asm.RDI (cast (8 * j))) Asm.RCX))
+                                       out (Asm.MovMR (Asm.MBase Asm.RDI (cast (Area.rootOffset (cast j)))) Asm.RCX))
                         (zip (indices gc) gc)
               out (Asm.AluI Asm.ADD Asm.RDX (cast (length gc)))
               out (Asm.MovMR (Asm.MBase Asm.RSI 0) Asm.RDX)
@@ -442,11 +443,11 @@ parameters (enc : HeapObj.Enc)
               out (Asm.MovRM Asm.RDX (Asm.MBase Asm.RSI 0))
               out (Asm.AluI Asm.SUB Asm.RDX (cast (length gc)))
               out (Asm.MovMR (Asm.MBase Asm.RSI 0) Asm.RDX)
-              out (Asm.ShiftI Asm.SHL Asm.RDX 3)
+              out (Asm.ShiftI Asm.SHL Asm.RDX (cast Area.rootShift))
               out (Asm.Lea Asm.RDI (Asm.MRip (sym Linkage.Sym.SymRoots) 0))
               out (Asm.Alu Asm.ADD Asm.RDI Asm.RDX)
               traverse_ (\(j, r) => do n <- useSlot r
-                                       out (Asm.MovRM Asm.RCX (Asm.MBase Asm.RDI (cast (8 * j))))
+                                       out (Asm.MovRM Asm.RCX (Asm.MBase Asm.RDI (cast (Area.rootOffset (cast j)))))
                                        out (Asm.MovMR (slotMem n) Asm.RCX))
                         (zip (indices gc) gc)
             where

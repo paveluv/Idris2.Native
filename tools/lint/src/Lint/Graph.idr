@@ -31,16 +31,17 @@ import Libraries.Data.WithData
 -- Layers
 
 ||| The layers of the product, from the bottom: `Data` (structures any part
-||| may use), `HeapObj` (the heap-object model, which the code generator and
-||| the runtime share), `Flat` (the flat fragment, of no backend), `Codegen`
+||| may use), `HeapObj` and `Area` (the heap-object model and the per-thread
+||| areas, the contract the code generator and the runtime share), `Flat` (the flat fragment, of no backend), `Codegen`
 ||| (the code generator), `Runtime` (the runtime library), each a group
 ||| under the product's root, `Native`; and the linter's own, of a root of
 ||| its own.
-data Layer = DataLayer | HeapObjLayer | FlatLayer | CodegenLayer | RuntimeLayer | LintLayer
+data Layer = DataLayer | HeapObjLayer | AreaLayer | FlatLayer | CodegenLayer | RuntimeLayer | LintLayer
 
 Eq Layer where
   DataLayer == DataLayer = True
   HeapObjLayer == HeapObjLayer = True
+  AreaLayer == AreaLayer = True
   FlatLayer == FlatLayer = True
   CodegenLayer == CodegenLayer = True
   RuntimeLayer == RuntimeLayer = True
@@ -59,22 +60,23 @@ allowed ours importer imported = case layerOf importer of
     ||| (`Codegen` for `Native.Codegen.TermIR.Instr`), or the linter's.
     layerOf : String -> Maybe Layer
     layerOf m = case forget (split (== '.') m) of
-      ("Native" :: g :: _) => lookup g [("Data", DataLayer), ("HeapObj", HeapObjLayer), ("Flat", FlatLayer),
+      ("Native" :: g :: _) => lookup g [("Data", DataLayer), ("HeapObj", HeapObjLayer), ("Area", AreaLayer), ("Flat", FlatLayer),
                                         ("Codegen", CodegenLayer), ("Runtime", RuntimeLayer)]
       ("Lint" :: _) => Just LintLayer
       _ => Nothing
 
     ||| The layers a layer's modules may import: its own, and some below it.
-    ||| The data structures and the heap-object model import nothing but
-    ||| data structures; the runtime only what it shares with the code
-    ||| generator, the heap-object model, and of the flat fragment
-    ||| `Native.Flat.Uniform` alone (`mayImport`).
+    ||| The data structures and the contract import nothing but data
+    ||| structures; the runtime only what it shares with the code generator,
+    ||| the contract, and of the flat fragment `Native.Flat.Uniform` alone
+    ||| (`mayImport`).
     imports : Layer -> List Layer
     imports DataLayer = [DataLayer]
     imports HeapObjLayer = [DataLayer, HeapObjLayer]
+    imports AreaLayer = [DataLayer, AreaLayer]
     imports FlatLayer = [DataLayer, FlatLayer]
-    imports CodegenLayer = [DataLayer, HeapObjLayer, FlatLayer, CodegenLayer]
-    imports RuntimeLayer = [HeapObjLayer, RuntimeLayer]
+    imports CodegenLayer = [DataLayer, HeapObjLayer, AreaLayer, FlatLayer, CodegenLayer]
+    imports RuntimeLayer = [HeapObjLayer, AreaLayer, RuntimeLayer]
     imports LintLayer = [LintLayer]
 
     ||| Whether a layer's module may import a module: one of the layers it

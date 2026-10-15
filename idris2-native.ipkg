@@ -12,9 +12,9 @@ sourcedir = "src"
 -- Installed as a library too, for the tests that build terms and programs
 -- with the code generator's own modules.
 modules =
+    Native.Area,
     Native.Codegen.Bytes,
     Native.Codegen.ELF,
-    Native.Codegen.IRCommon.Area,
     Native.Codegen.IRCommon.ConIds,
     Native.Codegen.IRCommon.Conv,
     Native.Codegen.IRCommon.Intrinsic,
