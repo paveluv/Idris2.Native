@@ -14,9 +14,9 @@ module Probe
 
 -- the runtime's functions use its own bit operations, which it does not
 -- re-export; flat code that reaches into them imports those too
+import Native.Heap
 import Native.HeapObj.Kind
 import Native.Runtime.Bits
-import Native.Runtime.Heap
 import Native.Runtime.Memory
 
 -- this module's `do` is the runtime's, over the token

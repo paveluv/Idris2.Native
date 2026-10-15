@@ -1,33 +1,29 @@
-||| The routines of the runtime that generated code reaches (`Routine`).
+||| The routines of the runtime that generated code reaches (`Routine`), with
+||| their registers.
 |||
-||| The modules of `Native.Codegen.Linkage` are what generated code, the
-||| runtime and the linker agree on: the runtime contract (its routines here,
-||| `InlineExtern`, `ForeignFunctions` and `OSService`), the image's symbols and
-||| their labels (`Sym`), the per-thread memory areas (`Areas`), and the
-||| shape of a resume point (`ResumePoint`). Nothing here is code: the
-||| runtime's routines are the runtime library's, the rest of the seed's are
-||| `Native.Codegen.Seed`, and `Native.Codegen.Link` makes the image.
+||| The modules of `Native.Codegen.Linkage` are the code generator's side of
+||| what generated code, the runtime and the linker agree on: the contract as
+||| the loaded runtime realises it (`Realised`), the instructions of the
+||| inline externs (`InlineExtern`), the routines here, the foreign
+||| functions the runtime implements (`ForeignFunctions`), where a
+||| platform's services are (`OSService`), where the runtime's modules are
+||| (`RuntimeModule`), the image's symbols and their labels (`Sym`), the
+||| sizes of the per-thread areas (`Areas`), and the shape of a resume point
+||| (`ResumePoint`). Nothing here is code: the runtime's routines are the
+||| runtime library's, the rest of the seed's are `Native.Codegen.Seed`, and
+||| `Native.Codegen.Link` makes the image.
 |||
-||| What generated code and the runtime may assume of each other is declared
-||| here, not taken from the runtime's compilation, in both directions. The
-||| routines are what the runtime provides: each reached by name or by
-||| symbol, with its signature in the term IR; the lowering calls them as
-||| declared, and the runtime library's flat forms are checked against the
-||| declarations when a program is lowered. The inline externs are what the
-||| lowering provides to fragment code: `%extern` declarations of the runtime
-||| library that the flat lowering turns into instructions; each is checked
-||| against its declaration when the runtime is loaded. A routine or an
-||| inline extern that is missing or has another signature is an error of the
-||| compilation. The OS services are what an operating system provides to
-||| the rest of the runtime: `%extern` declarations of the generic runtime,
-||| each bound, for the platform a program is compiled for, to a function of
-||| that platform's module, which the flat lowering calls in its place; the
-||| declarations are checked when the runtime is loaded, and the functions
-||| when a program is lowered. Code compiled to join a runtime that is
-||| already built depends on the contract alone.
+||| The contract itself is shared, `Native.Port` and the records of its
+||| entries (`Native.Routines`, `Native.Intrinsics`, `Native.Services`):
+||| each side gives a record of what it provides, checked by Idris against
+||| the ports where that side is built, and the code generator takes the
+||| registers of each call from the ports and the function or extern of each
+||| entry from the records. A routine the runtime gives must also have a
+||| flat form, which the lowering checks. Code compiled to join a runtime
+||| that is already built depends on the contract alone.
 module Native.Codegen.Linkage.Routine
 
-import Native.Codegen.Linkage.RuntimeModule
+import Native.Codegen.Linkage.Realised
 import Native.Codegen.Linkage.Sym
 
 import Core.Name
@@ -35,7 +31,8 @@ import Core.Name.Namespace
 import Data.List
 import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.HeapObj.Enc as HeapObj
-import Native.HeapObj.StringEnc as HeapObj
+import Native.Port
+import Native.Routines
 
 %default total
 
@@ -62,29 +59,27 @@ record Routine (enc : HeapObj.Enc) where
   results : List (IRCommon.Ty enc)
   params : List (IRCommon.Ty enc)
 
-||| The routine that starts the program, before `main`: the stack limit, the
-||| first allocation window, the arguments.
+||| The register a carrier of the contract is in: a word, a signed word or
+||| an address in a word, a value as ordinary code holds it in a uniform
+||| register.
 public export
-runtimeStart : Name
-runtimeStart = NS (RuntimeModule.runtimeModule "Start") (UN (Basic "start"))
+carrierTy : Port.Carrier -> IRCommon.Ty enc
+carrierTy Port.Word = IRCommon.Ty.W64
+carrierTy Port.Signed = IRCommon.Ty.W64
+carrierTy Port.Address = IRCommon.Ty.W64
+carrierTy Port.Str = IRCommon.Ty.Val
+carrierTy Port.Value = IRCommon.Ty.Val
 
-||| The allocation slow path: `bytes` in, the space of an object out, with
-||| the window moved past it; it collects when the heap has grown enough.
+||| The registers of a call of a port's entry: its arguments', the token
+||| taking none.
 public export
-runtimeAllocSlow : Name
-runtimeAllocSlow = NS (RuntimeModule.runtimeModule "Space") (UN (Basic "allocSlow"))
+portParams : Port -> List (IRCommon.Ty enc)
+portParams p = map carrierTy p.takes
 
-||| The allocation of a mutable object, which is never inline: `bytes` in,
-||| the object's space out.
+||| The registers of a port's result: none, or its carrier's.
 public export
-runtimeAllocMutable : Name
-runtimeAllocMutable = NS (RuntimeModule.runtimeModule "Space") (UN (Basic "allocMutable"))
-
-||| The routine that writes a message to the standard error and ends the
-||| process with status 1.
-public export
-runtimeCrash : Name
-runtimeCrash = NS (RuntimeModule.runtimeModule "System") (UN (Basic "crash"))
+portResults : Port -> List (IRCommon.Ty enc)
+portResults p = maybe [] (\c => [carrierTy c]) p.gives
 
 ||| The routine for an `Integer` operation the fast paths leave to the
 ||| runtime, which has none yet.
@@ -92,73 +87,80 @@ public export
 integerRoutine : String -> Name
 integerRoutine op = UN (Basic ("idris_integer_" ++ op))
 
-||| The runtime's module that lays strings out under the encoding: the one
-||| module of the runtime that reads a string's header or bytes. Every other
-||| part of the runtime asks it. None yet for UTF-32.
-export
-stringModule : HeapObj.StringEnc -> Maybe Namespace
-stringModule HeapObj.StringEnc.Utf8 = Just (RuntimeModule.runtimeModule "String.Utf8")
-stringModule HeapObj.StringEnc.Utf32 = Nothing
+||| The names of the string routines the runtime has no module for, under
+||| the encoding: a call of one ends the program as `Unsupported` does.
+stringStubs : Routines.StringRoutines (\_ => String)
+stringStubs =
+  Routines.MkStringRoutines
+    { length = "length", head = "head", tail = "tail", index = "index", cons = "cons", append = "append"
+    , reverse = "reverse", substr = "substr", compare = "compare" }
 
-||| A string routine under the encoding: the string module's function of the
-||| operation's name, and whether the runtime has it.
-stringFunction : HeapObj.StringEnc -> String -> (Name, Bool)
-stringFunction e op = case stringModule e of
-  Just ns => (NS ns (UN (Basic op)), True)
-  Nothing => (UN (Basic ("idris_string_" ++ op)), False)
+||| The name of a string routine the runtime has no module for.
+stubName : String -> Name
+stubName op = UN (Basic ("idris_string_" ++ op))
 
-||| The name generated code calls a string routine by.
+||| The name generated code calls a string routine by, a field of the
+||| string routines.
 export
-stringRoutine : HeapObj.Enc -> String -> Name
-stringRoutine enc op = case stringFunction enc.string op of
-  (n, True) => flatName n
-  (n, False) => n
+stringRoutine : Realised -> ({0 f : Port -> Type} -> Routines.StringRoutines f -> f p) -> Name
+stringRoutine r field = case r.strings of
+  Just ss => flatName (field ss).name
+  Nothing => stubName (field stringStubs)
 
-||| The routines, with their signatures. The string routines are the eight
-||| primitive operations on strings and their comparison (-1, 0 or 1), over
-||| strings as ordinary code holds them; a character is its code point, a
-||| count or an index a word.
+||| The routines, with their registers: the generic runtime's and the string
+||| encoding's as the loaded runtime realises them, and the `Integer`
+||| operations, which the runtime has none of yet.
 export
-routines : {enc : HeapObj.Enc} -> List (Routine enc)
-routines =
-  [ string "length" [IRCommon.Ty.W64] [IRCommon.Ty.Val]
-  , string "head" [IRCommon.Ty.W64] [IRCommon.Ty.Val]
-  , string "tail" [IRCommon.Ty.Val] [IRCommon.Ty.Val]
-  , string "index" [IRCommon.Ty.W64] [IRCommon.Ty.Val, IRCommon.Ty.W64]
-  , string "cons" [IRCommon.Ty.Val] [IRCommon.Ty.W64, IRCommon.Ty.Val]
-  , string "append" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
-  , string "reverse" [IRCommon.Ty.Val] [IRCommon.Ty.Val]
-  , string "substr" [IRCommon.Ty.Val] [IRCommon.Ty.W64, IRCommon.Ty.W64, IRCommon.Ty.Val]
-  , string "compare" [IRCommon.Ty.W64] [IRCommon.Ty.Val, IRCommon.Ty.Val]
-  , MkRoutine runtimeStart True (Just Sym.SymRuntimeStart) [] [IRCommon.Ty.W64, IRCommon.Ty.W64]
-  , MkRoutine runtimeAllocSlow True (Just Sym.SymAllocSlow) [IRCommon.Ty.W64] [IRCommon.Ty.W64]
-  , MkRoutine runtimeAllocMutable True (Just Sym.SymAllocMutable) [IRCommon.Ty.W64] [IRCommon.Ty.W64]
-  , MkRoutine runtimeCrash True (Just Sym.SymCrash) [] [IRCommon.Ty.W64, IRCommon.Ty.W64]
-  , integer "add" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
-  , integer "sub" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
-  , integer "mul" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
-  , integer "and" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
-  , integer "or" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
-  , integer "xor" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
-  , integer "div" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
-  , integer "mod" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
-  , integer "shl" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
-  , integer "shr" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
-  , integer "neg" [IRCommon.Ty.Val] [IRCommon.Ty.Val]
-  , integer "compare" [IRCommon.Ty.W64] [IRCommon.Ty.Val, IRCommon.Ty.Val]
-  , integer "to_bits64" [IRCommon.Ty.W64] [IRCommon.Ty.Val]
-  , integer "from_int64" [IRCommon.Ty.Val] [IRCommon.Ty.W64]
-  , integer "from_bits64" [IRCommon.Ty.Val] [IRCommon.Ty.W64] ]
+routines : {enc : HeapObj.Enc} -> Realised -> List (Routine enc)
+routines r =
+  map (\(_ ** x) => x) (Routines.routineList (Routines.zipRoutines generic r.routines symbols))
+    ++ strings
+    ++ [ integer "add" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
+       , integer "sub" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
+       , integer "mul" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
+       , integer "and" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
+       , integer "or" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
+       , integer "xor" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
+       , integer "div" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
+       , integer "mod" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
+       , integer "shl" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
+       , integer "shr" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
+       , integer "neg" [IRCommon.Ty.Val] [IRCommon.Ty.Val]
+       , integer "compare" [IRCommon.Ty.W64] [IRCommon.Ty.Val, IRCommon.Ty.Val]
+       , integer "to_bits64" [IRCommon.Ty.W64] [IRCommon.Ty.Val]
+       , integer "from_int64" [IRCommon.Ty.Val] [IRCommon.Ty.W64]
+       , integer "from_bits64" [IRCommon.Ty.Val] [IRCommon.Ty.W64] ]
   where
+    generic : {p : Port} -> Realised.Named p -> Sym -> Routine enc
+    generic n s = MkRoutine n.name True (Just s) (portResults p) (portParams p)
+
+    provided : {p : Port} -> Realised.Named p -> Realised.Named p -> Routine enc
+    provided n _ = MkRoutine n.name True Nothing (portResults p) (portParams p)
+
+    stub : {p : Port} -> String -> String -> Routine enc
+    stub op _ = MkRoutine (stubName op) False Nothing (portResults p) (portParams p)
+
+    strings : List (Routine enc)
+    strings = case r.strings of
+      Just ss => map (\(_ ** x) => x) (Routines.stringRoutineList (Routines.zipStringRoutines provided ss ss))
+      Nothing =>
+        map (\(_ ** x) => x)
+          (Routines.stringRoutineList
+           (Routines.zipStringRoutines (\{p}, op, x => stub {p} op x) stringStubs stringStubs))
+
     integer : String -> List (IRCommon.Ty enc) -> List (IRCommon.Ty enc) -> Routine enc
     integer op rs ps = MkRoutine (integerRoutine op) False Nothing rs ps
 
-    string : String -> List (IRCommon.Ty enc) -> List (IRCommon.Ty enc) -> Routine enc
-    string op rs ps = let (n, p) = stringFunction enc.string op in MkRoutine n p Nothing rs ps
+    ||| The symbols the rendering and the seed reach the generic routines by.
+    symbols : Routines (\_ => Sym)
+    symbols =
+      Routines.MkRoutines
+        { start = Sym.SymRuntimeStart, allocSlow = Sym.SymAllocSlow, allocMutable = Sym.SymAllocMutable
+        , crash = Sym.SymCrash }
 
 ||| The symbol the routine whose function has the name is reached by.
 export
-routineSymbol : {enc : HeapObj.Enc} -> Name -> Maybe Sym
-routineSymbol n = do
-  r <- find (\r => r.provided && flatName r.name == n) (routines {enc})
-  r.symbol
+routineSymbol : {enc : HeapObj.Enc} -> Realised -> Name -> Maybe Sym
+routineSymbol r n = do
+  x <- find (\x => x.provided && flatName x.name == n) (routines {enc} r)
+  x.symbol

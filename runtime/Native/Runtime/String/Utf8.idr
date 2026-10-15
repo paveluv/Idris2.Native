@@ -25,10 +25,12 @@
 module Native.Runtime.String.Utf8
 
 import Native.Flat.Uniform as Flat
+import Native.Heap
 import Native.HeapObj.Header
-import Native.HeapObj.Kind
+import Native.HeapObj.Kind as HeapObj
+import Native.Port
+import Native.Routines
 import Native.Runtime.Bits
-import Native.Runtime.Heap
 import Native.Runtime.Memory
 import Native.Runtime.Object
 import Native.Runtime.Space
@@ -464,3 +466,12 @@ fastConcat xs = let (Heap.MkHeap # r) = concatOp xs Heap.MkHeap in r
             _ <- copyBytes s 0 r j (bytesOf h) 0
             next <- Memory.fieldObject {k = HeapObj.Kind.CON} t
             concatWrite next r (j + bytesOf h)
+
+||| The string routines under UTF-8, each checked against its port: the
+||| record the code generator reads for the functions generated code calls.
+export covering
+strings : Routines.StringRoutines (Port.PortTy (\k => Memory.Addr k))
+strings =
+  Routines.MkStringRoutines
+    { length = Utf8.length, head = Utf8.head, tail = Utf8.tail, index = Utf8.index, cons = Utf8.cons
+    , append = Utf8.append, reverse = Utf8.reverse, substr = Utf8.substr, compare = Utf8.compare }

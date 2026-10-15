@@ -5,12 +5,13 @@
 ./JoinAll.idr:47:1 list-accumulation: `flatten` joins lists by a left fold once: `joinMap` joins them in linear time
 ./Mode.idr:9:1 public-unneeded: `Mode`'s constructors are used only in its module: `export` keeps them there
 ./Mode.idr:20:1 public-unneeded: no other module uses `slower`: its body need not be public
+./Raw.idr:1:1 extern-owner: `prim__load64`, an extern of `Native.Intrinsics`, is `Native.Runtime.Memory`'s to use, which wraps it
 ./Report.idr:6:1 import-indirect: `Shape` is used (`Show Shape`) only through `Canvas`: import it
 ./Shape.idr:22:1 generic-export: `pow2` is exported from `Shape`, a module about its type, and refers to nothing of ours: a generic helper, private to the module or in a module of helpers
 ./Spare.idr:5:1 import-unused: `Data.List` is imported, and nothing it makes visible is used
 ./Viewer.idr:7:1 import-indirect: `Data.Fin` is used (`Fin`, `FZ`) only through `Data.Vect`: import it
 ./Viewer.idr:8:1 import-indirect: `Shape` is used (`Square`, `Shape`) only through `Shapes`: import it
-    directness     85  modules used that are imported directly: 23 of 27
-    leanness       82  private imports needed: 9 of 11
+    directness     86  modules used that are imported directly: 25 of 29
+    leanness       85  private imports needed: 11 of 13
     accumulation   40  accumulations in a snoc-list or a builder: 2 of 5
 ./Spare.idr:1:1 resolution: the TTC of `Spare` is older than its source: build it first

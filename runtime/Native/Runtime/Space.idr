@@ -22,11 +22,11 @@ import public Native.Runtime.State
 
 import Native.Runtime.Bits
 import Native.Runtime.Collect
-import Native.Runtime.Heap
 import Native.Runtime.Memory
 import Native.Runtime.Object
 
 import Native.Area
+import Native.Heap
 import Native.HeapObj.Kind as HeapObj
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)

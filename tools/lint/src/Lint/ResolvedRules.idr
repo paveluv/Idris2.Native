@@ -97,8 +97,31 @@ export
 resolvedRules : List (SourceFile, List Declared, Mentions) -> (programNames : SortedSet String) -> Resolution -> List Finding
 resolvedRules fms programNames r =
   joined [ importUnused m ++ importIndirect r m ++ listAccumulation m ++ genericExport m | m <- modulesOf fms r ]
-  ++ joined [ publicUnneeded f ds | (f, ds, _) <- fms ]
+  ++ joined [ publicUnneeded f ds ++ externOwner f | (f, ds, _) <- fms ]
   where
+    ||| The modules whose externs, raw, are one module's to use, each with
+    ||| that module: the inline externs the runtime's memory's, the system
+    ||| call the services' system-call module's, the services' externs the
+    ||| generic runtime's services module's.
+    owners : List (String, String)
+    owners =
+      [ ("Native.Intrinsics", "Native.Runtime.Memory"), ("Native.Syscall", "Native.Runtime.OS.Syscall")
+      , ("Native.Services", "Native.Runtime.OS") ]
+
+    ||| `extern-owner`: an extern of the contract used outside the module
+    ||| that wraps it for the rest of the runtime. The contract declares its
+    ||| externs, exported, so that its records hold them; the module that
+    ||| wraps them re-exports them, so that the flat translation reaches
+    ||| them, and only it uses them: elsewhere memory is reached through
+    ||| typed addresses, and the system through the services.
+    externOwner : SourceFile -> List Finding
+    externOwner f =
+      let m = show f.mod.moduleNS in
+      [ finding f "extern-owner" f.mod.headerLoc u.name
+          ("`" ++ u.name ++ "`, an extern of `" ++ u.definer ++ "`, is `" ++ owner ++ "`'s to use, which wraps it")
+      | rm <- r.modules, rm.name == m, u <- rm.uses, isPrefixOf "prim__" u.name, (d, owner) <- owners
+      , u.definer == d, m /= owner, not (m `elem` map fst owners) ]
+
     ||| `public-unneeded`, a warning: a `public export` that only its module
     ||| needs public. A data type whose constructors no other module uses
     ||| (resolved) and no program writes could be `export`, the type kept and

@@ -2,17 +2,20 @@
 ||| stable system-call ABI: the number in rax and the arguments in rdi, rsi,
 ||| rdx, r10, r8 and r9, the result in rax, an error as a number from -4095
 ||| to -1. The numbers here are x86-64's; another architecture's Linux has
-||| its own. The native code generator binds `Runtime.OS`'s services to
-||| these functions when a program is compiled for x86-64 Linux, and loads
-||| this module for it; nothing in the generic runtime imports it.
+||| its own. This module's record of them (`services`) is what the native
+||| code generator binds the services' externs (`Native.Services`) to when a
+||| program is compiled for x86-64 Linux, and it loads this module for it;
+||| nothing in the generic runtime imports it.
 module Native.Runtime.OS.LinuxX86_64
 
 import Native.Runtime.OS.Syscall
 
-import Native.HeapObj.Kind
-import Native.Runtime.Heap
+import Native.Heap
+import Native.HeapObj.Kind as HeapObj
+import Native.Port
 import Native.Runtime.Memory
 import Native.Runtime.State
+import Native.Services
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
@@ -81,3 +84,13 @@ stackLimit = do
   Memory.store64 buffer 0 0
   _ <- Syscall.syscall 97 3 (Memory.toWord buffer) 0 0 0 0
   Memory.load64 buffer 0
+
+||| The services on x86-64 Linux, each checked against its port: the
+||| record the code generator binds `Native.Services`'s externs to.
+export
+services : Services (Port.PortTy (\k => Memory.Addr k))
+services =
+  Services.MkServices
+    { exit = LinuxX86_64.exit, write = LinuxX86_64.write, reserve = LinuxX86_64.reserve
+    , commit = LinuxX86_64.commit, release = LinuxX86_64.release
+    , stackLimit = LinuxX86_64.stackLimit, pageBytes = LinuxX86_64.pageBytes }

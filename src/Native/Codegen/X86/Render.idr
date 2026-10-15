@@ -72,6 +72,7 @@ import Native.Codegen.IRCommon.Intrinsic
 import Native.Codegen.IRCommon.Op
 import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.Codegen.Linkage.Areas as Linkage
+import Native.Codegen.Linkage.Realised as Linkage
 import Native.Codegen.Linkage.ResumePoint
 import Native.Codegen.Linkage.Routine as Linkage
 import Native.Codegen.Linkage.Sym as Linkage
@@ -122,11 +123,12 @@ record RS (enc : HeapObj.Enc) where
   ||| The most of each per-thread area the code so far uses.
   areas : Linkage.Areas
 
--- Everything below renders for the program's encodings. The value encoding
--- decides how a `Val` immediate and a fixnum are words, and the pointer tag
--- every access through a pointer folds into its displacement.
+-- Everything below renders for the program's encodings, and the contract as
+-- the loaded runtime realises it. The value encoding decides how a `Val`
+-- immediate and a fixnum are words, and the pointer tag every access
+-- through a pointer folds into its displacement.
 
-parameters (enc : HeapObj.Enc)
+parameters (enc : HeapObj.Enc) (realised : Linkage.Realised)
   ------------------------------------------------------------------------------
   -- Operands
 
@@ -225,7 +227,7 @@ parameters (enc : HeapObj.Enc)
             blk n = fromMaybe 0 (lookup n table)
         emits [Asm.Comment (show f.name), Asm.Lbl fl]
         -- a routine reached by symbol: the symbol is its entry too
-        whenJust (Linkage.Routine.routineSymbol {enc} f.name) $ \s => emit (Asm.Lbl (sym s))
+        whenJust (Linkage.Routine.routineSymbol {enc} realised f.name) $ \s => emit (Asm.Lbl (sym s))
         -- a machine call pushed a word: keep the stack 16-aligned inside; and
         -- below the stack limit, end the program
         case f.conv of
@@ -898,7 +900,7 @@ parameters (enc : HeapObj.Enc)
                   ||| program as `Unsupported` does.
                   runtimeRoutine : Name -> Render enc Asm.Label
                   runtimeRoutine n =
-                    if any (\r => not r.provided && r.name == n) (Linkage.Routine.routines {enc})
+                    if any (\r => not r.provided && r.name == n) (Linkage.Routine.routines {enc} realised)
                        then pure (sym Linkage.Sym.SymUnsupported)
                        else failWith ("no runtime routine " ++ show n)
 

@@ -7,8 +7,9 @@
 # package's module through a package's re-export, all reported; `Spare` imports
 # a module it does not use, and `Frame` one that gives it only what it
 # imports directly; `JoinAll` accumulates lists in each shape, the
-# superlinear ones reported, a warning; `Shape` exports a generic helper. Then the score's components that
-# the resolution measures.
+# superlinear ones reported, a warning; `Shape` exports a generic helper;
+# `Raw` uses a raw extern of the contract outside the module that wraps it.
+# Then the score's components that the resolution measures.
 idris2 --build fixtures.ipkg > /dev/null
 ../../../tools/lint/build/exec/idris2-native-lint --resolved --warnings .
 ../../../tools/lint/build/exec/idris2-native-lint --resolved --health . | grep "directness\|leanness\|accumulation"

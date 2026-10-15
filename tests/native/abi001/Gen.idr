@@ -23,6 +23,7 @@ import Core.Name.Namespace
 import Data.List
 import Data.List.Quantifiers
 import Data.So
+import Data.SortedMap
 import Data.Vect
 import Native.Codegen.ELF
 import Native.Codegen.IRCommon.ConIds
@@ -32,6 +33,8 @@ import Native.Codegen.IRCommon.Op
 import Native.Codegen.IRCommon.Ty
 import Native.Codegen.Link
 import Native.Codegen.Linkage.Areas
+import Native.Codegen.Linkage.InlineExtern
+import Native.Codegen.Linkage.Realised
 import Native.Codegen.Linkage.Routine
 import Native.Codegen.Linkage.RuntimeModule
 import Native.Codegen.LocatedIR.Program
@@ -57,6 +60,8 @@ import Native.HeapObj.BignumEnc
 import Native.HeapObj.Enc
 import Native.HeapObj.StringEnc
 import Native.HeapObj.ValEnc
+import Native.Port
+import Native.Routines
 import System.File
 
 %default total
@@ -93,6 +98,23 @@ Params = map tyOf indices
 
 Results : List (Ty TestEnc)
 Results = map (tyOf . source) indices
+
+-- The runtime's routines as a loaded runtime's record would give them
+-- (`Native.Runtime.Routines.routines`): this program writes the routines'
+-- bodies itself, under the names the runtime's functions have, and hands
+-- the code generator the record of them, as `realise` does from the TTCs.
+-- The rendering puts each routine's symbol at its function by this record.
+runtimeStart, runtimeAllocSlow, runtimeAllocMutable, runtimeCrash : Name
+runtimeStart = NS (runtimeModule "Start") (UN (Basic "start"))
+runtimeAllocSlow = NS (runtimeModule "Space") (UN (Basic "allocSlow"))
+runtimeAllocMutable = NS (runtimeModule "Space") (UN (Basic "allocMutable"))
+runtimeCrash = NS (runtimeModule "System") (UN (Basic "crash"))
+
+realised : Realised
+realised =
+  MkRealised (MkRoutines (MkNamed runtimeStart) (MkNamed runtimeAllocSlow) (MkNamed runtimeAllocMutable)
+                (MkNamed runtimeCrash))
+             Nothing empty empty
 
 D : Decls TestEnc
 D = MkDecls [ MkSig (nm "main") CPS [] False
@@ -216,7 +238,7 @@ main = do
     Right _ => putStrLn "names repeat"
     Left ok => do
       let ir = allocRegs x86_64 (MkProgram {d = D} [Defined m, Defined s, Defined e, Defined cr, Defined st, Defined al] [] (MkEntry here) noConIds)
-      let Right rendered = render TestEnc ir
+      let Right rendered = render TestEnc realised ir
         | Left err => putStrLn ("render: " ++ err)
       let Right image = linkProgram TestEnc windowBytes rendered.areas rendered.text rendered.rodata
         | Left problems => putStrLn ("link: " ++ show problems)

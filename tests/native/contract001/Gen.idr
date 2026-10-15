@@ -1,23 +1,20 @@
--- The runtime contract, checked: generated code calls the runtime's
--- routines by the signatures the contract declares, and a program is
--- lowered only if the runtime's routines have them. A routine is a flat
--- function of the runtime library, so its signature is its form's: the
--- registers of its parameters and of its result.
+-- What the lowering still checks of the runtime contract. Idris checks
+-- each routine the runtime gives against its port where the runtime is
+-- built (contract002); the lowering checks that a routine the runtime has
+-- has a flat form, of the registers its port says. A routine is a flat
+-- function of the runtime library, so its form's registers are its
+-- parameters' and its result's.
 --
--- The contract declares `crash` as taking two words, the message's address
--- and its length, and returning nothing, as if written
+-- The contract's port for `crash` takes two words, the message's address
+-- and its length, and gives nothing, as if written
 --
 --   crash : (message, length : Bits64) -> Op Heap ()
 --
--- and `allocSlow` as taking the bytes and returning the object's address.
--- Here the runtime's forms are stood in for by forms of the same names,
--- with bodies that are never run: only the check is shown. The stand-ins
--- are made from the contract itself, one for each routine the runtime has,
--- with the declared signature, and each case changes or leaves out one.
---
--- The OS services are checked the same way, against the functions that
--- implement them on the platform: x86-64 Linux's `write` takes a handle,
--- an address and a count, and returns the bytes written.
+-- and `allocSlow`'s takes the bytes and gives the object's address. Here
+-- the runtime's forms are stood in for by forms of the same names, with
+-- bodies that are never run: only the check is shown. The stand-ins are
+-- made from the routines themselves, one for each routine the runtime
+-- has, of its port's registers, and each case changes or leaves out one.
 --
 -- So are the foreign functions the runtime implements, against `base`'s
 -- declarations: `System.prim__exit : Int -> PrimIO ()`, whose C types are
@@ -32,8 +29,11 @@ import Core.FC
 import Core.Name
 import Core.TT
 import Data.List
+import Data.SortedMap
 import Data.Vect
 import Native.Codegen.IRCommon.Ty
+import Native.Codegen.Linkage.InlineExtern
+import Native.Codegen.Linkage.Realised
 import Native.Codegen.Linkage.Routine
 import Native.Codegen.Linkage.RuntimeModule
 import Native.Codegen.Lower
@@ -45,9 +45,25 @@ import Native.HeapObj.BignumEnc
 import Native.HeapObj.Enc
 import Native.HeapObj.StringEnc
 import Native.HeapObj.ValEnc
+import Native.Port
+import Native.Routines
 
 TestEnc : Enc
 TestEnc = defaultEnc
+
+-- The runtime's routines as a loaded runtime's record would give them
+-- (`Native.Runtime.Routines.routines`), by the names its functions have.
+runtimeStart, runtimeAllocSlow, runtimeAllocMutable, runtimeCrash : Name
+runtimeStart = NS (runtimeModule "Start") (UN (Basic "start"))
+runtimeAllocSlow = NS (runtimeModule "Space") (UN (Basic "allocSlow"))
+runtimeAllocMutable = NS (runtimeModule "Space") (UN (Basic "allocMutable"))
+runtimeCrash = NS (runtimeModule "System") (UN (Basic "crash"))
+
+realised : Realised
+realised =
+  MkRealised (MkRoutines (MkNamed runtimeStart) (MkNamed runtimeAllocSlow) (MkNamed runtimeAllocMutable)
+                (MkNamed runtimeCrash))
+             Nothing empty empty
 
 word : String -> FlatVar
 word s = MkFlatVar (UN (Basic s)) (SPrim Bits64Type) [Word]
@@ -65,10 +81,10 @@ standIn : Ty TestEnc -> (Skeleton, Layout)
 standIn Val = (SCon uniformType [SOther], [Uniform])
 standIn _ = (SPrim Bits64Type, [Word])
 
-||| A stand-in for every routine the runtime has, of its declared signature.
+||| A stand-in for every routine the runtime has, of its port's registers.
 standIns : List FlatDef
 standIns = [ form r.name (zipWith param [0 .. length r.params] r.params) (result r.results) (concatMap (snd . standIn) r.results)
-           | r <- routines {enc = TestEnc}, r.provided ]
+           | r <- routines {enc = TestEnc} realised, r.provided ]
   where
     param : Nat -> Ty TestEnc -> FlatVar
     param i t = MkFlatVar (UN (Basic ("p" ++ show i))) (fst (standIn t)) (snd (standIn t))
@@ -87,7 +103,7 @@ without n = filter (\g => g.name /= n) standIns
 
 checkWith : String -> List FlatDef -> List (Name, VMDef) -> IO ()
 checkWith what forms vmdefs = putStrLn $ what ++ ": " ++
-  case lowerProgram TestEnc defaultPlatform forms [] vmdefs of
+  case lowerProgram TestEnc defaultPlatform realised forms [] vmdefs of
     Left err => err
     Right _ => "lowered"
 
@@ -107,20 +123,13 @@ exitImplementation arg =
 
 main : IO ()
 main = do
-  check "as declared" standIns
+  check "as given" standIns
   check "no crash" (without runtimeCrash)
   -- allocSlow (bytes, kind : Bits64) : Bits64
   check "allocSlow of two words" (replacing (form runtimeAllocSlow [word "bytes", word "kind"] (SPrim Bits64Type) [Word]))
   -- crash (message, length : Bits64) : Bits64
   check "crash with a result" (replacing (form runtimeCrash [word "message", word "length"] (SPrim Bits64Type) [Word]))
-  -- write (handle, address, bytes : Bits64) : Bits64, on x86-64 Linux
-  check "write as declared" (form linuxWrite [word "handle", word "address", word "bytes"] (SPrim Bits64Type) [Word] :: standIns)
-  -- write (handle, address : Bits64) : Bits64
-  check "write of two words" (form linuxWrite [word "handle", word "address"] (SPrim Bits64Type) [Word] :: standIns)
   -- prim__exit (status : Int) : PrimIO (), as base declares it
   checkWith "prim__exit as declared" (exitImplementation (SPrim IntType) :: standIns) [exitForeign]
   -- prim__exit (status : Bits64) : PrimIO ()
   checkWith "prim__exit of a Bits64" (exitImplementation (SPrim Bits64Type) :: standIns) [exitForeign]
-  where
-    linuxWrite : Name
-    linuxWrite = NS (mkNamespace "Native.Runtime.OS.LinuxX86_64") (UN (Basic "write"))

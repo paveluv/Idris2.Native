@@ -18,10 +18,10 @@ module Probe
 -- the runtime's functions use its own bit operations, which it does not
 -- re-export; flat code that reaches into them imports those too
 import Native.Flat.Uniform
+import Native.Heap
 import Native.HeapObj.Header
 import Native.HeapObj.Kind
 import Native.Runtime.Bits
-import Native.Runtime.Heap
 import Native.Runtime.Memory
 import Native.Runtime.Object
 import Native.Runtime.Space

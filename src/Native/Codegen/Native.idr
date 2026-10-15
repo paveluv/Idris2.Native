@@ -17,17 +17,16 @@
 module Native.Codegen.Native
 
 import Native.Codegen.ELF
-import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.Codegen.Link
 import Native.Codegen.Linkage.ForeignFunctions
-import Native.Codegen.Linkage.InlineExtern
-import Native.Codegen.Linkage.OSService as Linkage
+import Native.Codegen.Linkage.InlineExtern as Linkage
+import Native.Codegen.Linkage.OSService
+import Native.Codegen.Linkage.Realised as Linkage
 import Native.Codegen.Linkage.Routine as Linkage
 import Native.Codegen.Linkage.RuntimeModule
 import Native.Codegen.LocatedIR.Dump
 import Native.Codegen.LocatedIR.Program as LocatedIR
 import Native.Codegen.Lower
-import Native.Codegen.LowerFlat
 import Native.Codegen.Platform
 import Native.Codegen.RegAlloc
 import Native.Codegen.TermIR.Decls as TermIR
@@ -37,25 +36,18 @@ import Native.Codegen.X86.Encode
 import Native.Codegen.X86.Render
 import Native.Codegen.X86.Target
 
-import Algebra.Semiring
-import Algebra.ZeroOneOmega
 import Compiler.Common
 import Compiler.VMCode
 import Core.Context
 import Core.Context.Context
 import Core.Core
 import Core.Directory
-import Core.Env
 import Core.FC
 import Core.Name
 import Core.Name.Namespace
-import Core.Name.Scoped
-import Core.Normalise.Eval
 import Core.Options
-import Core.TT.Binder
 import Core.TT.Term
 import Core.UnifyState
-import Core.Value
 import Data.List
 import Data.List1
 import Data.Maybe
@@ -71,7 +63,6 @@ import Native.Data.Builder as Data
 import Native.Data.WriteBuilder
 import Native.Flat.Exp
 import Native.Flat.Marked
-import Native.Flat.Problem
 import Native.Flat.Translate
 import Native.HeapObj.BignumEnc as HeapObj
 import Native.HeapObj.Enc as HeapObj
@@ -135,16 +126,16 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
       Just table <- phase "the runtime loaded"
         (Flat.Marked.markedForms (loadRuntime settings.platform settings.encodings))
         | Nothing => pure Nothing
-      [] <- phase "the contract checked" (checkExterns settings.encodings)
-        | errs => throw (GenericMsg EmptyFC ("native: " ++ fastConcat (intersperse "\n" errs)))
+      Right realised <- phase "the contract realised" (Linkage.Realised.realise settings.platform settings.encodings)
+        | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
       whenJust settings.dumpFlat $ \f => dumpFlat f table
-      whenJust settings.dumpForeign $ \f => dumpForeign settings.encodings f
+      whenJust settings.dumpForeign $ \f => dumpForeign settings.encodings realised f
       cdata <- phase "Idris's passes" (getCompileData False VMCode tm)
       image <- case settings.encodings of
         HeapObj.Enc.MkEnc HeapObj.ValEnc.FixnumTag1 b s =>
-          pipeline (HeapObj.Enc.MkEnc HeapObj.ValEnc.FixnumTag1 b s) settings table (vmcode cdata)
+          pipeline (HeapObj.Enc.MkEnc HeapObj.ValEnc.FixnumTag1 b s) settings realised table (vmcode cdata)
         HeapObj.Enc.MkEnc HeapObj.ValEnc.FixnumTag0 b s =>
-          pipeline (HeapObj.Enc.MkEnc HeapObj.ValEnc.FixnumTag0 b s) settings table (vmcode cdata)
+          pipeline (HeapObj.Enc.MkEnc HeapObj.ValEnc.FixnumTag0 b s) settings realised table (vmcode cdata)
         HeapObj.Enc.MkEnc HeapObj.ValEnc.NoFixnums _ _ =>
           throw (GenericMsg EmptyFC "native: the encoding nofixnums is not implemented")
       coreLift_ $ mkdirAll outputDir
@@ -186,52 +177,6 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
                 Nothing => Left ("target= takes <arch>-<os>, such as x86_64-linux, not " ++ show v)
               _ => Right o
 
-        ||| The inline externs and the OS services the loaded runtime declares, each
-        ||| checked against the contract (`inlineExterns` in
-        ||| `Native.Codegen.Linkage.InlineExtern`, `osServices` in
-        ||| `Native.Codegen.Linkage.OSService`): an `%extern` whose arguments lay out as the declared
-        ||| registers, the token among them taking none, and whose result lays out
-        ||| as the declared ones. What differs is reported; one the runtime does not
-        ||| declare is not missed.
-        checkExterns : (enc : HeapObj.Enc) -> Core (List String)
-        checkExterns enc
-            = catMaybes <$> traverse one
-              ([(i.name, "an inline extern", i.params, i.results) | i <- Linkage.InlineExtern.inlineExterns {enc}]
-                                          ++
-                                            [(Linkage.OSService.serviceExtern s, "an OS service", s.params, s.results)
-                                             | s <- Linkage.OSService.osServices {enc}])
-          where
-            -- the registers of the arguments, then of the result
-            walk : ClosedNF -> Core (Either String (List (IRCommon.Ty enc), List (IRCommon.Ty enc)))
-            walk (NBind bfc x (Pi _ rig _ aty) sc) = do
-              defs <- get Ctxt
-              let False = isErased rig
-                | True => walk !(sc defs (toClosure defaultOpts Env.empty (Ref bfc Bound x)))
-              Right (_, lay) <- Flat.Translate.laidOut !(evalClosure defs aty)
-                | Left _ => pure (Left ("its argument " ++ show x ++ " is not flat"))
-              Right (ps, rs) <- walk !(sc defs (toClosure defaultOpts Env.empty (Ref bfc Bound x)))
-                | Left e => pure (Left e)
-              pure (Right (LowerFlat.tys lay ++ ps, rs))
-            walk res = do
-              Right (_, lay) <- Flat.Translate.laidOut res
-                | Left _ => pure (Left "its result is not flat")
-              pure (Right ([], LowerFlat.tys lay))
-
-            one : (Name, String, List (IRCommon.Ty enc), List (IRCommon.Ty enc)) -> Core (Maybe String)
-            one (n, what, params, results) = do
-              defs <- get Ctxt
-              Just gdef <- lookupCtxtExact n (gamma defs)
-                | Nothing => pure Nothing
-              let ExternDef _ = definition gdef
-                | _ =>
-                  pure (Just (show n ++ " is " ++ what ++ " of the native code generator, but is not declared %extern"))
-              Right (ps, rs) <- walk !(nf defs Env.empty (type gdef))
-                | Left e => pure (Just (show n ++ ": " ++ e))
-              pure $ if ps == params && rs == results then Nothing
-                     else Just (show n ++ " is declared as " ++ show ps ++ " -> " ++ show rs
-                                ++ ", but the native code generator provides it as "
-                                ++ show params ++ " -> " ++ show results)
-
         ||| Load the runtime's modules into the context: the module `Runtime`, which
         ||| imports the generic ones, the platform's module, which implements the OS
         ||| services, and the string encoding's, which nothing generic imports
@@ -245,15 +190,15 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
           u <- newRef UST initUState
           traverse_ (\ns => addImport (MkImport EmptyFC False (nsAsModuleIdent ns) ns))
                     (Linkage.RuntimeModule.runtimeModule "" :: toList (Linkage.OSService.platformModule platform)
-                      ++ toList (Linkage.Routine.stringModule enc.string))
+                      ++ toList (Linkage.RuntimeModule.stringModule enc.string))
 
         ||| The foreign functions and externs of the libraries in the context, each
         ||| with how this backend implements it: by the runtime (`runtime`), by the
-        ||| lowering inline (`lowered`), or not yet (`missing`). The runtime's own
-        ||| externs are its inline externs and services, not the libraries', and are left
-        ||| out.
-        dumpForeign : HeapObj.Enc -> String -> Core ()
-        dumpForeign enc path = do
+        ||| lowering inline (`lowered`), or not yet (`missing`). The contract's
+        ||| externs, the inline externs and the services' (`realised`), are not
+        ||| the libraries', and are left out, as is anything of the runtime's.
+        dumpForeign : HeapObj.Enc -> Linkage.Realised -> String -> Core ()
+        dumpForeign enc realised path = do
           defs <- get Ctxt
           all <- traverse (\n => (n,) <$> lookupCtxtExact n (gamma defs)) !(allNames (gamma defs))
           entries <- traverse entry (mapMaybe library all)
@@ -272,8 +217,11 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
             inRuntime (NS ns _) = Linkage.RuntimeModule.inRuntime ns
             inRuntime _ = False
 
+            contract : Name -> Bool
+            contract n = isJust (lookup n realised.externs) || isJust (lookup n realised.services)
+
             library : (Name, Maybe GlobalDef) -> Maybe (Name, GlobalDef)
-            library (n, Just g) = if foreignOf g && not (inRuntime n) then Just (n, g) else Nothing
+            library (n, Just g) = if foreignOf g && not (inRuntime n || contract n) then Just (n, g) else Nothing
             library (_, Nothing) = Nothing
 
             lowered : List String
@@ -314,13 +262,16 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
         ||| From VMCode to the image, under encodings whose value encoding has
         ||| fixnums: produce the term, allocate its registers, render, link.
         pipeline : (enc : HeapObj.Enc) -> {auto 0 _ : HeapObj.ValEnc.HasFixnums enc.val} ->
-                   Settings -> NameMap Flat.Exp.FlatDef -> List (Name, VMDef) -> Core ELF.Image
-        pipeline enc settings table defs = do
+                   Settings -> Linkage.Realised -> NameMap Flat.Exp.FlatDef -> List (Name, VMDef) ->
+                   Core ELF.Image
+        pipeline enc settings realised table defs = do
           (forms, shapes) <- phase "flat inputs" $
-                               flatInputs table (Linkage.OSService.serviceBindings {enc} settings.platform)
-                                          (map fst defs ++ [r.name | r <- Linkage.Routine.routines {enc}, r.provided]
+                               flatInputs table (Data.SortedMap.toList realised.services)
+                                          (map fst defs
+                                            ++ [r.name | r <- Linkage.Routine.routines {enc} realised, r.provided]
                                            ++ mapMaybe (foreignRoot {enc' = enc}) defs)
-          Right (_ ** term) <- phase "lowering" (later (Lower.lowerProgram enc settings.platform forms shapes defs))
+          Right (_ ** term) <- phase "lowering"
+            (later (Lower.lowerProgram enc settings.platform realised forms shapes defs))
             | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
           ir <- phase "register allocation" (later (RegAlloc.allocRegs X86.Target.x86_64 term))
           case settings.dumpIr of
@@ -329,7 +280,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
                 | Left err => throw (FileErr path err)
               pure ()
             Nothing => pure ()
-          Right rendered <- phase "rendering" (later (X86.Render.render enc ir))
+          Right rendered <- phase "rendering" (later (X86.Render.render enc realised ir))
             | Left err => throw (InternalError ("native: " ++ err))
           case settings.dumpAsm of
             Just path => do

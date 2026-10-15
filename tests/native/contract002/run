@@ -1,27 +1,37 @@
 . ../../testutils.sh
 
-# The inline externs, the other half of the runtime contract: what the native
-# code generator provides to the runtime's code; and the OS services, what
-# the platform's module provides to the rest of the runtime. A copy of the
-# runtime that declares two inline externs otherwise than the contract says,
-# `prim__load64` with a third argument and `prim__store8` with a result, and
-# one service, `prim__os_write` with a fourth argument, built as a later
-# version so that it is the one found, is refused when a program is
-# compiled, before anything is lowered, with each difference named.
-cp -r ../../../runtime broken
-sed -i -e 's/^%extern prim__load64 : (base, offset : Bits64)/%extern prim__load64 : (base, offset, extra : Bits64)/' \
-       -e 's/^load64 a = prim__load64 a.word$/load64 a off = prim__load64 a.word off 0/' \
-       -e 's/^loadAt = prim__load64$/loadAt b o = prim__load64 b o 0/' \
-       -e 's/^%extern prim__store8 : (base, offset, value : Bits64) -> (1 m : Heap) -> Heap.Ret Heap ()$/%extern prim__store8 : (base, offset, value : Bits64) -> (1 m : Heap) -> Heap.Ret Heap Bits64/' \
-       -e 's/^store8 a = prim__store8 a.word$/store8 a off v m = let (m2 # _) = prim__store8 a.word off v m in m2 # ()/' \
-       broken/Native/Runtime/Memory.idr
-sed -i -e 's/^%extern prim__os_write : (handle, address, bytes : Bits64)/%extern prim__os_write : (handle, address, bytes, flags : Bits64)/' \
-       -e 's/^osWrite = prim__os_write$/osWrite h a n = prim__os_write h a n 0/' \
-       broken/Native/Runtime/OS.idr
-sed -i -e 's/^version = .*/version = 999.0.0/' broken/idris2-native-runtime.ipkg
-(cd broken && idris2 --build idris2-native-runtime.ipkg > /dev/null)
-mkdir -p packages/idris2-native-runtime-999.0.0
-cp -r broken/build/ttc/* packages/idris2-native-runtime-999.0.0/
-append_package_path "$PWD/packages"
-idris2 --cg native -o main Main.idr
-rm -rf broken packages
+# The runtime contract, checked where the runtime is built: each record the
+# runtime gives (its routines, the string encoding's, the platform's
+# services) is checked by Idris against the contract's ports, field by
+# field, and a record must give every field. A copy of the runtime with one
+# fault at a time is built, and Idris's error shown, where it is and what
+# does not match:
+#
+# * `start` takes a third word: the routines' record refuses it, the port of
+#   `start` taking two;
+# * the routines' record leaves `crash` out: the record is not whole;
+# * `allocSlow` is bound to x86-64 Linux's `reserve`, which has the same
+#   registers, a word in and a word out, but gives a word where the port
+#   gives an object's address: refused, where a check of the registers
+#   alone would let it through;
+# * the platform's record has `reserve` and `commit` swapped.
+fault() {
+  rm -rf broken
+  cp -r ../../../runtime broken
+  rm -rf broken/build
+  what=$1; file=$2; shift 2
+  sed -i "$@" broken/Native/Runtime/$file
+  echo "$what:"
+  (cd broken && idris2 --build idris2-native-runtime.ipkg 2>&1) | sed -n '/^Error/,/^$/p' | grep "^Error\|^Mismatch" | head -2
+}
+fault "start of three words" Start.idr \
+  -e 's/^start : (entry, window : Bits64)/start : (entry, window, extra : Bits64)/' \
+  -e 's/^start entry window = do/start entry window _ = do/'
+fault "no crash" Routines.idr -e 's/^    , crash = System.crash }/    }/'
+fault "allocSlow giving a word" Routines.idr \
+  -e 's/allocSlow = Space.allocSlow/allocSlow = LinuxX86_64.reserve/' \
+  -e 's/^import Native.Runtime.Memory$/import Native.Runtime.Memory\nimport Native.Runtime.OS.LinuxX86_64/'
+fault "reserve and commit swapped" OS/LinuxX86_64.idr \
+  -e 's/reserve = LinuxX86_64.reserve/reserve = LinuxX86_64.commit/' \
+  -e 's/commit = LinuxX86_64.commit/commit = LinuxX86_64.reserve/'
+rm -rf broken

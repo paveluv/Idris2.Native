@@ -2,17 +2,22 @@
 ||| six arguments and takes back its result, on the operating systems that
 ||| keep a stable system-call ABI. Only the modules that implement the OS
 ||| services import it; the rest of the runtime asks for services
-||| (`Runtime.OS`), which on other operating systems are not system calls.
+||| (`Native.Runtime.OS`), which on other operating systems are not system
+||| calls.
 module Native.Runtime.OS.Syscall
 
-import Native.Runtime.Heap
+-- lint: allow public-import: the flat translation reaches through this module
+-- (checking an importer's flat functions, it reaches the inline wrappers'
+-- bodies, which use the contract's externs, so it is loaded wherever this
+-- module is)
+import public Native.Syscall
+
+import Native.Heap
 
 %default total
 
 ||| A system call: its number and six arguments in, its result out, by the
 ||| architecture's and the operating system's convention.
-%extern prim__syscall6 : (n, a1, a2, a3, a4, a5, a6 : Bits64) -> (1 m : Heap) -> Heap.Ret Heap Bits64
-
 export %inline
 syscall : (n, a1, a2, a3, a4, a5, a6 : Bits64) -> Heap.Op Heap Bits64
-syscall = prim__syscall6
+syscall = Syscall.prim__syscall6

@@ -5,11 +5,11 @@
 module Native.Runtime.Start
 
 import Native.Runtime.Bits
-import Native.Runtime.Heap
 import Native.Runtime.Memory
 import Native.Runtime.OS
 import Native.Runtime.State
 
+import Native.Heap
 import Native.HeapObj.Kind
 
 %hide Prelude.Interfaces.(>>=)

@@ -26,6 +26,7 @@ modules =
     Native.Codegen.Linkage.ForeignFunctions,
     Native.Codegen.Linkage.InlineExtern,
     Native.Codegen.Linkage.OSService,
+    Native.Codegen.Linkage.Realised,
     Native.Codegen.Linkage.ResumePoint,
     Native.Codegen.Linkage.Routine,
     Native.Codegen.Linkage.RuntimeModule,
@@ -84,13 +85,19 @@ modules =
     Native.Flat.Report,
     Native.Flat.Translate,
     Native.Flat.Uniform,
+    Native.Heap,
     Native.HeapObj.BignumEnc,
     Native.HeapObj.Enc,
     Native.HeapObj.Header,
     Native.HeapObj.Kind,
     Native.HeapObj.LayoutWord,
     Native.HeapObj.StringEnc,
-    Native.HeapObj.ValEnc
+    Native.HeapObj.ValEnc,
+    Native.Intrinsics,
+    Native.Port,
+    Native.Routines,
+    Native.Services,
+    Native.Syscall
 
 main = Main
 executable = idris2-native

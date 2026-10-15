@@ -23,11 +23,12 @@
 ||| in tail position a join, whose parameters are the case's registers. A
 ||| call of a form is a `DirectCall`; a call of the form itself in tail
 ||| position jumps back to its start, so self tail recursion is a loop. The
-||| runtime's inline externs (`inlineExterns` in `Native.Codegen.Linkage.InlineExtern`) lower to the
-||| instructions they stand for, and its OS services to calls of the
-||| functions that implement them on the platform; every other `%extern` and `%foreign` primitive (`FPrim`), the
-||| operations on strings and the double functions of the C library lower to
-||| `Unsupported`.
+||| contract's inline externs (`Native.Intrinsics`) lower to the instructions
+||| they stand for, and the services' externs to calls of the functions that
+||| implement them on the platform, both as the loaded runtime realises the
+||| contract (`Forms`); every other `%extern` and `%foreign` primitive
+||| (`FPrim`), the operations on strings and the double functions of the C
+||| library lower to `Unsupported`.
 module Native.Codegen.LowerFlat
 
 import Native.Codegen.IRCommon.Conv as IRCommon
@@ -301,14 +302,16 @@ data Held = Narrower IRCommon.Op.SubWord Bool | Whole Bool
 -- The lowering
 
 ||| What the lowering of a form knows of the program: the forms it may call,
-||| the shapes of the data types, and the OS services' externs, each bound to
-||| the form of the function that implements it on the platform.
+||| the shapes of the data types, the OS services' externs, each bound to the
+||| function that implements it on the platform, and the inline externs,
+||| each with the instruction it stands for.
 public export
 record Forms (enc : HeapObj.Enc) (d : TermIR.Decls enc) where
   constructor MkForms
   callees : SortedMap Name (Callee d)
   shapes : Flat.Exp.Shapes
   services : SortedMap Name Name
+  externs : SortedMap Name Linkage.InlineExtern
 
 ||| Each variable in scope: its type's skeleton and its value.
 Env : (enc : HeapObj.Enc) -> (IRCommon.Ty enc -> Type) -> Type
@@ -360,7 +363,7 @@ parameters {enc : HeapObj.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self
       Flat.Exp.FCall _ n args => do
                  xs <- traverse (\a => snd <$> expr env a) args
                  callForm n xs
-      Flat.Exp.FPrim _ n sk lay args => case Linkage.InlineExtern.inlineExternOf {enc} n of
+      Flat.Exp.FPrim _ n sk lay args => case lookup n pr.externs of
                  Nothing => case lookup n pr.services of
                    -- an OS service: a call of the platform's function for it
                    Just f => do

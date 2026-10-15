@@ -1,8 +1,6 @@
-as declared: lowered
+as given: lowered
 no crash: the runtime has no routine Native.Runtime.System.crash, which generated code calls
-allocSlow of two words: the runtime's Native.Runtime.Space.allocSlow has the signature [W64, W64] -> [W64], but generated code calls it as [W64] -> [W64]
-crash with a result: the runtime's Native.Runtime.System.crash has the signature [W64, W64] -> [W64], but generated code calls it as [W64, W64] -> []
-write as declared: lowered
-write of two words: Native.Runtime.OS.LinuxX86_64.write, the service write on x86_64-linux, has the signature [W64, W64] -> [W64], but the runtime calls it as [W64, W64, W64] -> [W64]
+allocSlow of two words: the runtime's Native.Runtime.Space.allocSlow has the form [W64, W64] -> [W64], but its port is [W64] -> [W64]
+crash with a result: the runtime's Native.Runtime.System.crash has the form [W64, W64] -> [W64], but its port is [W64, W64] -> []
 prim__exit as declared: lowered
 prim__exit of a Bits64: Native.Runtime.Foreign.System.prim__exit takes [Bits64, %World] and returns (PrimIO.IORes Builtin.Unit), but System.prim__exit is declared with [Int, %World] -> IORes Unit

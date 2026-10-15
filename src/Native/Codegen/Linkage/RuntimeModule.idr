@@ -7,6 +7,7 @@ module Native.Codegen.Linkage.RuntimeModule
 
 import Core.Name.Namespace
 import Data.String
+import Native.HeapObj.StringEnc as HeapObj
 
 %default total
 
@@ -27,3 +28,11 @@ runtimeModule m = mkNamespace (runtimeRoot ++ "." ++ m)
 public export
 inRuntime : Namespace -> Bool
 inRuntime ns = let s = show ns in s == runtimeRoot || isPrefixOf (runtimeRoot ++ ".") s
+
+||| The runtime's module that lays strings out under the encoding: the one
+||| module of the runtime that reads a string's header or bytes. Every other
+||| part of the runtime asks it. None yet for UTF-32.
+export
+stringModule : HeapObj.StringEnc -> Maybe Namespace
+stringModule HeapObj.StringEnc.Utf8 = Just (runtimeModule "String.Utf8")
+stringModule HeapObj.StringEnc.Utf32 = Nothing

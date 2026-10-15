@@ -31,17 +31,17 @@ import Libraries.Data.WithData
 -- Layers
 
 ||| The layers of the product, from the bottom: `Data` (structures any part
-||| may use), `HeapObj` and `Area` (the heap-object model and the per-thread
-||| areas, the contract the code generator and the runtime share), `Flat` (the flat fragment, of no backend), `Codegen`
-||| (the code generator), `Runtime` (the runtime library), each a group
-||| under the product's root, `Native`; and the linter's own, of a root of
-||| its own.
-data Layer = DataLayer | HeapObjLayer | AreaLayer | FlatLayer | CodegenLayer | RuntimeLayer | LintLayer
+||| may use), the contract (what the code generator and the runtime share:
+||| the heap-object model, the areas, the token, and the routines, inline
+||| externs and OS services each provides the other), `Flat` (the flat
+||| fragment, of no backend), `Codegen` (the code generator), `Runtime` (the
+||| runtime library), each a group under the product's root, `Native`, the
+||| contract several; and the linter's own, of a root of its own.
+data Layer = DataLayer | ContractLayer | FlatLayer | CodegenLayer | RuntimeLayer | LintLayer
 
 Eq Layer where
   DataLayer == DataLayer = True
-  HeapObjLayer == HeapObjLayer = True
-  AreaLayer == AreaLayer = True
+  ContractLayer == ContractLayer = True
   FlatLayer == FlatLayer = True
   CodegenLayer == CodegenLayer = True
   RuntimeLayer == RuntimeLayer = True
@@ -56,34 +56,39 @@ allowed ours importer imported = case layerOf importer of
   Just RuntimeLayer => Just (contains imported ours && mayImport RuntimeLayer imported)
   Just l => if contains imported ours then Just (mayImport l imported) else Nothing
   where
+    ||| The groups of the contract.
+    contract : List String
+    contract = ["HeapObj", "Area", "Heap", "Port", "Routines", "Intrinsics", "Syscall", "Services"]
+
     ||| A module's layer: the group under the product's root its name is in
     ||| (`Codegen` for `Native.Codegen.TermIR.Instr`), or the linter's.
     layerOf : String -> Maybe Layer
     layerOf m = case forget (split (== '.') m) of
-      ("Native" :: g :: _) => lookup g [("Data", DataLayer), ("HeapObj", HeapObjLayer), ("Area", AreaLayer), ("Flat", FlatLayer),
-                                        ("Codegen", CodegenLayer), ("Runtime", RuntimeLayer)]
+      ("Native" :: g :: _) =>
+        if g `elem` contract then Just ContractLayer
+        else lookup g [("Data", DataLayer), ("Flat", FlatLayer), ("Codegen", CodegenLayer), ("Runtime", RuntimeLayer)]
       ("Lint" :: _) => Just LintLayer
       _ => Nothing
 
     ||| The layers a layer's modules may import: its own, and some below it.
-    ||| The data structures and the contract import nothing but data
-    ||| structures; the runtime only what it shares with the code generator,
-    ||| the contract, and of the flat fragment `Native.Flat.Uniform` alone
-    ||| (`mayImport`).
+    ||| The data structures import nothing but data structures, the contract
+    ||| those and itself; the runtime only what it shares with the code
+    ||| generator, the contract; and of the flat fragment, the contract and
+    ||| the runtime take `Native.Flat.Uniform` alone (`mayImport`).
     imports : Layer -> List Layer
     imports DataLayer = [DataLayer]
-    imports HeapObjLayer = [DataLayer, HeapObjLayer]
-    imports AreaLayer = [DataLayer, AreaLayer]
+    imports ContractLayer = [DataLayer, ContractLayer]
     imports FlatLayer = [DataLayer, FlatLayer]
-    imports CodegenLayer = [DataLayer, HeapObjLayer, AreaLayer, FlatLayer, CodegenLayer]
-    imports RuntimeLayer = [HeapObjLayer, AreaLayer, RuntimeLayer]
+    imports CodegenLayer = [DataLayer, ContractLayer, FlatLayer, CodegenLayer]
+    imports RuntimeLayer = [ContractLayer, RuntimeLayer]
     imports LintLayer = [LintLayer]
 
     ||| Whether a layer's module may import a module: one of the layers it
-    ||| imports, or for the runtime `Native.Flat.Uniform`; a module of no
-    ||| layer among ours (a program) by none.
+    ||| imports, or for the contract and the runtime `Native.Flat.Uniform`; a
+    ||| module of no layer among ours (a program) by none.
     mayImport : Layer -> String -> Bool
-    mayImport l m = maybe False (`elem` imports l) (layerOf m) || (l == RuntimeLayer && m == "Native.Flat.Uniform")
+    mayImport l m =
+      maybe False (`elem` imports l) (layerOf m) || ((l == RuntimeLayer || l == ContractLayer) && m == "Native.Flat.Uniform")
 
 moduleOf : SourceFile -> String
 moduleOf f = show f.mod.moduleNS

@@ -5,7 +5,6 @@
 ||| (`Native.Codegen.Linkage.Routine` says what it is).
 module Native.Codegen.Linkage.ForeignFunctions
 
-import Native.Codegen.Linkage.Routine
 import Native.Codegen.Linkage.RuntimeModule
 
 import Core.Name
@@ -30,7 +29,7 @@ foreignFunctions enc =
   [ mirrored (NS (mkNamespace "System") (UN (Basic "prim__exit"))) ]
   ++ maybe [] (\ns => map (\f => (NS (mkNamespace "Prelude.Types") (UN (Basic f)), NS ns (UN (Basic f))))
                           ["fastPack", "fastUnpack", "fastConcat"])
-           (Routine.stringModule enc.string)
+           (RuntimeModule.stringModule enc.string)
   where
     mirrored : Name -> (Name, Name)
     mirrored n@(NS ns f) = (n, NS (RuntimeModule.runtimeModule ("Foreign." ++ show ns)) f)

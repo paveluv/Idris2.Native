@@ -9,10 +9,10 @@
 ||| program sets decides how far the heap may grow.
 module Native.Runtime.State
 
-import Native.Runtime.Heap
 import Native.Runtime.Memory
 
 import Native.Area
+import Native.Heap
 import Native.HeapObj.Kind as HeapObj
 
 %hide Prelude.Interfaces.(>>=)

@@ -57,7 +57,7 @@ import Native.Codegen.IRCommon.Op
 import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.Codegen.Linkage.ConvertsIn
 import Native.Codegen.Linkage.ForeignFunctions
-import Native.Codegen.Linkage.OSService as Linkage
+import Native.Codegen.Linkage.Realised as Linkage
 import Native.Codegen.Linkage.Routine as Linkage
 import Native.Codegen.LowerFlat
 import Native.Codegen.Platform
@@ -103,6 +103,8 @@ import Native.HeapObj.Enc as HeapObj
 import Native.HeapObj.Header as HeapObj
 import Native.HeapObj.Kind
 import Native.HeapObj.ValEnc
+import Native.Port
+import Native.Routines
 
 %default covering
 
@@ -237,11 +239,13 @@ data StaticPlan
   | ||| A string literal.
     Text String
 
-||| Each function and static of the declarations by name, with its variable.
+||| Each function and static of the declarations by name, with its variable,
+||| and the contract as the loaded runtime realises it.
 record Refs (enc : HeapObj.Enc) (d : TermIR.Decls enc) where
   constructor MkRefs
   funs : SortedMap Name (s ** TermIR.Var d.sigs s)
   stats : SortedMap Name (s ** TermIR.Var d.statics s)
+  realised : Linkage.Realised
 
 ------------------------------------------------------------------------------
 -- Locals
@@ -922,10 +926,12 @@ parameters {enc : HeapObj.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                           done [w])
                   pure w
 
-            ||| A call of a string routine of the program's encoding.
-            strings : String -> {rs : List (IRCommon.Ty enc)} -> {ps : List (IRCommon.Ty enc)} ->
-                      All (TermIR.Opnd v) ps -> B (All (TermIR.Opnd v) rs)
-            strings op xs = callRoutine (Linkage.Routine.stringRoutine enc op) xs
+            ||| A call of a string routine of the program's encoding, a field of the
+            ||| string routines, of its port's registers.
+            strings : {p : Port} -> ({0 f : Port -> Type} -> Routines.StringRoutines f -> f p) ->
+                      All (TermIR.Opnd v) (Linkage.Routine.portParams p) ->
+                      B (All (TermIR.Opnd v) (Linkage.Routine.portResults p))
+            strings field xs = callRoutine (Linkage.Routine.stringRoutine refs.realised field) xs
 
             ||| A word known to be in the fixnum range, as a value: a count or a code
             ||| point.
@@ -936,7 +942,7 @@ parameters {enc : HeapObj.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
             stringOrder : IRCommon.Op.Rel -> TermIR.Opnd v IRCommon.Ty.Val -> TermIR.Opnd v IRCommon.Ty.Val ->
                           B (TermIR.Opnd v IRCommon.Ty.Val)
             stringOrder rel x y = do
-              [o] <- strings "compare" {rs = [IRCommon.Ty.W64]} {ps = [IRCommon.Ty.Val, IRCommon.Ty.Val]} [x, y]
+              [o] <- strings (.compare) [x, y]
               b <- TermIR.Build.emit1 (TermIR.Instr.Cmp rel o (TermIR.Opnd.W 0))
               wordFix b
 
@@ -1142,32 +1148,28 @@ parameters {enc : HeapObj.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
             value (BXOr ty) [x, y] =
               withWidth ty "bitwise xor" (\w => arithmetic w IRCommon.Op.Xor "xor" (get env x) (get env y))
             -- the string primitives: the runtime's routines under the encoding
-            value StrLength [s] = do [n] <- strings "length" {rs = [IRCommon.Ty.W64]} {ps = [IRCommon.Ty.Val]}
-                                       [get env s]
+            value StrLength [s] = do [n] <- strings (.length) [get env s]
                                      wordFix n
-            value StrHead [s] = do [c] <- strings "head" {rs = [IRCommon.Ty.W64]} {ps = [IRCommon.Ty.Val]} [get env s]
+            value StrHead [s] = do [c] <- strings (.head) [get env s]
                                    wordFix c
-            value StrTail [s] = do [r] <- strings "tail" {rs = [IRCommon.Ty.Val]} {ps = [IRCommon.Ty.Val]} [get env s]
+            value StrTail [s] = do [r] <- strings (.tail) [get env s]
                                    pure r
             value StrIndex [s, i] = do
               w <- wideWord (get env i)
-              [c] <- strings "index" {rs = [IRCommon.Ty.W64]} {ps = [IRCommon.Ty.Val, IRCommon.Ty.W64]} [get env s, w]
+              [c] <- strings (.index) [get env s, w]
               wordFix c
             value StrCons [c, s] = do
               w <- fixValue (get env c)
-              [r] <- strings "cons" {rs = [IRCommon.Ty.Val]} {ps = [IRCommon.Ty.W64, IRCommon.Ty.Val]} [w, get env s]
+              [r] <- strings (.cons) [w, get env s]
               pure r
-            value StrAppend [a, b] = do [r] <- strings "append" {rs = [IRCommon.Ty.Val]}
-                                          {ps = [IRCommon.Ty.Val, IRCommon.Ty.Val]} [get env a, get env b]
+            value StrAppend [a, b] = do [r] <- strings (.append) [get env a, get env b]
                                         pure r
-            value StrReverse [s] = do [r] <- strings "reverse" {rs = [IRCommon.Ty.Val]} {ps = [IRCommon.Ty.Val]}
-                                        [get env s]
+            value StrReverse [s] = do [r] <- strings (.reverse) [get env s]
                                       pure r
             value StrSubstr [o, l, s] = do
               wo <- wideWord (get env o)
               wl <- wideWord (get env l)
-              [r] <- strings "substr" {rs = [IRCommon.Ty.Val]}
-                {ps = [IRCommon.Ty.W64, IRCommon.Ty.W64, IRCommon.Ty.Val]} [wo, wl, get env s]
+              [r] <- strings (.substr) [wo, wl, get env s]
               pure r
             value (LT StringType) [x, y] = stringOrder IRCommon.Op.LtS (get env x) (get env y)
             value (LTE StringType) [x, y] = stringOrder IRCommon.Op.LeS (get env x) (get env y)
@@ -1266,17 +1268,18 @@ parameters {enc : HeapObj.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
 
 ||| The program of the declarations, the entry first.
 program : {enc : HeapObj.Enc} -> {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> List Flat.Exp.FlatDef ->
-          Flat.Exp.Shapes -> SortedMap Name Name -> Plan ->
+          Flat.Exp.Shapes -> Linkage.Realised -> Plan ->
           (es : List (TermIR.Sig enc, Plan)) -> (rs : List (s ** ({0 d : TermIR.Decls enc} -> TermIR.StaticDef d s))) ->
             TermIR.Program.TermProgram enc
-program forms shapes services entry es rs =
+program forms shapes realised entry es rs =
   case choose
     (Data.Distinct.distinct (map (.name) (mainSig :: map Builtin.fst es))
      && Data.Distinct.distinct (map (.sym) (map DPair.fst rs))) of
     Left ok =>
       (declsOf es rs ** TermIR.Program.MkProgram
                      (defs (declsOf es rs) (refsOf (declsOf es rs))
-                       (LowerFlat.MkForms (LowerFlat.callees (declsOf es rs) forms) shapes services)
+                       (LowerFlat.MkForms (LowerFlat.callees (declsOf es rs) forms) shapes realised.services
+                         realised.externs)
                            ((mainSig, entry) :: es))
                      (staticDefs (declsOf es rs) rs) (TermIR.Program.MkEntry TermIR.Var.here) IRCommon.ConIds.noConIds)
     Right _ =>
@@ -1286,7 +1289,7 @@ program forms shapes services entry es rs =
   where
     refsOf : (d : TermIR.Decls enc') -> Refs enc' d
     refsOf d = MkRefs (fromList [(s.name, (s ** v)) | (s ** v) <- TermIR.Var.enumerate d.sigs])
-                      (fromList [(s.sym, (s ** v)) | (s ** v) <- TermIR.Var.enumerate d.statics])
+                      (fromList [(s.sym, (s ** v)) | (s ** v) <- TermIR.Var.enumerate d.statics]) realised
 
     staticDefs : (d : TermIR.Decls enc) -> (rs : List (s' ** ({0 d' : TermIR.Decls enc} -> TermIR.StaticDef d' s'))) ->
                  All (TermIR.StaticDef d) (map DPair.fst rs)
@@ -1340,20 +1343,19 @@ cfAgrees _ _ = False
 ||| must take and return, position by position, what the foreign function's
 ||| C types say; one that does not is an error.
 |||
-||| The runtime's routines are forms among them, each checked against the
-||| runtime contract (`routines` in `Native.Codegen.Linkage.Routine`): a routine the
-||| runtime has must have a form of the declared signature, or the program
+||| The runtime's routines, as the loaded runtime realises the contract
+||| (`Native.Codegen.Linkage.Realised`), are forms among them: a routine the
+||| runtime has must have a form, of its port's registers, or the program
 ||| is not lowered, and the error says which. One it does not have yet is
-||| declared as outside the program. So are the functions that implement
-||| the OS services on the platform (`osServices` in `Native.Codegen.Linkage.OSService`),
-||| each checked against its service where a form calls it.
+||| declared as outside the program. The OS services' externs lower to calls
+||| of the platform's functions for them, and the inline externs to the
+||| instructions they stand for.
 export
 lowerProgram : (enc : HeapObj.Enc) -> {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Platform ->
-               List Flat.Exp.FlatDef -> Flat.Exp.Shapes ->
+               Linkage.Realised -> List Flat.Exp.FlatDef -> Flat.Exp.Shapes ->
                List (Name, VMDef) -> Either String (TermIR.Program.TermProgram enc)
-lowerProgram enc platform forms shapes vmdefs = do
-  traverse_ provided (Linkage.Routine.routines {enc})
-  traverse_ implemented (Linkage.OSService.osServices {enc})
+lowerProgram enc platform realised forms shapes vmdefs = do
+  traverse_ provided (Linkage.Routine.routines {enc} realised)
   traverse_ agrees (mapMaybe boundForeign vmdefs)
   let entryPlan = case Data.List.lookup mainExpression vmdefs of
                     Just (MkVMFun [] body) => FromVM [] body
@@ -1362,28 +1364,13 @@ lowerProgram enc platform forms shapes vmdefs = do
       others = planned
                  ++ [(LowerFlat.formSig fd, Form fd) | fd <- forms]
                  ++ [(TermIR.Sig.MkSig r.name (IRCommon.Conv.Direct r.results False) r.params False, Routine)
-                    | r <- Linkage.Routine.routines {enc}, not r.provided]
+                    | r <- Linkage.Routine.routines {enc} realised, not r.provided]
       boxing = fromList [(nullaryCon c, Nullary c) | c <- toList (concatMap (boxed . snd) planned)]
       statics = Data.SortedMap.toList (foldl mergeLeft boxing (mapMaybe bodyStatics vmdefs))
   pure
-    (program forms shapes (fromList (Linkage.OSService.serviceBindings {enc} platform)) entryPlan others
-     (mapMaybe ready statics))
+    (program forms shapes realised entryPlan others (mapMaybe ready statics))
   where
-    -- A service's function, of the service's signature, if a form calls it.
-    implemented : Linkage.OSService enc -> Either String ()
-    implemented s = case Linkage.OSService.serviceFunction platform s of
-      Nothing => Left ("the platform " ++ show platform ++ " has no OS services")
-      Just f => case find (\fd => fd.name == f) forms of
-        Nothing => Right ()
-        Just fd =>
-          let rs = LowerFlat.tys {enc} fd.result
-              ps = LowerFlat.tys {enc} (LowerFlat.paramsLayout fd.params)
-          in if rs == s.results && ps == s.params then Right ()
-             else Left (show f ++ ", the service " ++ s.service ++ " on " ++ show platform
-                        ++ ", has the signature " ++ show ps ++ " -> " ++ show rs
-                        ++ ", but the runtime calls it as " ++ show s.params ++ " -> " ++ show s.results)
-
-    -- A routine the runtime has: its form, of the declared signature.
+    -- A routine the runtime has: its form, of its port's registers.
     provided : Routine enc -> Either String ()
     provided r =
       if not r.provided then Right () else
@@ -1393,9 +1380,9 @@ lowerProgram enc platform forms shapes vmdefs = do
           let rs = LowerFlat.tys {enc} fd.result
               ps = LowerFlat.tys {enc} (LowerFlat.paramsLayout fd.params)
           in if rs == r.results && ps == r.params then Right ()
-             else Left ("the runtime's " ++ show r.name ++ " has the signature "
+             else Left ("the runtime's " ++ show r.name ++ " has the form "
                         ++ show ps ++ " -> " ++ show rs
-                        ++ ", but generated code calls it as "
+                        ++ ", but its port is "
                         ++ show r.params ++ " -> " ++ show r.results)
 
     byName : SortedMap Name Flat.Exp.FlatDef
