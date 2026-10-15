@@ -93,7 +93,8 @@ stringStubs : Routines.StringRoutines (\_ => String)
 stringStubs =
   Routines.MkStringRoutines
     { length = "length", head = "head", tail = "tail", index = "index", cons = "cons", append = "append"
-    , reverse = "reverse", substr = "substr", compare = "compare" }
+    , reverse = "reverse", substr = "substr", compare = "compare", showSigned = "show_signed"
+    , showUnsigned = "show_unsigned" }
 
 ||| The name of a string routine the runtime has no module for.
 stubName : String -> Name

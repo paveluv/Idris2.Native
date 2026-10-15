@@ -86,6 +86,9 @@ finish s ascii bytes = do
 byteAt : Memory.Addr HeapObj.Kind.STRING -> (i : Bits64) -> Heap.Op Heap Bits64
 byteAt s i = Memory.load8 s (8 + i)
 
+setByte : Memory.Addr HeapObj.Kind.STRING -> (i, b : Bits64) -> Heap.Op Heap ()
+setByte s i b = Memory.store8 s (8 + i) b
+
 ------------------------------------------------------------------------------
 -- UTF-8, at the string's bytes
 
@@ -143,9 +146,6 @@ copyBytes from i to j n seen =
     b <- byteAt from i
     setByte to j b
     copyBytes from (i + 1) to (j + 1) (n - 1) (seen .|. b)
-  where
-    setByte : Memory.Addr HeapObj.Kind.STRING -> (i, b : Bits64) -> Heap.Op Heap ()
-    setByte s i b = Memory.store8 s (8 + i) b
 
 ||| The bytes from `from` to `to` of a string, as a new string: ASCII if the
 ||| string is, or if the bytes copied are.
@@ -441,6 +441,46 @@ fastConcat xs = let (Heap.MkHeap # r) = concatOp xs Heap.MkHeap in r
             next <- Memory.fieldObject {k = HeapObj.Kind.CON} t
             concatWrite next r (j + bytesOf h)
 
+------------------------------------------------------------------------------
+-- Numbers as text
+
+||| A magnitude in decimal, after a `-` if it is negative: an ASCII string.
+covering
+decimal : (negative : Bool) -> (magnitude : Bits64) -> Heap.Op Heap (Flat.Uniform String)
+decimal negative m = do
+  let sign = if negative then 1 else 0
+      bytes = sign + decimalDigits m
+  s <- newString bytes
+  if negative then setByte s 0 45 else Heap.pure ()
+  writeDigits s bytes m
+  finish s True bytes
+  where
+    ||| How many decimal digits a word has.
+    covering
+    decimalDigits : Bits64 -> Bits64
+    decimalDigits n = if n < 10 then 1 else 1 + decimalDigits (n `div` 10)
+
+    ||| A word's decimal digits written to end at byte `end`, the last digit
+    ||| before it.
+    covering
+    writeDigits : Memory.Addr HeapObj.Kind.STRING -> (end, n : Bits64) -> Heap.Op Heap ()
+    writeDigits s end n = do
+      setByte s (end - 1) (48 + n `mod` 10)
+      if n < 10 then Heap.pure () else writeDigits s (end - 1) (n `div` 10)
+
+%cg native flat Runtime.String.Utf8.showSigned
+||| A signed word in decimal, as Chez writes it. The most negative word's
+||| magnitude is its own pattern, unsigned.
+export covering
+showSigned : (n : Int) -> Heap.Op Heap (Flat.Uniform String)
+showSigned n = if n < 0 then decimal True (cast {to = Bits64} (0 - n)) else decimal False (cast n)
+
+%cg native flat Runtime.String.Utf8.showUnsigned
+||| A word, unsigned, in decimal.
+export covering
+showUnsigned : (n : Bits64) -> Heap.Op Heap (Flat.Uniform String)
+showUnsigned = decimal False
+
 ||| The string routines under UTF-8, each checked against its port: the
 ||| record the code generator reads for the functions generated code calls.
 export covering
@@ -448,7 +488,8 @@ strings : Routines.StringRoutines (Port.PortTy (\k => Memory.Addr k))
 strings =
   Routines.MkStringRoutines
     { length = Utf8.length, head = Utf8.head, tail = Utf8.tail, index = Utf8.index, cons = Utf8.cons
-    , append = Utf8.append, reverse = Utf8.reverse, substr = Utf8.substr, compare = Utf8.compare }
+    , append = Utf8.append, reverse = Utf8.reverse, substr = Utf8.substr, compare = Utf8.compare
+    , showSigned = Utf8.showSigned, showUnsigned = Utf8.showUnsigned }
 
 %cg native flat Runtime.String.Utf8.prim__putStr
 ||| `putStr`: the string's bytes written to the standard output, all of

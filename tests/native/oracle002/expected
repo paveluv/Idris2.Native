@@ -1,4 +1,4 @@
-Strings: unsupported
+Strings: agree
 Bignum: unsupported
 StatusCount: agree
 StatusClosure: agree
@@ -11,4 +11,4 @@ StatusIntegerSmall: agree
 StatusArray: agree
 StatusFlatData: agree
 StatusStrings: agree
-13 programs: 11 agree, 2 unsupported, 0 mismatch, 0 error, 0 timeout
+13 programs: 12 agree, 1 unsupported, 0 mismatch, 0 error, 0 timeout

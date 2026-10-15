@@ -25,10 +25,12 @@
 ||| static objects; every integer type's arithmetic, bitwise operations,
 ||| shifts, division and comparisons, each wrapping to the type's width, and
 ||| the casts among the integer types and characters ("Integers", below);
-||| constructors, nullary ones as shared statics; closures; application;
-||| calls and tail calls; cases on constructors and on integer and character
-||| constants; projection; the arrays behind `Data.IOArray` ("Arrays",
-||| below); and the foreign `System.prim__exit`. Everything else lowers to
+||| the casts of integers and characters to strings, an `Integer` in the
+||| fixnum range; constructors, nullary ones as shared statics; closures;
+||| application; calls and tail calls; cases on constructors, on integer and
+||| character constants and on string constants; projection; the arrays
+||| behind `Data.IOArray` ("Arrays", below); the string primitives; and the
+||| foreign functions the runtime implements. Everything else lowers to
 ||| `Unsupported`, the abort stub, so a program always links and fails only
 ||| on the paths it reaches.
 |||
@@ -611,11 +613,14 @@ parameters {enc : HeapObj.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
             cases env after t is k (map snd alts) (fromMaybe [ERROR "no case alternative matched"] dflt) $
               \codes, other => onKeys i (zip (map cast ids) codes) other
       (CONSTCASE s alts dflt, after) :: is =>
-        case traverse (intConst . fst) alts of
-          Nothing => TermIR.Build.unsupported "a case on strings or doubles"
-          Just ks =>
+        case (traverse (intConst . fst) alts, traverse (text . fst) alts) of
+          (Just ks, _) =>
             cases env after t is k (map snd alts) (fromMaybe [ERROR "no case alternative matched"] dflt) $
               \codes, other => constCase (get env s) (zip (map snd ks) codes) (map fst (head' ks)) other
+          (Nothing, Just ts) =>
+            cases env after t is k (map snd alts) (fromMaybe [ERROR "no case alternative matched"] dflt) $
+              \codes, other => stringCase (get env s) (zip ts codes) other
+          (Nothing, Nothing) => TermIR.Build.unsupported "a case on doubles"
       (PROJECT r x i, _) :: is => do
         q <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr HeapObj.Kind.CON (get env x))
         f <- TermIR.Build.emit1
@@ -755,6 +760,30 @@ parameters {enc : HeapObj.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
           Left ok => TermIR.Build.switch x cs other
           Right _ => TermIR.Build.unsupported "a case with repeated constructor ids"
 
+        ||| A runtime routine's variable, with its results and parameters.
+        routine : Name -> (rs, ps : List (IRCommon.Ty enc)) ->
+                  Maybe (n' ** TermIR.Var d.sigs (TermIR.Sig.MkSig n' (IRCommon.Conv.Direct rs False) ps False))
+        routine name rs ps = case lookup name refs.funs of
+          Just (TermIR.Sig.MkSig n (IRCommon.Conv.Direct rs' False) ps' False ** var) =>
+            case (decEq rs' rs, decEq ps' ps) of
+            (Yes Refl, Yes Refl) => Just (n ** var)
+            _ => Nothing
+          _ => Nothing
+
+        ||| A call of a runtime routine, binding its results.
+        callRoutine : Name -> {rs : List (IRCommon.Ty enc)} -> {ps : List (IRCommon.Ty enc)} ->
+                      All (TermIR.Opnd v) ps -> B (All (TermIR.Opnd v) rs)
+        callRoutine name xs = case routine name rs ps of
+          Just (_ ** r) => TermIR.Build.directCall r xs
+          Nothing => TermIR.Build.crash ("no runtime routine " ++ show name)
+
+        ||| A call of a string routine of the program's encoding, a field of the
+        ||| string routines, of its port's registers.
+        strings : {p : Port} -> ({0 f : Port -> Type} -> Routines.StringRoutines f -> f p) ->
+                  All (TermIR.Opnd v) (Linkage.Routine.portParams p) ->
+                  B (All (TermIR.Opnd v) (Linkage.Routine.portResults p))
+        strings field xs = callRoutine (Linkage.Routine.stringRoutine refs.realised field) xs
+
         ||| A case on integer or character constants. A 64-bit scrutinee is
         ||| matched as a fixnum against the cases in the fixnum range and as a box
         ||| against the others; an `Integer` that is a `BIGNUM` matches no case in
@@ -811,6 +840,20 @@ parameters {enc : HeapObj.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
           Just (Narrow _ _, n) => maybe (TermIR.Build.unsupported ("the constant " ++ show k)) pure (fixnum n)
           Nothing => TermIR.Build.unsupported ("the constant " ++ show k)
 
+        ||| A string constant's text.
+        text : Constant -> Maybe String
+        text (Str x) = Just x
+        text _ = Nothing
+
+        ||| A case on string constants: each compared with the value in turn, by
+        ||| the string routines' order, the first that is equal taken.
+        stringCase : TermIR.Opnd v IRCommon.Ty.Val -> List (String, E) -> E -> E
+        stringCase x [] other = other
+        stringCase x ((lit, code) :: cs) other = do
+          l <- constant (Str lit)
+          [o] <- strings (.compare) [x, l]
+          TermIR.Build.branch IRCommon.Op.EqR o (TermIR.Opnd.W 0) code (stringCase x cs other)
+
         ||| A primitive operation, and the environment after it.
         op : Env v -> Reg -> PrimFn n -> Vect n Reg -> B (Env v)
         op env r fn' vect = case (fn', vect) of
@@ -820,6 +863,15 @@ parameters {enc : HeapObj.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
               Nothing => do
                 c <- if to == CharType then toChar wf (get env x) else retype wf wt (get env x)
                 pure (set env r c)
+            -- a character as a string of it, a number as its decimal text
+            (Just wf, Nothing) =>
+              if to /= StringType then TermIR.Build.unsupported ("the cast from " ++ show from ++ " to " ++ show to)
+              else if from == CharType then do
+                w <- fixValue (get env x)
+                empty <- constant (Str "")
+                [c] <- strings (.cons) [w, empty]
+                pure (set env r c)
+              else set env r <$> decimal wf (get env x)
             _ => TermIR.Build.unsupported ("the cast from " ++ show from ++ " to " ++ show to)
           (BelieveMe, [_, _, x]) => pure (set env r (get env x))
           (fn, args) => set env r <$> value fn args
@@ -844,23 +896,6 @@ parameters {enc : HeapObj.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                     TermIR.Build.branch IRCommon.Op.LtS w (TermIR.Opnd.W 57344) (zero []) $
                       TermIR.Build.branch IRCommon.Op.LeS w (TermIR.Opnd.W 1114111) (keep []) (zero [])
               pure r
-
-            ||| A runtime routine's variable, with its results and parameters.
-            routine : Name -> (rs, ps : List (IRCommon.Ty enc)) ->
-                      Maybe (n' ** TermIR.Var d.sigs (TermIR.Sig.MkSig n' (IRCommon.Conv.Direct rs False) ps False))
-            routine name rs ps = case lookup name refs.funs of
-              Just (TermIR.Sig.MkSig n (IRCommon.Conv.Direct rs' False) ps' False ** var) =>
-                case (decEq rs' rs, decEq ps' ps) of
-                (Yes Refl, Yes Refl) => Just (n ** var)
-                _ => Nothing
-              _ => Nothing
-
-            ||| A call of a runtime routine, binding its results.
-            callRoutine : Name -> {rs : List (IRCommon.Ty enc)} -> {ps : List (IRCommon.Ty enc)} ->
-                          All (TermIR.Opnd v) ps -> B (All (TermIR.Opnd v) rs)
-            callRoutine name xs = case routine name rs ps of
-              Just (_ ** r) => TermIR.Build.directCall r xs
-              Nothing => TermIR.Build.crash ("no runtime routine " ++ show name)
 
             ||| A word wrapped to a narrow width, as a uniform value: a fixnum, which it
             ||| always fits.
@@ -926,17 +961,28 @@ parameters {enc : HeapObj.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                           done [w])
                   pure w
 
-            ||| A call of a string routine of the program's encoding, a field of the
-            ||| string routines, of its port's registers.
-            strings : {p : Port} -> ({0 f : Port -> Type} -> Routines.StringRoutines f -> f p) ->
-                      All (TermIR.Opnd v) (Linkage.Routine.portParams p) ->
-                      B (All (TermIR.Opnd v) (Linkage.Routine.portResults p))
-            strings field xs = callRoutine (Linkage.Routine.stringRoutine refs.realised field) xs
-
             ||| A word known to be in the fixnum range, as a value: a count or a code
             ||| point.
             wordFix : TermIR.Opnd v IRCommon.Ty.W64 -> B (TermIR.Opnd v IRCommon.Ty.Val)
             wordFix w = do f <- TermIR.Build.emit1 (TermIR.Instr.Tag w); TermIR.Build.emit1 (TermIR.Instr.WidenFix f)
+
+            ||| A word in decimal, signed or not, by the string routine for it.
+            decimalWord : Bool -> TermIR.Opnd v IRCommon.Ty.W64 -> B (TermIR.Opnd v IRCommon.Ty.Val)
+            decimalWord True w = do [t] <- strings (.showSigned) [w]; pure t
+            decimalWord False w = do [t] <- strings (.showUnsigned) [w]; pure t
+
+            ||| A number of the width in decimal, by its word; an `Integer` outside
+            ||| the fixnums is not yet.
+            decimal : IntWidth -> TermIR.Opnd v IRCommon.Ty.Val -> B (TermIR.Opnd v IRCommon.Ty.Val)
+            decimal (Narrow _ signed) x = do w <- fixValue x; decimalWord signed w
+            decimal (Wide signed) x = do w <- wideWord x; decimalWord signed w
+            decimal Unbounded x = do
+              [t] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done =>
+                TermIR.Build.ifFixnums [x] (\[f] => do w <- untag f
+                                                       t <- decimalWord True w
+                                                       done [t])
+                  (TermIR.Build.unsupported "an Integer outside the fixnum range as text")
+              pure t
 
             ||| A comparison of strings: the runtime's order, -1, 0 or 1, against 0.
             stringOrder : IRCommon.Op.Rel -> TermIR.Opnd v IRCommon.Ty.Val -> TermIR.Opnd v IRCommon.Ty.Val ->

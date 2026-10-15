@@ -47,7 +47,7 @@ routineList r = [(_ ** r.start), (_ ** r.allocSlow), (_ ** r.allocMutable), (_ *
 
 ||| The primitive operations on strings and their comparison, over strings
 ||| as ordinary code holds them: a character is its code point, a count or
-||| an index a word, an order -1, 0 or 1.
+||| an index a word, an order -1, 0 or 1; and the numbers as text.
 public export
 record StringRoutines (f : Port -> Type) where
   constructor MkStringRoutines
@@ -61,6 +61,11 @@ record StringRoutines (f : Port -> Type) where
   ||| The characters from `start`, `len` of them, both clamped to the string.
   substr : f (Port.MkPort [Port.Signed, Port.Signed, Port.Str] (Just Port.Str))
   compare : f (Port.MkPort [Port.Str, Port.Str] (Just Port.Signed))
+  ||| A signed word in decimal, as Chez writes it: `-` before a negative
+  ||| one's digits.
+  showSigned : f (Port.MkPort [Port.Signed] (Just Port.Str))
+  ||| A word, unsigned, in decimal.
+  showUnsigned : f (Port.MkPort [Port.Word] (Just Port.Str))
 
 ||| Each string routine's entries of two records made one.
 public export
@@ -68,10 +73,11 @@ zipStringRoutines : ({p : Port} -> f p -> g p -> h p) -> StringRoutines f -> Str
 zipStringRoutines z a b =
   MkStringRoutines (z a.length b.length) (z a.head b.head) (z a.tail b.tail) (z a.index b.index)
     (z a.cons b.cons) (z a.append b.append) (z a.reverse b.reverse) (z a.substr b.substr) (z a.compare b.compare)
+    (z a.showSigned b.showSigned) (z a.showUnsigned b.showUnsigned)
 
 ||| The string routines' entries, each with its port.
 public export
 stringRoutineList : StringRoutines f -> List (p : Port ** f p)
 stringRoutineList r =
   [(_ ** r.length), (_ ** r.head), (_ ** r.tail), (_ ** r.index), (_ ** r.cons), (_ ** r.append),
-   (_ ** r.reverse), (_ ** r.substr), (_ ** r.compare)]
+   (_ ** r.reverse), (_ ** r.substr), (_ ** r.compare), (_ ** r.showSigned), (_ ** r.showUnsigned)]

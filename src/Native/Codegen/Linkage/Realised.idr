@@ -68,7 +68,7 @@ realise platform enc = do
   Right rs <- fieldsOf (in' (RuntimeModule.runtimeModule "Routines") "routines") 4
     | Left e => pure (Left e)
   ss <- case RuntimeModule.stringModule enc.string of
-    Just ns => map (map Just) (fieldsOf (in' ns "strings") 9)
+    Just ns => map (map Just) (fieldsOf (in' ns "strings") 11)
     Nothing => pure (Right Nothing)
   let Right ss' = ss
     | Left e => pure (Left e)
@@ -118,10 +118,10 @@ realise platform enc = do
     routinesOf : Vect 4 Name -> Routines Named
     routinesOf [a1, a2, a3, a4] = Routines.MkRoutines (MkNamed a1) (MkNamed a2) (MkNamed a3) (MkNamed a4)
 
-    stringRoutinesOf : Vect 9 Name -> Routines.StringRoutines Named
-    stringRoutinesOf [a1, a2, a3, a4, a5, a6, a7, a8, a9] =
-      Routines.MkStringRoutines (MkNamed a1) (MkNamed a2) (MkNamed a3) (MkNamed a4) (MkNamed a5) (MkNamed a6) (MkNamed a7)
-                 (MkNamed a8) (MkNamed a9)
+    stringRoutinesOf : Vect 11 Name -> Routines.StringRoutines Named
+    stringRoutinesOf [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11] =
+      Routines.MkStringRoutines (MkNamed a1) (MkNamed a2) (MkNamed a3) (MkNamed a4) (MkNamed a5) (MkNamed a6)
+        (MkNamed a7) (MkNamed a8) (MkNamed a9) (MkNamed a10) (MkNamed a11)
 
     servicesOf : Vect 7 Name -> Services Named
     servicesOf [a1, a2, a3, a4, a5, a6, a7] =

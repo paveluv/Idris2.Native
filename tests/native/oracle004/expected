@@ -1,11 +1,12 @@
-Arith: unsupported
+Arith: agree
 Bignum: unsupported
-Case: unsupported
-Closure: unsupported
-Count: unsupported
+Case: agree
+Closure: agree
+Count: agree
 Exit: agree
 Hello: agree
-Interface: unsupported
+Interface: agree
+Show: agree
 StatusArray: agree
 StatusCase: agree
 StatusClosure: agree
@@ -22,10 +23,10 @@ StatusMutual: agree
 StatusNarrow: agree
 StatusStrings: agree
 StatusWide: agree
-Strings: unsupported
-TailCall: unsupported
-26 programs: 18 agree, 8 unsupported, 0 mismatch, 0 error, 0 timeout
-Strings: unsupported
+Strings: agree
+TailCall: agree
+27 programs: 26 agree, 1 unsupported, 0 mismatch, 0 error, 0 timeout
+Strings: agree
 Bignum: unsupported
 StatusCount: agree
 StatusClosure: agree
@@ -38,4 +39,4 @@ StatusIntegerSmall: agree
 StatusArray: agree
 StatusFlatData: agree
 StatusStrings: agree
-13 programs: 11 agree, 2 unsupported, 0 mismatch, 0 error, 0 timeout
+13 programs: 12 agree, 1 unsupported, 0 mismatch, 0 error, 0 timeout

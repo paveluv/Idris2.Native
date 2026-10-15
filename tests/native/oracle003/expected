@@ -6,6 +6,7 @@ Count: agree
 Exit: agree
 Hello: agree
 Interface: agree
+Show: agree
 StatusArray: agree
 StatusCase: agree
 StatusClosure: agree
@@ -24,7 +25,7 @@ StatusStrings: agree
 StatusWide: agree
 Strings: agree
 TailCall: agree
-26 programs: 26 agree, 0 unsupported, 0 mismatch, 0 error, 0 timeout
+27 programs: 27 agree, 0 unsupported, 0 mismatch, 0 error, 0 timeout
 Codegen: MISMATCH
     1c1
     < running under chez
