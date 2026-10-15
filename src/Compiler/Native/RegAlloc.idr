@@ -300,11 +300,13 @@ parameters (d : TermIR.Decls enc)
           if any (\r => isJust (lookup (LocatedIR.Reg.slotOf r) (usesAll env xs))) info.params
              then do
                (loads, temps) <- moves info.params xs
-               pure (Data.Builder.piece (loads ++ zipWith LocatedIR.Instr.Move info.params temps), LocatedIR.Terminator.Jump info.label)
+               pure (Data.Builder.piece (loads ++ zipWith LocatedIR.Instr.Move info.params temps),
+                     LocatedIR.Terminator.Jump info.label)
              else pure (Data.Builder.piece (direct info.params xs), LocatedIR.Terminator.Jump info.label)
           where
             ||| An operand into a given register.
-            moveInto : All (HV enc') ctx' -> LocatedIR.Reg enc' -> TermIR.Opnd (TermIR.Var ctx') t -> LocatedIR.Instr enc'
+            moveInto : All (HV enc') ctx' -> LocatedIR.Reg enc' -> TermIR.Opnd (TermIR.Var ctx') t ->
+                       LocatedIR.Instr enc'
             moveInto env d (TermIR.Opnd.V x) = case TermIR.Var.fetch x env of
               InReg r => LocatedIR.Instr.Move d r
               OfStatic s => LocatedIR.Instr.StaticAddr d s
@@ -317,7 +319,8 @@ parameters (d : TermIR.Decls enc)
             direct (p :: ps) (x :: xs) = moveInto env p x :: direct ps xs
             direct _ _ = []
 
-            moves : List (LocatedIR.Reg enc) -> All (TermIR.Opnd (TermIR.Var ctx'')) qs -> M enc (List (LocatedIR.Instr enc), List (LocatedIR.Reg enc))
+            moves : List (LocatedIR.Reg enc) -> All (TermIR.Opnd (TermIR.Var ctx'')) qs ->
+                    M enc (List (LocatedIR.Instr enc), List (LocatedIR.Reg enc))
             moves (p :: ps) (x :: xs) = do
               t <- fresh (LocatedIR.Reg.regTy p)
               (is, ts) <- moves ps xs
@@ -354,7 +357,8 @@ parameters (d : TermIR.Decls enc)
       (fok, (isOk, tOk)) <- body ok (InReg f :: env) li
       (fov, lo) <- branchTo ovf env li
       pure (mergeLeft (mergeLeft (uses env x) (uses env y)) (mergeLeft (without [f] fok) fov),
-            (Data.Builder.single (LocatedIR.Instr.ArithOv (TermIR.OvOp.ovArith o) f (operand env x) (operand env y) lo) <+> isOk, tOk))
+            (Data.Builder.single (LocatedIR.Instr.ArithOv (TermIR.OvOp.ovArith o) f (operand env x) (operand env y) lo)
+              <+> isOk, tOk))
     body (TermIR.Body.TagOv {fx} x ok ovf) env li = do
       (px, rx) <- asReg env x
       f <- fresh IRCommon.Ty.Fix
@@ -366,7 +370,8 @@ parameters (d : TermIR.Decls enc)
       (px, rx) <- asReg env x
       (fcs, labels) <- cases bs env li
       (fd, ld) <- branchTo dflt env li
-      pure (mergeLeft (uses env x) (mergeLeft fcs fd), (Data.Builder.piece px, LocatedIR.Terminator.Switch rx (zip keys labels) ld))
+      pure (mergeLeft (uses env x) (mergeLeft fcs fd),
+            (Data.Builder.piece px, LocatedIR.Terminator.Switch rx (zip keys labels) ld))
       where
         ||| A switch's cases, each a block of its own, in order.
         cases : All (\_ => TermIR.Body d c' m' ls' ctx') ks -> All (HV enc) ctx' -> All (LI enc) ls' ->
@@ -405,7 +410,8 @@ parameters (d : TermIR.Decls enc)
     body (TermIR.Body.Return x) env li = pure (uses env x, (neutral, LocatedIR.Terminator.Return (operand env x)))
     body (TermIR.Body.Enter f xs) env li = do
       (pf, rf) <- asReg env f
-      pure (mergeLeft (uses env f) (usesList env xs), (Data.Builder.piece pf, LocatedIR.Terminator.Enter rf (map (operand env) xs)))
+      pure (mergeLeft (uses env f) (usesList env xs),
+            (Data.Builder.piece pf, LocatedIR.Terminator.Enter rf (map (operand env) xs)))
       where
         usesList : All (HV enc') ctx' -> List (TermIR.Opnd (TermIR.Var ctx') t) -> RegMap enc'
         usesList env = foldr (\x, m => mergeLeft (uses env x) m) empty
@@ -427,12 +433,14 @@ parameters (d : TermIR.Decls enc)
         instrUses : All (HV enc'') ctx'' -> TermIR.Instr d' m' (TermIR.Var ctx'') ts' -> RegMap enc''
         instrUses env i = execState empty (TermIR.Instr.traverseInstr (collect env) i)
           where
-            collect : All (HV enc') ctx' -> {0 t : IRCommon.Ty enc'} -> TermIR.Opnd (TermIR.Var ctx') t -> State (RegMap enc') (TermIR.Opnd (TermIR.Var ctx') t)
+            collect : All (HV enc') ctx' -> {0 t : IRCommon.Ty enc'} -> TermIR.Opnd (TermIR.Var ctx') t ->
+                      State (RegMap enc') (TermIR.Opnd (TermIR.Var ctx') t)
             collect env x = do modify (mergeLeft (uses env x)); pure x
 
         ||| The IR of an instruction binding the registers `ds`, given what is live
         ||| after it.
-        instr : All (HV enc) ctx''' -> All (RV enc) ts' -> (after : RegMap enc) -> TermIR.Instr d m' (TermIR.Var ctx''') ts' ->
+        instr : All (HV enc) ctx''' -> All (RV enc) ts' -> (after : RegMap enc) ->
+                TermIR.Instr d m' (TermIR.Var ctx''') ts' ->
                 M enc (List (LocatedIR.Instr enc))
         instr env z after instr' = case (z, instr') of
           ([r], TermIR.Instr.FConst x) => pure [LocatedIR.Instr.FConst r x]
@@ -453,7 +461,8 @@ parameters (d : TermIR.Decls enc)
             (p, m') <- memRef env mem
             (px, rx) <- asReg env x
             pure (p ++ px ++ [LocatedIR.Instr.Store t m' rx])
-          ([r], TermIR.Instr.LoadN w s mem) => do (p, m') <- memRef env mem; pure (p ++ [LocatedIR.Instr.LoadN w s r m'])
+          ([r], TermIR.Instr.LoadN w s mem) => do (p, m') <- memRef env mem
+                                                  pure (p ++ [LocatedIR.Instr.LoadN w s r m'])
           ([], TermIR.Instr.StoreN w mem x) => do
             (p, m') <- memRef env mem
             (px, rx) <- asReg env x
@@ -483,10 +492,12 @@ parameters (d : TermIR.Decls enc)
           ([], TermIR.Instr.Loc fc) => pure [LocatedIR.Instr.Loc fc]
           ([], TermIR.Instr.Comment s) => pure [LocatedIR.Instr.Comment s]
           where
-            fillOf : {0 kind : HeapObject.Kind} -> (q : HeapObject.Header.HeaderPart kind) -> TermIR.Sizes.Fill (TermIR.Var ctx''') q -> Maybe (LocatedIR.Opnd enc)
+            fillOf : {0 kind : HeapObject.Kind} -> (q : HeapObject.Header.HeaderPart kind) ->
+                     TermIR.Sizes.Fill (TermIR.Var ctx''') q -> Maybe (LocatedIR.Opnd enc)
             fillOf HeapObject.Header.ArrayElems x = Just (operand env x)
             fillOf _ _ = Nothing
-            fillUses : {0 kind : HeapObject.Kind} -> (q : HeapObject.Header.HeaderPart kind) -> TermIR.Sizes.Fill (TermIR.Var ctx''') q -> () -> RegMap enc
+            fillUses : {0 kind : HeapObject.Kind} -> (q : HeapObject.Header.HeaderPart kind) ->
+                       TermIR.Sizes.Fill (TermIR.Var ctx''') q -> () -> RegMap enc
             fillUses HeapObject.Header.ArrayElems x _ = uses env x
             fillUses _ _ _ = empty
 
@@ -495,22 +506,26 @@ parameters (d : TermIR.Decls enc)
               IRCommon.Conv.CPS => False
               IRCommon.Conv.Direct _ col => col
 
-            memRef : All (HV enc'') ctx'' -> TermIR.Mem (TermIR.Var ctx'') -> M enc'' (List (LocatedIR.Instr enc''), LocatedIR.Mem enc'')
+            memRef : All (HV enc'') ctx'' -> TermIR.Mem (TermIR.Var ctx'') ->
+                     M enc'' (List (LocatedIR.Instr enc''), LocatedIR.Mem enc'')
             memRef env (TermIR.Mem.MkMem b i o) = do
               (pb, rb) <- baseReg env b
               case i of
                 Nothing => pure (pb, LocatedIR.Mem.MkMem rb Nothing o)
                 Just x => do (pi, ri) <- asReg env x; pure (pb ++ pi, LocatedIR.Mem.MkMem rb (Just ri) o)
               where
-                baseReg : All (HV enc') ctx' -> TermIR.Mem.Base (TermIR.Var ctx') -> M enc' (List (LocatedIR.Instr enc'), LocatedIR.Reg enc')
+                baseReg : All (HV enc') ctx' -> TermIR.Mem.Base (TermIR.Var ctx') ->
+                          M enc' (List (LocatedIR.Instr enc'), LocatedIR.Reg enc')
                 baseReg env (TermIR.Mem.AtWord x) = asReg env x
                 baseReg env (TermIR.Mem.AtPtr x) = asReg env x
 
             ||| One register, through an instruction that reads it from an operand.
-            unary : All (HV enc) ctx' -> TermIR.Opnd (TermIR.Var ctx') t -> (LocatedIR.Reg enc -> LocatedIR.Instr enc) -> M enc (List (LocatedIR.Instr enc))
+            unary : All (HV enc) ctx' -> TermIR.Opnd (TermIR.Var ctx') t ->
+                    (LocatedIR.Reg enc -> LocatedIR.Instr enc) -> M enc (List (LocatedIR.Instr enc))
             unary env x f = do (p, r) <- asReg env x; pure (p ++ [f r])
 
-            binary : All (HV enc) ctx' -> TermIR.Opnd (TermIR.Var ctx') t -> TermIR.Opnd (TermIR.Var ctx') u -> (LocatedIR.Reg enc -> LocatedIR.Reg enc -> LocatedIR.Instr enc) ->
+            binary : All (HV enc) ctx' -> TermIR.Opnd (TermIR.Var ctx') t -> TermIR.Opnd (TermIR.Var ctx') u ->
+                     (LocatedIR.Reg enc -> LocatedIR.Reg enc -> LocatedIR.Instr enc) ->
                      M enc (List (LocatedIR.Instr enc))
             binary env x y f = do (px, rx) <- asReg env x; (py, ry) <- asReg env y; pure (px ++ py ++ [f rx ry])
 
@@ -591,12 +606,14 @@ parameters (d : TermIR.Decls enc)
 
               ||| The levels an instruction reads.
               instrLevels : (depth : Nat) -> TermIR.Instr d' m' (TermIR.Var ctx') ts' -> SortedSet Level
-              instrLevels depth i = execState empty (TermIR.Instr.traverseInstr (\x => do modify (union (opLevel depth x)); pure x) i)
+              instrLevels depth i =
+                execState empty (TermIR.Instr.traverseInstr (\x => do modify (union (opLevel depth x)); pure x) i)
 
               vectLevels : (depth : Nat) -> Vect n' (TermIR.Opnd (TermIR.Var ctx') t) -> SortedSet Level
               vectLevels depth = foldr (union . opLevel depth) empty
 
-              freesCases : All (\_ => TermIR.Body d' c' m' ls' ctx') ks -> (depth : Nat) -> All (\_ => SortedSet Level) ls' ->
+              freesCases : All (\_ => TermIR.Body d' c' m' ls' ctx') ks -> (depth : Nat) ->
+                           All (\_ => SortedSet Level) ls' ->
                            (SortedSet Level, List JoinFrees -> List JoinFrees)
               freesCases [] depth lf = (empty, id)
               freesCases (b :: bs) depth lf =
@@ -620,7 +637,8 @@ parameters (d : TermIR.Decls enc)
 
   statics : (ss : List TermIR.StaticSig) -> All (TermIR.StaticDef d) ss -> List (LocatedIR.Static enc)
   statics [] [] = []
-  statics (TermIR.StaticSig.MkStaticSig sym k :: ss) (TermIR.StaticDef.MkStaticDef h fs :: ds) = LocatedIR.Static.MkStatic sym k h (map field (toList fs)) :: statics ss ds
+  statics (TermIR.StaticSig.MkStaticSig sym k :: ss) (TermIR.StaticDef.MkStaticDef h fs :: ds) =
+    LocatedIR.Static.MkStatic sym k h (map field (toList fs)) :: statics ss ds
     where
       field : TermIR.StaticDef.SField d -> LocatedIR.Static.SField
       field (TermIR.StaticDef.SWord w) = LocatedIR.Static.SWord w

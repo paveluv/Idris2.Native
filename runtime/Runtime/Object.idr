@@ -46,7 +46,9 @@ forwardedTo h = Bits.shiftR h 4
 ||| part written in the code the shift and the mask are constants.
 export %inline
 part : Compiler.Native.HeapObject.Header.HeaderPart k -> (header : Bits64) -> Bits64
-part p h = Bits.shiftR h (fst (Compiler.Native.HeapObject.Header.place p)) .&. (Bits.shiftL 1 (snd (Compiler.Native.HeapObject.Header.place p)) - 1)
+part p h =
+  Bits.shiftR h (fst (Compiler.Native.HeapObject.Header.place p)) .&.
+    (Bits.shiftL 1 (snd (Compiler.Native.HeapObject.Header.place p)) - 1)
 
 ||| The words `bytes` take, rounded up.
 export %inline
@@ -58,15 +60,21 @@ byteWords b = Bits.shiftR (b + 7) 3
 export
 objectWords : (id, header : Bits64) -> Bits64
 objectWords id h =
-  if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.CON then 1 + part Compiler.Native.HeapObject.Header.ConArity h
-  else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.CLOSURE then 2 + part Compiler.Native.HeapObject.Header.ClosureFilled h
+  if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.CON then 1
+    + part Compiler.Native.HeapObject.Header.ConArity h
+  else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.CLOSURE then 2
+    + part Compiler.Native.HeapObject.Header.ClosureFilled h
   else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.INT64 then 2
   else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.DOUBLE then 2
-  else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.STRING then 1 + byteWords (part Compiler.Native.HeapObject.Header.StringBytes h)
-  else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.BIGNUM then 1 + part Compiler.Native.HeapObject.Header.BignumWords h
+  else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.STRING then 1
+    + byteWords (part Compiler.Native.HeapObject.Header.StringBytes h)
+  else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.BIGNUM then 1
+    + part Compiler.Native.HeapObject.Header.BignumWords h
   else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.IOREF then 2
-  else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.ARRAY then 1 + part Compiler.Native.HeapObject.Header.ArrayElems h
-  else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.BUFFER then 1 + byteWords (part Compiler.Native.HeapObject.Header.BufferBytes h)
+  else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.ARRAY then 1
+    + part Compiler.Native.HeapObject.Header.ArrayElems h
+  else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.BUFFER then 1
+    + byteWords (part Compiler.Native.HeapObject.Header.BufferBytes h)
   else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.PTR then 2
   else 0
 
@@ -75,10 +83,13 @@ objectWords id h =
 export
 scannedWords : (id, header : Bits64) -> (Bits64, Bits64)
 scannedWords id h =
-  if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.CON then (1, part Compiler.Native.HeapObject.Header.ConArity h)
-  else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.CLOSURE then (2, part Compiler.Native.HeapObject.Header.ClosureFilled h)
+  if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.CON
+    then (1, part Compiler.Native.HeapObject.Header.ConArity h)
+  else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.CLOSURE
+    then (2, part Compiler.Native.HeapObject.Header.ClosureFilled h)
   else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.IOREF then (1, 1)
-  else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.ARRAY then (1, part Compiler.Native.HeapObject.Header.ArrayElems h)
+  else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.ARRAY
+    then (1, part Compiler.Native.HeapObject.Header.ArrayElems h)
   else (1, 0)
 
 ||| A continuation's layout word, the word before the code that resumes

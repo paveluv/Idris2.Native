@@ -180,7 +180,10 @@ parameters (enc : HeapObject.Enc)
       staticBytes : LocatedIR.Static enc -> Render enc (List Bits8)
       staticBytes s = do
         fields <- traverse field s.fields
-        pure (toList (Data.Builder.piece (Bytes.le64 (cast (HeapObject.Header.encodeHeader s.header))) <+> concatMap Data.Builder.piece fields))
+        pure
+          (toList
+            (Data.Builder.piece (Bytes.le64 (cast (HeapObject.Header.encodeHeader s.header)))
+             <+> concatMap Data.Builder.piece fields))
         where
           field : LocatedIR.Static.SField -> Render enc (List Bits8)
           field (LocatedIR.Static.SWord w) = pure (Bytes.le64 (cast w))
@@ -225,7 +228,9 @@ parameters (enc : HeapObject.Enc)
         -- a machine call pushed a word: keep the stack 16-aligned inside; and
         -- below the stack limit, end the program
         case f.conv of
-          IRCommon.Conv.Direct _ _ => emits [ Asm.AluI Asm.SUB Asm.RSP 8, Asm.MovRM Asm.RAX (Asm.MRip (sym Linkage.Sym.SymStackLimit) 0), Asm.Alu Asm.CMP Asm.RSP Asm.RAX
+          IRCommon.Conv.Direct _ _ =>
+            emits [ Asm.AluI Asm.SUB Asm.RSP 8,
+                   Asm.MovRM Asm.RAX (Asm.MRip (sym Linkage.Sym.SymStackLimit) 0), Asm.Alu Asm.CMP Asm.RSP Asm.RAX
                                             , Asm.Jcc Asm.B (sym Linkage.Sym.SymStackOverflow) ]
           IRCommon.Conv.CPS => pure ()
         emits setBase
@@ -248,7 +253,8 @@ parameters (enc : HeapObject.Enc)
                 c <- LocatedIR.Terminator.termCont b.term
                 let vals = filter (IRCommon.Ty.gcVisible . LocatedIR.Reg.regTy) c.live
                     raws = filter (not . IRCommon.Ty.gcVisible . LocatedIR.Reg.regTy) c.live
-                pure (c.resume, (vals ++ raws, HeapObject.LayoutWord.layoutWord (cast (length vals)) (cast (length raws))))
+                pure (c.resume,
+                      (vals ++ raws, HeapObject.LayoutWord.layoutWord (cast (length vals)) (cast (length raws))))
 
           ||| Record that the code uses at least these areas.
           uses : Linkage.Areas -> Render enc' ()
@@ -304,7 +310,8 @@ parameters (enc : HeapObject.Enc)
 
           ||| Turn the object address in `s` into its pointer word in `d`.
           tagPointer : (d, s : Asm.Reg64) -> List Asm.Instr
-          tagPointer d s = if ptag == 0 then (if d == s then [] else [Asm.MovRR d s]) else [Asm.Lea d (Asm.MBase s ptag)]
+          tagPointer d s = if ptag == 0 then (if d == s then [] else [Asm.MovRR d s])
+            else [Asm.Lea d (Asm.MBase s ptag)]
 
           ||| The type two compared operands share: the register's, if either is one.
           pairTy : LocatedIR.Opnd enc -> LocatedIR.Opnd enc -> IRCommon.Ty enc
@@ -360,7 +367,9 @@ parameters (enc : HeapObject.Enc)
             else if fitsImm32 w then emit (Asm.AluI Asm.CMP Asm.RAX (cast w))
             else emits [Asm.MovRI Asm.RCX w, Asm.Alu Asm.CMP Asm.RAX Asm.RCX]
           compareWith _ (LocatedIR.Opnd.R y) = do loadReg Asm.RCX y; emit (Asm.Alu Asm.CMP Asm.RAX Asm.RCX)
-          compareWith _ (LocatedIR.Opnd.StaticRef s) = do l <- staticLabel s; emits [Asm.Lea Asm.RCX (Asm.MRip l ptag), Asm.Alu Asm.CMP Asm.RAX Asm.RCX]
+          compareWith _ (LocatedIR.Opnd.StaticRef s) = do l <- staticLabel s
+                                                          emits [Asm.Lea Asm.RCX (Asm.MRip l ptag),
+                                                                 Asm.Alu Asm.CMP Asm.RAX Asm.RCX]
 
           coldEmit : Asm.Instr -> Render enc' ()
           coldEmit i = modify { cold $= (:< i) }
@@ -382,7 +391,9 @@ parameters (enc : HeapObject.Enc)
           ||| the stack, since nothing moves.
           saved : (collects : Bool) -> List (LocatedIR.Reg enc) -> (List (LocatedIR.Reg enc), List (LocatedIR.Reg enc))
           saved False live = ([], live)
-          saved True live = (filter (IRCommon.Ty.gcVisible . LocatedIR.Reg.regTy) live, filter (not . IRCommon.Ty.gcVisible . LocatedIR.Reg.regTy) live)
+          saved True live =
+            (filter (IRCommon.Ty.gcVisible . LocatedIR.Reg.regTy) live,
+             filter (not . IRCommon.Ty.gcVisible . LocatedIR.Reg.regTy) live)
 
           ||| Save the live slots across a call, as `saved` divides them, the ones on
           ||| the stack with a padding word when their number is odd so the call sees
@@ -452,7 +463,8 @@ parameters (enc : HeapObject.Enc)
           allocate bytes live = do
             slow <- fresh
             done <- fresh
-            emits [ Asm.MovRR Asm.RAX Asm.R15, Asm.Lea Asm.RCX (Asm.MBase Asm.R15 (cast bytes)), Asm.Alu Asm.CMP Asm.RCX Asm.R14, Asm.Jcc Asm.A slow
+            emits [ Asm.MovRR Asm.RAX Asm.R15,
+                   Asm.Lea Asm.RCX (Asm.MBase Asm.R15 (cast bytes)), Asm.Alu Asm.CMP Asm.RCX Asm.R14, Asm.Jcc Asm.A slow
                   , Asm.MovRR Asm.R15 Asm.RCX, Asm.Lbl done ]
             coldEmit (Asm.Lbl slow)
             saveLive True coldEmit live
@@ -477,7 +489,8 @@ parameters (enc : HeapObject.Enc)
             uses (Linkage.Areas.MkAreas (Target.argsWords abi (map IRCommon.Ty.classOf tys)) 0 0)
             let items = zip3 (placeTys tys) tys xs
             traverse_ (\(l, t, x) => case l of
-                                       Target.InArgs i => do emit (Asm.Lea Asm.RAX (Asm.MRip (sym Linkage.Sym.SymArgs) 0))
+                                       Target.InArgs i => do emit
+                                                               (Asm.Lea Asm.RAX (Asm.MRip (sym Linkage.Sym.SymArgs) 0))
                                                              loadAs t Asm.RCX x
                                                              emit (Asm.MovMR (Asm.MBase Asm.RAX (cast (8 * i))) Asm.RCX)
                                        _ => pure ())
@@ -504,7 +517,8 @@ parameters (enc : HeapObject.Enc)
               opTy (LocatedIR.Opnd.Imm _) = IRCommon.Ty.W64
               opTy (LocatedIR.Opnd.StaticRef _) = IRCommon.Ty.Val
 
-          term : (LocatedIR.Label -> Asm.Label) -> (results : List (IRCommon.Ty enc)) -> LocatedIR.Terminator enc -> Render enc ()
+          term : (LocatedIR.Label -> Asm.Label) -> (results : List (IRCommon.Ty enc)) -> LocatedIR.Terminator enc ->
+                 Render enc ()
           term blk res terminator = case terminator of
             LocatedIR.Terminator.Jump l => emit (Asm.Jmp (blk l))
             -- Several tags in one test: under fixnum tag 1 every word is odd exactly
@@ -516,15 +530,23 @@ parameters (enc : HeapObject.Enc)
                                      (r :: more) => do
                                        loadReg Asm.RAX r
                                        traverse_ (\x => do loadReg Asm.RCX x
-                                                           emit (Asm.Alu (if HeapObject.ValEnc.fixnumTag enc.val == 0 then Asm.OR else Asm.AND) Asm.RAX Asm.RCX)) more
-                                   emits [Asm.TestI Asm.RAX 1, Asm.Jcc (if HeapObject.ValEnc.fixnumTag enc.val == 0 then Asm.E else Asm.NE) (blk y), Asm.Jmp (blk n)]
+                                                           emit
+                                                             (Asm.Alu
+                                                               (if HeapObject.ValEnc.fixnumTag enc.val == 0 then Asm.OR
+                                                                else Asm.AND)
+                                                              Asm.RAX Asm.RCX))
+                                                               more
+                                   emits [Asm.TestI Asm.RAX 1,
+                                     Asm.Jcc (if HeapObject.ValEnc.fixnumTag enc.val == 0 then Asm.E else Asm.NE)
+                                          (blk y), Asm.Jmp (blk n)]
             LocatedIR.Terminator.Branch r x y t f => do
                                    loadAs (pairTy x y) Asm.RAX x
                                    compareWith (pairTy x y) y
                                    emits [Asm.Jcc (cond r) (blk t), Asm.Jmp (blk f)]
             LocatedIR.Terminator.Switch r cs d => do
                                    loadReg Asm.RAX r
-                                   traverse_ (\(v, l) => do compareWith (LocatedIR.Reg.regTy r) (LocatedIR.Opnd.Imm v); emit (Asm.Jcc Asm.E (blk l))) cs
+                                   traverse_ (\(v, l) => do compareWith (LocatedIR.Reg.regTy r) (LocatedIR.Opnd.Imm v)
+                                                            emit (Asm.Jcc Asm.E (blk l))) cs
                                    emit (Asm.Jmp (blk d))
             LocatedIR.Terminator.Call f args c => do
               l <- funLabel f
@@ -551,7 +573,8 @@ parameters (enc : HeapObject.Enc)
                                    l <- fresh
                                    let bytes = map (cast . ord) (unpack (msg ++ "\n"))
                                    modify { rodata $= (:< (l, bytes)) }
-                                   emits [Asm.Lea Asm.RDI (Asm.MRip l 0), Asm.MovRI Asm.RSI (cast (length bytes)), Asm.Jmp (sym Linkage.Sym.SymCrash)]
+                                   emits [Asm.Lea Asm.RDI (Asm.MRip l 0),
+                                          Asm.MovRI Asm.RSI (cast (length bytes)), Asm.Jmp (sym Linkage.Sym.SymCrash)]
             LocatedIR.Terminator.Unsupported _ => emit (Asm.Jmp (sym Linkage.Sym.SymUnsupported))
             LocatedIR.Terminator.Ret xs => do
               putValues res xs
@@ -565,7 +588,8 @@ parameters (enc : HeapObject.Enc)
               ||| the current one. Its layout word counts fewer than 2^24 GC-visible and
               ||| fewer than 2^24 raw values (`layoutWord`); a continuation keeping more
               ||| is refused.
-              pushCont : (LocatedIR.Label -> Asm.Label) -> LocatedIR.Cont enc -> (alsoLive : List (LocatedIR.Reg enc)) -> Render enc ()
+              pushCont : (LocatedIR.Label -> Asm.Label) -> LocatedIR.Cont enc ->
+                         (alsoLive : List (LocatedIR.Reg enc)) -> Render enc ()
               pushCont blk c alsoLive = do
                 let vals = filter (IRCommon.Ty.gcVisible . LocatedIR.Reg.regTy) c.live
                     raws = filter (not . IRCommon.Ty.gcVisible . LocatedIR.Reg.regTy) c.live
@@ -601,9 +625,14 @@ parameters (enc : HeapObject.Enc)
             where
               instr : (LocatedIR.Label -> Asm.Label) -> LocatedIR.Instr enc -> Render enc ()
               instr blk instr' = case instr' of
-                LocatedIR.Instr.Const d c => do emit (Asm.MovRI Asm.RAX (immWord (LocatedIR.Reg.regTy d) c)); store d Asm.RAX
-                LocatedIR.Instr.CodeAddr d f => do l <- funLabel f; emit (Asm.Lea Asm.RAX (Asm.MRip l 0)); store d Asm.RAX
-                LocatedIR.Instr.StaticAddr d s => do l <- staticLabel s; emit (Asm.Lea Asm.RAX (Asm.MRip l ptag)); store d Asm.RAX
+                LocatedIR.Instr.Const d c => do emit (Asm.MovRI Asm.RAX (immWord (LocatedIR.Reg.regTy d) c))
+                                                store d Asm.RAX
+                LocatedIR.Instr.CodeAddr d f => do l <- funLabel f
+                                                   emit (Asm.Lea Asm.RAX (Asm.MRip l 0))
+                                                   store d Asm.RAX
+                LocatedIR.Instr.StaticAddr d s => do l <- staticLabel s
+                                                     emit (Asm.Lea Asm.RAX (Asm.MRip l ptag))
+                                                     store d Asm.RAX
                 LocatedIR.Instr.Arith o d x y => do
                                   case LocatedIR.Reg.regTy d of
                                     IRCommon.Ty.Fix {fx} => fixArith o x y Nothing
@@ -611,7 +640,8 @@ parameters (enc : HeapObject.Enc)
                                   store d Asm.RAX
                 LocatedIR.Instr.Unary o d x => do
                                   loadReg Asm.RAX x
-                                  emit (case o of IRCommon.Op.Negate => Asm.Neg Asm.RAX; IRCommon.Op.Complement => Asm.Not Asm.RAX)
+                                  emit (case o of IRCommon.Op.Negate => Asm.Neg Asm.RAX
+                                                  IRCommon.Op.Complement => Asm.Not Asm.RAX)
                                   store d Asm.RAX
                 LocatedIR.Instr.ArithOv o d x y l => do
                                   case LocatedIR.Reg.regTy d of
@@ -659,18 +689,24 @@ parameters (enc : HeapObject.Enc)
                 LocatedIR.Instr.LoadPart p d o => do
                                   loadReg Asm.RAX o
                                   emit (Asm.MovRM Asm.RAX (Asm.MBase Asm.RAX (negate (baseTag o))))
-                                  emits (Asm.extractField Asm.RAX (cast (fst (HeapObject.Header.place p))) (cast (snd (HeapObject.Header.place p))))
+                                  emits
+                                    (Asm.extractField Asm.RAX (cast (fst (HeapObject.Header.place p)))
+                                     (cast (snd (HeapObject.Header.place p))))
                                   store d Asm.RAX
                 LocatedIR.Instr.AllocObj {k} d h fs live => do
                                   if mutableKind k
-                                     then allocateMutable (\r => emit (Asm.MovRI r (cast (8 * HeapObject.Header.objectWords h)))) live
+                                     then allocateMutable
+                                       (\r => emit (Asm.MovRI r (cast (8 * HeapObject.Header.objectWords h)))) live
                                      else allocate (8 * HeapObject.Header.objectWords h) live
-                                  emits [Asm.MovRI Asm.RDX (cast (HeapObject.Header.encodeHeader h)), Asm.MovMR (Asm.MBase Asm.RAX 0) Asm.RDX]
+                                  emits [Asm.MovRI Asm.RDX (cast (HeapObject.Header.encodeHeader h)),
+                                         Asm.MovMR (Asm.MBase Asm.RAX 0) Asm.RDX]
                                   let (from, count) = HeapObject.Header.scanned h
                                       fieldTy : Nat -> IRCommon.Ty enc
-                                      fieldTy i = if S i >= from && S i < from + count then IRCommon.Ty.Val else IRCommon.Ty.W64
+                                      fieldTy i = if S i >= from && S i < from + count then IRCommon.Ty.Val
+                                        else IRCommon.Ty.W64
                                   traverse_ (\(i, f) => do loadAs (fieldTy i) Asm.RDX f
-                                                           emit (Asm.MovMR (Asm.MBase Asm.RAX (cast (8 * (S i)))) Asm.RDX))
+                                                           emit
+                                                             (Asm.MovMR (Asm.MBase Asm.RAX (cast (8 * (S i)))) Asm.RDX))
                                             (zip [0 .. length fs] fs)
                                   emits (tagPointer Asm.RAX Asm.RAX)
                                   store d Asm.RAX
@@ -684,10 +720,15 @@ parameters (enc : HeapObject.Enc)
                                   msg <- fresh
                                   let bytes = map (cast . ord) (unpack "object size out of range\n")
                                   modify { rodata $= (:< (msg, bytes)) }
-                                  traverse_ coldEmit [ Asm.Lbl big, Asm.Lea Asm.RDI (Asm.MRip msg 0), Asm.MovRI Asm.RSI (cast (length bytes))
+                                  traverse_ coldEmit
+                                    [ Asm.Lbl big, Asm.Lea Asm.RDI (Asm.MRip msg 0),
+                                     Asm.MovRI Asm.RSI (cast (length bytes))
                                                      , Asm.Jmp (sym Linkage.Sym.SymCrash) ]
                                   loadReg Asm.RCX count
-                                  emits [Asm.MovRI Asm.RDX (cast (prim__shl_Integer 1 (cast (snd (HeapObject.Header.place p))) - 1)), Asm.Alu Asm.CMP Asm.RCX Asm.RDX, Asm.Jcc Asm.A big]
+                                  emits
+                                    [Asm.MovRI Asm.RDX
+                                      (cast (prim__shl_Integer 1 (cast (snd (HeapObject.Header.place p))) - 1)),
+                                     Asm.Alu Asm.CMP Asm.RCX Asm.RDX, Asm.Jcc Asm.A big]
                                   size <- sizeOf p
                                   if mutableKind k
                                      then allocateMutable (\r => do n <- useSlot count
@@ -695,7 +736,8 @@ parameters (enc : HeapObject.Enc)
                                                                     emits (size r)) live
                                      else allocateSized count size live
                                   loadReg Asm.RDX count
-                                  emits [ Asm.ShiftI Asm.SHL Asm.RDX (cast (fst (HeapObject.Header.place p))), Asm.AluI Asm.ADD Asm.RDX (cast (HeapObject.Kind.kindId k))
+                                  emits [ Asm.ShiftI Asm.SHL Asm.RDX (cast (fst (HeapObject.Header.place p))),
+                                         Asm.AluI Asm.ADD Asm.RDX (cast (HeapObject.Kind.kindId k))
                                         , Asm.MovMR (Asm.MBase Asm.RAX 0) Asm.RDX ]
                                   case fill of
                                     Nothing => pure ()
@@ -704,8 +746,10 @@ parameters (enc : HeapObject.Enc)
                                       end <- fresh
                                       loadReg Asm.RCX count
                                       loadAs IRCommon.Ty.Val Asm.RDX f
-                                      emits [ Asm.Lea Asm.RDI (Asm.MBase Asm.RAX 8), Asm.Lbl loop, Asm.Test Asm.RCX Asm.RCX, Asm.Jcc Asm.E end
-                                            , Asm.MovMR (Asm.MBase Asm.RDI 0) Asm.RDX, Asm.AluI Asm.ADD Asm.RDI 8, Asm.AluI Asm.SUB Asm.RCX 1, Asm.Jmp loop, Asm.Lbl end ]
+                                      emits [ Asm.Lea Asm.RDI (Asm.MBase Asm.RAX 8),
+                                             Asm.Lbl loop, Asm.Test Asm.RCX Asm.RCX, Asm.Jcc Asm.E end
+                                            , Asm.MovMR (Asm.MBase Asm.RDI 0) Asm.RDX, Asm.AluI Asm.ADD Asm.RDI 8,
+                                              Asm.AluI Asm.SUB Asm.RCX 1, Asm.Jmp loop, Asm.Lbl end ]
                                   emits (tagPointer Asm.RAX Asm.RAX)
                                   store d Asm.RAX
                 LocatedIR.Instr.DirectCall f args ds collects live => do
@@ -746,7 +790,11 @@ parameters (enc : HeapObject.Enc)
                 LocatedIR.Instr.FArith o d x y => do
                                   loadFloat Asm.XMM0 (LocatedIR.Opnd.R x)
                                   loadFloat Asm.XMM1 (LocatedIR.Opnd.R y)
-                                  emit (Asm.Sse (case o of IRCommon.Op.FAdd => Asm.ADDSD; IRCommon.Op.FSub => Asm.SUBSD; IRCommon.Op.FMul => Asm.MULSD; IRCommon.Op.FDiv => Asm.DIVSD) Asm.XMM0 Asm.XMM1)
+                                  emit
+                                    (Asm.Sse (case o of IRCommon.Op.FAdd => Asm.ADDSD
+                                                        IRCommon.Op.FSub => Asm.SUBSD
+                                                        IRCommon.Op.FMul => Asm.MULSD
+                                                        IRCommon.Op.FDiv => Asm.DIVSD) Asm.XMM0 Asm.XMM1)
                                   n <- useSlot d
                                   emit (Asm.MovsdMR (slotMem n) Asm.XMM0)
                 -- `ucomisd a, b` sets the flags as an unsigned comparison of a with b,
@@ -758,8 +806,12 @@ parameters (enc : HeapObject.Enc)
                                   loadFloat Asm.XMM0 (LocatedIR.Opnd.R x)
                                   loadFloat Asm.XMM1 (LocatedIR.Opnd.R y)
                                   emits $ case r of
-                                    IRCommon.Op.EqR => [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.E Asm.RDX, Asm.Setcc Asm.NP Asm.RCX, Asm.Alu Asm.AND Asm.RDX Asm.RCX]
-                                    IRCommon.Op.NeR => [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.NE Asm.RDX, Asm.Setcc Asm.P Asm.RCX, Asm.Alu Asm.OR Asm.RDX Asm.RCX]
+                                    IRCommon.Op.EqR =>
+                                      [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.E Asm.RDX, Asm.Setcc Asm.NP Asm.RCX,
+                                       Asm.Alu Asm.AND Asm.RDX Asm.RCX]
+                                    IRCommon.Op.NeR =>
+                                      [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.NE Asm.RDX, Asm.Setcc Asm.P Asm.RCX,
+                                       Asm.Alu Asm.OR Asm.RDX Asm.RCX]
                                     IRCommon.Op.LtS => [Asm.Ucomisd Asm.XMM1 Asm.XMM0, Asm.Setcc Asm.A Asm.RDX]
                                     IRCommon.Op.LtU => [Asm.Ucomisd Asm.XMM1 Asm.XMM0, Asm.Setcc Asm.A Asm.RDX]
                                     IRCommon.Op.LeS => [Asm.Ucomisd Asm.XMM1 Asm.XMM0, Asm.Setcc Asm.AE Asm.RDX]
@@ -827,7 +879,9 @@ parameters (enc : HeapObject.Enc)
                     done <- fresh
                     loadReg Asm.RDX count
                     emits (size Asm.RDX)
-                    emits [ Asm.MovRR Asm.RAX Asm.R15, Asm.MovRR Asm.RCX Asm.R15, Asm.Alu Asm.ADD Asm.RCX Asm.RDX, Asm.Alu Asm.CMP Asm.RCX Asm.R14, Asm.Jcc Asm.A slow
+                    emits [ Asm.MovRR Asm.RAX Asm.R15,
+                      Asm.MovRR Asm.RCX Asm.R15, Asm.Alu Asm.ADD Asm.RCX Asm.RDX, Asm.Alu Asm.CMP Asm.RCX Asm.R14,
+                           Asm.Jcc Asm.A slow
                           , Asm.MovRR Asm.R15 Asm.RCX, Asm.Lbl done ]
                     coldEmit (Asm.Lbl slow)
                     saveLive True coldEmit live
@@ -872,13 +926,15 @@ parameters (enc : HeapObject.Enc)
                       IRCommon.Op.DivS => emits [Asm.Cqo, Asm.Idiv Asm.RCX]
                       IRCommon.Op.RemS => emits [Asm.Cqo, Asm.Idiv Asm.RCX, Asm.MovRR Asm.RAX Asm.RDX]
                       IRCommon.Op.DivU => emits [Asm.Alu Asm.XOR Asm.RDX Asm.RDX, Asm.DivU Asm.RCX]
-                      IRCommon.Op.RemU => emits [Asm.Alu Asm.XOR Asm.RDX Asm.RDX, Asm.DivU Asm.RCX, Asm.MovRR Asm.RAX Asm.RDX]
+                      IRCommon.Op.RemU =>
+                        emits [Asm.Alu Asm.XOR Asm.RDX Asm.RDX, Asm.DivU Asm.RCX, Asm.MovRR Asm.RAX Asm.RDX]
                     maybe (pure ()) (\l => emit (Asm.Jcc Asm.O l)) ov
 
                   ||| Turn twice a value, in the register, into the fixnum's word: `or` in
                   ||| the fixnum tag, since the low bit is clear.
                   addTag : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} -> Asm.Reg64 -> List Asm.Instr
-                  addTag r = if HeapObject.ValEnc.fixnumTag enc.val == 0 then [] else [Asm.AluI Asm.OR r (cast (HeapObject.ValEnc.fixnumTag enc.val))]
+                  addTag r = if HeapObject.ValEnc.fixnumTag enc.val == 0 then []
+                    else [Asm.AluI Asm.OR r (cast (HeapObject.ValEnc.fixnumTag enc.val))]
 
                   ||| Arithmetic on fixnums, into rax, computed on their words. Where fixnum n
                   ||| is the word w(n) = 2n + t, for the value encoding's fixnum tag t: x + y is
@@ -893,9 +949,17 @@ parameters (enc : HeapObject.Enc)
                       IRCommon.Op.Add => do loadAs IRCommon.Ty.Fix Asm.RAX x; aluTwice Asm.ADD y; jo
                       IRCommon.Op.Sub => do loadAs IRCommon.Ty.Fix Asm.RAX x; aluTwice Asm.SUB y; jo
                       IRCommon.Op.Xor => do loadAs IRCommon.Ty.Fix Asm.RAX x; aluTwice Asm.XOR y
-                      IRCommon.Op.And => do loadAs IRCommon.Ty.Fix Asm.RAX x; loadAs IRCommon.Ty.Fix Asm.RCX y; emit (Asm.Alu Asm.AND Asm.RAX Asm.RCX)
-                      IRCommon.Op.Or => do loadAs IRCommon.Ty.Fix Asm.RAX x; loadAs IRCommon.Ty.Fix Asm.RCX y; emit (Asm.Alu Asm.OR Asm.RAX Asm.RCX)
-                      IRCommon.Op.Mul => do loadTwice Asm.RAX x; loadValue Asm.RCX y; emit (Asm.Imul Asm.RAX Asm.RCX); jo; retag
+                      IRCommon.Op.And => do loadAs IRCommon.Ty.Fix Asm.RAX x
+                                            loadAs IRCommon.Ty.Fix Asm.RCX y
+                                            emit (Asm.Alu Asm.AND Asm.RAX Asm.RCX)
+                      IRCommon.Op.Or => do loadAs IRCommon.Ty.Fix Asm.RAX x
+                                           loadAs IRCommon.Ty.Fix Asm.RCX y
+                                           emit (Asm.Alu Asm.OR Asm.RAX Asm.RCX)
+                      IRCommon.Op.Mul => do loadTwice Asm.RAX x
+                                            loadValue Asm.RCX y
+                                            emit (Asm.Imul Asm.RAX Asm.RCX)
+                                            jo
+                                            retag
                       IRCommon.Op.Shl => shift Asm.SHL
                       IRCommon.Op.Shr => shift Asm.SHR
                       IRCommon.Op.Sar => shift Asm.SAR
@@ -925,14 +989,16 @@ parameters (enc : HeapObject.Enc)
                       loadTwice r (LocatedIR.Opnd.StaticRef _) = failWith "a static where a fixnum is expected"
                       loadTwice r (LocatedIR.Opnd.R x) = do
                         loadReg r x
-                        when (HeapObject.ValEnc.fixnumTag enc.val /= 0) $ emit (Asm.AluI Asm.SUB r (cast (HeapObject.ValEnc.fixnumTag enc.val)))
+                        when (HeapObject.ValEnc.fixnumTag enc.val /= 0) $
+                          emit (Asm.AluI Asm.SUB r (cast (HeapObject.ValEnc.fixnumTag enc.val)))
 
                       ||| `op` of rax and twice the operand's value, an immediate folded into the
                       ||| instruction where it fits.
                       aluTwice : Asm.AluOp -> LocatedIR.Opnd enc -> Render enc ()
                       aluTwice op (LocatedIR.Opnd.Imm c) =
                         let v = 2 * cast c in
-                        if fitsImm32 v then emit (Asm.AluI op Asm.RAX (cast v)) else emits [Asm.MovRI Asm.RCX v, Asm.Alu op Asm.RAX Asm.RCX]
+                        if fitsImm32 v then emit (Asm.AluI op Asm.RAX (cast v))
+                          else emits [Asm.MovRI Asm.RCX v, Asm.Alu op Asm.RAX Asm.RCX]
                       aluTwice op y = do loadTwice Asm.RCX y; emit (Asm.Alu op Asm.RAX Asm.RCX)
 
                   ||| The kinds whose objects are written after they are made. They are
@@ -948,7 +1014,8 @@ parameters (enc : HeapObject.Enc)
                   ||| Allocate a mutable object of the bytes `bytesInto` computes into a
                   ||| register, by a call to `idris_alloc_mutable` with `live` saved across it.
                   ||| Leaves rax pointing at the uninitialised object.
-                  allocateMutable : (bytesInto : Asm.Reg64 -> Render enc ()) -> (live : List (LocatedIR.Reg enc)) -> Render enc ()
+                  allocateMutable : (bytesInto : Asm.Reg64 -> Render enc ()) -> (live : List (LocatedIR.Reg enc)) ->
+                                    Render enc ()
                   allocateMutable bytesInto live = do
                     saveLive True emit live
                     bytesInto Asm.RDI

@@ -25,7 +25,8 @@ data Terminator : HeapObject.Enc -> Type where
   ||| Branch on whether every one of the `Val`s is a fixnum, that is, on their
   ||| fixnum tags; the yes branch may narrow them to `Fix`es. The renderings
   ||| test the tags of several at once.
-  IfFixnums    : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} -> List (Reg enc) -> (ifYes, ifNo : Label) -> Terminator enc
+  IfFixnums    : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} -> List (Reg enc) -> (ifYes, ifNo : Label) ->
+    Terminator enc
   ||| Compare and branch, with the operand types of `Cmp`. Renderings fuse
   ||| the comparison and the branch.
   Branch      : IRCommon.Op.Rel -> Opnd enc -> Opnd enc -> (ifTrue, ifFalse : Label) -> Terminator enc

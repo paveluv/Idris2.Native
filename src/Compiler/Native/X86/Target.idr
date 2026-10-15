@@ -22,7 +22,8 @@ x86_64 = Target.MkTarget
   , wordSize = 8
   , lowering = Target.HeapLowering
   , abi = Target.MkAbi (map reg [Asm.RDI, Asm.RSI, Asm.RDX, Asm.RCX, Asm.R8, Asm.R9])
-                (map (cast . Asm.xmmNum) [Asm.XMM0, Asm.XMM1, Asm.XMM2, Asm.XMM3, Asm.XMM4, Asm.XMM5, Asm.XMM6, Asm.XMM7])
+                (map (cast . Asm.xmmNum)
+                  [Asm.XMM0, Asm.XMM1, Asm.XMM2, Asm.XMM3, Asm.XMM4, Asm.XMM5, Asm.XMM6, Asm.XMM7])
   , returnReg = reg Asm.RAX
   , hp = reg Asm.R15
   , hplim = reg Asm.R14

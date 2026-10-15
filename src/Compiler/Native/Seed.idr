@@ -42,7 +42,8 @@ msgStackOverflow = map (cast . ord) (unpack "idris: stack overflow\n")
 ||| reads the program's result as a fixnum, which is the word shifted right by
 ||| one under either.
 export
-seedText : (enc : HeapObject.Enc) -> {auto 0 _ : HeapObject.ValEnc.HasFixnums enc.val} -> (window : Int) -> List X86.Asm.Instr
+seedText : (enc : HeapObject.Enc) -> {auto 0 _ : HeapObject.ValEnc.HasFixnums enc.val} -> (window : Int) ->
+           List X86.Asm.Instr
 seedText enc window = startText enc.val window ++ haltText ++ unsupportedText
                       ++ stackOverflowText
                       ++ applyText X86.Target.x86_64.abi enc.val
@@ -59,7 +60,9 @@ seedText enc window = startText enc.val window ++ haltText ++ unsupportedText
       , X86.Asm.Lbl (Linkage.Sym.symLabel Linkage.Sym.SymStart)
       , X86.Asm.MovRR X86.Asm.RDI X86.Asm.RSP, X86.Asm.MovRI X86.Asm.RSI (cast window)
       , X86.Asm.Call (Linkage.Sym.symLabel Linkage.Sym.SymRuntimeStart)
-      , X86.Asm.Lea X86.Asm.R12 (X86.Asm.MRip (Linkage.Sym.symLabel Linkage.Sym.SymHALT) (cast (HeapObject.ValEnc.pointerTag venc)))   -- k := HALT, a pointer word
+      , X86.Asm.Lea X86.Asm.R12
+        (X86.Asm.MRip (Linkage.Sym.symLabel Linkage.Sym.SymHALT)
+         (cast (HeapObject.ValEnc.pointerTag venc)))   -- k := HALT, a pointer word
       , X86.Asm.Jmp (Linkage.Sym.symLabel Linkage.Sym.SymMain) ]
 
     -- Linux x86-64 system calls and mmap arguments
@@ -73,7 +76,8 @@ seedText enc window = startText enc.val window ++ haltText ++ unsupportedText
     haltText : List X86.Asm.Instr
     haltText =
       [ X86.Asm.Comment "idris_halt: result in rax (fixnum) -> exit_group" ] ++
-      Linkage.ResumePoint.resumePoint (Linkage.Sym.symLabel Linkage.Sym.SymHalt) (HeapObject.LayoutWord.layoutWord 0 0) ++
+      Linkage.ResumePoint.resumePoint (Linkage.Sym.symLabel Linkage.Sym.SymHalt) (HeapObject.LayoutWord.layoutWord 0 0)
+        ++
       [ X86.Asm.MovRR X86.Asm.RDI X86.Asm.RAX, X86.Asm.ShiftI X86.Asm.SAR X86.Asm.RDI 1
       , X86.Asm.MovRI X86.Asm.RAX sysExitGroup, X86.Asm.Syscall ]
 
@@ -84,7 +88,8 @@ seedText enc window = startText enc.val window ++ haltText ++ unsupportedText
     stackOverflowText =
       [ X86.Asm.Comment "idris_stack_overflow: message, exit 1"
       , X86.Asm.Lbl (Linkage.Sym.symLabel Linkage.Sym.SymStackOverflow)
-      , X86.Asm.Lea X86.Asm.RSI (X86.Asm.MRip (Linkage.Sym.symLabel Linkage.Sym.SymMsgStackOverflow) 0), X86.Asm.MovRI X86.Asm.RDX (cast (length msgStackOverflow))
+      , X86.Asm.Lea X86.Asm.RSI (X86.Asm.MRip (Linkage.Sym.symLabel Linkage.Sym.SymMsgStackOverflow) 0),
+        X86.Asm.MovRI X86.Asm.RDX (cast (length msgStackOverflow))
       , X86.Asm.MovRI X86.Asm.RDI 2, X86.Asm.MovRI X86.Asm.RAX sysWrite, X86.Asm.Syscall
       , X86.Asm.MovRI X86.Asm.RDI 1, X86.Asm.MovRI X86.Asm.RAX sysExitGroup, X86.Asm.Syscall ]
 
@@ -95,7 +100,8 @@ seedText enc window = startText enc.val window ++ haltText ++ unsupportedText
     unsupportedText =
       [ X86.Asm.Comment "idris_unsupported: message, exit 70"
       , X86.Asm.Lbl (Linkage.Sym.symLabel Linkage.Sym.SymUnsupported)
-      , X86.Asm.Lea X86.Asm.RSI (X86.Asm.MRip (Linkage.Sym.symLabel Linkage.Sym.SymMsgUnsupported) 0), X86.Asm.MovRI X86.Asm.RDX (cast (length msgUnsupported))
+      , X86.Asm.Lea X86.Asm.RSI (X86.Asm.MRip (Linkage.Sym.symLabel Linkage.Sym.SymMsgUnsupported) 0),
+        X86.Asm.MovRI X86.Asm.RDX (cast (length msgUnsupported))
       , X86.Asm.MovRI X86.Asm.RDI 2, X86.Asm.MovRI X86.Asm.RAX sysWrite, X86.Asm.Syscall
       , X86.Asm.MovRI X86.Asm.RDI (cast unsupportedStatus), X86.Asm.MovRI X86.Asm.RAX sysExitGroup, X86.Asm.Syscall ]
       where
@@ -117,56 +123,80 @@ seedText enc window = startText enc.val window ++ haltText ++ unsupportedText
     applyText abi venc =
       [ X86.Asm.Comment "idris_apply(closure, argument)"
       , X86.Asm.Lbl (Linkage.Sym.symLabel Linkage.Sym.SymApply)
-      , X86.Asm.MovRR X86.Asm.R10 X86.Asm.RDI, X86.Asm.MovRR X86.Asm.R11 X86.Asm.RSI                     -- closure, argument
+      , X86.Asm.MovRR X86.Asm.R10 X86.Asm.RDI,
+        X86.Asm.MovRR X86.Asm.R11 X86.Asm.RSI                     -- closure, argument
       , X86.Asm.MovRM X86.Asm.RAX (X86.Asm.MBase X86.Asm.R10 (0 - pt))                   -- header
       , X86.Asm.MovRR X86.Asm.RCX X86.Asm.RAX ] ++ part X86.Asm.RCX HeapObject.Header.ClosureArity ++      -- arity
-      [ X86.Asm.MovRR X86.Asm.RDX X86.Asm.RAX ] ++ part X86.Asm.RDX HeapObject.Header.ClosureFilled ++     -- arguments filled
-      [ X86.Asm.MovRR X86.Asm.R8 X86.Asm.RDX, X86.Asm.AluI X86.Asm.ADD X86.Asm.R8 1                      -- arguments after this one
+      [ X86.Asm.MovRR X86.Asm.RDX X86.Asm.RAX ] ++ part X86.Asm.RDX HeapObject.Header.ClosureFilled
+        ++     -- arguments filled
+      [ X86.Asm.MovRR X86.Asm.R8 X86.Asm.RDX,
+        X86.Asm.AluI X86.Asm.ADD X86.Asm.R8 1                      -- arguments after this one
       , X86.Asm.Alu X86.Asm.CMP X86.Asm.R8 X86.Asm.RCX, X86.Asm.Jcc X86.Asm.B extend
       -- saturated: the filled arguments, then the new one, into SCRATCH
       , X86.Asm.Lea X86.Asm.R9 (X86.Asm.MRip (Linkage.Sym.symLabel Linkage.Sym.SymScratch) 0)
-      , X86.Asm.Lea X86.Asm.RSI (X86.Asm.MBase X86.Asm.R10 (16 - pt)), X86.Asm.MovRR X86.Asm.RDI X86.Asm.R9, X86.Asm.MovRR X86.Asm.RAX X86.Asm.RDX
+      , X86.Asm.Lea X86.Asm.RSI (X86.Asm.MBase X86.Asm.R10 (16 - pt)), X86.Asm.MovRR X86.Asm.RDI X86.Asm.R9,
+        X86.Asm.MovRR X86.Asm.RAX X86.Asm.RDX
       , X86.Asm.Lbl copy, X86.Asm.Test X86.Asm.RAX X86.Asm.RAX, X86.Asm.Jcc X86.Asm.E copied
       , X86.Asm.MovRM X86.Asm.RCX (X86.Asm.MBase X86.Asm.RSI 0), X86.Asm.MovMR (X86.Asm.MBase X86.Asm.RDI 0) X86.Asm.RCX
-      , X86.Asm.AluI X86.Asm.ADD X86.Asm.RSI 8, X86.Asm.AluI X86.Asm.ADD X86.Asm.RDI 8, X86.Asm.AluI X86.Asm.SUB X86.Asm.RAX 1, X86.Asm.Jmp copy
+      , X86.Asm.AluI X86.Asm.ADD X86.Asm.RSI 8, X86.Asm.AluI X86.Asm.ADD X86.Asm.RDI 8,
+        X86.Asm.AluI X86.Asm.SUB X86.Asm.RAX 1, X86.Asm.Jmp copy
       , X86.Asm.Lbl copied, X86.Asm.MovMR (X86.Asm.MBase X86.Asm.RDI 0) X86.Asm.R11
       -- arguments beyond the word registers go to ARGS
       , X86.Asm.AluI X86.Asm.CMP X86.Asm.R8 (cast nregs), X86.Asm.Jcc X86.Asm.BE regs
-      , X86.Asm.Lea X86.Asm.RSI (X86.Asm.MBase X86.Asm.R9 (cast (8 * nregs))), X86.Asm.Lea X86.Asm.RDI (X86.Asm.MRip (Linkage.Sym.symLabel Linkage.Sym.SymArgs) 0)
+      , X86.Asm.Lea X86.Asm.RSI (X86.Asm.MBase X86.Asm.R9 (cast (8 * nregs))),
+        X86.Asm.Lea X86.Asm.RDI (X86.Asm.MRip (Linkage.Sym.symLabel Linkage.Sym.SymArgs) 0)
       , X86.Asm.MovRR X86.Asm.RAX X86.Asm.R8, X86.Asm.AluI X86.Asm.SUB X86.Asm.RAX (cast nregs)
       , X86.Asm.Lbl copyArgs, X86.Asm.Test X86.Asm.RAX X86.Asm.RAX, X86.Asm.Jcc X86.Asm.E regs
       , X86.Asm.MovRM X86.Asm.RCX (X86.Asm.MBase X86.Asm.RSI 0), X86.Asm.MovMR (X86.Asm.MBase X86.Asm.RDI 0) X86.Asm.RCX
-      , X86.Asm.AluI X86.Asm.ADD X86.Asm.RSI 8, X86.Asm.AluI X86.Asm.ADD X86.Asm.RDI 8, X86.Asm.AluI X86.Asm.SUB X86.Asm.RAX 1, X86.Asm.Jmp copyArgs
+      , X86.Asm.AluI X86.Asm.ADD X86.Asm.RSI 8, X86.Asm.AluI X86.Asm.ADD X86.Asm.RDI 8,
+        X86.Asm.AluI X86.Asm.SUB X86.Asm.RAX 1, X86.Asm.Jmp copyArgs
       , X86.Asm.Lbl regs ] ++ loads (\r => r /= X86.Asm.R9) ++
       [ X86.Asm.MovRM X86.Asm.RAX (X86.Asm.MBase X86.Asm.R10 (8 - pt)) ] ++               -- the code address
       loads (== X86.Asm.R9) ++
       [ X86.Asm.JmpR X86.Asm.RAX
       -- partial: a closure with one more argument, 16 + 8 * (filled + 1) bytes
       , X86.Asm.Lbl extend
-      , X86.Asm.MovRR X86.Asm.RCX X86.Asm.R8, X86.Asm.ShiftI X86.Asm.SHL X86.Asm.RCX 3, X86.Asm.AluI X86.Asm.ADD X86.Asm.RCX 16
-      , X86.Asm.MovRR X86.Asm.RSI X86.Asm.R15, X86.Asm.Alu X86.Asm.ADD X86.Asm.RSI X86.Asm.RCX, X86.Asm.Alu X86.Asm.CMP X86.Asm.RSI X86.Asm.R14, X86.Asm.Jcc X86.Asm.A slow
+      , X86.Asm.MovRR X86.Asm.RCX X86.Asm.R8, X86.Asm.ShiftI X86.Asm.SHL X86.Asm.RCX 3,
+        X86.Asm.AluI X86.Asm.ADD X86.Asm.RCX 16
+      , X86.Asm.MovRR X86.Asm.RSI X86.Asm.R15, X86.Asm.Alu X86.Asm.ADD X86.Asm.RSI X86.Asm.RCX,
+        X86.Asm.Alu X86.Asm.CMP X86.Asm.RSI X86.Asm.R14, X86.Asm.Jcc X86.Asm.A slow
       , X86.Asm.MovRR X86.Asm.RDI X86.Asm.R15, X86.Asm.MovRR X86.Asm.R15 X86.Asm.RSI
       , X86.Asm.Lbl initClosure                                  -- rdi: the new closure
-      , X86.Asm.MovRM X86.Asm.RAX (X86.Asm.MBase X86.Asm.R10 (0 - pt)), X86.Asm.MovRR X86.Asm.RDX X86.Asm.RAX ] ++ part X86.Asm.RDX HeapObject.Header.ClosureFilled ++
-      [ X86.Asm.MovRI X86.Asm.RSI (HeapObject.Header.partUnit HeapObject.Header.ClosureFilled), X86.Asm.Alu X86.Asm.ADD X86.Asm.RAX X86.Asm.RSI, X86.Asm.MovMR (X86.Asm.MBase X86.Asm.RDI 0) X86.Asm.RAX   -- one more filled
-      , X86.Asm.MovRM X86.Asm.RAX (X86.Asm.MBase X86.Asm.R10 (8 - pt)), X86.Asm.MovMR (X86.Asm.MBase X86.Asm.RDI 8) X86.Asm.RAX           -- code
-      , X86.Asm.Lea X86.Asm.RSI (X86.Asm.MBase X86.Asm.R10 (16 - pt)), X86.Asm.Lea X86.Asm.RCX (X86.Asm.MBase X86.Asm.RDI 16)
+      , X86.Asm.MovRM X86.Asm.RAX (X86.Asm.MBase X86.Asm.R10 (0 - pt)), X86.Asm.MovRR X86.Asm.RDX X86.Asm.RAX ]
+        ++ part X86.Asm.RDX HeapObject.Header.ClosureFilled ++
+      [ X86.Asm.MovRI X86.Asm.RSI (HeapObject.Header.partUnit HeapObject.Header.ClosureFilled),
+        X86.Asm.Alu X86.Asm.ADD X86.Asm.RAX X86.Asm.RSI,
+        X86.Asm.MovMR (X86.Asm.MBase X86.Asm.RDI 0) X86.Asm.RAX   -- one more filled
+      , X86.Asm.MovRM X86.Asm.RAX (X86.Asm.MBase X86.Asm.R10 (8 - pt)),
+        X86.Asm.MovMR (X86.Asm.MBase X86.Asm.RDI 8) X86.Asm.RAX           -- code
+      , X86.Asm.Lea X86.Asm.RSI (X86.Asm.MBase X86.Asm.R10 (16 - pt)),
+        X86.Asm.Lea X86.Asm.RCX (X86.Asm.MBase X86.Asm.RDI 16)
       , X86.Asm.Lbl pcopy, X86.Asm.Test X86.Asm.RDX X86.Asm.RDX, X86.Asm.Jcc X86.Asm.E pdone
       , X86.Asm.MovRM X86.Asm.RAX (X86.Asm.MBase X86.Asm.RSI 0), X86.Asm.MovMR (X86.Asm.MBase X86.Asm.RCX 0) X86.Asm.RAX
-      , X86.Asm.AluI X86.Asm.ADD X86.Asm.RSI 8, X86.Asm.AluI X86.Asm.ADD X86.Asm.RCX 8, X86.Asm.AluI X86.Asm.SUB X86.Asm.RDX 1, X86.Asm.Jmp pcopy
+      , X86.Asm.AluI X86.Asm.ADD X86.Asm.RSI 8, X86.Asm.AluI X86.Asm.ADD X86.Asm.RCX 8,
+        X86.Asm.AluI X86.Asm.SUB X86.Asm.RDX 1, X86.Asm.Jmp pcopy
       , X86.Asm.Lbl pdone, X86.Asm.MovMR (X86.Asm.MBase X86.Asm.RCX 0) X86.Asm.R11
-      , toPointer X86.Asm.RAX X86.Asm.RDI, X86.Asm.JmpM (X86.Asm.MBase X86.Asm.R12 (0 - pt))     -- the new closure's pointer word
+      , toPointer X86.Asm.RAX X86.Asm.RDI,
+        X86.Asm.JmpM (X86.Asm.MBase X86.Asm.R12 (0 - pt))     -- the new closure's pointer word
       -- the slow path: root the closure and the argument across it
       , X86.Asm.Lbl slow
-      , X86.Asm.Lea X86.Asm.RSI (X86.Asm.MRip (Linkage.Sym.symLabel Linkage.Sym.SymNRoots) 0), X86.Asm.MovRM X86.Asm.RAX (X86.Asm.MBase X86.Asm.RSI 0)
-      , X86.Asm.MovRR X86.Asm.RDX X86.Asm.RAX, X86.Asm.ShiftI X86.Asm.SHL X86.Asm.RDX 3, X86.Asm.Lea X86.Asm.RDI (X86.Asm.MRip (Linkage.Sym.symLabel Linkage.Sym.SymRoots) 0), X86.Asm.Alu X86.Asm.ADD X86.Asm.RDI X86.Asm.RDX
+      , X86.Asm.Lea X86.Asm.RSI (X86.Asm.MRip (Linkage.Sym.symLabel Linkage.Sym.SymNRoots) 0),
+        X86.Asm.MovRM X86.Asm.RAX (X86.Asm.MBase X86.Asm.RSI 0)
+      , X86.Asm.MovRR X86.Asm.RDX X86.Asm.RAX, X86.Asm.ShiftI X86.Asm.SHL X86.Asm.RDX 3,
+        X86.Asm.Lea X86.Asm.RDI (X86.Asm.MRip (Linkage.Sym.symLabel Linkage.Sym.SymRoots) 0),
+          X86.Asm.Alu X86.Asm.ADD X86.Asm.RDI X86.Asm.RDX
       , X86.Asm.MovMR (X86.Asm.MBase X86.Asm.RDI 0) X86.Asm.R10, X86.Asm.MovMR (X86.Asm.MBase X86.Asm.RDI 8) X86.Asm.R11
       , X86.Asm.AluI X86.Asm.ADD X86.Asm.RAX 2, X86.Asm.MovMR (X86.Asm.MBase X86.Asm.RSI 0) X86.Asm.RAX
       , X86.Asm.MovRR X86.Asm.RDI X86.Asm.RCX, X86.Asm.Call (Linkage.Sym.symLabel Linkage.Sym.SymAllocSlow)
-      , X86.Asm.Lea X86.Asm.RSI (X86.Asm.MRip (Linkage.Sym.symLabel Linkage.Sym.SymNRoots) 0), X86.Asm.MovRM X86.Asm.RDX (X86.Asm.MBase X86.Asm.RSI 0), X86.Asm.AluI X86.Asm.SUB X86.Asm.RDX 2, X86.Asm.MovMR (X86.Asm.MBase X86.Asm.RSI 0) X86.Asm.RDX
-      , X86.Asm.ShiftI X86.Asm.SHL X86.Asm.RDX 3, X86.Asm.Lea X86.Asm.RCX (X86.Asm.MRip (Linkage.Sym.symLabel Linkage.Sym.SymRoots) 0), X86.Asm.Alu X86.Asm.ADD X86.Asm.RCX X86.Asm.RDX
+      , X86.Asm.Lea X86.Asm.RSI (X86.Asm.MRip (Linkage.Sym.symLabel Linkage.Sym.SymNRoots) 0),
+        X86.Asm.MovRM X86.Asm.RDX (X86.Asm.MBase X86.Asm.RSI 0), X86.Asm.AluI X86.Asm.SUB X86.Asm.RDX 2,
+          X86.Asm.MovMR (X86.Asm.MBase X86.Asm.RSI 0) X86.Asm.RDX
+      , X86.Asm.ShiftI X86.Asm.SHL X86.Asm.RDX 3,
+        X86.Asm.Lea X86.Asm.RCX (X86.Asm.MRip (Linkage.Sym.symLabel Linkage.Sym.SymRoots) 0),
+          X86.Asm.Alu X86.Asm.ADD X86.Asm.RCX X86.Asm.RDX
       , X86.Asm.MovRM X86.Asm.R10 (X86.Asm.MBase X86.Asm.RCX 0), X86.Asm.MovRM X86.Asm.R11 (X86.Asm.MBase X86.Asm.RCX 8)
-      , X86.Asm.Jmp initClosure ]                                            -- the new space in rdi, the routine's result
+      , X86.Asm.Jmp
+        initClosure ]                                            -- the new space in rdi, the routine's result
       where
         ||| The pointer tag: the closure in r10 and the continuation in r12 are
         ||| pointer words, the closure allocated in rdi an address.
@@ -188,7 +218,8 @@ seedText enc window = startText enc.val window ++ haltText ++ unsupportedText
 
         ||| A part of the closure header in `rax`, extracted into a register.
         part : X86.Asm.Reg64 -> HeapObject.Header.HeaderPart HeapObject.Kind.CLOSURE -> List X86.Asm.Instr
-        part r p = X86.Asm.extractField r (cast (fst (HeapObject.Header.place p))) (cast (snd (HeapObject.Header.place p)))
+        part r p =
+          X86.Asm.extractField r (cast (fst (HeapObject.Header.place p))) (cast (snd (HeapObject.Header.place p)))
 
         -- local labels, below the program's
         extend, copy, copied, copyArgs, regs, initClosure, pcopy, pdone, slow : X86.Asm.Label
@@ -235,7 +266,9 @@ seedBss a =
   let roots = 8 * cast a.args
       nroots = roots + 8 * cast a.roots
       limit = nroots + 8 + 8 * cast a.scratch
-  in [ (Linkage.Sym.SymArgs, 0), (Linkage.Sym.SymRoots, roots), (Linkage.Sym.SymNRoots, nroots), (Linkage.Sym.SymScratch, nroots + 8), (Linkage.Sym.SymStackLimit, limit)
+  in [ (Linkage.Sym.SymArgs, 0),
+    (Linkage.Sym.SymRoots, roots), (Linkage.Sym.SymNRoots, nroots), (Linkage.Sym.SymScratch, nroots + 8),
+      (Linkage.Sym.SymStackLimit, limit)
      , (Linkage.Sym.SymArgv, limit + 8), (Linkage.Sym.SymRuntime, limit + 16) ]
 
 export

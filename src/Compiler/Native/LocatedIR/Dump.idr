@@ -114,9 +114,11 @@ functionPieces f =
         term terminator = case terminator of
           Terminator.Jump l => "Jump " ++ show l
           Terminator.IfFixnums rs y n => "IfFixnums " ++ regs rs ++ " " ++ show y ++ " " ++ show n
-          Terminator.Branch r x y t f => "Branch " ++ show x ++ " " ++ rel r ++ " " ++ show y ++ " " ++ show t ++ " " ++ show f
+          Terminator.Branch r x y t f => "Branch " ++ show x ++ " " ++ rel r ++ " " ++ show y ++ " " ++ show t ++ " "
+            ++ show f
           Terminator.Switch r cs d =>
-                       "Switch " ++ show r ++ " [" ++ joinBy ", " (map (\c => show (fst c) ++ " -> " ++ show (snd c)) cs) ++ "] else " ++ show d
+                       "Switch " ++ show r ++ " ["
+                         ++ joinBy ", " (map (\c => show (fst c) ++ " -> " ++ show (snd c)) cs) ++ "] else " ++ show d
           Terminator.Call f xs c => "Call " ++ show f ++ " (" ++ ops xs ++ ") " ++ cont c
           Terminator.TailCall f xs => "TailCall " ++ show f ++ " (" ++ ops xs ++ ")"
           Terminator.Apply f x c => "Apply " ++ show f ++ " " ++ show x ++ " " ++ cont c

@@ -1,0 +1,13 @@
+. ../../testutils.sh
+
+# reflow-lines: each line wider than a width broken into lines that fit,
+# its layout kept. A copy of the fixture is changed, and checked after.
+rm -rf work
+mkdir work
+cp Wide.idr work
+cd work
+../../../../tools/lint/build/exec/idris2-native-lint --refactor reflow-lines --arg 60 --check 'idris2 --check {} > /dev/null 2>&1' .
+cat Wide.idr
+idris2 --check Wide.idr > /dev/null && echo "Wide.idr checks"
+cd ..
+rm -rf work

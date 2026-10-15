@@ -314,7 +314,8 @@ Show Mem where
   show (MBase r d) = if d == 0 then "[" ++ show r ++ "]"
                      else if d < 0 then "[" ++ show r ++ "-" ++ show (negate d) ++ "]"
                      else "[" ++ show r ++ "+" ++ show d ++ "]"
-  show (MRip l d) = "[rip+" ++ showLabel l ++ (if d == 0 then "" else if d < 0 then "-" ++ show (negate d) else "+" ++ show d) ++ "]"
+  show (MRip l d) = "[rip+" ++ showLabel l
+    ++ (if d == 0 then "" else if d < 0 then "-" ++ show (negate d) else "+" ++ show d) ++ "]"
 
 ------------------------------------------------------------------------------
 -- Instructions

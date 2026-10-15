@@ -30,5 +30,6 @@ data SField : Decls enc -> Type where
 ||| A static object's definition: its header and its words after it.
 public export
 data StaticDef : Decls enc -> StaticSig -> Type where
-  MkStaticDef : {0 d : Decls enc} -> {k : HeapObject.Kind} -> (h : HeapObject.Header enc k) -> {auto 0 ok : So (wellFormed h)} ->
+  MkStaticDef : {0 d : Decls enc} -> {k : HeapObject.Kind} -> (h : HeapObject.Header enc k) ->
+                {auto 0 ok : So (wellFormed h)} ->
                 Vect (fieldWords h) (SField d) -> StaticDef d (StaticSig.MkStaticSig s k)

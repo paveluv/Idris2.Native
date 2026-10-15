@@ -33,6 +33,7 @@ modules =
     Lint.Refactor.PruneImports,
     Lint.Refactor.QualifyNames,
     Lint.Refactor.Refactoring,
+    Lint.Refactor.ReflowLines,
     Lint.Refactor.RemoveUnused,
     Lint.Refactor.Reindent,
     Lint.Refactor.RenameModule,

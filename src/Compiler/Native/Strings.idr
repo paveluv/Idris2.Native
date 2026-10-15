@@ -22,7 +22,8 @@ import Data.Vect
 ||| The static object of a literal under the program's encodings: its header
 ||| and the words after it.
 export
-literal : (enc : HeapObject.Enc) -> String -> Maybe (h : HeapObject.Header enc HeapObject.Kind.STRING ** Vect (HeapObject.Header.fieldWords h) Int64)
+literal : (enc : HeapObject.Enc) -> String ->
+          Maybe (h : HeapObject.Header enc HeapObject.Kind.STRING ** Vect (HeapObject.Header.fieldWords h) Int64)
 literal enc s = case enc of
   HeapObject.Enc.MkEnc _ _ HeapObject.StringEnc.Utf8 =>
                    let bs = encodeAll utf8 (unpack s)

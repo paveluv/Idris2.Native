@@ -26,7 +26,8 @@
 ||| refactoring may take arguments, each by `--arg` (`split-module`: the
 ||| module to make, then the concepts to move into it; `join-modules`: the
 ||| module to make, then the modules to join; `rename-module`: the module,
-||| then its new name; `inline-alias`: the function), and one whose
+||| then its new name; `inline-alias`: the function; `reflow-lines`: the
+||| width), and one whose
 ||| changes only the type checker can judge runs only with `--check`
 ||| (`prune-imports`). `--fix`
 ||| puts each file's imports in order first: the refactoring
@@ -59,6 +60,7 @@ import Lint.Refactor.Project
 import Lint.Refactor.PruneImports
 import Lint.Refactor.QualifyNames
 import Lint.Refactor.Refactoring
+import Lint.Refactor.ReflowLines
 import Lint.Refactor.RemoveUnused
 import Lint.Refactor.RenameModule
 import Lint.Refactor.ScopeHelpers
@@ -268,7 +270,7 @@ main = do
     ||| those that take them read: `split-module` the module to make and the
     ||| concepts to move to it.
     refactorings : List String -> List Refactoring
-    refactorings args = [inlineAlias args, joinModules args, mergeClauses, orderImports, pruneImports, qualifyNames, removeUnused, renameModule args, scopeHelpers, splitModule args]
+    refactorings args = [inlineAlias args, joinModules args, mergeClauses, orderImports, pruneImports, qualifyNames, reflowLines args, removeUnused, renameModule args, scopeHelpers, splitModule args]
 
     ||| The files of a run parsed once, and again only after a change: a wide
     ||| refactoring asks for them at every file it looks at.

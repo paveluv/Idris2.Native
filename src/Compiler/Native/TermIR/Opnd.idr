@@ -28,6 +28,7 @@ data Opnd : (var : IRCommon.Ty enc -> Type) -> IRCommon.Ty enc -> Type where
 
 ||| The operands, each replaced, effectfully.
 public export
-traverseAll : Applicative f => ({0 t : IRCommon.Ty enc} -> Opnd v t -> f (Opnd w t)) -> All (Opnd v) ts -> f (All (Opnd w) ts)
+traverseAll : Applicative f => ({0 t : IRCommon.Ty enc} -> Opnd v t -> f (Opnd w t)) -> All (Opnd v) ts ->
+              f (All (Opnd w) ts)
 traverseAll g [] = pure []
 traverseAll g (x :: xs) = [| g x :: traverseAll g xs |]

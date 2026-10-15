@@ -99,7 +99,8 @@ inlineExterns =
 
     -- an intrinsic's own signature, a pointer in it a word
     machine : String -> String -> IRCommon.Intrinsic -> InlineExternSig enc
-    machine ns n i = sig ns n (Machine i) (map word (IRCommon.Intrinsic.params i)) (map word (IRCommon.Intrinsic.results i))
+    machine ns n i =
+      sig ns n (Machine i) (map word (IRCommon.Intrinsic.params i)) (map word (IRCommon.Intrinsic.results i))
 
 ||| The inline extern a primitive of the runtime library is, by its name.
 export

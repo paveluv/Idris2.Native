@@ -270,7 +270,8 @@ expPieces i exp = case exp of
   FCase _ sc alts def
      => Data.Builder.single "case " <+> expPieces i sc <+> Data.Builder.single " of"
         <+> concatMap (\a => Data.Builder.single ("\n" ++ showIndent (i + 2)) <+> altPieces (i + 4) a) alts
-        <+> maybe neutral (\d => Data.Builder.single ("\n" ++ showIndent (i + 2) ++ "_ => ") <+> expPieces (i + 4) d) def
+        <+> maybe neutral (\d => Data.Builder.single ("\n" ++ showIndent (i + 2) ++ "_ => ") <+> expPieces (i + 4) d)
+          def
   FCrash _ msg => Data.Builder.single ("crash " ++ show msg)
   FNone _ => Data.Builder.single "()"
   where
@@ -285,7 +286,8 @@ expPieces i exp = case exp of
     covering
     argPieces : Nat -> List Exp -> Data.Builder String
     argPieces i [] = neutral
-    argPieces i as = Data.Builder.single "(" <+> concat (intersperse (Data.Builder.single ", ") (map (expPieces i) as)) <+> Data.Builder.single ")"
+    argPieces i as = Data.Builder.single "(" <+> concat (intersperse (Data.Builder.single ", ") (map (expPieces i) as))
+      <+> Data.Builder.single ")"
 
     showIndent : Nat -> String
     showIndent i = pack (replicate i ' ')
@@ -428,7 +430,8 @@ formPrims fd = toList (go fd.body)
 ||| shapes of the data types among them.
 export
 formSkeletons : FlatDef -> List Skeleton
-formSkeletons fd = toList (Data.Builder.single fd.resultSkeleton <+> Data.Builder.piece (map skeleton fd.params) <+> go fd.body)
+formSkeletons fd =
+  toList (Data.Builder.single fd.resultSkeleton <+> Data.Builder.piece (map skeleton fd.params) <+> go fd.body)
   where
     go : Exp -> Data.Builder Skeleton
     go (FVar _ _) = neutral

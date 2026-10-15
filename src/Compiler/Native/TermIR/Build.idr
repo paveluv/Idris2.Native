@@ -44,26 +44,32 @@ import Decidable.Equality
 
 ||| A body whose binders are functions, mirroring `Body`.
 export
-data PBody : Decls enc -> IRCommon.Conv enc -> Bool -> (v : IRCommon.Ty enc -> Type) -> (l : List (IRCommon.Ty enc) -> Type) -> Type where
+data PBody : Decls enc -> IRCommon.Conv enc -> Bool -> (v : IRCommon.Ty enc -> Type) ->
+  (l : List (IRCommon.Ty enc) -> Type) -> Type where
   PBind : {ts : List (IRCommon.Ty enc)} -> Instr d m v ts -> (All v ts -> PBody d c m v l) -> PBody d c m v l
   PJoin : (ps : List (IRCommon.Ty enc)) -> (l ps -> All v ps -> PBody d c m v l) -> (l ps -> PBody d c m v l) ->
           PBody d c m v l
   PJump : l ps -> All (Opnd v) ps -> PBody d c m v l
-  PBranch : {auto 0 int : IsInt t} -> IRCommon.Op.Rel -> Opnd v t -> Opnd v t -> (yes, no : PBody d c m v l) -> PBody d c m v l
+  PBranch : {auto 0 int : IsInt t} -> IRCommon.Op.Rel -> Opnd v t -> Opnd v t -> (yes, no : PBody d c m v l) ->
+            PBody d c m v l
   PIfFixnums : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} ->
                {n : Nat} -> Vect (S n) (Opnd v IRCommon.Ty.Val) ->
-               (All v (replicate (S n) (IRCommon.Ty.Fix {enc})) -> PBody d c m v l) -> PBody d c m v l -> PBody d c m v l
+               (All v (replicate (S n) (IRCommon.Ty.Fix {enc})) -> PBody d c m v l) -> PBody d c m v l ->
+                 PBody d c m v l
   PArithOv : {t : IRCommon.Ty enc} -> {auto 0 int : IsInt t} -> OvOp -> Opnd v t -> Opnd v t ->
              (v t -> PBody d c m v l) -> PBody d c m v l -> PBody d c m v l
   PTagOv : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} ->
-           Opnd v IRCommon.Ty.W64 -> (v (IRCommon.Ty.Fix {enc}) -> PBody d c m v l) -> PBody d c m v l -> PBody d c m v l
+           Opnd v IRCommon.Ty.W64 -> (v (IRCommon.Ty.Fix {enc}) -> PBody d c m v l) -> PBody d c m v l ->
+             PBody d c m v l
   PSwitch : {auto 0 int : IsInt t} -> Opnd v t -> (keys : List Int64) ->
             {auto 0 ok : So (distinct keys && keysFit t keys)} ->
             All (\_ => PBody d c m v l) keys -> PBody d c m v l -> PBody d c m v l
-  PCall : Var d.sigs (Sig.MkSig n IRCommon.Conv.CPS ps cv) -> All (Opnd v) ps -> (v IRCommon.Ty.Val -> PBody d IRCommon.Conv.CPS m v l) ->
+  PCall : Var d.sigs (Sig.MkSig n IRCommon.Conv.CPS ps cv) -> All (Opnd v) ps ->
+          (v IRCommon.Ty.Val -> PBody d IRCommon.Conv.CPS m v l) ->
           PBody d IRCommon.Conv.CPS m v l
   PTailCall : Var d.sigs (Sig.MkSig n IRCommon.Conv.CPS ps cv) -> All (Opnd v) ps -> PBody d IRCommon.Conv.CPS m v l
-  PApply : (fn, arg : Opnd v IRCommon.Ty.Val) -> (v IRCommon.Ty.Val -> PBody d IRCommon.Conv.CPS m v l) -> PBody d IRCommon.Conv.CPS m v l
+  PApply : (fn, arg : Opnd v IRCommon.Ty.Val) -> (v IRCommon.Ty.Val -> PBody d IRCommon.Conv.CPS m v l) ->
+           PBody d IRCommon.Conv.CPS m v l
   PTailApply : (fn, arg : Opnd v IRCommon.Ty.Val) -> PBody d IRCommon.Conv.CPS m v l
   PReturn : Opnd v IRCommon.Ty.Val -> PBody d IRCommon.Conv.CPS m v l
   PEnter : Opnd v IRCommon.Ty.W64 -> List (Opnd v IRCommon.Ty.Val) -> PBody d c m v l
@@ -75,14 +81,16 @@ data PBody : Decls enc -> IRCommon.Conv enc -> Bool -> (v : IRCommon.Ty enc -> T
 ||| variables and labels.
 public export
 0 Closed : Decls enc -> IRCommon.Conv enc -> Bool -> List (IRCommon.Ty enc) -> Type
-Closed d c m ps = {0 v : IRCommon.Ty enc -> Type} -> {0 l : List (IRCommon.Ty enc) -> Type} -> All v ps -> PBody d c m v l
+Closed d c m ps = {0 v : IRCommon.Ty enc -> Type} -> {0 l : List (IRCommon.Ty enc) -> Type} -> All v ps ->
+  PBody d c m v l
 
 ------------------------------------------------------------------------------
 -- `Build`
 
 ||| Code that, given the rest of the body, makes the body.
 public export
-record Build (d : Decls enc) (c : IRCommon.Conv enc) (m : Bool) (v : IRCommon.Ty enc -> Type) (l : List (IRCommon.Ty enc) -> Type) (a : Type) where
+record Build (d : Decls enc) (c : IRCommon.Conv enc) (m : Bool) (v : IRCommon.Ty enc -> Type)
+  (l : List (IRCommon.Ty enc) -> Type) (a : Type) where
   constructor MkBuild
   run : (a -> PBody d c m v l) -> PBody d c m v l
 
@@ -115,7 +123,8 @@ vars (x :: xs) = Opnd.V x :: vars xs
 
 ||| A body from `Build` code over the parameters.
 export
-build : ({0 v : IRCommon.Ty enc -> Type} -> {0 l : List (IRCommon.Ty enc) -> Type} -> All (Opnd v) ps -> End d c m v l) ->
+build : ({0 v : IRCommon.Ty enc -> Type} -> {0 l : List (IRCommon.Ty enc) -> Type} -> All (Opnd v) ps ->
+         End d c m v l) ->
         Closed d c m ps
 build f xs = finish (f (vars xs))
 
@@ -136,13 +145,15 @@ emit0 i = MkBuild (\k => PBind i (\[] => k ()))
 
 ||| A Direct call, binding its results.
 export
-directCall : {rs : List (IRCommon.Ty enc)} -> Var d.sigs (Sig.MkSig n (IRCommon.Conv.Direct rs col) ps cv) -> All (Opnd v) ps ->
+directCall : {rs : List (IRCommon.Ty enc)} -> Var d.sigs (Sig.MkSig n (IRCommon.Conv.Direct rs col) ps cv) ->
+             All (Opnd v) ps ->
              Build d c m v l (All (Opnd v) rs)
 directCall f xs = vars <$> emit (Instr.DirectCall f xs)
 
 ||| A CPS call: the rest of the code is its continuation.
 export
-call : Var d.sigs (Sig.MkSig n IRCommon.Conv.CPS ps cv) -> All (Opnd v) ps -> Build d IRCommon.Conv.CPS m v l (Opnd v IRCommon.Ty.Val)
+call : Var d.sigs (Sig.MkSig n IRCommon.Conv.CPS ps cv) -> All (Opnd v) ps ->
+       Build d IRCommon.Conv.CPS m v l (Opnd v IRCommon.Ty.Val)
 call f xs = MkBuild (\k => PCall f xs (k . Opnd.V))
 
 ||| A closure applied to one argument: the rest of the code is its
@@ -183,7 +194,8 @@ unsupported s = MkBuild (\_ => PUnsupported s)
 
 ||| A jump to a block with its parameters.
 public export
-0 Jumper : Decls enc -> IRCommon.Conv enc -> Bool -> (IRCommon.Ty enc -> Type) -> (List (IRCommon.Ty enc) -> Type) -> List (IRCommon.Ty enc) -> Type
+0 Jumper : Decls enc -> IRCommon.Conv enc -> Bool -> (IRCommon.Ty enc -> Type) -> (List (IRCommon.Ty enc) -> Type) ->
+  List (IRCommon.Ty enc) -> Type
 Jumper d c m v l ps = All (Opnd v) ps -> End d c m v l
 
 jumpTo : l ps -> Jumper d c m v l ps
@@ -243,7 +255,8 @@ ifFixnums vs yes no = case variables vs of
 
     -- Each value as a `Fix`: an immediate as itself, a variable as the next
     -- narrowed one.
-    fill : Vect j (Opnd v IRCommon.Ty.Val) -> List (v (IRCommon.Ty.Fix {enc})) -> Vect j (Opnd v (IRCommon.Ty.Fix {enc}))
+    fill : Vect j (Opnd v IRCommon.Ty.Val) -> List (v (IRCommon.Ty.Fix {enc})) ->
+           Vect j (Opnd v (IRCommon.Ty.Fix {enc}))
     fill [] _ = []
     fill (Opnd.Vx {ok} i :: xs) fs = Opnd.Fx {ok} i :: fill xs fs
     fill (Opnd.Erased :: xs) fs = Opnd.Fx 0 :: fill xs fs
@@ -318,7 +331,8 @@ toBody ls dl pl ctx dc pc body = case body of
   PIfFixnums {fx} {n} vs y no =>
     [| (\vs', y', no' => Body.IfFixnums {fx} vs' y' no')
          (traverse (opnd ctx dc pc) vs)
-         (toBody ls dl pl (replicate (S n) (IRCommon.Ty.Fix {enc}) ++ ctx) (length (the (List (IRCommon.Ty enc)) (replicate (S n) IRCommon.Ty.Fix)) + dc)
+         (toBody ls dl pl (replicate (S n) (IRCommon.Ty.Fix {enc}) ++ ctx)
+           (length (the (List (IRCommon.Ty enc)) (replicate (S n) IRCommon.Ty.Fix)) + dc)
                  (plusLength {ts = replicate (S n) (IRCommon.Ty.Fix {enc})} pc)
                  (y (levels dc _)))
          (toBody ls dl pl ctx dc pc no) |]
@@ -329,17 +343,20 @@ toBody ls dl pl ctx dc pc body = case body of
   PTagOv {fx} x ok ovf =>
     [| (\x', ok', ovf' => Body.TagOv {fx} x' ok' ovf')
          (opnd ctx dc pc x)
-         (toBody ls dl pl (IRCommon.Ty.Fix {enc} :: ctx) (S dc) (cong S pc) (ok (MkLvl dc))) (toBody ls dl pl ctx dc pc ovf) |]
+         (toBody ls dl pl (IRCommon.Ty.Fix {enc} :: ctx) (S dc) (cong S pc) (ok (MkLvl dc)))
+           (toBody ls dl pl ctx dc pc ovf) |]
   PSwitch {int} {ok} x keys bs dflt => do
     x' <- opnd ctx dc pc x
     bs' <- cases ls dl pl ctx dc pc bs
     dflt' <- toBody ls dl pl ctx dc pc dflt
     pure (Body.Switch {int} x' keys {ok} bs' dflt')
   PCall f xs k =>
-    [| Body.Call (pure f) (Opnd.traverseAll (opnd ctx dc pc) xs) (toBody ls dl pl (IRCommon.Ty.Val :: ctx) (S dc) (cong S pc) (k (MkLvl dc))) |]
+    [| Body.Call (pure f) (Opnd.traverseAll (opnd ctx dc pc) xs)
+      (toBody ls dl pl (IRCommon.Ty.Val :: ctx) (S dc) (cong S pc) (k (MkLvl dc))) |]
   PTailCall f xs => Body.TailCall f <$> Opnd.traverseAll (opnd ctx dc pc) xs
   PApply f x k =>
-    [| Body.Apply (opnd ctx dc pc f) (opnd ctx dc pc x) (toBody ls dl pl (IRCommon.Ty.Val :: ctx) (S dc) (cong S pc) (k (MkLvl dc))) |]
+    [| Body.Apply (opnd ctx dc pc f) (opnd ctx dc pc x)
+      (toBody ls dl pl (IRCommon.Ty.Val :: ctx) (S dc) (cong S pc) (k (MkLvl dc))) |]
   PTailApply f x => [| Body.TailApply (opnd ctx dc pc f) (opnd ctx dc pc x) |]
   PReturn x => Body.Return <$> opnd ctx dc pc x
   PEnter f xs => [| Body.Enter (opnd ctx dc pc f) (traverse (opnd ctx dc pc) xs) |]
@@ -347,10 +364,12 @@ toBody ls dl pl ctx dc pc body = case body of
   PCrash s => Just (Body.Crash s)
   PUnsupported s => Just (Body.Unsupported s)
   where
-    label : (ls : List (List (IRCommon.Ty enc'))) -> (dl : Nat) -> (0 _ : dl = length ls) -> LLvl ps -> Maybe (Var ls ps)
+    label : (ls : List (List (IRCommon.Ty enc'))) -> (dl : Nat) -> (0 _ : dl = length ls) -> LLvl ps ->
+            Maybe (Var ls ps)
     label ls dl _ (MkLLvl n) = if n < dl then Var.varAt (minus dl (S n)) ps ls else Nothing
 
-    opnd : (ctx : List (IRCommon.Ty enc'')) -> (dc : Nat) -> (0 _ : dc = length ctx) -> Opnd Lvl t -> Maybe (Opnd (Var ctx) t)
+    opnd : (ctx : List (IRCommon.Ty enc'')) -> (dc : Nat) -> (0 _ : dc = length ctx) -> Opnd Lvl t ->
+           Maybe (Opnd (Var ctx) t)
     opnd ctx dc pc (Opnd.V x) = Opnd.V <$> var ctx dc pc x
       where
         -- The position of level n in a context of d entries is d - 1 - n. The

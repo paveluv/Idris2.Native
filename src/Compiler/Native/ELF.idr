@@ -85,7 +85,8 @@ imageSize image = sum (map stretchSize image)
 ||| label). Section headers are not needed to run but let `readelf`/`objdump`
 ||| and debuggers see the regions.
 export
-elfImage : Platform.Arch -> Layout -> (text : SnocList Bits8) -> (rodata : SnocList Bits8) -> (bssSize : Int) -> (entry : Int) -> Image
+elfImage : Platform.Arch -> Layout -> (text : SnocList Bits8) -> (rodata : SnocList Bits8) -> (bssSize : Int) ->
+           (entry : Int) -> Image
 elfImage m lay text rodata bssSize entry =
   let ts = Bytes.byteCount text
       rs = Bytes.byteCount rodata
@@ -132,7 +133,8 @@ elfImage m lay text rodata bssSize entry =
     u64 : Int -> List Bits8
     u64 = Bytes.le64 . cast
 
-    elfHeader : Platform.Arch -> (entry : Int) -> (shoff : Int) -> (phnum : Int) -> (shnum : Int) -> (shstrndx : Int) -> List Bits8
+    elfHeader : Platform.Arch -> (entry : Int) -> (shoff : Int) -> (phnum : Int) -> (shnum : Int) -> (shstrndx : Int) ->
+                List Bits8
     elfHeader m entry shoff phnum shnum shstrndx =
          [0x7F, 0x45, 0x4C, 0x46, 2, 1, 1, 0] ++ Bytes.zeros 8     -- magic, 64-bit, little-endian, version, SysV ABI
       ++ u16 2                                               -- ET_EXEC
@@ -165,7 +167,8 @@ elfImage m lay text rodata bssSize entry =
         ptLoad : Int
         ptLoad = 1
 
-    sectionHeader : (name : Int) -> (ty : Int) -> (flags : Int) -> (addr : Int) -> (off : Int) -> (size : Int) -> (align : Int) -> List Bits8
+    sectionHeader : (name : Int) -> (ty : Int) -> (flags : Int) -> (addr : Int) -> (off : Int) -> (size : Int) ->
+                    (align : Int) -> List Bits8
     sectionHeader name ty flags addr off size align =
       u32 name ++ u32 ty ++ u64 flags ++ u64 addr ++ u64 off ++ u64 size ++ u32 0 ++ u32 0 ++ u64 align ++ u64 0
 

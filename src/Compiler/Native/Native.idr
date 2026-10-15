@@ -131,7 +131,8 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
     compileExpr c s _ outputDir tm outfile = do
       Right settings <- parseSettings <$> getDirectives Flat.Marked.markingCG
         | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
-      Just table <- phase "the runtime loaded" (Flat.Marked.markedForms (loadRuntime settings.platform settings.encodings))
+      Just table <- phase "the runtime loaded"
+        (Flat.Marked.markedForms (loadRuntime settings.platform settings.encodings))
         | Nothing => pure Nothing
       [] <- phase "the contract checked" (checkExterns settings.encodings)
         | errs => throw (GenericMsg EmptyFC ("native: " ++ fastConcat (intersperse "\n" errs)))
@@ -139,9 +140,12 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
       whenJust settings.dumpForeign $ \f => dumpForeign settings.encodings f
       cdata <- phase "Idris's passes" (getCompileData False VMCode tm)
       image <- case settings.encodings of
-        HeapObject.Enc.MkEnc HeapObject.ValEnc.FixnumTag1 b s => pipeline (HeapObject.Enc.MkEnc HeapObject.ValEnc.FixnumTag1 b s) settings table (vmcode cdata)
-        HeapObject.Enc.MkEnc HeapObject.ValEnc.FixnumTag0 b s => pipeline (HeapObject.Enc.MkEnc HeapObject.ValEnc.FixnumTag0 b s) settings table (vmcode cdata)
-        HeapObject.Enc.MkEnc HeapObject.ValEnc.NoFixnums _ _ => throw (GenericMsg EmptyFC "native: the encoding nofixnums is not implemented")
+        HeapObject.Enc.MkEnc HeapObject.ValEnc.FixnumTag1 b s =>
+          pipeline (HeapObject.Enc.MkEnc HeapObject.ValEnc.FixnumTag1 b s) settings table (vmcode cdata)
+        HeapObject.Enc.MkEnc HeapObject.ValEnc.FixnumTag0 b s =>
+          pipeline (HeapObject.Enc.MkEnc HeapObject.ValEnc.FixnumTag0 b s) settings table (vmcode cdata)
+        HeapObject.Enc.MkEnc HeapObject.ValEnc.NoFixnums _ _ =>
+          throw (GenericMsg EmptyFC "native: the encoding nofixnums is not implemented")
       coreLift_ $ mkdirAll outputDir
       let outexec = outputDir </> outfile
       Right () <- phase "the image written" (coreLift (ELF.writeImage outexec image))
@@ -149,7 +153,10 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
       pure (Just outexec)
       where
         parseSettings : List String -> Either String Settings
-        parseSettings = foldlM setting (MkSettings Link.windowBytes Nothing Nothing Nothing Nothing HeapObject.Enc.defaultEnc Platform.defaultPlatform)
+        parseSettings =
+          foldlM setting
+            (MkSettings Link.windowBytes Nothing Nothing Nothing Nothing HeapObject.Enc.defaultEnc
+             Platform.defaultPlatform)
           where
             setting : Settings -> String -> Either String Settings
             setting o d = case forget (split (== '=') d) of
@@ -187,8 +194,11 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
         ||| declare is not missed.
         checkExterns : (enc : HeapObject.Enc) -> Core (List String)
         checkExterns enc
-            = catMaybes <$> traverse one ([(i.name, "an inline extern", i.params, i.results) | i <- Linkage.InlineExtern.inlineExterns {enc}]
-                                          ++ [(Linkage.OSService.serviceExtern s, "an OS service", s.params, s.results) | s <- Linkage.OSService.osServices {enc}])
+            = catMaybes <$> traverse one
+              ([(i.name, "an inline extern", i.params, i.results) | i <- Linkage.InlineExtern.inlineExterns {enc}]
+                                          ++
+                                            [(Linkage.OSService.serviceExtern s, "an OS service", s.params, s.results)
+                                             | s <- Linkage.OSService.osServices {enc}])
           where
             -- the registers of the arguments, then of the result
             walk : ClosedNF -> Core (Either String (List (IRCommon.Ty enc), List (IRCommon.Ty enc)))
@@ -212,7 +222,8 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
               Just gdef <- lookupCtxtExact n (gamma defs)
                 | Nothing => pure Nothing
               let ExternDef _ = definition gdef
-                | _ => pure (Just (show n ++ " is " ++ what ++ " of the native code generator, but is not declared %extern"))
+                | _ =>
+                  pure (Just (show n ++ " is " ++ what ++ " of the native code generator, but is not declared %extern"))
               Right (ps, rs) <- walk !(nf defs Env.empty (type gdef))
                 | Left e => pure (Just (show n ++ ": " ++ e))
               pure $ if ps == params && rs == results then Nothing
@@ -233,7 +244,8 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
           addPkgDir "idris2-native" anyBounds
           u <- newRef UST initUState
           traverse_ (\ns => addImport (MkImport EmptyFC False (nsAsModuleIdent ns) ns))
-                    (mkNamespace "Runtime" :: toList (Linkage.OSService.platformModule platform) ++ toList (Linkage.Routine.stringModule enc.string))
+                    (mkNamespace "Runtime" :: toList (Linkage.OSService.platformModule platform)
+                      ++ toList (Linkage.Routine.stringModule enc.string))
 
         ||| The foreign functions and externs of the libraries in the context, each
         ||| with how this backend implements it: by the runtime (`runtime`), by the
@@ -245,7 +257,8 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
           defs <- get Ctxt
           all <- traverse (\n => (n,) <$> lookupCtxtExact n (gamma defs)) !(allNames (gamma defs))
           entries <- traverse entry (mapMaybe library all)
-          Right () <- coreLift (Data.WriteBuilder.writeBuilder path (concatMap (\e => Data.Builder.single (e ++ "\n")) (sort entries)))
+          Right () <- coreLift
+            (Data.WriteBuilder.writeBuilder path (concatMap (\e => Data.Builder.single (e ++ "\n")) (sort entries)))
             | Left err => throw (FileErr path err)
           pure ()
           where
@@ -289,7 +302,8 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
             let collecting = case (g0, g1) of
                                (Just a, Just b) => " (collecting " ++ seconds (timeDifference b a) ++ "s)"
                                _ => ""
-            coreLift_ (putStrLn ("TIMING ++ native: " ++ name ++ ": " ++ seconds (timeDifference t1 t0) ++ "s" ++ collecting))
+            coreLift_
+              (putStrLn ("TIMING ++ native: " ++ name ++ ": " ++ seconds (timeDifference t1 t0) ++ "s" ++ collecting))
             pure res
           where
             seconds : Clock Duration -> String
@@ -319,11 +333,14 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
             | Left err => throw (InternalError ("native: " ++ err))
           case settings.dumpAsm of
             Just path => do
-              Right () <- coreLift (Data.WriteBuilder.writeBuilder path (concatMap (\i => Data.Builder.single (show i ++ "\n")) rendered.text))
+              Right () <- coreLift
+                (Data.WriteBuilder.writeBuilder path
+                 (concatMap (\i => Data.Builder.single (show i ++ "\n")) rendered.text))
                 | Left err => throw (FileErr path err)
               pure ()
             Nothing => pure ()
-          Right image <- phase "linking" (later (Link.linkProgram enc settings.window rendered.areas rendered.text rendered.rodata))
+          Right image <- phase "linking"
+            (later (Link.linkProgram enc settings.window rendered.areas rendered.text rendered.rodata))
             | Left problems => throw (InternalError ("native: the image cannot be assembled: " ++ show problems))
           pure image
           where
@@ -334,7 +351,8 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
                          Core (List Flat.Exp.FlatDef, Flat.Exp.Shapes)
             flatInputs table services roots = do
               forms <- reach empty [<] roots
-              let skeletons = nub (filter isData (toList (concatMap (Data.Builder.piece . Flat.Exp.formSkeletons) forms)))
+              let skeletons =
+                    nub (filter isData (toList (concatMap (Data.Builder.piece . Flat.Exp.formSkeletons) forms)))
               shapes <- traverse (\sk => map (sk,) <$> Flat.Translate.shape sk) skeletons
               pure (forms, catMaybes shapes)
               where
@@ -350,7 +368,8 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
                     Just fd <- pure (lookup n table)
                       | Nothing => reach (insert n () seen) acc ns
                     reach (insert n () seen) (acc :< fd)
-                          (Flat.Exp.formCallees fd ++ mapMaybe (\p => Data.List.lookup p services) (Flat.Exp.formPrims fd) ++ ns)
+                          (Flat.Exp.formCallees fd
+                            ++ mapMaybe (\p => Data.List.lookup p services) (Flat.Exp.formPrims fd) ++ ns)
 
             ||| A pure computation as an action, so that it runs where the action runs:
             ||| inside `phase`.

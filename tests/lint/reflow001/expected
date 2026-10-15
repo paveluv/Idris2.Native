@@ -1,0 +1,48 @@
+./Wide.idr: 1 changed, 0 stay
+||| Lines wider than 60, each of a shape `reflow-lines --arg 60` breaks
+||| its own way.
+module Wide
+
+import Data.List
+
+%default total
+
+||| A signature breaks after an arrow, its type going on past its `: `.
+export
+combine : (first : List Nat) -> (second : List Nat) ->
+          (third : List Nat) -> List Nat
+combine xs ys zs = xs ++ ys ++ zs
+
+||| Statements on one line split each to a line of their own, at the
+||| block's column.
+export
+greet : String -> IO ()
+greet name = do putStr "Hello, "
+                putStr name
+                putStrLn "!"
+                putStrLn "Bye."
+
+||| A clause breaks after its `=` first, the fewest brackets in; then the
+||| tuple after its comma, the rest under its first part.
+export
+both : Nat -> (List Nat, List Nat)
+both n =
+  (replicate n 1 ++ replicate n 2,
+   replicate n 3 ++ replicate n 4)
+
+||| A sum breaks before the last operator that fits, two columns in.
+export
+total' : Nat -> Nat
+total' n = length (replicate n 1) + length (replicate n 2)
+  + length (replicate n 3)
+
+||| A `do` whose block the next lines align with keeps its first
+||| statement where it is: the line breaks within it, not before it.
+export
+twice : String -> IO ()
+twice s = case length s of
+  Z => pure ()
+  _ => do putStrLn
+            (s ++ " and once more, the same text: " ++ s)
+          putStrLn s
+Wide.idr checks
