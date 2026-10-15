@@ -31,12 +31,15 @@ import Libraries.Data.WithData
 -- Layers
 
 ||| The layers of the product, from the bottom: `Data` (structures any part
-||| may use), `Flat` (the flat fragment, of no backend), `Native` (the code
-||| generator), `Runtime` (the runtime library), and the linter's own.
-data Layer = DataLayer | FlatLayer | NativeLayer | RuntimeLayer | LintLayer
+||| may use), `HeapObj` (the heap-object model, which the code generator and
+||| the runtime share), `Flat` (the flat fragment, of no backend), `Native`
+||| (the code generator), `Runtime` (the runtime library), and the linter's
+||| own.
+data Layer = DataLayer | HeapObjLayer | FlatLayer | NativeLayer | RuntimeLayer | LintLayer
 
 Eq Layer where
   DataLayer == DataLayer = True
+  HeapObjLayer == HeapObjLayer = True
   FlatLayer == FlatLayer = True
   NativeLayer == NativeLayer = True
   RuntimeLayer == RuntimeLayer = True
@@ -58,18 +61,20 @@ allowed ours importer imported = case layerOf importer of
       else if isPrefixOf "Flat." m then Just FlatLayer
       else if isPrefixOf "Lint." m then Just LintLayer
       else if isPrefixOf "Data." m then Just DataLayer
+      else if isPrefixOf "HeapObj." m then Just HeapObjLayer
       else Nothing
 
     ||| The modules a layer may import: its own, and of the layers below it;
     ||| a module of no layer among ours (a program) by none, the data
-    ||| structures nothing but data structures, and the runtime only what it
-    ||| shares with the compiler: the heap-object model's modules, and
-    ||| `Flat.Uniform`.
+    ||| structures and the heap-object model nothing but data structures,
+    ||| and the runtime only what it shares with the compiler: the
+    ||| heap-object model, and `Flat.Uniform`.
     mayImport : Layer -> String -> Bool
     mayImport DataLayer m = layerOf m == Just DataLayer
+    mayImport HeapObjLayer m = layerOf m == Just DataLayer || layerOf m == Just HeapObjLayer
     mayImport FlatLayer m = layerOf m == Just DataLayer || layerOf m == Just FlatLayer
-    mayImport NativeLayer m = maybe False (\l => l == DataLayer || l == FlatLayer || l == NativeLayer) (layerOf m)
-    mayImport RuntimeLayer m = layerOf m == Just RuntimeLayer || isPrefixOf "Compiler.Native.HeapObject." m || m == "Flat.Uniform"
+    mayImport NativeLayer m = maybe False (\l => l /= RuntimeLayer && l /= LintLayer) (layerOf m)
+    mayImport RuntimeLayer m = layerOf m == Just RuntimeLayer || layerOf m == Just HeapObjLayer || m == "Flat.Uniform"
     mayImport LintLayer m = layerOf m == Just LintLayer
 
 moduleOf : SourceFile -> String

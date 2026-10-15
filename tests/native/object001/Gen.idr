@@ -1,18 +1,18 @@
 -- The runtime reads objects as words, with rules restated from
--- Compiler.Native.HeapObject.Header, which the compiler uses on typed headers:
+-- HeapObj.Header, which the compiler uses on typed headers:
 -- here the two are compared, for every kind with each part at its
 -- boundaries, so that a change to one that misses the other is caught.
 -- `objectWords` is the size including the header; `scannedWords` the
 -- first word that holds a value and how many do.
 module Main
 
-import Compiler.Native.HeapObject.BignumEnc
-import Compiler.Native.HeapObject.Enc
-import Compiler.Native.HeapObject.Header
-import Compiler.Native.HeapObject.Kind
-import Compiler.Native.HeapObject.LayoutWord
-import Compiler.Native.HeapObject.StringEnc
-import Compiler.Native.HeapObject.ValEnc
+import HeapObj.BignumEnc
+import HeapObj.Enc
+import HeapObj.Header
+import HeapObj.Kind
+import HeapObj.LayoutWord
+import HeapObj.StringEnc
+import HeapObj.ValEnc
 import Runtime.Object
 
 TestEnc : Enc

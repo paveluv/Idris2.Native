@@ -1,4 +1,4 @@
-||| A module that `rename-module` renames `New.Item`.
+||| A module that `rename-module` renames `Item`, at the top.
 module Old.Thing
 
 %default total

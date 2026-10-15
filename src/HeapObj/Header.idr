@@ -1,14 +1,14 @@
 ||| What an object is in memory: its header (`Header`), and the sizes and
 ||| scanned fields the header gives.
 |||
-||| Every heap object is 8-byte aligned and begins with one header word, which
-||| says what the object is: its kind (`Compiler.Native.HeapObject.Kind`), and
-||| the parts of its header, whose number and meaning depend on the kind. The
-||| words after the header are the object's fields; offsets below are in bytes
-||| from the start of the object. The header alone gives the object's size and
-||| which of its fields the collector scans (`objectWords`, `scanned`); the
-||| collector needs nothing else. The exception is `CONT`, which has no header
-||| word.
+||| Every heap object is 8-byte aligned and begins with one header word,
+||| which says what the object is: its kind (`HeapObj.Kind`), and the parts
+||| of its header, whose number and meaning depend on the kind. The words
+||| after the header are the object's fields; offsets below are in bytes
+||| from the start of the object. The header alone gives the object's size
+||| and which of its fields the collector scans (`objectWords`, `scanned`);
+||| the collector needs nothing else. The exception is `CONT`, which has no
+||| header word.
 |||
 ||| The header word: the kind's id in bits 0..3; flags in bits 4..7, which the
 ||| compiler always leaves 0 (the collector uses bit 4 as the mark bit of the
@@ -18,15 +18,15 @@
 ||| Static objects (`Compiler.Native.LocatedIR.Static`) have exactly the
 ||| same layouts.
 |||
-||| Part of the heap-object model, the contract between compiled code and the
-||| runtime (`Compiler.Native.HeapObject.Enc` says what it is): it imports
-||| nothing from the compiler, so that the runtime's own Idris can import it.
-module Compiler.Native.HeapObject.Header
+||| Part of the heap-object model, the contract between compiled code and
+||| the runtime (`HeapObj.Enc` says what it is): it imports nothing from the
+||| compiler, so that the runtime's own Idris can import it.
+module HeapObj.Header
 
-import Compiler.Native.HeapObject.BignumEnc
-import Compiler.Native.HeapObject.Enc
-import Compiler.Native.HeapObject.Kind
-import Compiler.Native.HeapObject.StringEnc
+import HeapObj.BignumEnc
+import HeapObj.Enc
+import HeapObj.Kind
+import HeapObj.StringEnc
 
 %default total
 

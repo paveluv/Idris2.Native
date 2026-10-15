@@ -7,10 +7,10 @@ import Compiler.Native.TermIR.Body
 import Compiler.Native.TermIR.Decls
 import Compiler.Native.TermIR.Sig
 
-import Compiler.Native.HeapObject.Enc as HeapObject
 import Compiler.Native.IRCommon.Conv
 import Compiler.Native.IRCommon.Ty as IRCommon
 import Core.Name
+import HeapObj.Enc as HeapObj
 
 %default total
 

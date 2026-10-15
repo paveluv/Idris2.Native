@@ -5,9 +5,9 @@ module Compiler.Native.TermIR.Mem
 
 import Compiler.Native.TermIR.Opnd
 
-import Compiler.Native.HeapObject.Enc as HeapObject
-import Compiler.Native.HeapObject.Kind as HeapObject
 import Compiler.Native.IRCommon.Ty as IRCommon
+import HeapObj.Enc as HeapObj
+import HeapObj.Kind as HeapObj
 
 %default total
 
@@ -21,7 +21,7 @@ data Base : (var : IRCommon.Ty enc -> Type) -> Type where
 ||| A memory reference: a base, an optional index counting units of the
 ||| access's width, and a constant byte offset.
 public export
-record Mem {0 enc : HeapObject.Enc} (var : IRCommon.Ty enc -> Type) where
+record Mem {0 enc : HeapObj.Enc} (var : IRCommon.Ty enc -> Type) where
   constructor MkMem
   base : Base var
   index : Maybe (Opnd var IRCommon.Ty.W64)

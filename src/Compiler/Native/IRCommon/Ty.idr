@@ -8,11 +8,11 @@
 ||| instructions and terminators share their names with the term IR's.
 module Compiler.Native.IRCommon.Ty
 
-import Compiler.Native.HeapObject.Enc as HeapObject
-import Compiler.Native.HeapObject.Kind as HeapObject
-import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.Target
 import Decidable.Equality.Core
+import HeapObj.Enc as HeapObj
+import HeapObj.Kind as HeapObj
+import HeapObj.ValEnc
 
 %default total
 
@@ -38,7 +38,7 @@ import Decidable.Equality.Core
 ||| points to nothing. This distinction is what the rooting stubs and the
 ||| continuations' live sets are derived from.
 public export
-data Ty : HeapObject.Enc -> Type where
+data Ty : HeapObj.Enc -> Type where
   ||| A raw 64-bit word: integers of every width, with narrowing explicit
   ||| (`Ext`), and addresses and header words.
   W64 : Ty enc
@@ -46,16 +46,16 @@ data Ty : HeapObject.Enc -> Type where
   F64 : Ty enc
   ||| A uniform value: one word that is a fixnum, a pointer to an object, or
   ||| the erased value. How each is a word, the fixnum tag included, is the
-  ||| value encoding's (`Compiler.Native.HeapObject.ValEnc`).
+  ||| value encoding's (`HeapObj.ValEnc`).
   Val : Ty enc
   ||| A `Val` that is a fixnum. Only a value encoding with fixnums has the
   ||| type.
   ||| Integer arithmetic, comparisons and switches take `Fix`es and mean the
   ||| fixnums' values, which the renderings compute on the words.
-  Fix : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} -> Ty enc
+  Fix : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Ty enc
   ||| A pointer to an object of the kind: the same word as a `Val` that
   ||| points to it.
-  PtrTo : HeapObject.Kind -> Ty enc
+  PtrTo : HeapObj.Kind -> Ty enc
 
 public export
 Eq (Ty enc) where
@@ -72,7 +72,7 @@ DecEq (Ty enc) where
   decEq W64 W64 = Yes Refl
   decEq F64 F64 = Yes Refl
   decEq Val Val = Yes Refl
-  decEq (Fix {fx = p}) (Fix {fx = q}) = Yes (rewrite HeapObject.ValEnc.fixnumsUnique p q in Refl)
+  decEq (Fix {fx = p}) (Fix {fx = q}) = Yes (rewrite HeapObj.ValEnc.fixnumsUnique p q in Refl)
   decEq (PtrTo a) (PtrTo b) = case decEq a b of
     Yes Refl => Yes Refl
     No c => No (\Refl => c Refl)

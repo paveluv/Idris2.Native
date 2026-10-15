@@ -5,8 +5,6 @@
 ||| (`Compiler.Native.Linkage.Routine` says what it is).
 module Compiler.Native.Linkage.InlineExtern
 
-import Compiler.Native.HeapObject.Enc as HeapObject
-import Compiler.Native.HeapObject.Kind as HeapObject
 import Compiler.Native.IRCommon.Area as IRCommon
 import Compiler.Native.IRCommon.Intrinsic as IRCommon
 import Compiler.Native.IRCommon.Op
@@ -15,6 +13,8 @@ import Core.Name
 import Core.Name.Namespace
 import Data.Fin
 import Data.List
+import HeapObj.Enc as HeapObj
+import HeapObj.Kind as HeapObj
 
 %default total
 
@@ -43,14 +43,14 @@ data InlineExtern
   | ||| The address of a per-thread area.
     AreaAddress IRCommon.Area
   | ||| The pointer word of a uniform value known to be an object of the kind.
-    ObjectWord HeapObject.Kind
+    ObjectWord HeapObj.Kind
   | ||| The uniform value of a pointer word to an object of the kind.
-    WordObject HeapObject.Kind
+    WordObject HeapObj.Kind
 
 ||| An inline extern as the runtime library declares it: the registers of
 ||| its arguments, the token among them taking none, and of its result.
 public export
-record InlineExternSig (0 enc : HeapObject.Enc) where
+record InlineExternSig (0 enc : HeapObj.Enc) where
   constructor MkInlineExternSig
   name : Name
   extern : InlineExtern
@@ -59,7 +59,7 @@ record InlineExternSig (0 enc : HeapObject.Enc) where
 
 ||| The inline externs, with their signatures.
 export
-inlineExterns : {0 enc : HeapObject.Enc} -> List (InlineExternSig enc)
+inlineExterns : {0 enc : HeapObj.Enc} -> List (InlineExternSig enc)
 inlineExterns =
   [ machine "Runtime.OS.Syscall" "prim__syscall6" (IRCommon.Intrinsic.Syscall 6)
   , memory "prim__load64" Load64 [IRCommon.Ty.W64, IRCommon.Ty.W64] [IRCommon.Ty.W64]
@@ -82,10 +82,10 @@ inlineExterns =
   , memory "prim__rootsArea" (AreaAddress IRCommon.Area.ROOTS) [] [IRCommon.Ty.W64]
   , memory "prim__nrootsArea" (AreaAddress IRCommon.Area.NROOTS) [] [IRCommon.Ty.W64]
   , memory "prim__runtimeArea" (AreaAddress IRCommon.Area.RUNTIME) [] [IRCommon.Ty.W64]
-  , memory "prim__stringWord" (ObjectWord HeapObject.Kind.STRING) [IRCommon.Ty.Val] [IRCommon.Ty.W64]
-  , memory "prim__wordString" (WordObject HeapObject.Kind.STRING) [IRCommon.Ty.W64] [IRCommon.Ty.Val]
-  , memory "prim__conWord" (ObjectWord HeapObject.Kind.CON) [IRCommon.Ty.Val] [IRCommon.Ty.W64]
-  , memory "prim__wordCon" (WordObject HeapObject.Kind.CON) [IRCommon.Ty.W64] [IRCommon.Ty.Val] ]
+  , memory "prim__stringWord" (ObjectWord HeapObj.Kind.STRING) [IRCommon.Ty.Val] [IRCommon.Ty.W64]
+  , memory "prim__wordString" (WordObject HeapObj.Kind.STRING) [IRCommon.Ty.W64] [IRCommon.Ty.Val]
+  , memory "prim__conWord" (ObjectWord HeapObj.Kind.CON) [IRCommon.Ty.Val] [IRCommon.Ty.W64]
+  , memory "prim__wordCon" (WordObject HeapObj.Kind.CON) [IRCommon.Ty.W64] [IRCommon.Ty.Val] ]
   where
     sig : String -> String -> InlineExtern -> List (IRCommon.Ty enc) -> List (IRCommon.Ty enc) -> InlineExternSig enc
     sig ns n = MkInlineExternSig (NS (mkNamespace ns) (UN (Basic n)))
@@ -104,5 +104,5 @@ inlineExterns =
 
 ||| The inline extern a primitive of the runtime library is, by its name.
 export
-inlineExternOf : {0 enc : HeapObject.Enc} -> Name -> Maybe InlineExtern
+inlineExternOf : {0 enc : HeapObj.Enc} -> Name -> Maybe InlineExtern
 inlineExternOf n = (.extern) <$> find (\i => i.name == n) (inlineExterns {enc})

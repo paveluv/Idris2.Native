@@ -6,9 +6,10 @@
 ||| `sourcedir`, its `module` line naming it; the package lists the new
 ||| name where it listed the old. Each importer imports the new name,
 ||| keeping its alias and whether the import is public. A name written
-||| qualified by the old name, or by its last parts (`IRCommon.Operators.Rel`),
-||| is written with as many last parts of the new one (`IRCommon.Op.Rel`); a
-||| name written under an alias stays, as the alias does. It renames nothing
+||| qualified by the old name, or by its last parts
+||| (`IRCommon.Operators.Rel`), is written with as many last parts of the
+||| new one (`IRCommon.Op.Rel`), all of them if it has fewer; a name written
+||| under an alias stays, as the alias does. It renames nothing
 ||| when a module of the new name is among the files.
 |||
 ||| What it leaves for after: the imports in order (`order-imports`), the
@@ -62,8 +63,7 @@ renameModule args =
       in case bounds fc of
            Just ((l, c), (l', c')) =>
              let shown = substr (cast c) (cast (c' - c)) (lineOf t l) in
-             if l /= l' || not (n `elem` exports) || not (isSuffixOf q (partsOf old)) || k > length (partsOf new)
-                  || shown /= show ns ++ "." ++ n then []
+             if l /= l' || not (n `elem` exports) || not (isSuffixOf q (partsOf old)) || shown /= show ns ++ "." ++ n then []
              else [MkEdit (l, c) (l', c') (joinBy "." (drop (length (partsOf new) `minus` k) (partsOf new)) ++ "." ++ n)]
            Nothing => []
     requalified _ _ _ _ _ = []

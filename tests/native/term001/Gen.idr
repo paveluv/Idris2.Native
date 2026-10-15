@@ -18,12 +18,6 @@
 module Main
 
 import Compiler.Native.ELF
-import Compiler.Native.HeapObject.BignumEnc
-import Compiler.Native.HeapObject.Enc
-import Compiler.Native.HeapObject.Header
-import Compiler.Native.HeapObject.Kind
-import Compiler.Native.HeapObject.StringEnc
-import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.Area
 import Compiler.Native.IRCommon.ConIds
 import Compiler.Native.IRCommon.Conv
@@ -63,6 +57,12 @@ import Data.List
 import Data.List.Quantifiers
 import Data.So
 import Data.Vect
+import HeapObj.BignumEnc
+import HeapObj.Enc
+import HeapObj.Header
+import HeapObj.Kind
+import HeapObj.StringEnc
+import HeapObj.ValEnc
 import System.File
 
 %default total

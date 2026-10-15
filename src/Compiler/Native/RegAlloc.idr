@@ -22,10 +22,6 @@
 ||| least fixed point.
 module Compiler.Native.RegAlloc
 
-import Compiler.Native.HeapObject.Enc as HeapObject
-import Compiler.Native.HeapObject.Header as HeapObject
-import Compiler.Native.HeapObject.Kind as HeapObject
-import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.Conv as IRCommon
 import Compiler.Native.IRCommon.Intrinsic
 import Compiler.Native.IRCommon.Op
@@ -72,13 +68,17 @@ import Data.SortedMap
 import Data.SortedSet
 import Data.Vect
 import Data.Zippable
+import HeapObj.Enc as HeapObj
+import HeapObj.Header as HeapObj
+import HeapObj.Kind as HeapObj
+import HeapObj.ValEnc
 
 %default total
 
 ------------------------------------------------------------------------------
 -- Environments
 
-RV : (enc : HeapObject.Enc) -> IRCommon.Ty enc -> Type
+RV : (enc : HeapObj.Enc) -> IRCommon.Ty enc -> Type
 RV enc _ = LocatedIR.Reg enc
 
 ||| How a variable of the environment is held: in a register, or as the
@@ -87,25 +87,25 @@ RV enc _ = LocatedIR.Reg enc
 ||| allocation and never in a slot. The term binds one by `StaticAddr` and
 ||| widens it to a value by `WidenPtr`; the environment holds both as the
 ||| static.
-data Held : HeapObject.Enc -> Type where
+data Held : HeapObj.Enc -> Type where
   InReg : LocatedIR.Reg enc -> Held enc
   OfStatic : Name -> Held enc
 
-HV : (enc : HeapObject.Enc) -> IRCommon.Ty enc -> Type
+HV : (enc : HeapObj.Enc) -> IRCommon.Ty enc -> Type
 HV enc _ = Held enc
 
 ||| Registers, by identity.
-RegMap : HeapObject.Enc -> Type
+RegMap : HeapObj.Enc -> Type
 RegMap enc = SortedMap Nat (LocatedIR.Reg enc)
 
-record LabelInfo (enc : HeapObject.Enc) where
+record LabelInfo (enc : HeapObj.Enc) where
   constructor MkLabelInfo
   label : LocatedIR.Label
   params : List (LocatedIR.Reg enc)
   ||| The registers the block reads from outside it, its parameters excluded.
   free : RegMap enc
 
-LI : (enc : HeapObject.Enc) -> List (IRCommon.Ty enc) -> Type
+LI : (enc : HeapObj.Enc) -> List (IRCommon.Ty enc) -> Type
 LI enc _ = LabelInfo enc
 
 append : All p xs -> All p ys -> All p (xs ++ ys)
@@ -156,7 +156,7 @@ JoinFrees = (Nat, SortedSet Level)
 ------------------------------------------------------------------------------
 -- The conversion's state
 
-record St (enc : HeapObject.Enc) where
+record St (enc : HeapObj.Enc) where
   constructor MkSt
   nextReg : Nat
   nextLabel : Nat
@@ -166,7 +166,7 @@ record St (enc : HeapObject.Enc) where
   ||| the lowering meets them (`frees`).
   joins : List JoinFrees
 
-M : HeapObject.Enc -> Type -> Type
+M : HeapObj.Enc -> Type -> Type
 M enc = State (St enc)
 
 fresh : IRCommon.Ty enc -> M enc (LocatedIR.Reg enc)
@@ -187,14 +187,14 @@ freshLabel = do
 
 ||| A block's code: its instructions, as the lowering produces them, and
 ||| its terminator.
-Code : HeapObject.Enc -> Type
+Code : HeapObj.Enc -> Type
 Code enc = (Data.Builder (LocatedIR.Instr enc), LocatedIR.Terminator enc)
 
 addBlock : LocatedIR.Label -> List (LocatedIR.Reg enc) -> Code enc -> M enc ()
 addBlock l ps (is, t) = modify { blocks $= insert l (LocatedIR.Block.MkBlock l ps (toList is) t) }
 
 ||| Code, with the registers of its environment it reads.
-Lowered : HeapObject.Enc -> Type
+Lowered : HeapObj.Enc -> Type
 Lowered enc = (RegMap enc, Code enc)
 
 ------------------------------------------------------------------------------
@@ -492,13 +492,13 @@ parameters (d : TermIR.Decls enc)
           ([], TermIR.Instr.Loc fc) => pure [LocatedIR.Instr.Loc fc]
           ([], TermIR.Instr.Comment s) => pure [LocatedIR.Instr.Comment s]
           where
-            fillOf : {0 kind : HeapObject.Kind} -> (q : HeapObject.Header.HeaderPart kind) ->
+            fillOf : {0 kind : HeapObj.Kind} -> (q : HeapObj.Header.HeaderPart kind) ->
                      TermIR.Sizes.Fill (TermIR.Var ctx''') q -> Maybe (LocatedIR.Opnd enc)
-            fillOf HeapObject.Header.ArrayElems x = Just (operand env x)
+            fillOf HeapObj.Header.ArrayElems x = Just (operand env x)
             fillOf _ _ = Nothing
-            fillUses : {0 kind : HeapObject.Kind} -> (q : HeapObject.Header.HeaderPart kind) ->
+            fillUses : {0 kind : HeapObj.Kind} -> (q : HeapObj.Header.HeaderPart kind) ->
                        TermIR.Sizes.Fill (TermIR.Var ctx''') q -> () -> RegMap enc
-            fillUses HeapObject.Header.ArrayElems x _ = uses env x
+            fillUses HeapObj.Header.ArrayElems x _ = uses env x
             fillUses _ _ _ = empty
 
             collectsOf : TermIR.Var d.sigs s -> Bool
@@ -651,7 +651,7 @@ parameters (d : TermIR.Decls enc)
 ||| The IR's programs, for producers that build terms and need not import
 ||| the IR, whose names the term's share.
 export
-0 LocatedProgram : HeapObject.Enc -> Type
+0 LocatedProgram : HeapObj.Enc -> Type
 LocatedProgram enc = LocatedIR.Program enc
 
 ||| The program in the IR, for the target.

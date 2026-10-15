@@ -9,16 +9,16 @@ import Compiler.Native.LocatedIR.Mem
 import Compiler.Native.LocatedIR.Opnd
 import Compiler.Native.LocatedIR.Reg
 
-import Compiler.Native.HeapObject.Enc as HeapObject
-import Compiler.Native.HeapObject.Header as HeapObject
-import Compiler.Native.HeapObject.Kind as HeapObject
-import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.Area as IRCommon
 import Compiler.Native.IRCommon.Intrinsic as IRCommon
 import Compiler.Native.IRCommon.Op
 import Compiler.Native.IRCommon.Ty as IRCommon
 import Core.FC
 import Core.Name
+import HeapObj.Enc as HeapObj
+import HeapObj.Header as HeapObj
+import HeapObj.Kind as HeapObj
+import HeapObj.ValEnc
 
 %default total
 
@@ -26,12 +26,12 @@ import Core.Name
 ||| which comes first. The types stated here are the term's
 ||| (`Compiler.Native.TermIR.Program`), which the conversion keeps.
 public export
-data Instr : HeapObject.Enc -> Type where
+data Instr : HeapObj.Enc -> Type where
   ||| A constant, into a `W64`, a `Val` or a `Fix`. Into a `W64` it is the
   ||| word itself. Into a `Val` or a `Fix` it is the integer, and the
   ||| rendering turns it into the value encoding's word (`valWord` in
-  ||| `Compiler.Native.HeapObject.ValEnc`), so that the IR is the same under every
-  ||| value encoding; as a `Val`, 0 is also the erased value. No constant is a
+  ||| `HeapObj.ValEnc`), so that the IR is the same under every value
+  ||| encoding; as a `Val`, 0 is also the erased value. No constant is a
   ||| pointer.
   Const      : Reg enc -> Int64 -> Instr enc
   ||| A double constant, into an `F64`.
@@ -85,13 +85,13 @@ data Instr : HeapObject.Enc -> Type where
   StoreN     : IRCommon.Op.SubWord -> Mem enc -> Reg enc -> Instr enc
   ||| The fixnum of a `W64`, as a `Fix`. The producer guarantees that the
   ||| value is in the fixnum range.
-  Tag        : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} -> Reg enc -> Reg enc -> Instr enc
+  Tag        : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Reg enc -> Reg enc -> Instr enc
   ||| The value of a `Fix`, as a `W64`.
-  Untag      : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} -> Reg enc -> Reg enc -> Instr enc
+  Untag      : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Reg enc -> Reg enc -> Instr enc
   ||| The fixnum of a `W64`, as a `Fix`, or a branch to the label if the value
   ||| is outside the fixnum range. The label is a successor of the block at
   ||| this instruction, as for `ArithOv`.
-  TagOv      : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} -> Reg enc -> Reg enc -> Label -> Instr enc
+  TagOv      : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Reg enc -> Reg enc -> Label -> Instr enc
   ||| A `Val` as the type given, a `Fix` or a `PtrTo k`, which is the
   ||| destination's. No code: the producer guarantees it, after an `IfFixnums`
   ||| or a `Switch` on a header, or from static typing. The only way from a
@@ -106,7 +106,7 @@ data Instr : HeapObject.Enc -> Type where
   ||| there is.
   AddrToWord : Reg enc -> Reg enc -> Instr enc
   ||| A `W64` as a `PtrTo k`. No code. Restricted as `AddrToWord` is.
-  WordToAddr : HeapObject.Kind -> Reg enc -> Reg enc -> Instr enc
+  WordToAddr : HeapObj.Kind -> Reg enc -> Reg enc -> Instr enc
   ||| The header word of the object a `PtrTo k` points to, as a `W64`. For a
   ||| `CONT`, which has no header, it is the layout word.
   LoadHeader : Reg enc -> Reg enc -> Instr enc
@@ -114,7 +114,7 @@ data Instr : HeapObject.Enc -> Type where
   ||| the constructor id of a `CON`, for instance. The pointer's kind is the
   ||| part's kind, which the instruction keeps, so that a pass reads it here
   ||| instead of rebuilding it from the part.
-  LoadPart   : {0 k : HeapObject.Kind} -> HeapObject.Header.HeaderPart k -> Reg enc -> Reg enc -> Instr enc
+  LoadPart   : {0 k : HeapObj.Kind} -> HeapObj.Header.HeaderPart k -> Reg enc -> Reg enc -> Instr enc
   ||| A whole object in one step: the destination, a `PtrTo k` of the
   ||| header's kind, becomes a new object with this header and these initial
   ||| fields. Since one instruction makes the whole object, no collection can
@@ -130,7 +130,7 @@ data Instr : HeapObject.Enc -> Type where
   ||| across includes the field registers, because the fields are written
   ||| after the slow path's collection. The rendering may rematerialise a
   ||| static's address instead of saving it.
-  AllocObj   : {k : HeapObject.Kind} -> Reg enc -> HeapObject.Header enc k -> (fields : List (Opnd enc)) ->
+  AllocObj   : {k : HeapObj.Kind} -> Reg enc -> HeapObj.Header enc k -> (fields : List (Opnd enc)) ->
                (live : List (Reg enc)) -> Instr enc
   ||| A whole object whose size is known only at run time: the destination, a
   ||| `PtrTo k`, becomes a new object of the part's kind, whose size part is
@@ -145,7 +145,7 @@ data Instr : HeapObject.Enc -> Type where
   ||| A count that does not fit the part's bits ends the program, as `Crash`
   ||| does. The rendering checks it, so no count can make an object smaller
   ||| than its header claims, a negative `Int` read as a word included.
-  AllocSized : {k : HeapObject.Kind} -> Reg enc -> HeapObject.Header.HeaderPart k -> (count : Reg enc) ->
+  AllocSized : {k : HeapObj.Kind} -> Reg enc -> HeapObj.Header.HeaderPart k -> (count : Reg enc) ->
                (fill : Maybe (Opnd enc)) -> (live : List (Reg enc)) -> Instr enc
   ||| A machine call to a `Direct` function: one of the program's, or a
   ||| routine of the runtime. The registers receive the callee's results, in

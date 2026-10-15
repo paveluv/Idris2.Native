@@ -1,8 +1,8 @@
--- The header encoding of Compiler.Native.HeapObject.Header. Decoding a header's encoding
--- gives the header back, for every kind with each part at 0, 1 and its
--- largest value; a part one beyond its width does not fit; words that no
--- header encodes are rejected; and under bignums in two's complement, whose
--- header does not exist yet, no BIGNUM header decodes.
+-- The header encoding of HeapObj.Header. Decoding a header's encoding gives
+-- the header back, for every kind with each part at 0, 1 and its largest
+-- value; a part one beyond its width does not fit; words that no header
+-- encodes are rejected; and under bignums in two's complement, whose header
+-- does not exist yet, no BIGNUM header decodes.
 --
 -- Every object on the heap starts with a header word: its kind, and the
 -- parts that say how big it is and what it holds. `Just x` is a CON, a
@@ -13,14 +13,14 @@
 -- a `case`; the collector reads the size and which words to scan.
 module Main
 
-import Compiler.Native.HeapObject.BignumEnc
-import Compiler.Native.HeapObject.Enc
-import Compiler.Native.HeapObject.Header
-import Compiler.Native.HeapObject.Kind
-import Compiler.Native.HeapObject.LayoutWord
-import Compiler.Native.HeapObject.StringEnc
-import Compiler.Native.HeapObject.ValEnc
 import Data.List
+import HeapObj.BignumEnc
+import HeapObj.Enc
+import HeapObj.Header
+import HeapObj.Kind
+import HeapObj.LayoutWord
+import HeapObj.StringEnc
+import HeapObj.ValEnc
 
 ||| The encodings the headers are under: bignums in sign-magnitude, whose
 ||| header holds the sign.

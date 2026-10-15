@@ -29,12 +29,12 @@ module Compiler.Native.Linkage.Routine
 
 import Compiler.Native.Linkage.Sym
 
-import Compiler.Native.HeapObject.Enc as HeapObject
-import Compiler.Native.HeapObject.StringEnc as HeapObject
 import Compiler.Native.IRCommon.Ty as IRCommon
 import Core.Name
 import Core.Name.Namespace
 import Data.List
+import HeapObj.Enc as HeapObj
+import HeapObj.StringEnc as HeapObj
 
 %default total
 
@@ -47,7 +47,7 @@ flatName n = NS (mkNamespace "_flat") n
 
 ||| A routine of the runtime that generated code reaches.
 public export
-record Routine (enc : HeapObject.Enc) where
+record Routine (enc : HeapObj.Enc) where
   constructor MkRoutine
   ||| The function of the runtime library that is the routine; for one the
   ||| runtime does not have yet, the name its calls use.
@@ -95,20 +95,20 @@ integerRoutine op = UN (Basic ("idris_integer_" ++ op))
 ||| module of the runtime that reads a string's header or bytes. Every other
 ||| part of the runtime asks it. None yet for UTF-32.
 export
-stringModule : HeapObject.StringEnc -> Maybe Namespace
-stringModule HeapObject.StringEnc.Utf8 = Just (mkNamespace "Runtime.String.Utf8")
-stringModule HeapObject.StringEnc.Utf32 = Nothing
+stringModule : HeapObj.StringEnc -> Maybe Namespace
+stringModule HeapObj.StringEnc.Utf8 = Just (mkNamespace "Runtime.String.Utf8")
+stringModule HeapObj.StringEnc.Utf32 = Nothing
 
 ||| A string routine under the encoding: the string module's function of the
 ||| operation's name, and whether the runtime has it.
-stringFunction : HeapObject.StringEnc -> String -> (Name, Bool)
+stringFunction : HeapObj.StringEnc -> String -> (Name, Bool)
 stringFunction e op = case stringModule e of
   Just ns => (NS ns (UN (Basic op)), True)
   Nothing => (UN (Basic ("idris_string_" ++ op)), False)
 
 ||| The name generated code calls a string routine by.
 export
-stringRoutine : HeapObject.Enc -> String -> Name
+stringRoutine : HeapObj.Enc -> String -> Name
 stringRoutine enc op = case stringFunction enc.string op of
   (n, True) => flatName n
   (n, False) => n
@@ -118,7 +118,7 @@ stringRoutine enc op = case stringFunction enc.string op of
 ||| strings as ordinary code holds them; a character is its code point, a
 ||| count or an index a word.
 export
-routines : {enc : HeapObject.Enc} -> List (Routine enc)
+routines : {enc : HeapObj.Enc} -> List (Routine enc)
 routines =
   [ string "length" [IRCommon.Ty.W64] [IRCommon.Ty.Val]
   , string "head" [IRCommon.Ty.W64] [IRCommon.Ty.Val]
@@ -157,7 +157,7 @@ routines =
 
 ||| The symbol the routine whose function has the name is reached by.
 export
-routineSymbol : {enc : HeapObject.Enc} -> Name -> Maybe Sym
+routineSymbol : {enc : HeapObj.Enc} -> Name -> Maybe Sym
 routineSymbol n = do
   r <- find (\r => r.provided && flatName r.name == n) (routines {enc})
   r.symbol

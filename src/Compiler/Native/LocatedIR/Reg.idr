@@ -5,8 +5,8 @@
 ||| is).
 module Compiler.Native.LocatedIR.Reg
 
-import Compiler.Native.HeapObject.Enc as HeapObject
 import Compiler.Native.IRCommon.Ty as IRCommon
+import HeapObj.Enc as HeapObj
 
 %default total
 
@@ -22,7 +22,7 @@ import Compiler.Native.IRCommon.Ty as IRCommon
 ||| reads it, to tell the GC-visible members of a `live` list from the raw
 ||| ones, among others.
 public export
-data Reg : HeapObject.Enc -> Type where
+data Reg : HeapObj.Enc -> Type where
   Slot : (n : Nat) -> IRCommon.Ty enc -> Reg enc
 
 public export

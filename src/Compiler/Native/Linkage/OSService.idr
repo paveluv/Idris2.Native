@@ -5,11 +5,11 @@
 ||| (`Compiler.Native.Linkage.Routine` says what it is).
 module Compiler.Native.Linkage.OSService
 
-import Compiler.Native.HeapObject.Enc as HeapObject
 import Compiler.Native.IRCommon.Ty as IRCommon
 import Compiler.Native.Platform
 import Core.Name
 import Core.Name.Namespace
+import HeapObj.Enc as HeapObj
 
 %default total
 
@@ -19,7 +19,7 @@ import Core.Name.Namespace
 ||| token among them taking none, and of its result. A platform's module
 ||| implements it as a function of the service's own name.
 public export
-record OSService (0 enc : HeapObject.Enc) where
+record OSService (0 enc : HeapObj.Enc) where
   constructor MkOSService
   service : String
   params : List (IRCommon.Ty enc)
@@ -42,7 +42,7 @@ record OSService (0 enc : HeapObject.Enc) where
 ||| * `pageBytes`: the system's page, the bytes memory is committed and
 |||   released by.
 export
-osServices : {0 enc : HeapObject.Enc} -> List (OSService enc)
+osServices : {0 enc : HeapObj.Enc} -> List (OSService enc)
 osServices =
   [ MkOSService "exit" [IRCommon.Ty.W64] []
   , MkOSService "write" [IRCommon.Ty.W64, IRCommon.Ty.W64, IRCommon.Ty.W64] [IRCommon.Ty.W64]
@@ -71,5 +71,5 @@ serviceFunction p s = (\ns => NS ns (UN (Basic s.service))) <$> platformModule p
 
 ||| Each service's extern bound to its function on the platform.
 export
-serviceBindings : {0 enc : HeapObject.Enc} -> Platform -> List (Name, Name)
+serviceBindings : {0 enc : HeapObj.Enc} -> Platform -> List (Name, Name)
 serviceBindings p = mapMaybe (\s => (serviceExtern s,) <$> serviceFunction p s) (osServices {enc})

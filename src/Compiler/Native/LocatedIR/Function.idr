@@ -8,10 +8,10 @@ import Compiler.Native.LocatedIR.Block
 import Compiler.Native.LocatedIR.Label
 import Compiler.Native.LocatedIR.Reg
 
-import Compiler.Native.HeapObject.Enc as HeapObject
 import Compiler.Native.IRCommon.Conv as IRCommon
 import Core.FC
 import Core.Name
+import HeapObj.Enc as HeapObj
 
 %default total
 
@@ -22,7 +22,7 @@ import Core.Name
 ||| function has none, and delivers one `Val` to its continuation by
 ||| `Return`.
 public export
-record Function (enc : HeapObject.Enc) where
+record Function (enc : HeapObj.Enc) where
   constructor MkFunction
   name : Name
   conv : IRCommon.Conv enc

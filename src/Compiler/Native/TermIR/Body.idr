@@ -12,8 +12,6 @@ import Compiler.Native.TermIR.OvOp
 import Compiler.Native.TermIR.Sig
 import Compiler.Native.TermIR.Var
 
-import Compiler.Native.HeapObject.Enc as HeapObject
-import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.Conv as IRCommon
 import Compiler.Native.IRCommon.Op
 import Compiler.Native.IRCommon.Ty as IRCommon
@@ -23,6 +21,8 @@ import Data.List
 import Data.List.Quantifiers
 import Data.So
 import Data.Vect
+import HeapObj.Enc as HeapObj
+import HeapObj.ValEnc
 
 %default total
 
@@ -30,7 +30,7 @@ import Data.Vect
 ||| fixnums.
 public export
 keysFit : IRCommon.Ty enc -> List Int64 -> Bool
-keysFit (IRCommon.Ty.Fix {fx}) ks = all (\k => HeapObject.ValEnc.inFixnumRange (cast k)) ks
+keysFit (IRCommon.Ty.Fix {fx}) ks = all (\k => HeapObj.ValEnc.inFixnumRange (cast k)) ks
 keysFit _ _ = True
 
 ||| A body of a function of convention `c` that may (`m`) convert between
@@ -50,7 +50,7 @@ data Body : Decls enc -> IRCommon.Conv enc -> Bool -> List (List (IRCommon.Ty en
            (yes, no : Body d c m ls ctx) -> Body d c m ls ctx
   ||| Whether every one of the values, at least one, is a fixnum; the yes
   ||| branch has them as `Fix`es.
-  IfFixnums : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} ->
+  IfFixnums : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} ->
               {n : Nat} -> Vect (S n) (Opnd (Var ctx) IRCommon.Ty.Val) ->
               (yes : Body d c m ls (replicate (S n) (IRCommon.Ty.Fix {enc}) ++ ctx)) ->
               (no : Body d c m ls ctx) -> Body d c m ls ctx
@@ -60,7 +60,7 @@ data Body : Decls enc -> IRCommon.Conv enc -> Bool -> List (List (IRCommon.Ty en
             (ok : Body d c m ls (t :: ctx)) ->
             (overflow : Body d c m ls ctx) -> Body d c m ls ctx
   ||| The fixnum of a word, or the overflow branch when it is out of range.
-  TagOv : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} ->
+  TagOv : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} ->
           Opnd (Var ctx) IRCommon.Ty.W64 -> (ok : Body d c m ls (IRCommon.Ty.Fix {enc} :: ctx)) ->
             (overflow : Body d c m ls ctx) -> Body d c m ls ctx
   ||| A branch on an integer to the case of its key, else to the default.

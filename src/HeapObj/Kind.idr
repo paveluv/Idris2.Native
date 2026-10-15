@@ -2,9 +2,9 @@
 ||| id, in the low bits of a header word.
 |||
 ||| Part of the heap-object model, the contract between compiled code and the
-||| runtime (`Compiler.Native.HeapObject.Enc` says what it is): it imports
+||| runtime (`HeapObj.Enc` says what it is): it imports
 ||| nothing from the compiler, so that the runtime's own Idris can import it.
-module Compiler.Native.HeapObject.Kind
+module HeapObj.Kind
 
 import Decidable.Equality
 import Decidable.Equality.Core

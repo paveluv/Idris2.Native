@@ -24,9 +24,9 @@
 ||| string.
 module Runtime.String.Utf8
 
-import Compiler.Native.HeapObject.Header
-import Compiler.Native.HeapObject.Kind
 import Flat.Uniform as Flat
+import HeapObj.Header
+import HeapObj.Kind
 import Runtime.Bits
 import Runtime.Heap
 import Runtime.Memory
@@ -44,47 +44,45 @@ import Runtime.Space
 
 ||| The bytes a header counts, and whether it says they are all ASCII.
 bytesOf : (header : Bits64) -> Bits64
-bytesOf = Object.part Compiler.Native.HeapObject.Header.StringBytes
+bytesOf = Object.part HeapObj.Header.StringBytes
 
 asciiOf : (header : Bits64) -> Bool
-asciiOf h = Object.part Compiler.Native.HeapObject.Header.StringAscii h == 1
+asciiOf h = Object.part HeapObj.Header.StringAscii h == 1
 
 ||| The header of a string of `bytes`.
 headerFor : (ascii : Bool) -> (bytes : Bits64) -> Bits64
 headerFor ascii bytes =
-  Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.STRING
-    + Bits.shiftL (if ascii then 1 else 0)
-      (fst (Compiler.Native.HeapObject.Header.place Compiler.Native.HeapObject.Header.StringAscii))
-    + Bits.shiftL bytes (fst (Compiler.Native.HeapObject.Header.place Compiler.Native.HeapObject.Header.StringBytes))
+  HeapObj.Kind.kindId HeapObj.Kind.STRING
+    + Bits.shiftL (if ascii then 1 else 0) (fst (HeapObj.Header.place HeapObj.Header.StringAscii))
+    + Bits.shiftL bytes (fst (HeapObj.Header.place HeapObj.Header.StringBytes))
 
 ||| A string's header.
-headerOf : Memory.Addr Compiler.Native.HeapObject.Kind.STRING -> Heap.Op Heap Bits64
+headerOf : Memory.Addr HeapObj.Kind.STRING -> Heap.Op Heap Bits64
 headerOf s = Memory.load64 s 0
 
 ||| A new string of `bytes`, its header saying it is ASCII until `finish`
 ||| sets it, its bytes still to be written, its padding zero.
-newString : (bytes : Bits64) -> Heap.Op Heap (Memory.Addr Compiler.Native.HeapObject.Kind.STRING)
+newString : (bytes : Bits64) -> Heap.Op Heap (Memory.Addr HeapObj.Kind.STRING)
 newString bytes = do
   let words = Object.byteWords bytes
   a <- Space.allocate (8 * (1 + words))
-  let s = Memory.fromWord {k = Compiler.Native.HeapObject.Kind.STRING} a
+  let s = Memory.fromWord {k = HeapObj.Kind.STRING} a
   Memory.store64 s 0 (headerFor True bytes)
   if words == 0 then Heap.pure s else do
     Memory.store64 s (8 * words) 0
     Heap.pure s
 
 ||| A new string's header set, and the string as ordinary code holds it.
-finish : Memory.Addr Compiler.Native.HeapObject.Kind.STRING -> (ascii : Bool) -> (bytes : Bits64) ->
-         Heap.Op Heap (Flat.Uniform String)
+finish : Memory.Addr HeapObj.Kind.STRING -> (ascii : Bool) -> (bytes : Bits64) -> Heap.Op Heap (Flat.Uniform String)
 finish s ascii bytes = do
   Memory.store64 s 0 (headerFor ascii bytes)
   Memory.stringValue s
 
 ||| The byte at `i`, and storing one.
-byteAt : Memory.Addr Compiler.Native.HeapObject.Kind.STRING -> (i : Bits64) -> Heap.Op Heap Bits64
+byteAt : Memory.Addr HeapObj.Kind.STRING -> (i : Bits64) -> Heap.Op Heap Bits64
 byteAt s i = Memory.load8 s (8 + i)
 
-setByte : Memory.Addr Compiler.Native.HeapObject.Kind.STRING -> (i, b : Bits64) -> Heap.Op Heap ()
+setByte : Memory.Addr HeapObj.Kind.STRING -> (i, b : Bits64) -> Heap.Op Heap ()
 setByte s i b = Memory.store8 s (8 + i) b
 
 ------------------------------------------------------------------------------
@@ -99,7 +97,7 @@ charBytes : (c : Bits64) -> Bits64
 charBytes c = if c < 0x80 then 1 else if c < 0x800 then 2 else if c < 0x10000 then 3 else 4
 
 ||| The character whose lead byte is at `i`.
-decodeAt : Memory.Addr Compiler.Native.HeapObject.Kind.STRING -> (i : Bits64) -> Heap.Op Heap Bits64
+decodeAt : Memory.Addr HeapObj.Kind.STRING -> (i : Bits64) -> Heap.Op Heap Bits64
 decodeAt s i = do
   b0 <- byteAt s i
   if b0 < 0x80 then Heap.pure b0 else
@@ -118,7 +116,7 @@ decodeAt s i = do
             .|. Bits.shiftL (b2 .&. 0x3F) 6 .|. b3 .&. 0x3F)
 
 ||| The character `c` written at `j`, its `charBytes c` bytes.
-encodeAt : Memory.Addr Compiler.Native.HeapObject.Kind.STRING -> (j, c : Bits64) -> Heap.Op Heap ()
+encodeAt : Memory.Addr HeapObj.Kind.STRING -> (j, c : Bits64) -> Heap.Op Heap ()
 encodeAt s j c =
   if c < 0x80 then setByte s j c
   else if c < 0x800 then do
@@ -140,7 +138,7 @@ encodeAt s j c =
 ||| The characters from byte `i` to `end`: the bytes that are not a
 ||| continuation byte, `10xxxxxx`. Ends: `i` climbs to `end`.
 covering
-countChars : Memory.Addr Compiler.Native.HeapObject.Kind.STRING -> (i, end, count : Bits64) -> Heap.Op Heap Bits64
+countChars : Memory.Addr HeapObj.Kind.STRING -> (i, end, count : Bits64) -> Heap.Op Heap Bits64
 countChars s i end count =
   if i >= end then Heap.pure count else do
     b <- byteAt s i
@@ -148,7 +146,7 @@ countChars s i end count =
 
 ||| The byte offset of the `n`th character of a string of the header.
 covering
-offsetOf : Memory.Addr Compiler.Native.HeapObject.Kind.STRING -> (header, n : Bits64) -> Heap.Op Heap Bits64
+offsetOf : Memory.Addr HeapObj.Kind.STRING -> (header, n : Bits64) -> Heap.Op Heap Bits64
 offsetOf s h n =
   if asciiOf h then Heap.pure (if n > bytesOf h then bytesOf h else n)
   else skipChars s 0 (bytesOf h) n
@@ -156,7 +154,7 @@ offsetOf s h n =
     ||| The byte offset `n` characters after `i`, or `end` if there are fewer.
     ||| Ends: `n` falls to 0, or `i` climbs to `end`.
     covering
-    skipChars : Memory.Addr Compiler.Native.HeapObject.Kind.STRING -> (i, end, n : Bits64) -> Heap.Op Heap Bits64
+    skipChars : Memory.Addr HeapObj.Kind.STRING -> (i, end, n : Bits64) -> Heap.Op Heap Bits64
     skipChars s i end n =
       if n == 0 || i >= end then Heap.pure (if i > end then end else i) else do
         b <- byteAt s i
@@ -165,8 +163,8 @@ offsetOf s h n =
 ||| Copy `n` bytes from `i` in one string to `j` in another; the OR of the
 ||| bytes, whose top bit says whether any is not ASCII. Ends: `n` falls to 0.
 covering
-copyBytes : (from : Memory.Addr Compiler.Native.HeapObject.Kind.STRING) -> (i : Bits64) ->
-            (to : Memory.Addr Compiler.Native.HeapObject.Kind.STRING) -> (j, n, seen : Bits64) -> Heap.Op Heap Bits64
+copyBytes : (from : Memory.Addr HeapObj.Kind.STRING) -> (i : Bits64) -> (to : Memory.Addr HeapObj.Kind.STRING) ->
+            (j, n, seen : Bits64) -> Heap.Op Heap Bits64
 copyBytes from i to j n seen =
   if n == 0 then Heap.pure seen else do
     b <- byteAt from i
@@ -176,8 +174,7 @@ copyBytes from i to j n seen =
 ||| The bytes from `from` to `to` of a string, as a new string: ASCII if the
 ||| string is, or if the bytes copied are.
 covering
-slice : Memory.Addr Compiler.Native.HeapObject.Kind.STRING -> (header, from, to : Bits64) ->
-        Heap.Op Heap (Flat.Uniform String)
+slice : Memory.Addr HeapObj.Kind.STRING -> (header, from, to : Bits64) -> Heap.Op Heap (Flat.Uniform String)
 slice s h from to = do
   let n = to - from
   r <- newString n
@@ -272,8 +269,8 @@ reverse str = do
     ||| The characters of a string from byte `i` to `n`, each written at the
     ||| mirror of its place in `r`. Ends: `i` climbs to `n`.
     covering
-    reverseFrom : Memory.Addr Compiler.Native.HeapObject.Kind.STRING -> (i, n : Bits64) ->
-                  Memory.Addr Compiler.Native.HeapObject.Kind.STRING -> Heap.Op Heap ()
+    reverseFrom : Memory.Addr HeapObj.Kind.STRING -> (i, n : Bits64) -> Memory.Addr HeapObj.Kind.STRING ->
+                  Heap.Op Heap ()
     reverseFrom s i n r =
       if i >= n then Heap.pure () else do
         b <- byteAt s i
@@ -315,8 +312,8 @@ compare x y = do
     ||| Compare two strings' bytes from `i`: the first difference, else the
     ||| shorter first. Ends: `i` climbs to the shorter's length.
     covering
-    compareFrom : Memory.Addr Compiler.Native.HeapObject.Kind.STRING ->
-                  Memory.Addr Compiler.Native.HeapObject.Kind.STRING -> (i, na, nb : Bits64) -> Heap.Op Heap Int
+    compareFrom : Memory.Addr HeapObj.Kind.STRING -> Memory.Addr HeapObj.Kind.STRING -> (i, na, nb : Bits64) ->
+                  Heap.Op Heap Int
     compareFrom a b i na nb =
       if i >= na || i >= nb then Heap.pure (if na < nb then -1 else if na > nb then 1 else 0) else do
         p <- byteAt a i
@@ -330,10 +327,10 @@ compare x y = do
 -- A character in a field is its fixnum, a string or a list a pointer.
 
 ||| Whether a list's cell is `[]`.
-isNil : Memory.Addr Compiler.Native.HeapObject.Kind.CON -> Heap.Op Heap Bool
+isNil : Memory.Addr HeapObj.Kind.CON -> Heap.Op Heap Bool
 isNil cell = do
   h <- Memory.load64 cell 0
-  Heap.pure (Object.part Compiler.Native.HeapObject.Header.ConId h == 0)
+  Heap.pure (Object.part HeapObj.Header.ConId h == 0)
 
 %cg native flat Runtime.String.Utf8.fastPack
 ||| `fastPack`: a list of characters as a string.
@@ -354,27 +351,25 @@ fastPack xs = let (Heap.MkHeap # r) = packOp xs Heap.MkHeap in r
         ||| The bytes the characters of a list take, and the OR of their code
         ||| points. Ends: the list is finite, each step one cell on.
         covering
-        packMeasure : Memory.Addr Compiler.Native.HeapObject.Kind.CON -> (bytes, seen : Bits64) ->
-                      Heap.Op Heap (Bits64, Bits64)
+        packMeasure : Memory.Addr HeapObj.Kind.CON -> (bytes, seen : Bits64) -> Heap.Op Heap (Bits64, Bits64)
         packMeasure cell bytes seen = do
           end <- isNil cell
           if end then Heap.pure (bytes, seen) else do
             c <- Memory.load64 cell 8
             t <- Memory.load64 cell 16
-            next <- Memory.fieldObject {k = Compiler.Native.HeapObject.Kind.CON} t
+            next <- Memory.fieldObject {k = HeapObj.Kind.CON} t
             let ch = Memory.fixnumOf c
             packMeasure next (bytes + charBytes ch) (seen .|. ch)
 
         ||| The characters of a list written from `j`. Ends: as `packMeasure`.
         covering
-        packWrite : Memory.Addr Compiler.Native.HeapObject.Kind.CON ->
-                    Memory.Addr Compiler.Native.HeapObject.Kind.STRING -> (j : Bits64) -> Heap.Op Heap ()
+        packWrite : Memory.Addr HeapObj.Kind.CON -> Memory.Addr HeapObj.Kind.STRING -> (j : Bits64) -> Heap.Op Heap ()
         packWrite cell s j = do
           end <- isNil cell
           if end then Heap.pure () else do
             c <- Memory.load64 cell 8
             t <- Memory.load64 cell 16
-            next <- Memory.fieldObject {k = Compiler.Native.HeapObject.Kind.CON} t
+            next <- Memory.fieldObject {k = HeapObj.Kind.CON} t
             let ch = Memory.fixnumOf c
             encodeAt s j ch
             packWrite next s (j + charBytes ch)
@@ -393,39 +388,37 @@ fastUnpack str = let (Heap.MkHeap # r) = unpackOp str Heap.MkHeap in r
       h <- headerOf s
       n <- if asciiOf h then Heap.pure (bytesOf h) else countChars s 0 (bytesOf h) 0
       block <- Space.allocate (8 + 24 * n)
-      Memory.store64 (Memory.fromWord {k = Compiler.Native.HeapObject.Kind.CON} block) 0 nilHeader
+      Memory.store64 (Memory.fromWord {k = HeapObj.Kind.CON} block) 0 nilHeader
       unpackFill s 0 0 n block
       Memory.conValue (Memory.fromWord (if n == 0 then block else block + 8))
       where
         ||| The header of a list's `[]`.
         nilHeader : Bits64
-        nilHeader = Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.CON
+        nilHeader = HeapObj.Kind.kindId HeapObj.Kind.CON
 
         ||| The cells of a list of `n` characters, one block: `[]` first, then each
         ||| `(::)`, 24 bytes, its tail the next, the last's tail the `[]`. Fills the
         ||| `k`th cell on from byte `i` of the string. Ends: `k` climbs to `n`.
         covering
-        unpackFill : Memory.Addr Compiler.Native.HeapObject.Kind.STRING -> (i, k, n : Bits64) -> (block : Bits64) ->
-                     Heap.Op Heap ()
+        unpackFill : Memory.Addr HeapObj.Kind.STRING -> (i, k, n : Bits64) -> (block : Bits64) -> Heap.Op Heap ()
         unpackFill s i k n block =
           if k >= n then Heap.pure () else do
             c <- decodeAt s i
             b <- byteAt s i
-            let cell = Memory.fromWord {k = Compiler.Native.HeapObject.Kind.CON} (block + 8 + 24 * k)
+            let cell = Memory.fromWord {k = HeapObj.Kind.CON} (block + 8 + 24 * k)
             Memory.store64 cell 0 consHeader
             w <- Memory.fixnumWord c
             Memory.store64 cell 8 w
             tail <- Memory.fieldPointer
-              (Memory.fromWord {k = Compiler.Native.HeapObject.Kind.CON}
-               (if k + 1 == n then block else block + 8 + 24 * (k + 1)))
+              (Memory.fromWord {k = HeapObj.Kind.CON} (if k + 1 == n then block else block + 8 + 24 * (k + 1)))
             Memory.store64 cell 16 tail
             unpackFill s (i + seqLength b) (k + 1) n block
           where
             ||| The header of a list's `(::)`.
             consHeader : Bits64
-            consHeader = Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.CON
-              + Bits.shiftL 1 (fst (Compiler.Native.HeapObject.Header.place Compiler.Native.HeapObject.Header.ConId))
-              + Bits.shiftL 2 (fst (Compiler.Native.HeapObject.Header.place Compiler.Native.HeapObject.Header.ConArity))
+            consHeader = HeapObj.Kind.kindId HeapObj.Kind.CON
+              + Bits.shiftL 1 (fst (HeapObj.Header.place HeapObj.Header.ConId))
+              + Bits.shiftL 2 (fst (HeapObj.Header.place HeapObj.Header.ConArity))
 
 %cg native flat Runtime.String.Utf8.fastConcat
 ||| `fastConcat`: a list of strings as one.
@@ -446,29 +439,28 @@ fastConcat xs = let (Heap.MkHeap # r) = concatOp xs Heap.MkHeap in r
         ||| The bytes of a list of strings, and whether all are ASCII. Ends: the list
         ||| is finite.
         covering
-        concatMeasure : Memory.Addr Compiler.Native.HeapObject.Kind.CON -> (bytes : Bits64) -> (ascii : Bool) ->
+        concatMeasure : Memory.Addr HeapObj.Kind.CON -> (bytes : Bits64) -> (ascii : Bool) ->
                         Heap.Op Heap (Bits64, Bool)
         concatMeasure cell bytes ascii = do
           end <- isNil cell
           if end then Heap.pure (bytes, ascii) else do
             w <- Memory.load64 cell 8
             t <- Memory.load64 cell 16
-            s <- Memory.fieldObject {k = Compiler.Native.HeapObject.Kind.STRING} w
+            s <- Memory.fieldObject {k = HeapObj.Kind.STRING} w
             h <- headerOf s
-            next <- Memory.fieldObject {k = Compiler.Native.HeapObject.Kind.CON} t
+            next <- Memory.fieldObject {k = HeapObj.Kind.CON} t
             concatMeasure next (bytes + bytesOf h) (ascii && asciiOf h)
 
         ||| The strings of a list copied from `j`. Ends: as `concatMeasure`.
         covering
-        concatWrite : Memory.Addr Compiler.Native.HeapObject.Kind.CON ->
-                      Memory.Addr Compiler.Native.HeapObject.Kind.STRING -> (j : Bits64) -> Heap.Op Heap ()
+        concatWrite : Memory.Addr HeapObj.Kind.CON -> Memory.Addr HeapObj.Kind.STRING -> (j : Bits64) -> Heap.Op Heap ()
         concatWrite cell r j = do
           end <- isNil cell
           if end then Heap.pure () else do
             w <- Memory.load64 cell 8
             t <- Memory.load64 cell 16
-            s <- Memory.fieldObject {k = Compiler.Native.HeapObject.Kind.STRING} w
+            s <- Memory.fieldObject {k = HeapObj.Kind.STRING} w
             h <- headerOf s
             _ <- copyBytes s 0 r j (bytesOf h) 0
-            next <- Memory.fieldObject {k = Compiler.Native.HeapObject.Kind.CON} t
+            next <- Memory.fieldObject {k = HeapObj.Kind.CON} t
             concatWrite next r (j + bytesOf h)

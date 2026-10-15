@@ -24,8 +24,6 @@ import Compiler.Native.TermIR.OvOp
 import Compiler.Native.TermIR.Sig
 import Compiler.Native.TermIR.Var
 
-import Compiler.Native.HeapObject.Enc as HeapObject
-import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.Conv as IRCommon
 import Compiler.Native.IRCommon.Op
 import Compiler.Native.IRCommon.Ty as IRCommon
@@ -36,6 +34,8 @@ import Data.List.Quantifiers
 import Data.So
 import Data.Vect
 import Decidable.Equality
+import HeapObj.Enc as HeapObj
+import HeapObj.ValEnc
 
 %default total
 
@@ -52,13 +52,13 @@ data PBody : Decls enc -> IRCommon.Conv enc -> Bool -> (v : IRCommon.Ty enc -> T
   PJump : l ps -> All (Opnd v) ps -> PBody d c m v l
   PBranch : {auto 0 int : IsInt t} -> IRCommon.Op.Rel -> Opnd v t -> Opnd v t -> (yes, no : PBody d c m v l) ->
             PBody d c m v l
-  PIfFixnums : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} ->
+  PIfFixnums : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} ->
                {n : Nat} -> Vect (S n) (Opnd v IRCommon.Ty.Val) ->
                (All v (replicate (S n) (IRCommon.Ty.Fix {enc})) -> PBody d c m v l) -> PBody d c m v l ->
                  PBody d c m v l
   PArithOv : {t : IRCommon.Ty enc} -> {auto 0 int : IsInt t} -> OvOp -> Opnd v t -> Opnd v t ->
              (v t -> PBody d c m v l) -> PBody d c m v l -> PBody d c m v l
-  PTagOv : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} ->
+  PTagOv : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} ->
            Opnd v IRCommon.Ty.W64 -> (v (IRCommon.Ty.Fix {enc}) -> PBody d c m v l) -> PBody d c m v l ->
              PBody d c m v l
   PSwitch : {auto 0 int : IsInt t} -> Opnd v t -> (keys : List Int64) ->
@@ -234,7 +234,7 @@ leaveIf r x y out = MkBuild (\k => PBranch r x y (finish out) (k ()))
 ||| An immediate is a fixnum (the erased value is fixnum 0), so only the
 ||| variables are tested, and with none the yes branch is taken outright.
 export
-ifFixnums : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} -> {n : Nat} -> Vect (S n) (Opnd v IRCommon.Ty.Val) ->
+ifFixnums : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> {n : Nat} -> Vect (S n) (Opnd v IRCommon.Ty.Val) ->
             (All (Opnd v) (replicate (S n) (IRCommon.Ty.Fix {enc})) -> End d c m v l) -> End d c m v l -> End d c m v l
 ifFixnums vs yes no = case variables vs of
     [] => yes (fixes (fill vs []))
@@ -275,7 +275,7 @@ arithOv o x y ok ovf = MkBuild (\_ => PArithOv o x y (finish . ok . Opnd.V) (fin
 
 ||| The fixnum of a word, with the branch for a word out of range.
 export
-tagOv : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} -> Opnd v IRCommon.Ty.W64 ->
+tagOv : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Opnd v IRCommon.Ty.W64 ->
         (Opnd v (IRCommon.Ty.Fix {enc}) -> End d c m v l) -> End d c m v l -> End d c m v l
 tagOv x ok ovf = MkBuild (\_ => PTagOv x (finish . ok . Opnd.V) (finish ovf))
 

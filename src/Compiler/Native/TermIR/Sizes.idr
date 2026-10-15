@@ -6,35 +6,35 @@ module Compiler.Native.TermIR.Sizes
 
 import Compiler.Native.TermIR.Opnd
 
-import Compiler.Native.HeapObject.Enc as HeapObject
-import Compiler.Native.HeapObject.Header
-import Compiler.Native.HeapObject.Kind as HeapObject
 import Compiler.Native.IRCommon.Ty as IRCommon
+import HeapObj.Enc as HeapObj
+import HeapObj.Header
+import HeapObj.Kind as HeapObj
 
 %default total
 
 ||| The parts that alone decide an object's size.
 public export
-data Sizes : HeapObject.Header.HeaderPart k -> Type where
-  SizesArray : Sizes HeapObject.Header.ArrayElems
-  SizesString : Sizes HeapObject.Header.StringBytes
-  SizesStringChars : Sizes HeapObject.Header.StringChars
-  SizesBuffer : Sizes HeapObject.Header.BufferBytes
+data Sizes : HeapObj.Header.HeaderPart k -> Type where
+  SizesArray : Sizes HeapObj.Header.ArrayElems
+  SizesString : Sizes HeapObj.Header.StringBytes
+  SizesStringChars : Sizes HeapObj.Header.StringChars
+  SizesBuffer : Sizes HeapObj.Header.BufferBytes
 
 ||| What fills a new object of a run-time size, by the part that sizes it: a
 ||| `Val` for every element of an `ARRAY`, which the collector scans;
 ||| nothing for the raw kinds, whose bytes are left as they are. A part that
 ||| sizes nothing (`Sizes` has no proof for it) takes nothing.
 public export
-Fill : (IRCommon.Ty enc -> Type) -> HeapObject.Header.HeaderPart k -> Type
-Fill var HeapObject.Header.ArrayElems = Opnd var IRCommon.Ty.Val
-Fill var HeapObject.Header.StringAscii = ()
-Fill var HeapObject.Header.StringBytes = ()
-Fill var HeapObject.Header.StringChars = ()
-Fill var HeapObject.Header.BufferBytes = ()
-Fill var HeapObject.Header.ConId = ()
-Fill var HeapObject.Header.ConArity = ()
-Fill var HeapObject.Header.ClosureArity = ()
-Fill var HeapObject.Header.ClosureFilled = ()
-Fill var HeapObject.Header.BignumNegative = ()
-Fill var HeapObject.Header.BignumWords = ()
+Fill : (IRCommon.Ty enc -> Type) -> HeapObj.Header.HeaderPart k -> Type
+Fill var HeapObj.Header.ArrayElems = Opnd var IRCommon.Ty.Val
+Fill var HeapObj.Header.StringAscii = ()
+Fill var HeapObj.Header.StringBytes = ()
+Fill var HeapObj.Header.StringChars = ()
+Fill var HeapObj.Header.BufferBytes = ()
+Fill var HeapObj.Header.ConId = ()
+Fill var HeapObj.Header.ConArity = ()
+Fill var HeapObj.Header.ClosureArity = ()
+Fill var HeapObj.Header.ClosureFilled = ()
+Fill var HeapObj.Header.BignumNegative = ()
+Fill var HeapObj.Header.BignumWords = ()

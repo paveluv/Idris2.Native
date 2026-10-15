@@ -14,14 +14,14 @@
 module Gen
 
 import Compiler.Native.ELF
-import Compiler.Native.HeapObject.Enc
-import Compiler.Native.HeapObject.Header
-import Compiler.Native.HeapObject.Kind
-import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.Link
 import Compiler.Native.Linkage.Sym
 import Compiler.Native.X86.Asm
 import Compiler.Native.X86.Encode
+import HeapObj.Enc
+import HeapObj.Header
+import HeapObj.Kind
+import HeapObj.ValEnc
 import System.File
 
 ||| The word of fixnum n, under fixnum tag 1.

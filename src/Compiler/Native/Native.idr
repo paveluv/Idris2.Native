@@ -17,10 +17,6 @@
 module Compiler.Native.Native
 
 import Compiler.Native.ELF
-import Compiler.Native.HeapObject.BignumEnc as HeapObject
-import Compiler.Native.HeapObject.Enc as HeapObject
-import Compiler.Native.HeapObject.StringEnc as HeapObject
-import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.Ty as IRCommon
 import Compiler.Native.Link
 import Compiler.Native.Linkage.ForeignFunctions
@@ -70,6 +66,10 @@ import Flat.Exp
 import Flat.Marked
 import Flat.Problem
 import Flat.Translate
+import HeapObj.BignumEnc as HeapObj
+import HeapObj.Enc as HeapObj
+import HeapObj.StringEnc as HeapObj
+import HeapObj.ValEnc
 import Idris.Package.Types
 import Idris.ProcessIdr
 import Idris.SetOptions
@@ -102,9 +102,9 @@ import System.File.ReadWrite
 ||| * `dump-foreign=<file>`: write the foreign functions and externs of the
 |||   program's libraries, each with how this backend implements it.
 ||| * `val-encoding=tag1`, `tag0` or `nofixnums`: how a uniform value is a word
-|||   (`Compiler.Native.HeapObject.ValEnc`): fixnum tag 1, the
-|||   default; fixnum tag 0; or no fixnums, every integer boxed, which is not
-|||   implemented yet and so is refused.
+|||   (`HeapObj.ValEnc`): fixnum tag 1, the default; fixnum tag 0; or no
+|||   fixnums, every integer boxed, which is not implemented yet and so is
+|||   refused.
 ||| * `string-encoding=utf8` or `utf32`: how a `String` is laid out
 |||   (`StringEnc`): UTF-8 with the ASCII bit, the default, or UTF-32,
 |||   which is not implemented yet and so is refused.
@@ -118,7 +118,7 @@ record Settings where
   dumpIr : Maybe String
   dumpAsm : Maybe String
   dumpForeign : Maybe String
-  encodings : HeapObject.Enc
+  encodings : HeapObj.Enc
   platform : Platform
 
 export
@@ -140,11 +140,11 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
       whenJust settings.dumpForeign $ \f => dumpForeign settings.encodings f
       cdata <- phase "Idris's passes" (getCompileData False VMCode tm)
       image <- case settings.encodings of
-        HeapObject.Enc.MkEnc HeapObject.ValEnc.FixnumTag1 b s =>
-          pipeline (HeapObject.Enc.MkEnc HeapObject.ValEnc.FixnumTag1 b s) settings table (vmcode cdata)
-        HeapObject.Enc.MkEnc HeapObject.ValEnc.FixnumTag0 b s =>
-          pipeline (HeapObject.Enc.MkEnc HeapObject.ValEnc.FixnumTag0 b s) settings table (vmcode cdata)
-        HeapObject.Enc.MkEnc HeapObject.ValEnc.NoFixnums _ _ =>
+        HeapObj.Enc.MkEnc HeapObj.ValEnc.FixnumTag1 b s =>
+          pipeline (HeapObj.Enc.MkEnc HeapObj.ValEnc.FixnumTag1 b s) settings table (vmcode cdata)
+        HeapObj.Enc.MkEnc HeapObj.ValEnc.FixnumTag0 b s =>
+          pipeline (HeapObj.Enc.MkEnc HeapObj.ValEnc.FixnumTag0 b s) settings table (vmcode cdata)
+        HeapObj.Enc.MkEnc HeapObj.ValEnc.NoFixnums _ _ =>
           throw (GenericMsg EmptyFC "native: the encoding nofixnums is not implemented")
       coreLift_ $ mkdirAll outputDir
       let outexec = outputDir </> outfile
@@ -155,7 +155,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
         parseSettings : List String -> Either String Settings
         parseSettings =
           foldlM setting
-            (MkSettings Link.windowBytes Nothing Nothing Nothing Nothing HeapObject.Enc.defaultEnc
+            (MkSettings Link.windowBytes Nothing Nothing Nothing Nothing HeapObj.Enc.defaultEnc
              Platform.defaultPlatform)
           where
             setting : Settings -> String -> Either String Settings
@@ -172,11 +172,11 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
               ["dump-ir", path] => Right ({ dumpIr := Just path } o)
               ["dump-asm", path] => Right ({ dumpAsm := Just path } o)
               ["dump-foreign", path] => Right ({ dumpForeign := Just path } o)
-              ["val-encoding", "tag1"] => Right ({ encodings.val := HeapObject.ValEnc.FixnumTag1 } o)
-              ["val-encoding", "tag0"] => Right ({ encodings.val := HeapObject.ValEnc.FixnumTag0 } o)
+              ["val-encoding", "tag1"] => Right ({ encodings.val := HeapObj.ValEnc.FixnumTag1 } o)
+              ["val-encoding", "tag0"] => Right ({ encodings.val := HeapObj.ValEnc.FixnumTag0 } o)
               ["val-encoding", "nofixnums"] => Left "the encoding nofixnums, every integer boxed, is not implemented"
               ["val-encoding", v] => Left ("val-encoding= takes tag1, tag0 or nofixnums, not " ++ show v)
-              ["string-encoding", "utf8"] => Right ({ encodings.string := HeapObject.StringEnc.Utf8 } o)
+              ["string-encoding", "utf8"] => Right ({ encodings.string := HeapObj.StringEnc.Utf8 } o)
               ["string-encoding", "utf32"] => Left "the string encoding utf32 is not implemented"
               ["string-encoding", v] => Left ("string-encoding= takes utf8 or utf32, not " ++ show v)
               ["target", v] => case Platform.parsePlatform v of
@@ -192,7 +192,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
         ||| registers, the token among them taking none, and whose result lays out
         ||| as the declared ones. What differs is reported; one the runtime does not
         ||| declare is not missed.
-        checkExterns : (enc : HeapObject.Enc) -> Core (List String)
+        checkExterns : (enc : HeapObj.Enc) -> Core (List String)
         checkExterns enc
             = catMaybes <$> traverse one
               ([(i.name, "an inline extern", i.params, i.results) | i <- Linkage.InlineExtern.inlineExterns {enc}]
@@ -234,11 +234,10 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
         ||| Load the runtime's modules into the context: the module `Runtime`, which
         ||| imports the generic ones, the platform's module, which implements the OS
         ||| services, and the string encoding's, which nothing generic imports
-        ||| either, from the installed
-        ||| package, with the backend's own package, whose
-        ||| heap-object model (the modules of `Compiler.Native.HeapObject`) the
+        ||| either, from the installed package, with the backend's own
+        ||| package, whose heap-object model (the modules of `HeapObj`) the
         ||| runtime shares.
-        loadRuntime : Platform -> HeapObject.Enc -> Core ()
+        loadRuntime : Platform -> HeapObj.Enc -> Core ()
         loadRuntime platform enc = do
           addPkgDir "idris2-native-runtime" anyBounds
           addPkgDir "idris2-native" anyBounds
@@ -252,7 +251,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
         ||| lowering inline (`lowered`), or not yet (`missing`). The runtime's own
         ||| externs are its inline externs and services, not the libraries', and are left
         ||| out.
-        dumpForeign : HeapObject.Enc -> String -> Core ()
+        dumpForeign : HeapObj.Enc -> String -> Core ()
         dumpForeign enc path = do
           defs <- get Ctxt
           all <- traverse (\n => (n,) <$> lookupCtxtExact n (gamma defs)) !(allNames (gamma defs))
@@ -313,7 +312,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
 
         ||| From VMCode to the image, under encodings whose value encoding has
         ||| fixnums: produce the term, allocate its registers, render, link.
-        pipeline : (enc : HeapObject.Enc) -> {auto 0 _ : HeapObject.ValEnc.HasFixnums enc.val} ->
+        pipeline : (enc : HeapObj.Enc) -> {auto 0 _ : HeapObj.ValEnc.HasFixnums enc.val} ->
                    Settings -> NameMap Flat.Exp.FlatDef -> List (Name, VMDef) -> Core ELF.Image
         pipeline enc settings table defs = do
           (forms, shapes) <- phase "flat inputs" $
@@ -378,7 +377,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
 
             ||| The runtime's function for a foreign function of the program it
             ||| implements.
-            foreignRoot : {enc' : HeapObject.Enc} -> (Name, VMDef) -> Maybe Name
+            foreignRoot : {enc' : HeapObj.Enc} -> (Name, VMDef) -> Maybe Name
             foreignRoot (n, MkVMForeign {}) = lookup n (Linkage.ForeignFunctions.foreignFunctions enc')
             foreignRoot _ = Nothing
 

@@ -7,31 +7,30 @@
 ||| well-formed under either.
 module Compiler.Native.Strings
 
-import Compiler.Native.HeapObject.BignumEnc as HeapObject
-import Compiler.Native.HeapObject.Enc as HeapObject
-import Compiler.Native.HeapObject.Header as HeapObject
-import Compiler.Native.HeapObject.Kind
-import Compiler.Native.HeapObject.StringEnc
-import Compiler.Native.HeapObject.ValEnc as HeapObject
-
 import Data.List
 import Data.Vect
+import HeapObj.BignumEnc as HeapObj
+import HeapObj.Enc as HeapObj
+import HeapObj.Header as HeapObj
+import HeapObj.Kind
+import HeapObj.StringEnc
+import HeapObj.ValEnc as HeapObj
 
 %default total
 
 ||| The static object of a literal under the program's encodings: its header
 ||| and the words after it.
 export
-literal : (enc : HeapObject.Enc) -> String ->
-          Maybe (h : HeapObject.Header enc HeapObject.Kind.STRING ** Vect (HeapObject.Header.fieldWords h) Int64)
+literal : (enc : HeapObj.Enc) -> String ->
+          Maybe (h : HeapObj.Header enc HeapObj.Kind.STRING ** Vect (HeapObj.Header.fieldWords h) Int64)
 literal enc s = case enc of
-  HeapObject.Enc.MkEnc _ _ HeapObject.StringEnc.Utf8 =>
+  HeapObj.Enc.MkEnc _ _ HeapObj.StringEnc.Utf8 =>
                    let bs = encodeAll utf8 (unpack s)
-                       h = HeapObject.Header.StringH (all (< 0x80) bs) (length bs)
+                       h = HeapObj.Header.StringH (all (< 0x80) bs) (length bs)
                    in map (\ws => (h ** ws)) (toVect _ (words bs))
-  HeapObject.Enc.MkEnc _ _ HeapObject.StringEnc.Utf32 =>
+  HeapObj.Enc.MkEnc _ _ HeapObj.StringEnc.Utf32 =>
                    let cs = unpack s
-                       h = HeapObject.Header.StringCharsH (length cs)
+                       h = HeapObj.Header.StringCharsH (length cs)
                    in map (\ws => (h ** ws)) (toVect _ (words (encodeAll utf32 cs)))
   where
     ||| The UTF-8 bytes of a character, shortest form.

@@ -8,7 +8,7 @@ module Compiler.Native.LocatedIR.Cont
 import Compiler.Native.LocatedIR.Label
 import Compiler.Native.LocatedIR.Reg
 
-import Compiler.Native.HeapObject.Enc as HeapObject
+import HeapObj.Enc as HeapObj
 
 %default total
 
@@ -18,7 +18,7 @@ import Compiler.Native.HeapObject.Enc as HeapObject
 ||| the rendering's business: under the heap lowering they become the fields
 ||| of a `CONT`, under the stack lowering slots of a frame.
 public export
-record Cont (enc : HeapObject.Enc) where
+record Cont (enc : HeapObj.Enc) where
   constructor MkCont
   resume : Label
   live : List (Reg enc)

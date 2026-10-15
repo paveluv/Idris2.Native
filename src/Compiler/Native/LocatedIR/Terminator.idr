@@ -9,23 +9,23 @@ import Compiler.Native.LocatedIR.Label
 import Compiler.Native.LocatedIR.Opnd
 import Compiler.Native.LocatedIR.Reg
 
-import Compiler.Native.HeapObject.Enc as HeapObject
-import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.Op
 import Core.Name
+import HeapObj.Enc as HeapObj
+import HeapObj.ValEnc
 
 %default total
 
 ||| How a block ends; every block ends in exactly one terminator. Which ones a
 ||| function may use depends on its convention (`Conv`).
 public export
-data Terminator : HeapObject.Enc -> Type where
+data Terminator : HeapObj.Enc -> Type where
   ||| Continue at the block.
   Jump        : Label -> Terminator enc
   ||| Branch on whether every one of the `Val`s is a fixnum, that is, on their
   ||| fixnum tags; the yes branch may narrow them to `Fix`es. The renderings
   ||| test the tags of several at once.
-  IfFixnums    : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} -> List (Reg enc) -> (ifYes, ifNo : Label) ->
+  IfFixnums    : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> List (Reg enc) -> (ifYes, ifNo : Label) ->
     Terminator enc
   ||| Compare and branch, with the operand types of `Cmp`. Renderings fuse
   ||| the comparison and the branch.

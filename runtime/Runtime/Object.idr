@@ -2,18 +2,18 @@
 ||| its header, or, for a continuation, the address of the code that resumes
 ||| it; from that word the collector learns the object's kind, its size and
 ||| which of its words hold values it must follow. These are the rules of
-||| `Compiler.Native.HeapObject.Header`, restated over words for code that cannot
-||| hold a `Header`; the test `object001` keeps the two in step.
+||| `HeapObj.Header`, restated over words for code that cannot hold a
+||| `Header`; the test `object001` keeps the two in step.
 module Runtime.Object
 
 -- lint: allow public-import: the flat translation reaches through this module
 -- (checking an importer's flat functions, it reaches this module's bodies,
 -- which use it, so it is loaded wherever this module is)
-import public Compiler.Native.HeapObject.Header
+import public HeapObj.Header
 
 import Runtime.Bits
 
-import Compiler.Native.HeapObject.Kind as Compiler.Native.HeapObject
+import HeapObj.Kind as HeapObj
 
 %default total
 
@@ -45,10 +45,8 @@ forwardedTo h = Bits.shiftR h 4
 ||| A part of a header word, where `place` puts it. Inline, so that at a
 ||| part written in the code the shift and the mask are constants.
 export %inline
-part : Compiler.Native.HeapObject.Header.HeaderPart k -> (header : Bits64) -> Bits64
-part p h =
-  Bits.shiftR h (fst (Compiler.Native.HeapObject.Header.place p)) .&.
-    (Bits.shiftL 1 (snd (Compiler.Native.HeapObject.Header.place p)) - 1)
+part : HeapObj.Header.HeaderPart k -> (header : Bits64) -> Bits64
+part p h = Bits.shiftR h (fst (HeapObj.Header.place p)) .&. (Bits.shiftL 1 (snd (HeapObj.Header.place p)) - 1)
 
 ||| The words `bytes` take, rounded up.
 export %inline
@@ -60,22 +58,16 @@ byteWords b = Bits.shiftR (b + 7) 3
 export
 objectWords : (id, header : Bits64) -> Bits64
 objectWords id h =
-  if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.CON then 1
-    + part Compiler.Native.HeapObject.Header.ConArity h
-  else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.CLOSURE then 2
-    + part Compiler.Native.HeapObject.Header.ClosureFilled h
-  else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.INT64 then 2
-  else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.DOUBLE then 2
-  else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.STRING then 1
-    + byteWords (part Compiler.Native.HeapObject.Header.StringBytes h)
-  else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.BIGNUM then 1
-    + part Compiler.Native.HeapObject.Header.BignumWords h
-  else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.IOREF then 2
-  else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.ARRAY then 1
-    + part Compiler.Native.HeapObject.Header.ArrayElems h
-  else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.BUFFER then 1
-    + byteWords (part Compiler.Native.HeapObject.Header.BufferBytes h)
-  else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.PTR then 2
+  if id == HeapObj.Kind.kindId HeapObj.Kind.CON then 1 + part HeapObj.Header.ConArity h
+  else if id == HeapObj.Kind.kindId HeapObj.Kind.CLOSURE then 2 + part HeapObj.Header.ClosureFilled h
+  else if id == HeapObj.Kind.kindId HeapObj.Kind.INT64 then 2
+  else if id == HeapObj.Kind.kindId HeapObj.Kind.DOUBLE then 2
+  else if id == HeapObj.Kind.kindId HeapObj.Kind.STRING then 1 + byteWords (part HeapObj.Header.StringBytes h)
+  else if id == HeapObj.Kind.kindId HeapObj.Kind.BIGNUM then 1 + part HeapObj.Header.BignumWords h
+  else if id == HeapObj.Kind.kindId HeapObj.Kind.IOREF then 2
+  else if id == HeapObj.Kind.kindId HeapObj.Kind.ARRAY then 1 + part HeapObj.Header.ArrayElems h
+  else if id == HeapObj.Kind.kindId HeapObj.Kind.BUFFER then 1 + byteWords (part HeapObj.Header.BufferBytes h)
+  else if id == HeapObj.Kind.kindId HeapObj.Kind.PTR then 2
   else 0
 
 ||| The words of an object with a header that hold values: the first, and
@@ -83,13 +75,10 @@ objectWords id h =
 export
 scannedWords : (id, header : Bits64) -> (Bits64, Bits64)
 scannedWords id h =
-  if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.CON
-    then (1, part Compiler.Native.HeapObject.Header.ConArity h)
-  else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.CLOSURE
-    then (2, part Compiler.Native.HeapObject.Header.ClosureFilled h)
-  else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.IOREF then (1, 1)
-  else if id == Compiler.Native.HeapObject.Kind.kindId Compiler.Native.HeapObject.Kind.ARRAY
-    then (1, part Compiler.Native.HeapObject.Header.ArrayElems h)
+  if id == HeapObj.Kind.kindId HeapObj.Kind.CON then (1, part HeapObj.Header.ConArity h)
+  else if id == HeapObj.Kind.kindId HeapObj.Kind.CLOSURE then (2, part HeapObj.Header.ClosureFilled h)
+  else if id == HeapObj.Kind.kindId HeapObj.Kind.IOREF then (1, 1)
+  else if id == HeapObj.Kind.kindId HeapObj.Kind.ARRAY then (1, part HeapObj.Header.ArrayElems h)
   else (1, 0)
 
 ||| A continuation's layout word, the word before the code that resumes

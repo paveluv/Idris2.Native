@@ -3,16 +3,16 @@
 ||| Part of the term IR (`Compiler.Native.TermIR.Program` says what it is).
 module Compiler.Native.TermIR.Sig
 
-import Compiler.Native.HeapObject.Enc as HeapObject
 import Compiler.Native.IRCommon.Conv as IRCommon
 import Compiler.Native.IRCommon.Ty as IRCommon
 import Core.Name
+import HeapObj.Enc as HeapObj
 
 %default total
 
 ||| What a caller knows of a function.
 public export
-record Sig (enc : HeapObject.Enc) where
+record Sig (enc : HeapObj.Enc) where
   constructor MkSig
   name : Name
   conv : IRCommon.Conv enc

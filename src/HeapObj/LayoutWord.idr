@@ -1,9 +1,9 @@
 ||| The layout word of a continuation's resume point (`layoutWord`).
 |||
-||| Part of the heap-object model, the contract between compiled code and the
-||| runtime (`Compiler.Native.HeapObject.Enc` says what it is): it imports
-||| nothing from the compiler, so that the runtime's own Idris can import it.
-module Compiler.Native.HeapObject.LayoutWord
+||| Part of the heap-object model, the contract between compiled code and
+||| the runtime (`HeapObj.Enc` says what it is): it imports nothing from the
+||| compiler, so that the runtime's own Idris can import it.
+module HeapObj.LayoutWord
 
 %default total
 

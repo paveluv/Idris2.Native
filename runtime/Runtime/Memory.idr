@@ -16,8 +16,8 @@ import public Runtime.OS
 import Runtime.Bits
 import Runtime.Heap
 
-import Compiler.Native.HeapObject.Kind as Compiler.Native.HeapObject
 import Flat.Uniform as Flat
+import HeapObj.Kind as HeapObj
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
@@ -27,7 +27,7 @@ import Flat.Uniform as Flat
 
 ||| The address of an object of kind `k`, or of memory the runtime maps.
 export
-record Addr (0 k : Compiler.Native.HeapObject.Kind) where
+record Addr (0 k : HeapObj.Kind) where
   constructor MkAddr
   word : Bits64
 
@@ -185,14 +185,14 @@ runtimeArea = prim__runtimeArea
 ||| an object, so these never test the word. The conversions between a value
 ||| and its object's address are this module's, so these are not inlined.
 export
-stringObject : Flat.Uniform String -> Heap.Op Heap (Addr Compiler.Native.HeapObject.Kind.STRING)
+stringObject : Flat.Uniform String -> Heap.Op Heap (Addr HeapObj.Kind.STRING)
 stringObject s = do
   w <- prim__stringWord s
   tag <- pointerTag
   Heap.pure (MkAddr (w - tag))
 
 export
-stringValue : Addr Compiler.Native.HeapObject.Kind.STRING -> Heap.Op Heap (Flat.Uniform String)
+stringValue : Addr HeapObj.Kind.STRING -> Heap.Op Heap (Flat.Uniform String)
 stringValue a = do
   tag <- pointerTag
   prim__wordString (a.word + tag)
@@ -201,14 +201,14 @@ stringValue a = do
 ||| type whose values ordinary code holds as objects always, such as a list,
 ||| whose `[]` is a static object.
 export
-conObject : Flat.Uniform a -> Heap.Op Heap (Addr Compiler.Native.HeapObject.Kind.CON)
+conObject : Flat.Uniform a -> Heap.Op Heap (Addr HeapObj.Kind.CON)
 conObject v = do
   w <- prim__conWord v
   tag <- pointerTag
   Heap.pure (MkAddr (w - tag))
 
 export
-conValue : Addr Compiler.Native.HeapObject.Kind.CON -> Heap.Op Heap (Flat.Uniform a)
+conValue : Addr HeapObj.Kind.CON -> Heap.Op Heap (Flat.Uniform a)
 conValue a = do
   tag <- pointerTag
   prim__wordCon (a.word + tag)

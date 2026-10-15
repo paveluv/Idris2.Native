@@ -10,11 +10,6 @@
 module Compiler.Native.Seed
 
 import Compiler.Native.Bytes
-import Compiler.Native.HeapObject.Enc as HeapObject
-import Compiler.Native.HeapObject.Header
-import Compiler.Native.HeapObject.Kind
-import Compiler.Native.HeapObject.LayoutWord
-import Compiler.Native.HeapObject.ValEnc as HeapObject
 import Compiler.Native.IRCommon.Area
 import Compiler.Native.Linkage.Areas as Linkage
 import Compiler.Native.Linkage.ResumePoint
@@ -27,6 +22,11 @@ import Data.List
 import Data.Maybe
 import Data.SortedMap
 import Data.Zippable
+import HeapObj.Enc as HeapObj
+import HeapObj.Header
+import HeapObj.Kind
+import HeapObj.LayoutWord
+import HeapObj.ValEnc as HeapObj
 
 %default total
 
@@ -42,8 +42,7 @@ msgStackOverflow = map (cast . ord) (unpack "idris: stack overflow\n")
 ||| reads the program's result as a fixnum, which is the word shifted right by
 ||| one under either.
 export
-seedText : (enc : HeapObject.Enc) -> {auto 0 _ : HeapObject.ValEnc.HasFixnums enc.val} -> (window : Int) ->
-           List X86.Asm.Instr
+seedText : (enc : HeapObj.Enc) -> {auto 0 _ : HeapObj.ValEnc.HasFixnums enc.val} -> (window : Int) -> List X86.Asm.Instr
 seedText enc window = startText enc.val window ++ haltText ++ unsupportedText
                       ++ stackOverflowText
                       ++ applyText X86.Target.x86_64.abi enc.val
@@ -54,7 +53,7 @@ seedText enc window = startText enc.val window ++ haltText ++ unsupportedText
     ||| continuation HALT, as the heap lowering of continuations enters code. The
     ||| stack pointer at entry is 16-aligned, and is again when `idris_start`
     ||| returns, so every direct call generated code makes finds it aligned.
-    startText : HeapObject.ValEnc -> (window : Int) -> List X86.Asm.Instr
+    startText : HeapObj.ValEnc -> (window : Int) -> List X86.Asm.Instr
     startText venc window =
       [ X86.Asm.Comment "_start: idris_start(entry, window), then main under k = HALT"
       , X86.Asm.Lbl (Linkage.Sym.symLabel Linkage.Sym.SymStart)
@@ -62,7 +61,7 @@ seedText enc window = startText enc.val window ++ haltText ++ unsupportedText
       , X86.Asm.Call (Linkage.Sym.symLabel Linkage.Sym.SymRuntimeStart)
       , X86.Asm.Lea X86.Asm.R12
         (X86.Asm.MRip (Linkage.Sym.symLabel Linkage.Sym.SymHALT)
-         (cast (HeapObject.ValEnc.pointerTag venc)))   -- k := HALT, a pointer word
+         (cast (HeapObj.ValEnc.pointerTag venc)))   -- k := HALT, a pointer word
       , X86.Asm.Jmp (Linkage.Sym.symLabel Linkage.Sym.SymMain) ]
 
     -- Linux x86-64 system calls and mmap arguments
@@ -76,8 +75,7 @@ seedText enc window = startText enc.val window ++ haltText ++ unsupportedText
     haltText : List X86.Asm.Instr
     haltText =
       [ X86.Asm.Comment "idris_halt: result in rax (fixnum) -> exit_group" ] ++
-      Linkage.ResumePoint.resumePoint (Linkage.Sym.symLabel Linkage.Sym.SymHalt) (HeapObject.LayoutWord.layoutWord 0 0)
-        ++
+      Linkage.ResumePoint.resumePoint (Linkage.Sym.symLabel Linkage.Sym.SymHalt) (HeapObj.LayoutWord.layoutWord 0 0) ++
       [ X86.Asm.MovRR X86.Asm.RDI X86.Asm.RAX, X86.Asm.ShiftI X86.Asm.SAR X86.Asm.RDI 1
       , X86.Asm.MovRI X86.Asm.RAX sysExitGroup, X86.Asm.Syscall ]
 
@@ -119,15 +117,15 @@ seedText enc window = startText enc.val window ++ haltText ++ unsupportedText
     ||| a closure with one more argument is allocated and returned through r12;
     ||| across its slow path, the old closure and the argument are rooted in
     ||| `ROOTS`. Superseded by the fragment runtime's apply.
-    applyText : Target.Abi -> HeapObject.ValEnc -> List X86.Asm.Instr
+    applyText : Target.Abi -> HeapObj.ValEnc -> List X86.Asm.Instr
     applyText abi venc =
       [ X86.Asm.Comment "idris_apply(closure, argument)"
       , X86.Asm.Lbl (Linkage.Sym.symLabel Linkage.Sym.SymApply)
       , X86.Asm.MovRR X86.Asm.R10 X86.Asm.RDI,
         X86.Asm.MovRR X86.Asm.R11 X86.Asm.RSI                     -- closure, argument
       , X86.Asm.MovRM X86.Asm.RAX (X86.Asm.MBase X86.Asm.R10 (0 - pt))                   -- header
-      , X86.Asm.MovRR X86.Asm.RCX X86.Asm.RAX ] ++ part X86.Asm.RCX HeapObject.Header.ClosureArity ++      -- arity
-      [ X86.Asm.MovRR X86.Asm.RDX X86.Asm.RAX ] ++ part X86.Asm.RDX HeapObject.Header.ClosureFilled
+      , X86.Asm.MovRR X86.Asm.RCX X86.Asm.RAX ] ++ part X86.Asm.RCX HeapObj.Header.ClosureArity ++      -- arity
+      [ X86.Asm.MovRR X86.Asm.RDX X86.Asm.RAX ] ++ part X86.Asm.RDX HeapObj.Header.ClosureFilled
         ++     -- arguments filled
       [ X86.Asm.MovRR X86.Asm.R8 X86.Asm.RDX,
         X86.Asm.AluI X86.Asm.ADD X86.Asm.R8 1                      -- arguments after this one
@@ -162,9 +160,9 @@ seedText enc window = startText enc.val window ++ haltText ++ unsupportedText
         X86.Asm.Alu X86.Asm.CMP X86.Asm.RSI X86.Asm.R14, X86.Asm.Jcc X86.Asm.A slow
       , X86.Asm.MovRR X86.Asm.RDI X86.Asm.R15, X86.Asm.MovRR X86.Asm.R15 X86.Asm.RSI
       , X86.Asm.Lbl initClosure                                  -- rdi: the new closure
-      , X86.Asm.MovRM X86.Asm.RAX (X86.Asm.MBase X86.Asm.R10 (0 - pt)), X86.Asm.MovRR X86.Asm.RDX X86.Asm.RAX ]
-        ++ part X86.Asm.RDX HeapObject.Header.ClosureFilled ++
-      [ X86.Asm.MovRI X86.Asm.RSI (HeapObject.Header.partUnit HeapObject.Header.ClosureFilled),
+      , X86.Asm.MovRM X86.Asm.RAX (X86.Asm.MBase X86.Asm.R10 (0 - pt)),
+        X86.Asm.MovRR X86.Asm.RDX X86.Asm.RAX ] ++ part X86.Asm.RDX HeapObj.Header.ClosureFilled ++
+      [ X86.Asm.MovRI X86.Asm.RSI (HeapObj.Header.partUnit HeapObj.Header.ClosureFilled),
         X86.Asm.Alu X86.Asm.ADD X86.Asm.RAX X86.Asm.RSI,
         X86.Asm.MovMR (X86.Asm.MBase X86.Asm.RDI 0) X86.Asm.RAX   -- one more filled
       , X86.Asm.MovRM X86.Asm.RAX (X86.Asm.MBase X86.Asm.R10 (8 - pt)),
@@ -201,7 +199,7 @@ seedText enc window = startText enc.val window ++ haltText ++ unsupportedText
         ||| The pointer tag: the closure in r10 and the continuation in r12 are
         ||| pointer words, the closure allocated in rdi an address.
         pt : Int
-        pt = cast (HeapObject.ValEnc.pointerTag venc)
+        pt = cast (HeapObj.ValEnc.pointerTag venc)
 
         ||| The address in `s` as a pointer word in `d`.
         toPointer : (d, s : X86.Asm.Reg64) -> X86.Asm.Instr
@@ -217,9 +215,8 @@ seedText enc window = startText enc.val window ++ haltText ++ unsupportedText
                       | (i, r) <- zip [0 .. nregs] (map X86.Asm.regOfNum abi.wordRegs), which r ]
 
         ||| A part of the closure header in `rax`, extracted into a register.
-        part : X86.Asm.Reg64 -> HeapObject.Header.HeaderPart HeapObject.Kind.CLOSURE -> List X86.Asm.Instr
-        part r p =
-          X86.Asm.extractField r (cast (fst (HeapObject.Header.place p))) (cast (snd (HeapObject.Header.place p)))
+        part : X86.Asm.Reg64 -> HeapObj.Header.HeaderPart HeapObj.Kind.CLOSURE -> List X86.Asm.Instr
+        part r p = X86.Asm.extractField r (cast (fst (HeapObj.Header.place p))) (cast (snd (HeapObj.Header.place p)))
 
         -- local labels, below the program's
         extend, copy, copied, copyArgs, regs, initClosure, pcopy, pdone, slow : X86.Asm.Label

@@ -4,7 +4,6 @@
 ||| convention, so that ordinary code and flat code compute the same.
 module Compiler.Native.Words
 
-import Compiler.Native.HeapObject.Enc as HeapObject
 import Compiler.Native.IRCommon.Conv as IRCommon
 import Compiler.Native.IRCommon.Op
 import Compiler.Native.IRCommon.Ty as IRCommon
@@ -15,9 +14,10 @@ import Compiler.Native.TermIR.IsInt
 import Compiler.Native.TermIR.Opnd as TermIR
 
 import Data.List.Quantifiers
+import HeapObj.Enc as HeapObj
 %default total
 
-parameters {0 enc : HeapObject.Enc} {0 d : TermIR.Decls enc} {0 c : IRCommon.Conv enc} {0 m : Bool}
+parameters {0 enc : HeapObj.Enc} {0 d : TermIR.Decls enc} {0 c : IRCommon.Conv enc} {0 m : Bool}
            {0 v : IRCommon.Ty enc -> Type} {0 l : List (IRCommon.Ty enc) -> Type}
 
   ||| The quotient or the remainder of the word `a` by the word `b`, which is

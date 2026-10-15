@@ -7,10 +7,10 @@ module Compiler.Native.IRCommon.Intrinsic
 
 import Compiler.Native.IRCommon.Ty
 
-import Compiler.Native.HeapObject.Enc as HeapObject
-import Compiler.Native.HeapObject.Kind
 import Data.Fin
 import Data.List
+import HeapObj.Enc as HeapObj
+import HeapObj.Kind
 
 %default total
 
@@ -57,7 +57,7 @@ namespace Intrinsic
   params GetHpLim = []
   params SetHpLim = [Ty.W64]
   params GetK = []
-  params SetK = [Ty.PtrTo HeapObject.Kind.CONT]
+  params SetK = [Ty.PtrTo HeapObj.Kind.CONT]
   params (Syscall n) = replicate (S (finToNat n)) Ty.W64
 
   ||| What an intrinsic gives, in order.
@@ -67,6 +67,6 @@ namespace Intrinsic
   results SetHp = []
   results GetHpLim = [Ty.W64]
   results SetHpLim = []
-  results GetK = [Ty.PtrTo HeapObject.Kind.CONT]
+  results GetK = [Ty.PtrTo HeapObj.Kind.CONT]
   results SetK = []
   results (Syscall _) = [Ty.W64]

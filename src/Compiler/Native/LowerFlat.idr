@@ -30,9 +30,6 @@
 ||| `Unsupported`.
 module Compiler.Native.LowerFlat
 
-import Compiler.Native.HeapObject.Enc as HeapObject
-import Compiler.Native.HeapObject.Kind as HeapObject
-import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.Conv as IRCommon
 import Compiler.Native.IRCommon.Intrinsic as IRCommon
 import Compiler.Native.IRCommon.Op
@@ -64,6 +61,9 @@ import Decidable.Equality
 import Decidable.Equality.Core
 import Flat.ConstType
 import Flat.Exp as Flat
+import HeapObj.Enc as HeapObj
+import HeapObj.Kind as HeapObj
+import HeapObj.ValEnc
 
 %default covering
 
@@ -113,7 +113,7 @@ formSig fd =
 
 ||| A flat value: its layout and its registers.
 public export
-record Value (enc : HeapObject.Enc) (v : IRCommon.Ty enc -> Type) where
+record Value (enc : HeapObj.Enc) (v : IRCommon.Ty enc -> Type) where
   constructor MkValue
   layout : Flat.Exp.Layout
   regs : All (TermIR.Opnd v) (tys layout)
@@ -304,17 +304,17 @@ data Held = Narrower IRCommon.Op.SubWord Bool | Whole Bool
 ||| the shapes of the data types, and the OS services' externs, each bound to
 ||| the form of the function that implements it on the platform.
 public export
-record Forms (enc : HeapObject.Enc) (d : TermIR.Decls enc) where
+record Forms (enc : HeapObj.Enc) (d : TermIR.Decls enc) where
   constructor MkForms
   callees : SortedMap Name (Callee d)
   shapes : Flat.Exp.Shapes
   services : SortedMap Name Name
 
 ||| Each variable in scope: its type's skeleton and its value.
-Env : (enc : HeapObject.Enc) -> (IRCommon.Ty enc -> Type) -> Type
+Env : (enc : HeapObj.Enc) -> (IRCommon.Ty enc -> Type) -> Type
 Env enc v = SortedMap Name (Flat.Exp.Skeleton, Value enc v)
 
-parameters {enc : HeapObject.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self : Flat.Exp.FlatDef) (m : Bool)
+parameters {enc : HeapObj.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self : Flat.Exp.FlatDef) (m : Bool)
            {0 v : IRCommon.Ty enc -> Type} {0 l : List (IRCommon.Ty enc) -> Type}
 
   0 B : Type -> Type
@@ -490,7 +490,7 @@ parameters {enc : HeapObject.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (s
               TermIR.Build.emit0 (TermIR.Instr.StoreN sw (TermIR.Mem.MkMem (TermIR.Mem.AtWord p) Nothing 0) x)
               pure noRegs
             wordExtern _ Linkage.InlineExtern.PointerTag [] =
-              pure (MkValue [Flat.Exp.Word] [TermIR.Opnd.W (cast (HeapObject.ValEnc.pointerTag enc.val))])
+              pure (MkValue [Flat.Exp.Word] [TermIR.Opnd.W (cast (HeapObj.ValEnc.pointerTag enc.val))])
             wordExtern _ (Linkage.InlineExtern.AreaAddress a) [] = do
               p <- TermIR.Build.emit1 (TermIR.Instr.AreaAddr a)
               pure (MkValue [Flat.Exp.Word] [p])
@@ -794,13 +794,13 @@ parameters {enc : HeapObject.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (s
 ||| A form as the body of its `Direct` function. A form that calls itself
 ||| is a loop, which a call in tail position jumps back to.
 export
-lowerForm : {enc : HeapObject.Enc} -> (0 d : TermIR.Decls enc) -> Forms enc d -> (fd : Flat.Exp.FlatDef) ->
+lowerForm : {enc : HeapObj.Enc} -> (0 d : TermIR.Decls enc) -> Forms enc d -> (fd : Flat.Exp.FlatDef) ->
             TermIR.Build.Closed d (IRCommon.Conv.Direct (tys fd.result) False) (Linkage.ConvertsIn.convertsIn fd.name)
               (tys (paramsLayout fd.params))
 lowerForm d pr fd = TermIR.Build.build $ \xs =>
   if calls fd.name fd.body
-     then TermIR.Build.loop (tys (paramsLayout fd.params)) xs $ \again, ys =>
-       formBody d pr fd (Linkage.ConvertsIn.convertsIn fd.name) (Just again) ys
+     then TermIR.Build.loop (tys (paramsLayout fd.params)) xs $ \again,
+       ys => formBody d pr fd (Linkage.ConvertsIn.convertsIn fd.name) (Just again) ys
      else formBody d pr fd (Linkage.ConvertsIn.convertsIn fd.name) Nothing xs
   where
     ||| Whether the expression calls the form.

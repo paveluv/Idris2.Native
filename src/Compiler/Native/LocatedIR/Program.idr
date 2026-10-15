@@ -32,10 +32,10 @@
 ||| doubles, and a flat address space. A 32-bit target would change the
 ||| fixnum width and every offset.
 |||
-||| The objects the IR allocates and reads, and how a uniform value is a word,
-||| are the heap-object model (`Compiler.Native.HeapObject.Header`), which the
-||| IR builds on: the IR names kinds, headers and header parts, and
-||| never a bit position or a size rule.
+||| The objects the IR allocates and reads, and how a uniform value is a
+||| word, are the heap-object model (`HeapObj.Header`), which the IR builds
+||| on: the IR names kinds, headers and header parts, and never a bit
+||| position or a size rule.
 |||
 ||| Some names are chosen to differ from names in modules that a renderer
 ||| imports alongside it: `Rel`, `SubWord`, `Mem` and `Label`
@@ -46,17 +46,17 @@ module Compiler.Native.LocatedIR.Program
 import Compiler.Native.LocatedIR.Function
 import Compiler.Native.LocatedIR.Static
 
-import Compiler.Native.HeapObject.Enc as HeapObject
 import Compiler.Native.IRCommon.ConIds as IRCommon
 import Compiler.Native.Target
 import Core.Name
+import HeapObj.Enc as HeapObj
 
 %default total
 
 ||| A whole program: its target, functions, statics, entry function and
 ||| constructor numbering.
 public export
-record Program (enc : HeapObject.Enc) where
+record Program (enc : HeapObj.Enc) where
   constructor MkProgram
   target : Target
   functions : List (Function enc)

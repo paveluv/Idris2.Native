@@ -9,7 +9,7 @@ module Runtime.OS.LinuxX86_64
 
 import Runtime.OS.Syscall
 
-import Compiler.Native.HeapObject.Kind
+import HeapObj.Kind
 import Runtime.Heap
 import Runtime.Memory
 import Runtime.State
@@ -77,7 +77,7 @@ stackLimit : Heap.Op Heap Bits64
 stackLimit = do
   -- getrlimit(RLIMIT_STACK, buffer): the soft limit in the buffer's first word,
   -- left 0 if the call fails
-  buffer <- State.scratchArea {k = Compiler.Native.HeapObject.Kind.BUFFER}
+  buffer <- State.scratchArea {k = HeapObj.Kind.BUFFER}
   Memory.store64 buffer 0 0
   _ <- Syscall.syscall 97 3 (Memory.toWord buffer) 0 0 0 0
   Memory.load64 buffer 0

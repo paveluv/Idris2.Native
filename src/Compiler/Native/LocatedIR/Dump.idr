@@ -15,15 +15,15 @@ import Compiler.Native.LocatedIR.Reg
 import Compiler.Native.LocatedIR.Static
 import Compiler.Native.LocatedIR.Terminator
 
-import Compiler.Native.HeapObject.Enc as HeapObject
-import Compiler.Native.HeapObject.Header as HeapObject
-import Compiler.Native.HeapObject.Kind as HeapObject
 import Compiler.Native.IRCommon.Conv as IRCommon
 import Compiler.Native.IRCommon.Op
 import Compiler.Native.IRCommon.Ty as IRCommon
 import Core.Name
 import Data.Builder as Data
 import Data.String
+import HeapObj.Enc as HeapObj
+import HeapObj.Header as HeapObj
+import HeapObj.Kind as HeapObj
 
 %default covering
 

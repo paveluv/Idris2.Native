@@ -9,10 +9,6 @@
 -- and its inverse, each wrong in one place, and every check must report it.
 module Main
 
-import Compiler.Native.HeapObject.Enc
-import Compiler.Native.HeapObject.Header
-import Compiler.Native.HeapObject.Kind
-import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.Conv
 import Compiler.Native.IRCommon.Intrinsic
 import Compiler.Native.IRCommon.Op
@@ -23,6 +19,10 @@ import Compiler.Native.Target
 import Compiler.Native.X86.Asm
 import Data.Fin
 import Data.List
+import HeapObj.Enc
+import HeapObj.Header
+import HeapObj.Kind
+import HeapObj.ValEnc
 import Language.Reflection
 import System
 

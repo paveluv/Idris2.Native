@@ -58,11 +58,6 @@ import Compiler.Native.X86.Asm
 import Compiler.Native.X86.Target
 
 import Compiler.Native.Bytes
-import Compiler.Native.HeapObject.Enc as HeapObject
-import Compiler.Native.HeapObject.Header as HeapObject
-import Compiler.Native.HeapObject.Kind as HeapObject
-import Compiler.Native.HeapObject.LayoutWord
-import Compiler.Native.HeapObject.ValEnc
 import Compiler.Native.IRCommon.Conv as IRCommon
 import Compiler.Native.IRCommon.Intrinsic
 import Compiler.Native.IRCommon.Op
@@ -92,6 +87,11 @@ import Data.List
 import Data.Maybe
 import Data.SortedMap
 import Data.Zippable
+import HeapObj.Enc as HeapObj
+import HeapObj.Header as HeapObj
+import HeapObj.Kind as HeapObj
+import HeapObj.LayoutWord
+import HeapObj.ValEnc
 
 %default covering
 
@@ -105,7 +105,7 @@ record Rendered where
   rodata : List (Asm.Label, List Bits8)
   areas : Linkage.Areas
 
-record RS (enc : HeapObject.Enc) where
+record RS (enc : HeapObj.Enc) where
   constructor MkRS
   nextLabel : Nat
   funs : SortedMap Name Asm.Label
@@ -125,7 +125,7 @@ record RS (enc : HeapObject.Enc) where
 -- decides how a `Val` immediate and a fixnum are words, and the pointer tag
 -- every access through a pointer folds into its displacement.
 
-parameters (enc : HeapObject.Enc)
+parameters (enc : HeapObj.Enc)
   ------------------------------------------------------------------------------
   -- Operands
 
@@ -171,7 +171,7 @@ parameters (enc : HeapObject.Enc)
                 p.statics
     pure (MkRendered (s.text <>> []) (s.rodata <>> []) s.areas)
     where
-      Render : HeapObject.Enc -> Type -> Type
+      Render : HeapObj.Enc -> Type -> Type
       Render enc = StateT (RS enc) (Either String)
 
       failWith : String -> Render enc' a
@@ -182,7 +182,7 @@ parameters (enc : HeapObject.Enc)
         fields <- traverse field s.fields
         pure
           (toList
-            (Data.Builder.piece (Bytes.le64 (cast (HeapObject.Header.encodeHeader s.header)))
+            (Data.Builder.piece (Bytes.le64 (cast (HeapObj.Header.encodeHeader s.header)))
              <+> concatMap Data.Builder.piece fields))
         where
           field : LocatedIR.Static.SField -> Render enc (List Bits8)
@@ -253,8 +253,7 @@ parameters (enc : HeapObject.Enc)
                 c <- LocatedIR.Terminator.termCont b.term
                 let vals = filter (IRCommon.Ty.gcVisible . LocatedIR.Reg.regTy) c.live
                     raws = filter (not . IRCommon.Ty.gcVisible . LocatedIR.Reg.regTy) c.live
-                pure (c.resume,
-                      (vals ++ raws, HeapObject.LayoutWord.layoutWord (cast (length vals)) (cast (length raws))))
+                pure (c.resume, (vals ++ raws, HeapObj.LayoutWord.layoutWord (cast (length vals)) (cast (length raws))))
 
           ||| Record that the code uses at least these areas.
           uses : Linkage.Areas -> Render enc' ()
@@ -306,7 +305,7 @@ parameters (enc : HeapObject.Enc)
           ||| plus it, so every load and store through a pointer folds its negation
           ||| into the displacement.
           ptag : Int
-          ptag = cast (HeapObject.ValEnc.pointerTag enc.val)
+          ptag = cast (HeapObj.ValEnc.pointerTag enc.val)
 
           ||| Turn the object address in `s` into its pointer word in `d`.
           tagPointer : (d, s : Asm.Reg64) -> List Asm.Instr
@@ -338,8 +337,8 @@ parameters (enc : HeapObject.Enc)
           ||| encoding gives its word; elsewhere it is the word itself. The term's
           ||| immediates carry the proof that the value encoding has a word for them.
           immWord : IRCommon.Ty enc -> Int64 -> Integer
-          immWord IRCommon.Ty.Val i = maybe (cast i) cast (HeapObject.ValEnc.valWord enc.val (cast i))
-          immWord IRCommon.Ty.Fix i = maybe (cast i) cast (HeapObject.ValEnc.valWord enc.val (cast i))
+          immWord IRCommon.Ty.Val i = maybe (cast i) cast (HeapObj.ValEnc.valWord enc.val (cast i))
+          immWord IRCommon.Ty.Fix i = maybe (cast i) cast (HeapObj.ValEnc.valWord enc.val (cast i))
           immWord _ i = cast i
 
           ||| Load an operand where a value of the type is expected.
@@ -532,13 +531,13 @@ parameters (enc : HeapObject.Enc)
                                        traverse_ (\x => do loadReg Asm.RCX x
                                                            emit
                                                              (Asm.Alu
-                                                               (if HeapObject.ValEnc.fixnumTag enc.val == 0 then Asm.OR
+                                                               (if HeapObj.ValEnc.fixnumTag enc.val == 0 then Asm.OR
                                                                 else Asm.AND)
                                                               Asm.RAX Asm.RCX))
                                                                more
                                    emits [Asm.TestI Asm.RAX 1,
-                                     Asm.Jcc (if HeapObject.ValEnc.fixnumTag enc.val == 0 then Asm.E else Asm.NE)
-                                          (blk y), Asm.Jmp (blk n)]
+                                     Asm.Jcc (if HeapObj.ValEnc.fixnumTag enc.val == 0 then Asm.E else Asm.NE) (blk y),
+                                          Asm.Jmp (blk n)]
             LocatedIR.Terminator.Branch r x y t f => do
                                    loadAs (pairTy x y) Asm.RAX x
                                    compareWith (pairTy x y) y
@@ -690,17 +689,17 @@ parameters (enc : HeapObject.Enc)
                                   loadReg Asm.RAX o
                                   emit (Asm.MovRM Asm.RAX (Asm.MBase Asm.RAX (negate (baseTag o))))
                                   emits
-                                    (Asm.extractField Asm.RAX (cast (fst (HeapObject.Header.place p)))
-                                     (cast (snd (HeapObject.Header.place p))))
+                                    (Asm.extractField Asm.RAX (cast (fst (HeapObj.Header.place p)))
+                                     (cast (snd (HeapObj.Header.place p))))
                                   store d Asm.RAX
                 LocatedIR.Instr.AllocObj {k} d h fs live => do
                                   if mutableKind k
                                      then allocateMutable
-                                       (\r => emit (Asm.MovRI r (cast (8 * HeapObject.Header.objectWords h)))) live
-                                     else allocate (8 * HeapObject.Header.objectWords h) live
-                                  emits [Asm.MovRI Asm.RDX (cast (HeapObject.Header.encodeHeader h)),
+                                       (\r => emit (Asm.MovRI r (cast (8 * HeapObj.Header.objectWords h)))) live
+                                     else allocate (8 * HeapObj.Header.objectWords h) live
+                                  emits [Asm.MovRI Asm.RDX (cast (HeapObj.Header.encodeHeader h)),
                                          Asm.MovMR (Asm.MBase Asm.RAX 0) Asm.RDX]
-                                  let (from, count) = HeapObject.Header.scanned h
+                                  let (from, count) = HeapObj.Header.scanned h
                                       fieldTy : Nat -> IRCommon.Ty enc
                                       fieldTy i = if S i >= from && S i < from + count then IRCommon.Ty.Val
                                         else IRCommon.Ty.W64
@@ -727,7 +726,7 @@ parameters (enc : HeapObject.Enc)
                                   loadReg Asm.RCX count
                                   emits
                                     [Asm.MovRI Asm.RDX
-                                      (cast (prim__shl_Integer 1 (cast (snd (HeapObject.Header.place p))) - 1)),
+                                      (cast (prim__shl_Integer 1 (cast (snd (HeapObj.Header.place p))) - 1)),
                                      Asm.Alu Asm.CMP Asm.RCX Asm.RDX, Asm.Jcc Asm.A big]
                                   size <- sizeOf p
                                   if mutableKind k
@@ -736,8 +735,8 @@ parameters (enc : HeapObject.Enc)
                                                                     emits (size r)) live
                                      else allocateSized count size live
                                   loadReg Asm.RDX count
-                                  emits [ Asm.ShiftI Asm.SHL Asm.RDX (cast (fst (HeapObject.Header.place p))),
-                                         Asm.AluI Asm.ADD Asm.RDX (cast (HeapObject.Kind.kindId k))
+                                  emits [ Asm.ShiftI Asm.SHL Asm.RDX (cast (fst (HeapObj.Header.place p))),
+                                         Asm.AluI Asm.ADD Asm.RDX (cast (HeapObj.Kind.kindId k))
                                         , Asm.MovMR (Asm.MBase Asm.RAX 0) Asm.RDX ]
                                   case fill of
                                     Nothing => pure ()
@@ -858,13 +857,13 @@ parameters (enc : HeapObject.Enc)
 
                   -- The object's bytes, from the count in `r`: the header word, then the
                   -- elements as words, or the bytes rounded up to words.
-                  sizeOf : HeapObject.Header.HeaderPart k' -> Render enc (Asm.Reg64 -> List Asm.Instr)
-                  sizeOf HeapObject.Header.ArrayElems = pure (\r => [Asm.ShiftI Asm.SHL r 3, Asm.AluI Asm.ADD r 8])
+                  sizeOf : HeapObj.Header.HeaderPart k' -> Render enc (Asm.Reg64 -> List Asm.Instr)
+                  sizeOf HeapObj.Header.ArrayElems = pure (\r => [Asm.ShiftI Asm.SHL r 3, Asm.AluI Asm.ADD r 8])
                   -- a string made by its count is not known to be ASCII: its bit is 0,
                   -- which only costs the fast paths
-                  sizeOf HeapObject.Header.StringBytes = pure bytesSize
-                  sizeOf HeapObject.Header.StringChars = pure (\r => Asm.ShiftI Asm.SHL r 2 :: bytesSize r)
-                  sizeOf HeapObject.Header.BufferBytes = pure bytesSize
+                  sizeOf HeapObj.Header.StringBytes = pure bytesSize
+                  sizeOf HeapObj.Header.StringChars = pure (\r => Asm.ShiftI Asm.SHL r 2 :: bytesSize r)
+                  sizeOf HeapObj.Header.BufferBytes = pure bytesSize
                   sizeOf q = failWith ("AllocSized cannot size an object by " ++ show q)
 
                   ||| Allocate an object whose size depends on `count`, as `allocate` does a
@@ -932,9 +931,9 @@ parameters (enc : HeapObject.Enc)
 
                   ||| Turn twice a value, in the register, into the fixnum's word: `or` in
                   ||| the fixnum tag, since the low bit is clear.
-                  addTag : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} -> Asm.Reg64 -> List Asm.Instr
-                  addTag r = if HeapObject.ValEnc.fixnumTag enc.val == 0 then []
-                    else [Asm.AluI Asm.OR r (cast (HeapObject.ValEnc.fixnumTag enc.val))]
+                  addTag : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Asm.Reg64 -> List Asm.Instr
+                  addTag r = if HeapObj.ValEnc.fixnumTag enc.val == 0 then []
+                    else [Asm.AluI Asm.OR r (cast (HeapObj.ValEnc.fixnumTag enc.val))]
 
                   ||| Arithmetic on fixnums, into rax, computed on their words. Where fixnum n
                   ||| is the word w(n) = 2n + t, for the value encoding's fixnum tag t: x + y is
@@ -943,7 +942,7 @@ parameters (enc : HeapObject.Enc)
                   ||| subtraction and multiplication overflows exactly when its result is
                   ||| outside the fixnum range. A shift has no such identity: it takes the
                   ||| values, shifts and tags.
-                  fixArith : {auto 0 fx : HeapObject.ValEnc.HasFixnums enc.val} -> IRCommon.Op.ArithOp ->
+                  fixArith : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> IRCommon.Op.ArithOp ->
                              LocatedIR.Opnd enc -> LocatedIR.Opnd enc -> (overflow : Maybe Asm.Label) -> Render enc ()
                   fixArith o x y ov = case o of
                       IRCommon.Op.Add => do loadAs IRCommon.Ty.Fix Asm.RAX x; aluTwice Asm.ADD y; jo
@@ -989,8 +988,8 @@ parameters (enc : HeapObject.Enc)
                       loadTwice r (LocatedIR.Opnd.StaticRef _) = failWith "a static where a fixnum is expected"
                       loadTwice r (LocatedIR.Opnd.R x) = do
                         loadReg r x
-                        when (HeapObject.ValEnc.fixnumTag enc.val /= 0) $
-                          emit (Asm.AluI Asm.SUB r (cast (HeapObject.ValEnc.fixnumTag enc.val)))
+                        when (HeapObj.ValEnc.fixnumTag enc.val /= 0) $
+                          emit (Asm.AluI Asm.SUB r (cast (HeapObj.ValEnc.fixnumTag enc.val)))
 
                       ||| `op` of rax and twice the operand's value, an immediate folded into the
                       ||| instruction where it fits.
@@ -1005,10 +1004,10 @@ parameters (enc : HeapObject.Enc)
                   ||| allocated by a call to `idris_alloc_mutable`, never by the inline bump,
                   ||| so that a collector with a nursery can keep them out of it, and then a
                   ||| write into an old object never makes it point into the nursery.
-                  mutableKind : HeapObject.Kind -> Bool
-                  mutableKind HeapObject.Kind.IOREF = True
-                  mutableKind HeapObject.Kind.ARRAY = True
-                  mutableKind HeapObject.Kind.BUFFER = True
+                  mutableKind : HeapObj.Kind -> Bool
+                  mutableKind HeapObj.Kind.IOREF = True
+                  mutableKind HeapObj.Kind.ARRAY = True
+                  mutableKind HeapObj.Kind.BUFFER = True
                   mutableKind _ = False
 
                   ||| Allocate a mutable object of the bytes `bytesInto` computes into a

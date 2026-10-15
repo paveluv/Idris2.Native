@@ -1,11 +1,11 @@
 ||| How an integer outside the small range is a `BIGNUM` (`BignumEnc`), one
-||| of the program's encodings (`Compiler.Native.HeapObject.Enc`): the width
-||| of its limbs and how it holds its sign.
+||| of the program's encodings (`HeapObj.Enc`): the width of its limbs and
+||| how it holds its sign.
 |||
-||| Part of the heap-object model, the contract between compiled code and the
-||| runtime (`Compiler.Native.HeapObject.Enc` says what it is): it imports
-||| nothing from the compiler, so that the runtime's own Idris can import it.
-module Compiler.Native.HeapObject.BignumEnc
+||| Part of the heap-object model, the contract between compiled code and
+||| the runtime (`HeapObj.Enc` says what it is): it imports nothing from the
+||| compiler, so that the runtime's own Idris can import it.
+module HeapObj.BignumEnc
 
 %default total
 

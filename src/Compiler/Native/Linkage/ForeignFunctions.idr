@@ -7,9 +7,9 @@ module Compiler.Native.Linkage.ForeignFunctions
 
 import Compiler.Native.Linkage.Routine
 
-import Compiler.Native.HeapObject.Enc as HeapObject
 import Core.Name
 import Core.Name.Namespace
+import HeapObj.Enc as HeapObj
 
 %default total
 
@@ -24,7 +24,7 @@ import Core.Name.Namespace
 ||| bound by its Idris name, whatever names the library gives it for C or
 ||| Scheme; one not listed stays `Unsupported`.
 export
-foreignFunctions : HeapObject.Enc -> List (Name, Name)
+foreignFunctions : HeapObj.Enc -> List (Name, Name)
 foreignFunctions enc =
   [ mirrored (NS (mkNamespace "System") (UN (Basic "prim__exit"))) ]
   ++ maybe [] (\ns => map (\f => (NS (mkNamespace "Prelude.Types") (UN (Basic f)), NS ns (UN (Basic f))))

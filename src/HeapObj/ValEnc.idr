@@ -1,5 +1,5 @@
 ||| How a uniform value is a word: the value encoding (`ValEnc`), one of the
-||| program's encodings (`Compiler.Native.HeapObject.Enc`).
+||| program's encodings (`HeapObj.Enc`).
 |||
 ||| A uniform value (`Val` in `Compiler.Native.IRCommon.Ty`) is one word: a
 ||| fixnum, a pointer to an object, or the erased value. Objects are 8-byte
@@ -17,10 +17,10 @@
 ||| comparisons and switches on fixnums, and in the pointer tag of every load
 ||| and store through a pointer.
 |||
-||| Part of the heap-object model, the contract between compiled code and the
-||| runtime (`Compiler.Native.HeapObject.Enc` says what it is): it imports
-||| nothing from the compiler, so that the runtime's own Idris can import it.
-module Compiler.Native.HeapObject.ValEnc
+||| Part of the heap-object model, the contract between compiled code and
+||| the runtime (`HeapObj.Enc` says what it is): it imports nothing from the
+||| compiler, so that the runtime's own Idris can import it.
+module HeapObj.ValEnc
 
 %default total
 

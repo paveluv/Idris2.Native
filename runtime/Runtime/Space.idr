@@ -26,7 +26,7 @@ import Runtime.Heap
 import Runtime.Memory
 import Runtime.Object
 
-import Compiler.Native.HeapObject.Kind as Compiler.Native.HeapObject
+import HeapObj.Kind as HeapObj
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
 %hide Prelude.Interfaces.pure

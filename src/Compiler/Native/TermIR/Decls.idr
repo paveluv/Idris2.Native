@@ -6,14 +6,14 @@ module Compiler.Native.TermIR.Decls
 import Compiler.Native.TermIR.Sig
 import Compiler.Native.TermIR.StaticSig
 
-import Compiler.Native.HeapObject.Enc as HeapObject
+import HeapObj.Enc as HeapObj
 
 %default total
 
 ||| The program's declarations: its functions, and the runtime's routines
 ||| it calls, and its statics.
 public export
-record Decls (enc : HeapObject.Enc) where
+record Decls (enc : HeapObj.Enc) where
   constructor MkDecls
   sigs : List (Sig enc)
   statics : List StaticSig
