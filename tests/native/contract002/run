@@ -14,10 +14,10 @@ sed -i -e 's/^%extern prim__load64 : (base, offset : Bits64)/%extern prim__load6
        -e 's/^loadAt = prim__load64$/loadAt b o = prim__load64 b o 0/' \
        -e 's/^%extern prim__store8 : (base, offset, value : Bits64) -> (1 m : Heap) -> Heap.Ret Heap ()$/%extern prim__store8 : (base, offset, value : Bits64) -> (1 m : Heap) -> Heap.Ret Heap Bits64/' \
        -e 's/^store8 a = prim__store8 a.word$/store8 a off v m = let (m2 # _) = prim__store8 a.word off v m in m2 # ()/' \
-       broken/Runtime/Memory.idr
+       broken/Native/Runtime/Memory.idr
 sed -i -e 's/^%extern prim__os_write : (handle, address, bytes : Bits64)/%extern prim__os_write : (handle, address, bytes, flags : Bits64)/' \
        -e 's/^osWrite = prim__os_write$/osWrite h a n = prim__os_write h a n 0/' \
-       broken/Runtime/OS.idr
+       broken/Native/Runtime/OS.idr
 sed -i -e 's/^version = .*/version = 999.0.0/' broken/idris2-native-runtime.ipkg
 (cd broken && idris2 --build idris2-native-runtime.ipkg > /dev/null)
 mkdir -p packages/idris2-native-runtime-999.0.0

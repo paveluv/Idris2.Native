@@ -1,6 +1,6 @@
 . ../../testutils.sh
 
-# The flat lowering (Compiler.Native.LowerFlat): each flat form a Direct
+# The flat lowering (Native.Codegen.LowerFlat): each flat form a Direct
 # function, and the ordinary function that has one a wrapper around it,
 # which takes its arguments apart into the form's registers and builds its
 # result as ordinary code represents it.

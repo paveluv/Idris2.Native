@@ -8,9 +8,9 @@ module Main
 
 import Data.List
 import Data.So
-import Flat.Uniform
+import Native.Flat.Uniform
+import Native.Runtime.Space
 import Probe
-import Runtime.Space
 import System
 
 exitCode : Int -> IO ()

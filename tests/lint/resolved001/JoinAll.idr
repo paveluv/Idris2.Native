@@ -4,7 +4,7 @@
 ||| snoc-list or a builder, count towards the score's `accumulation`.
 module JoinAll
 
-import Data.Builder
+import Native.Data.Builder
 
 %default total
 

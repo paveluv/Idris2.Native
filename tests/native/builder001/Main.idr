@@ -9,9 +9,9 @@
 ||| does.
 module Main
 
-import Data.Builder
 import Data.String
-import Data.WriteBuilder
+import Native.Data.Builder
+import Native.Data.WriteBuilder
 import System.File.ReadWrite
 
 %default covering

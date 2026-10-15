@@ -12,13 +12,13 @@
 module Main
 
 import Compiler.Common
-import Compiler.Native.Native
 import Compiler.Scheme.Chez
 import Data.List1
 import Data.String
-import Flat.Check
-import Flat.Oracle
 import Idris.Driver
+import Native.Codegen.Native
+import Native.Flat.Check
+import Native.Flat.Oracle
 import System
 
 %default covering
@@ -28,9 +28,9 @@ main = do
   cgs <- getEnv "IDRIS2_INC_CGS"
   ignore (setEnv "IDRIS2_INC_CGS" (incremental cgs) True)
   mainWithCodegens [ ("chez", codegenChez)
-                   , ("native", Compiler.Native.Native.codegenNative)
-                   , ("flat-oracle", Flat.Oracle.codegenFlatOracle)
-                   , ("flat-check", Flat.Check.codegenFlatCheck) ]
+                   , ("native", Native.Codegen.Native.codegenNative)
+                   , ("flat-oracle", Native.Flat.Oracle.codegenFlatOracle)
+                   , ("flat-check", Native.Flat.Check.codegenFlatCheck) ]
   where
     ||| The incremental code generators the environment names, and `flat-check`.
     incremental : Maybe String -> String

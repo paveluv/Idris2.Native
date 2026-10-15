@@ -9,21 +9,21 @@
 -- and its inverse, each wrong in one place, and every check must report it.
 module Main
 
-import Compiler.Native.IRCommon.Conv
-import Compiler.Native.IRCommon.Intrinsic
-import Compiler.Native.IRCommon.Op
-import Compiler.Native.IRCommon.Ty
-import Compiler.Native.Linkage.Sym
-import Compiler.Native.Platform
-import Compiler.Native.Target
-import Compiler.Native.X86.Asm
 import Data.Fin
 import Data.List
-import HeapObj.Enc
-import HeapObj.Header
-import HeapObj.Kind
-import HeapObj.ValEnc
 import Language.Reflection
+import Native.Codegen.IRCommon.Conv
+import Native.Codegen.IRCommon.Intrinsic
+import Native.Codegen.IRCommon.Op
+import Native.Codegen.IRCommon.Ty
+import Native.Codegen.Linkage.Sym
+import Native.Codegen.Platform
+import Native.Codegen.Target
+import Native.Codegen.X86.Asm
+import Native.HeapObj.Enc
+import Native.HeapObj.Header
+import Native.HeapObj.Kind
+import Native.HeapObj.ValEnc
 import System
 
 %language ElabReflection

@@ -3,7 +3,7 @@
 ||| modules' names share. One rule, which the refactoring `qualify-names`
 ||| writes by and `import-alias` checks.
 |||
-||| In `Compiler.Native.RegAlloc`, `SWord` of `Compiler.Native.TermIR.StaticDef`
+||| In `Native.Codegen.RegAlloc`, `SWord` of `Native.Codegen.TermIR.StaticDef`
 ||| is `TermIR.StaticDef.SWord`, `piece` of `Data.Builder` is
 ||| `Data.Builder.piece`. A type named after its module drops the module's
 ||| name: `TermIR.StaticDef`, which Idris resolves only through an alias,

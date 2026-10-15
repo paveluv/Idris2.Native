@@ -272,12 +272,15 @@ main = do
     refactorings : List String -> List Refactoring
     refactorings args = [inlineAlias args, joinModules args, mergeClauses, orderImports, pruneImports, qualifyNames, reflowLines args, removeUnused, renameModule args, scopeHelpers, splitModule args]
 
-    ||| The files of a run parsed once, and again only after a change: a wide
-    ||| refactoring asks for them at every file it looks at.
-    projectOnce : IORef (Maybe Project) -> (roots, paths : List String) -> Maybe Resolution -> IO Project
-    projectOnce cache roots paths res = do
+    ||| The files under a run's roots listed and parsed once, and again only
+    ||| after a change, which may have moved one: a wide refactoring asks
+    ||| for them at every file it looks at.
+    projectOnce : IORef (Maybe Project) -> (roots : List String) -> Maybe Resolution -> IO Project
+    projectOnce cache roots res = do
       Nothing <- readIORef cache
         | Just p => pure p
+      -- the files as they are now: a change may have moved one
+      paths <- joined <$> traverse files roots
       p <- loadProject roots paths res
       writeIORef cache (Just p)
       pure p
@@ -298,7 +301,7 @@ main = do
       -- which its changes leave behind
       res <- if r.wide then resolvedFrom paths else pure Nothing
       for_ paths $ \p => do
-        rep <- refactor dryRun check r (projectOnce cache roots paths res) (writeIORef cache Nothing) p
+        rep <- refactor dryRun check r (projectOnce cache roots res) (writeIORef cache Nothing) p
         when (not quiet || not (null rep.changed)) $
           when (not (null rep.changed) || not (null rep.stays)) $ do
             putStrLn (p ++ ": " ++ show (length rep.changed) ++ " changed, " ++ show (length rep.stays) ++ " stay")

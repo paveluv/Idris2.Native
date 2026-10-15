@@ -5,21 +5,21 @@
 ./Cites.idr:2:1 cites-plan: cites `IL-001`: the code states what it needs
 ./Cites.idr:7:1 cites-plan: cites `PQ-123`: the code states what it needs
 ./Cites.idr:7:1 cites-plan: cites `docs/design-cites.md`: the code states what it needs
-./Data/Upward.idr:5:1 layering: `Data.Upward` may not import `Compiler.Native.Thing`: the layers
 ./Escapes.idr:10:10 trust-escape: `assert_total`: say why it is sound
 ./Escapes.idr:16:1 suppression: a suppression of `trust-escape` says why
 ./Escapes.idr:20:1 suppression: no rule `no-such-rule`
 ./Escapes.idr:24:1 suppression: the suppression of `trust-escape` suppresses nothing
 ./Excludes.idr:7:1 exclusion: no component `cohesion` leaves modules out
 ./Excludes.idr:9:1 exclusion: an exclusion from `precision` says why
-./Flat/Upward.idr:5:1 layering: `Flat.Upward` may not import `Compiler.Native.Thing`: the layers
 ./Headless.idr:1:1 header-comment: no comment says what the file is before its first import or declaration
+./Native/Data/Upward.idr:5:1 layering: `Native.Data.Upward` may not import `Native.Codegen.Thing`: the layers
+./Native/Flat/Upward.idr:5:1 layering: `Native.Flat.Upward` may not import `Native.Codegen.Thing`: the layers
+./Native/Runtime/Direct.idr:5:1 syscall: the raw system call outside `Native.Runtime.OS`: the platform's services reach the system
 ./NoDefault.idr:1:1 default-totality: no `%default` directive
 ./Open.idr:6:1 todo: `TODO`: open work belongs in the plans
 ./Reexports.idr:6:1 public-import: `Data.List` imported publicly: a module that uses it imports it
 ./Reflects.idr:7:1 elab-reflection: `%language ElabReflection`
 ./Reflects.idr:11:1 elab-reflection: `%macro` function
 ./Reflects.idr:15:1 elab-reflection: `%runElab` declaration
-./Runtime/Direct.idr:5:1 syscall: the raw system call outside `Runtime.OS`: the platform's services reach the system
 ./Spare/One/Unsorted.idr:4:1 import-order: `Spare.One.Piece` comes here: the public imports first, then the module's own group's, then the others, each alphabetical
 ./Unordered.idr:5:1 import-order: `Data.List` comes here: the public imports first, then the module's own group's, then the others, each alphabetical

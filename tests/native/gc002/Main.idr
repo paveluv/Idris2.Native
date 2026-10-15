@@ -8,7 +8,7 @@
 module Main
 
 import Data.So
-import Runtime.Space
+import Native.Runtime.Space
 import System
 
 exitCode : Int -> IO ()

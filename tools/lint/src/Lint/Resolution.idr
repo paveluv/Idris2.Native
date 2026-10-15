@@ -561,7 +561,7 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
                                 Just (Ref _ _ ty, _) => do
                                   ty' <- full (gamma defs) ty
                                   pure (if ty' == inModule "Prelude.Basics" "List" || ty' == inModule "Prelude.Basics" "SnocList" then JoinsLists
-                                        else if ty' == inModule "Data.Builder" "Builder" then JoinsBuilders
+                                        else if ty' == inModule "Native.Data.Builder" "Builder" then JoinsBuilders
                                         else JoinsOther)
                                 _ => pure JoinsOther
                           _ => pure JoinsOther

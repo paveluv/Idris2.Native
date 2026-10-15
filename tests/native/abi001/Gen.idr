@@ -1,9 +1,9 @@
--- Values passed as the ABI places them (Compiler.Native.Target.place): a
+-- Values passed as the ABI places them (Native.Codegen.Target.place): a
 -- Direct function of nineteen values, alternately a word and a double, more
 -- than either register file holds, returns them rotated by one, so that its
 -- results land elsewhere than its arguments. The caller checks every result
 -- and exits with 42, or with 1 + the index of the first wrong one. Both are
--- written with the builder (Compiler.Native.TermIR.Build), and so is the
+-- written with the builder (Native.Codegen.TermIR.Build), and so is the
 -- `exit` the caller ends with, a system call as the runtime's is. A crash
 -- jumps to the runtime's `crash`, the entry calls the runtime's `start`,
 -- and a continuation's allocation may call its `allocSlow`, which the
@@ -18,44 +18,45 @@
 -- included, is moves and a jump. Results come back the same way.
 module Main
 
-import Compiler.Native.ELF
-import Compiler.Native.IRCommon.ConIds
-import Compiler.Native.IRCommon.Conv
-import Compiler.Native.IRCommon.Intrinsic
-import Compiler.Native.IRCommon.Op
-import Compiler.Native.IRCommon.Ty
-import Compiler.Native.Link
-import Compiler.Native.Linkage.Areas
-import Compiler.Native.Linkage.Routine
-import Compiler.Native.LocatedIR.Program
-import Compiler.Native.RegAlloc
-import Compiler.Native.Target
-import Compiler.Native.TermIR.Body
-import Compiler.Native.TermIR.Build
-import Compiler.Native.TermIR.Decls
-import Compiler.Native.TermIR.Def
-import Compiler.Native.TermIR.Instr
-import Compiler.Native.TermIR.IsInt
-import Compiler.Native.TermIR.Opnd
-import Compiler.Native.TermIR.Program
-import Compiler.Native.TermIR.Sig
-import Compiler.Native.TermIR.StaticDef
-import Compiler.Native.TermIR.StaticSig
-import Compiler.Native.TermIR.Var
-import Compiler.Native.X86.Encode
-import Compiler.Native.X86.Render
-import Compiler.Native.X86.Target
 import Core.Name
 import Core.Name.Namespace
-import Data.Distinct
 import Data.List
 import Data.List.Quantifiers
 import Data.So
 import Data.Vect
-import HeapObj.BignumEnc
-import HeapObj.Enc
-import HeapObj.StringEnc
-import HeapObj.ValEnc
+import Native.Codegen.ELF
+import Native.Codegen.IRCommon.ConIds
+import Native.Codegen.IRCommon.Conv
+import Native.Codegen.IRCommon.Intrinsic
+import Native.Codegen.IRCommon.Op
+import Native.Codegen.IRCommon.Ty
+import Native.Codegen.Link
+import Native.Codegen.Linkage.Areas
+import Native.Codegen.Linkage.Routine
+import Native.Codegen.Linkage.RuntimeModule
+import Native.Codegen.LocatedIR.Program
+import Native.Codegen.RegAlloc
+import Native.Codegen.Target
+import Native.Codegen.TermIR.Body
+import Native.Codegen.TermIR.Build
+import Native.Codegen.TermIR.Decls
+import Native.Codegen.TermIR.Def
+import Native.Codegen.TermIR.Instr
+import Native.Codegen.TermIR.IsInt
+import Native.Codegen.TermIR.Opnd
+import Native.Codegen.TermIR.Program
+import Native.Codegen.TermIR.Sig
+import Native.Codegen.TermIR.StaticDef
+import Native.Codegen.TermIR.StaticSig
+import Native.Codegen.TermIR.Var
+import Native.Codegen.X86.Encode
+import Native.Codegen.X86.Render
+import Native.Codegen.X86.Target
+import Native.Data.Distinct
+import Native.HeapObj.BignumEnc
+import Native.HeapObj.Enc
+import Native.HeapObj.StringEnc
+import Native.HeapObj.ValEnc
 import System.File
 
 %default total

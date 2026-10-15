@@ -8,18 +8,18 @@ brief = "The runtime of Idris 2's native code generator"
 depends = idris2-native
 
 modules =
-    Runtime,
-    Runtime.Bits,
-    Runtime.Collect,
-    Runtime.Foreign.System,
-    Runtime.Heap,
-    Runtime.Memory,
-    Runtime.Object,
-    Runtime.OS,
-    Runtime.OS.LinuxX86_64,
-    Runtime.OS.Syscall,
-    Runtime.Space,
-    Runtime.Start,
-    Runtime.State,
-    Runtime.String.Utf8,
-    Runtime.System
+    Native.Runtime,
+    Native.Runtime.Bits,
+    Native.Runtime.Collect,
+    Native.Runtime.Foreign.System,
+    Native.Runtime.Heap,
+    Native.Runtime.Memory,
+    Native.Runtime.OS,
+    Native.Runtime.OS.LinuxX86_64,
+    Native.Runtime.OS.Syscall,
+    Native.Runtime.Object,
+    Native.Runtime.Space,
+    Native.Runtime.Start,
+    Native.Runtime.State,
+    Native.Runtime.String.Utf8,
+    Native.Runtime.System

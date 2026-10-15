@@ -2,7 +2,7 @@
 ||| that the same modules always import together could be one module, and
 ||| a group most of whose members could be joined so is oversplit.
 |||
-||| A group is the modules under one parent (`Compiler.Native.TermIR`'s
+||| A group is the modules under one parent (`Native.Codegen.TermIR`'s
 ||| `Opnd`, `Instr`, ...); modules at the top are in none, and a module
 ||| alone under its parent has no sibling to join. Two
 ||| members with the same importers, at least two, are imported together

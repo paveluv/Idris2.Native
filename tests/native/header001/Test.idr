@@ -14,13 +14,13 @@
 module Main
 
 import Data.List
-import HeapObj.BignumEnc
-import HeapObj.Enc
-import HeapObj.Header
-import HeapObj.Kind
-import HeapObj.LayoutWord
-import HeapObj.StringEnc
-import HeapObj.ValEnc
+import Native.HeapObj.BignumEnc
+import Native.HeapObj.Enc
+import Native.HeapObj.Header
+import Native.HeapObj.Kind
+import Native.HeapObj.LayoutWord
+import Native.HeapObj.StringEnc
+import Native.HeapObj.ValEnc
 
 ||| The encodings the headers are under: bignums in sign-magnitude, whose
 ||| header holds the sign.

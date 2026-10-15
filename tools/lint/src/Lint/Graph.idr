@@ -32,16 +32,17 @@ import Libraries.Data.WithData
 
 ||| The layers of the product, from the bottom: `Data` (structures any part
 ||| may use), `HeapObj` (the heap-object model, which the code generator and
-||| the runtime share), `Flat` (the flat fragment, of no backend), `Native`
-||| (the code generator), `Runtime` (the runtime library), and the linter's
-||| own.
-data Layer = DataLayer | HeapObjLayer | FlatLayer | NativeLayer | RuntimeLayer | LintLayer
+||| the runtime share), `Flat` (the flat fragment, of no backend), `Codegen`
+||| (the code generator), `Runtime` (the runtime library), each a group
+||| under the product's root, `Native`; and the linter's own, of a root of
+||| its own.
+data Layer = DataLayer | HeapObjLayer | FlatLayer | CodegenLayer | RuntimeLayer | LintLayer
 
 Eq Layer where
   DataLayer == DataLayer = True
   HeapObjLayer == HeapObjLayer = True
   FlatLayer == FlatLayer = True
-  NativeLayer == NativeLayer = True
+  CodegenLayer == CodegenLayer = True
   RuntimeLayer == RuntimeLayer = True
   LintLayer == LintLayer = True
   _ == _ = False
@@ -54,28 +55,33 @@ allowed ours importer imported = case layerOf importer of
   Just RuntimeLayer => Just (contains imported ours && mayImport RuntimeLayer imported)
   Just l => if contains imported ours then Just (mayImport l imported) else Nothing
   where
+    ||| A module's layer: the group under the product's root its name is in
+    ||| (`Codegen` for `Native.Codegen.TermIR.Instr`), or the linter's.
     layerOf : String -> Maybe Layer
-    layerOf m =
-      if m == "Runtime" || isPrefixOf "Runtime." m then Just RuntimeLayer
-      else if isPrefixOf "Compiler.Native." m then Just NativeLayer
-      else if isPrefixOf "Flat." m then Just FlatLayer
-      else if isPrefixOf "Lint." m then Just LintLayer
-      else if isPrefixOf "Data." m then Just DataLayer
-      else if isPrefixOf "HeapObj." m then Just HeapObjLayer
-      else Nothing
+    layerOf m = case forget (split (== '.') m) of
+      ("Native" :: g :: _) => lookup g [("Data", DataLayer), ("HeapObj", HeapObjLayer), ("Flat", FlatLayer),
+                                        ("Codegen", CodegenLayer), ("Runtime", RuntimeLayer)]
+      ("Lint" :: _) => Just LintLayer
+      _ => Nothing
 
-    ||| The modules a layer may import: its own, and of the layers below it;
-    ||| a module of no layer among ours (a program) by none, the data
-    ||| structures and the heap-object model nothing but data structures,
-    ||| and the runtime only what it shares with the compiler: the
-    ||| heap-object model, and `Flat.Uniform`.
+    ||| The layers a layer's modules may import: its own, and some below it.
+    ||| The data structures and the heap-object model import nothing but
+    ||| data structures; the runtime only what it shares with the code
+    ||| generator, the heap-object model, and of the flat fragment
+    ||| `Native.Flat.Uniform` alone (`mayImport`).
+    imports : Layer -> List Layer
+    imports DataLayer = [DataLayer]
+    imports HeapObjLayer = [DataLayer, HeapObjLayer]
+    imports FlatLayer = [DataLayer, FlatLayer]
+    imports CodegenLayer = [DataLayer, HeapObjLayer, FlatLayer, CodegenLayer]
+    imports RuntimeLayer = [HeapObjLayer, RuntimeLayer]
+    imports LintLayer = [LintLayer]
+
+    ||| Whether a layer's module may import a module: one of the layers it
+    ||| imports, or for the runtime `Native.Flat.Uniform`; a module of no
+    ||| layer among ours (a program) by none.
     mayImport : Layer -> String -> Bool
-    mayImport DataLayer m = layerOf m == Just DataLayer
-    mayImport HeapObjLayer m = layerOf m == Just DataLayer || layerOf m == Just HeapObjLayer
-    mayImport FlatLayer m = layerOf m == Just DataLayer || layerOf m == Just FlatLayer
-    mayImport NativeLayer m = maybe False (\l => l /= RuntimeLayer && l /= LintLayer) (layerOf m)
-    mayImport RuntimeLayer m = layerOf m == Just RuntimeLayer || layerOf m == Just HeapObjLayer || m == "Flat.Uniform"
-    mayImport LintLayer m = layerOf m == Just LintLayer
+    mayImport l m = maybe False (`elem` imports l) (layerOf m) || (l == RuntimeLayer && m == "Native.Flat.Uniform")
 
 moduleOf : SourceFile -> String
 moduleOf f = show f.mod.moduleNS
@@ -98,9 +104,9 @@ graphRules fs =
           ("`" ++ moduleOf f ++ "` may not import `" ++ imported ++ "`: the layers")
       | i <- f.mod.imports, let imported = show i.path, allowed ours (moduleOf f) imported == Just False ]
       ++
-      [ MkFinding "syscall" f.path (fst (start i.loc)) (snd (start i.loc)) "Runtime.OS.Syscall"
-          "the raw system call outside `Runtime.OS`: the platform's services reach the system"
-      | i <- f.mod.imports, show i.path == "Runtime.OS.Syscall", not (isPrefixOf "Runtime.OS." (moduleOf f)) ]
+      [ MkFinding "syscall" f.path (fst (start i.loc)) (snd (start i.loc)) "Native.Runtime.OS.Syscall"
+          "the raw system call outside `Native.Runtime.OS`: the platform's services reach the system"
+      | i <- f.mod.imports, show i.path == "Native.Runtime.OS.Syscall", not (isPrefixOf "Native.Runtime.OS." (moduleOf f)) ]
       where
         start : FC -> (Int, Int)
         start (MkFC _ s _) = s
@@ -111,7 +117,7 @@ graphRules fs =
 -- Groups and qualifiers
 --
 -- A module's group is its immediate parent component: `LocatedIR` for
--- `Compiler.Native.LocatedIR.Instr`. Names of two groups may be the same;
+-- `Native.Codegen.LocatedIR.Instr`. Names of two groups may be the same;
 -- where they meet, a module qualifies one by its group, and one component
 -- is all a qualifier ever needs.
 
@@ -131,7 +137,7 @@ groupOf m = parentOf m >>= \p => last' (forget (Data.String.split (== '.') p))
 ||| importer but its last part; and a name of ours written qualified is
 ||| written as the rule writes it, with the defining module's path past what
 ||| the two modules' names share, `TermIR.StaticDef.SWord` in
-||| `Compiler.Native.RegAlloc`.
+||| `Native.Codegen.RegAlloc`.
 export
 importAlias : (exportsOf : SortedMap String (List String)) -> SourceFile -> List (FC, Name) -> List Finding
 importAlias exportsOf f refs =
@@ -248,7 +254,7 @@ meetings fds =
 ||| `same-name`, a warning: one name, two meanings, written bare in a module
 ||| that sees both. Modules may define the same names; where they meet, a
 ||| module writes one qualified, importing its module as its group
-||| (`import Compiler.Native.LocatedIR.Instr as LocatedIR`, `LocatedIR.Load`).
+||| (`import Native.Codegen.LocatedIR.Instr as LocatedIR`, `LocatedIR.Load`).
 ||| Each definition is reported, with the others and where they meet.
 export
 sameName : List (SourceFile, List Declared) -> List Finding

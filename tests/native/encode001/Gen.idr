@@ -12,11 +12,11 @@
 ||| GNU as is used here as a reference only; the product never runs it.
 module Gen
 
-import Compiler.Native.X86.Asm
-import Compiler.Native.X86.Encode
 import Data.Buffer
 import Data.List
 import Data.SortedMap
+import Native.Codegen.X86.Asm
+import Native.Codegen.X86.Encode
 import System.File
 
 regs : List Reg64

@@ -13,15 +13,15 @@
 ||| `idris_crash`, each program brings by hand.
 module Gen
 
-import Compiler.Native.ELF
-import Compiler.Native.Link
-import Compiler.Native.Linkage.Sym
-import Compiler.Native.X86.Asm
-import Compiler.Native.X86.Encode
-import HeapObj.Enc
-import HeapObj.Header
-import HeapObj.Kind
-import HeapObj.ValEnc
+import Native.Codegen.ELF
+import Native.Codegen.Link
+import Native.Codegen.Linkage.Sym
+import Native.Codegen.X86.Asm
+import Native.Codegen.X86.Encode
+import Native.HeapObj.Enc
+import Native.HeapObj.Header
+import Native.HeapObj.Kind
+import Native.HeapObj.ValEnc
 import System.File
 
 ||| The word of fixnum n, under fixnum tag 1.

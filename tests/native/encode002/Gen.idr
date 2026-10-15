@@ -8,9 +8,9 @@
 ||| compilation fails rather than produce wrong code.
 module Gen
 
-import Compiler.Native.X86.Asm
-import Compiler.Native.X86.Encode
 import Data.SortedMap
+import Native.Codegen.X86.Asm
+import Native.Codegen.X86.Encode
 
 check : String -> SortedMap Label Int -> List Instr -> IO ()
 check what env is = do

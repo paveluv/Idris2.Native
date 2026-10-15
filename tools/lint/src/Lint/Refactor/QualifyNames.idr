@@ -4,13 +4,13 @@
 ||| editor sees it.
 |||
 ||| A name `A` from our module `M`, used in the module `C`, is written with
-||| `M`'s path past what it shares with `C`'s: in `Compiler.Native.RegAlloc`,
-||| `SWord` of `Compiler.Native.TermIR.StaticDef` is
+||| `M`'s path past what it shares with `C`'s: in `Native.Codegen.RegAlloc`,
+||| `SWord` of `Native.Codegen.TermIR.StaticDef` is
 ||| `TermIR.StaticDef.SWord`, and `piece` of `Data.Builder`
 ||| `Data.Builder.piece`. A type named after its module drops the module's
 ||| last part, `TermIR.StaticDef`, which Idris resolves through an alias,
 ||| so the module is imported under the rest of the path
-||| (`import Compiler.Native.TermIR.StaticDef as TermIR`); a peer's, of the
+||| (`import Native.Codegen.TermIR.StaticDef as TermIR`); a peer's, of the
 ||| same group, stays bare (`Target`). Every name thus has one
 ||| qualifier in a module, and no two of ours meet bare.
 |||
@@ -52,7 +52,7 @@ import Lint.Source
 
 ||| One of our modules a file imports: its name, its path past what it
 ||| shares with the importer's (`TermIR.StaticDef` from
-||| `Compiler.Native.RegAlloc`), the import, and the names it exports.
+||| `Native.Codegen.RegAlloc`), the import, and the names it exports.
 record Imported where
   constructor MkImported
   name : String

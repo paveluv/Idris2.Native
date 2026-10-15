@@ -26,12 +26,6 @@
 -- position; one taking a `Bits64` where `base` says `Int` is refused.
 module Main
 
-import Compiler.Native.IRCommon.Ty
-import Compiler.Native.Linkage.Routine
-import Compiler.Native.Lower
-import Compiler.Native.Platform
-import Compiler.Native.TermIR.Decls
-import Compiler.Native.TermIR.Program
 import Compiler.VMCode
 import Core.CompileExpr
 import Core.FC
@@ -39,11 +33,18 @@ import Core.Name
 import Core.TT
 import Data.List
 import Data.Vect
-import Flat.Exp
-import HeapObj.BignumEnc
-import HeapObj.Enc
-import HeapObj.StringEnc
-import HeapObj.ValEnc
+import Native.Codegen.IRCommon.Ty
+import Native.Codegen.Linkage.Routine
+import Native.Codegen.Linkage.RuntimeModule
+import Native.Codegen.Lower
+import Native.Codegen.Platform
+import Native.Codegen.TermIR.Decls
+import Native.Codegen.TermIR.Program
+import Native.Flat.Exp
+import Native.HeapObj.BignumEnc
+import Native.HeapObj.Enc
+import Native.HeapObj.StringEnc
+import Native.HeapObj.ValEnc
 
 TestEnc : Enc
 TestEnc = defaultEnc
@@ -100,7 +101,7 @@ exitForeign = (NS (mkNamespace "System") (UN (Basic "prim__exit")), MkVMForeign 
 ||| The runtime's implementation of it, taking the argument given.
 exitImplementation : Skeleton -> FlatDef
 exitImplementation arg =
-  form (NS (mkNamespace "Runtime.Foreign.System") (UN (Basic "prim__exit")))
+  form (NS (mkNamespace "Native.Runtime.Foreign.System") (UN (Basic "prim__exit")))
        [MkFlatVar (UN (Basic "status")) arg [Word], MkFlatVar (UN (Basic "w")) (SPrim WorldType) []]
        (SCon (NS (mkNamespace "PrimIO") (UN (Basic "IORes"))) [unit]) []
 
@@ -122,4 +123,4 @@ main = do
   checkWith "prim__exit of a Bits64" (exitImplementation (SPrim Bits64Type) :: standIns) [exitForeign]
   where
     linuxWrite : Name
-    linuxWrite = NS (mkNamespace "Runtime.OS.LinuxX86_64") (UN (Basic "write"))
+    linuxWrite = NS (mkNamespace "Native.Runtime.OS.LinuxX86_64") (UN (Basic "write"))

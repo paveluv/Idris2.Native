@@ -6,14 +6,14 @@
 -- first word that holds a value and how many do.
 module Main
 
-import HeapObj.BignumEnc
-import HeapObj.Enc
-import HeapObj.Header
-import HeapObj.Kind
-import HeapObj.LayoutWord
-import HeapObj.StringEnc
-import HeapObj.ValEnc
-import Runtime.Object
+import Native.HeapObj.BignumEnc
+import Native.HeapObj.Enc
+import Native.HeapObj.Header
+import Native.HeapObj.Kind
+import Native.HeapObj.LayoutWord
+import Native.HeapObj.StringEnc
+import Native.HeapObj.ValEnc
+import Native.Runtime.Object
 
 TestEnc : Enc
 TestEnc = MkEnc FixnumTag1 (MkBignumEnc Limb64 SignMagnitude) Utf8

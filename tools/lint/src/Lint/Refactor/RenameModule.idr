@@ -2,15 +2,18 @@
 ||| name, and its file another path to match.
 |||
 ||| It is given the module's name and its new one, and acts on the module's
-||| file. The file moves to the path of the new name, under the package's
-||| `sourcedir`, its `module` line naming it; the package lists the new
-||| name where it listed the old. Each importer imports the new name,
-||| keeping its alias and whether the import is public. A name written
-||| qualified by the old name, or by its last parts
+||| file; or a group's and its new one, and renames each module of the
+||| group to the same place under the new (`Compiler.Native.TermIR.Instr`
+||| to `Native.Codegen.TermIR.Instr`), one at a time. The file moves to the
+||| path of the new name, under the package's `sourcedir`, its `module` line
+||| naming it; the package lists the new name where it listed the old, or,
+||| if its list is in order, where the order puts it. Each importer imports
+||| the new name, keeping its alias and whether the import is public. A
+||| name written qualified by the old name, or by its last parts
 ||| (`IRCommon.Operators.Rel`), is written with as many last parts of the
 ||| new one (`IRCommon.Op.Rel`), all of them if it has fewer; a name written
-||| under an alias stays, as the alias does. It renames nothing
-||| when a module of the new name is among the files.
+||| under an alias stays, as the alias does. It renames nothing when a
+||| module of the new name is among the files.
 |||
 ||| What it leaves for after: the imports in order (`order-imports`), the
 ||| names qualified by the new paths (`qualify-names`), and the comments
@@ -43,7 +46,7 @@ import Lint.Source
 export
 renameModule : (arguments : List String) -> Refactoring
 renameModule args =
-  MkRefactoring "rename-module" "rename a module (--arg OLD --arg NEW), its file moved and its importers rewritten"
+  MkRefactoring "rename-module" "rename a module or a group (--arg OLD --arg NEW), its files moved and its importers rewritten"
     True False candidates
   where
     ||| A module's name.
@@ -96,15 +99,31 @@ renameModule args =
           header = maybe (-1) fst (find (isPrefixOf "module " . snd) (zip [0 .. cast (length (linesOf s))] (linesOf s)))
           own = MkEdit (header, 0) (header + 1, 0) ("module " ++ new ++ "\n") :: concatMap (requalified old new exports s) s.written
           entry = l.indent ++ new ++ (if l.lastInList then "" else ",")
+          -- a list in order stays in order, the new name in its place
+          listed = case moduleList ptext of
+            Just ml => if sort ml.modules == ml.modules
+                         then replaceLines ml.first ml.last (moduleLines ml.indent (sort (map (\m => if m == old then new else m) ml.modules)))
+                         else replaceLines l.line l.line [entry]
+            Nothing => replaceLines l.line l.line [entry]
       when (header < 0) $ Left "it has no `module` line"
       text <- maybe (Left "its own edits overlap") Right (apply own s.text)
       pure (MkChange
-              ((l.package, [replaceLines l.line l.line [entry]])
+              ((l.package, [listed])
                :: mapMaybe (importerEdits old new exports) (List.filter (\t => nameOf t /= old) p.files))
               [(l.newPath, text)]
               [s.file.path])
 
+    -- a module's new name: the new one for the old, and for a module of
+    -- the old group the same place under the new
+    renamed : (old, new, module' : String) -> Maybe String
+    renamed old new m =
+      if m == old then Just new
+      else if isPrefixOf (old ++ ".") m then Just (new ++ substr (length old) (length m) m)
+      else Nothing
+
     candidates : Project -> Subject -> List Candidate
     candidates p s = case args of
-      [old, new] => if nameOf s == old then [MkCandidate ("rename " ++ old ++ " to " ++ new) (plan p s old new)] else []
+      [old, new] => case renamed old new (nameOf s) of
+        Just m => [MkCandidate ("rename " ++ nameOf s ++ " to " ++ m) (plan p s (nameOf s) m)]
+        Nothing => []
       _ => []

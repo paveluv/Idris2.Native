@@ -29,7 +29,7 @@ modules into `build/prefix` as the package `idris2-native`.
     build/exec/idris2-native --cg native Main.idr -o main
 
 Directives for the code generator are given with `--directive`, or in the
-program with `%cg native`; `Compiler.Native.Native` lists them.
+program with `%cg native`; `Native.Codegen.Native` lists them.
 
 ### Flat functions
 

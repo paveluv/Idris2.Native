@@ -9,12 +9,12 @@
 ||| ends the process with the status in rdi.
 module Gen
 
-import Compiler.Native.Bytes
-import Compiler.Native.ELF
-import Compiler.Native.Platform
-import Compiler.Native.X86.Asm
-import Compiler.Native.X86.Encode
 import Data.SortedMap
+import Native.Codegen.Bytes
+import Native.Codegen.ELF
+import Native.Codegen.Platform
+import Native.Codegen.X86.Asm
+import Native.Codegen.X86.Encode
 import System.File
 
 main : IO ()
