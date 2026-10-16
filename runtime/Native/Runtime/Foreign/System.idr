@@ -14,4 +14,4 @@ import Native.Runtime.System
 ||| End the process with the status: its low byte is what the parent sees.
 export
 prim__exit : Int -> PrimIO ()
-prim__exit status w = let (Heap.MkHeap # ()) = System.exit (cast status) Heap.MkHeap in MkIORes () w
+prim__exit status w = let (MkHeap # ()) = System.exit (cast status) MkHeap in MkIORes () w

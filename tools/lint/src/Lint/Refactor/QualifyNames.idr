@@ -104,10 +104,10 @@ qualifyNames =
     qualifiedEdits _ _ _ = []
 
     ||| The alias an import takes: the one its path asks, where the importer
-    ||| writes the module's key type.
+    ||| writes the module's key type or the type's constructor.
     aliasFor : (uses : List (String, String)) -> Imported -> Maybe String
     aliasFor uses i = case last' i.path of
-      Just m => if (i.name, m) `elem` uses then aliasAt i.path else Nothing
+      Just m => if any (\(d, n) => d == i.name && keyNamed m n) uses then aliasAt i.path else Nothing
       Nothing => Nothing
 
     -- an import whose alias is not the one the rule asks, rewritten
@@ -126,7 +126,7 @@ qualifyNames =
         imported : Import -> Maybe Imported
         imported i =
           map (\t => MkImported (show i.path) (pathFrom (show s.file.mod.moduleNS) (show i.path)) i (nub (joined (map (.visible) t.declared))))
-              (find (\t => show t.file.mod.moduleNS == show i.path) p.files)
+              (find (\t => show t.file.mod.moduleNS == show i.path) (p.files ++ p.context))
     ||| The free names of a declaration, each where it is written: a claim's,
     ||| a definition's, a `mutual` block's, followed by Free; an
     ||| implementation's and an interface's by their members'; a data type's

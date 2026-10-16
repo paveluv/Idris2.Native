@@ -19,4 +19,4 @@ import Native.HeapObj.Enc as HeapObj
 public export
 data Def : Decls enc -> Sig enc -> Type where
   Defined : Body d s.conv s.converts [] s.params -> Def d s
-  External : Def d (Sig.MkSig n (IRCommon.Conv.Direct rs col) ps False)
+  External : Def d (MkSig n (IRCommon.Conv.Direct rs col) ps False)

@@ -24,6 +24,6 @@ import Native.Routines
 export covering
 routines : Routines (Port.PortTy (\k => Memory.Addr k))
 routines =
-  Routines.MkRoutines
+  MkRoutines
     { start = Start.start, allocSlow = Space.allocSlow, allocMutable = Space.allocMutable
     , crash = System.crash }

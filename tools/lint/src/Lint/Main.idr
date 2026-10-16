@@ -65,6 +65,7 @@ import Lint.Refactor.RemoveUnused
 import Lint.Refactor.RenameModule
 import Lint.Refactor.ScopeHelpers
 import Lint.Refactor.SplitModule
+import Lint.Refactor.Subject
 import Lint.Resolution
 import Lint.ResolvedRules
 import Lint.Rules
@@ -275,15 +276,23 @@ main = do
     ||| The files under a run's roots listed and parsed once, and again only
     ||| after a change, which may have moved one: a wide refactoring asks
     ||| for them at every file it looks at.
-    projectOnce : IORef (Maybe Project) -> (roots : List String) -> Maybe Resolution -> IO Project
-    projectOnce cache roots res = do
+    projectOnce : IORef (Maybe Project) -> (roots : List String) -> Maybe Resolution -> List Subject -> IO Project
+    projectOnce cache roots res context = do
       Nothing <- readIORef cache
         | Just p => pure p
       -- the files as they are now: a change may have moved one
       paths <- joined <$> traverse files roots
-      p <- loadProject roots paths res
+      p <- loadProject roots paths res context
       writeIORef cache (Just p)
       pure p
+
+    ||| The modules of the packages beside the roots, but the run's own files,
+    ||| parsed.
+    contextOf : (roots, paths : List String) -> IO (List Subject)
+    contextOf roots paths = do
+      packages <- packagesNear roots
+      others <- joined <$> traverse (\(pp, t) => files (sourceDirOf pp t)) packages
+      rights <$> traverse load (filter (\o => not (o `elem` paths)) (nub others))
 
     ||| What the files' modules use, resolved, if their TTCs can be read.
     resolvedFrom : List String -> IO (Maybe Resolution)
@@ -300,8 +309,11 @@ main = do
       -- what the modules use, read once from the TTCs built before the run,
       -- which its changes leave behind
       res <- if r.wide then resolvedFrom paths else pure Nothing
+      -- the modules of the packages beside the roots that the run's files
+      -- may import, read once, as the run does not change them
+      context <- if r.wide then contextOf roots paths else pure []
       for_ paths $ \p => do
-        rep <- refactor dryRun check r (projectOnce cache roots res) (writeIORef cache Nothing) p
+        rep <- refactor dryRun check r (projectOnce cache roots res context) (writeIORef cache Nothing) p
         when (not quiet || not (null rep.changed)) $
           when (not (null rep.changed) || not (null rep.stays)) $ do
             putStrLn (p ++ ": " ++ show (length rep.changed) ++ " changed, " ++ show (length rep.stays) ++ " stay")

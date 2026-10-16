@@ -17,6 +17,6 @@ import Native.Codegen.Platform
 ||| if the platform is built.
 export
 platformModule : Platform -> Maybe Namespace
-platformModule (Platform.MkPlatform Platform.X86_64 Platform.Linux) =
+platformModule (MkPlatform Platform.X86_64 Platform.Linux) =
   Just (RuntimeModule.runtimeModule "OS.LinuxX86_64")
 platformModule _ = Nothing

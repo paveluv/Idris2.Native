@@ -27,7 +27,7 @@ import Native.Codegen.IRCommon.Intrinsic
 import Native.Codegen.IRCommon.Op
 import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.Codegen.LocatedIR.Block as LocatedIR
-import Native.Codegen.LocatedIR.Cont
+import Native.Codegen.LocatedIR.Cont as LocatedIR
 import Native.Codegen.LocatedIR.Function as LocatedIR
 import Native.Codegen.LocatedIR.Instr as LocatedIR
 import Native.Codegen.LocatedIR.Label as LocatedIR
@@ -191,7 +191,7 @@ Code : HeapObj.Enc -> Type
 Code enc = (Data.Builder (LocatedIR.Instr enc), LocatedIR.Terminator enc)
 
 addBlock : LocatedIR.Label -> List (LocatedIR.Reg enc) -> Code enc -> M enc ()
-addBlock l ps (is, t) = modify { blocks $= insert l (LocatedIR.Block.MkBlock l ps (toList is) t) }
+addBlock l ps (is, t) = modify { blocks $= insert l (LocatedIR.MkBlock l ps (toList is) t) }
 
 ||| Code, with the registers of its environment it reads.
 Lowered : HeapObj.Enc -> Type
@@ -389,7 +389,7 @@ parameters (d : TermIR.Decls enc)
           live = values outer
       addBlock lr (live ++ [r]) codeK
       pure (mergeLeft (usesAll env xs) outer,
-            (neutral, LocatedIR.Terminator.Call (nameOf f) (operands env xs) (LocatedIR.Cont.MkCont lr live)))
+            (neutral, LocatedIR.Terminator.Call (nameOf f) (operands env xs) (LocatedIR.MkCont lr live)))
     body (TermIR.Body.TailCall f xs) env li =
       pure (usesAll env xs, (neutral, LocatedIR.Terminator.TailCall (nameOf f) (operands env xs)))
     body (TermIR.Body.Apply f x k) env li = do
@@ -402,7 +402,7 @@ parameters (d : TermIR.Decls enc)
           live = values outer
       addBlock lr (live ++ [r]) codeK
       pure (mergeLeft (mergeLeft (uses env f) (uses env x)) outer,
-            (Data.Builder.piece (pf ++ px), LocatedIR.Terminator.Apply rf rx (LocatedIR.Cont.MkCont lr live)))
+            (Data.Builder.piece (pf ++ px), LocatedIR.Terminator.Apply rf rx (LocatedIR.MkCont lr live)))
     body (TermIR.Body.TailApply f x) env li = do
       (pf, rf) <- asReg env f
       (px, rx) <- asReg env x
@@ -508,11 +508,11 @@ parameters (d : TermIR.Decls enc)
 
             memRef : All (HV enc'') ctx'' -> TermIR.Mem (TermIR.Var ctx'') ->
                      M enc'' (List (LocatedIR.Instr enc''), LocatedIR.Mem enc'')
-            memRef env (TermIR.Mem.MkMem b i o) = do
+            memRef env (TermIR.MkMem b i o) = do
               (pb, rb) <- baseReg env b
               case i of
-                Nothing => pure (pb, LocatedIR.Mem.MkMem rb Nothing o)
-                Just x => do (pi, ri) <- asReg env x; pure (pb ++ pi, LocatedIR.Mem.MkMem rb (Just ri) o)
+                Nothing => pure (pb, LocatedIR.MkMem rb Nothing o)
+                Just x => do (pi, ri) <- asReg env x; pure (pb ++ pi, LocatedIR.MkMem rb (Just ri) o)
               where
                 baseReg : All (HV enc') ctx' -> TermIR.Mem.Base (TermIR.Var ctx') ->
                           M enc' (List (LocatedIR.Instr enc'), LocatedIR.Reg enc')
@@ -543,7 +543,7 @@ parameters (d : TermIR.Decls enc)
               addBlock 0 [] code
               pure (regs ps)
         in case runState (MkSt 0 1 empty []) run of
-             (st, ps) => LocatedIR.Function.MkFunction s.name s.conv ps 0 (values st.blocks) EmptyFC
+             (st, ps) => LocatedIR.MkFunction s.name s.conv ps 0 (values st.blocks) EmptyFC
         where
           ||| The levels a body reads of the variables bound outside it, directly or
           ||| through the blocks it jumps to (`lf` is what each label in scope reads);
@@ -637,8 +637,8 @@ parameters (d : TermIR.Decls enc)
 
   statics : (ss : List TermIR.StaticSig) -> All (TermIR.StaticDef d) ss -> List (LocatedIR.Static enc)
   statics [] [] = []
-  statics (TermIR.StaticSig.MkStaticSig sym k :: ss) (TermIR.StaticDef.MkStaticDef h fs :: ds) =
-    LocatedIR.Static.MkStatic sym k h (map field (toList fs)) :: statics ss ds
+  statics (TermIR.MkStaticSig sym k :: ss) (TermIR.MkStaticDef h fs :: ds) =
+    LocatedIR.MkStatic sym k h (map field (toList fs)) :: statics ss ds
     where
       field : TermIR.StaticDef.SField d -> LocatedIR.Static.SField
       field (TermIR.StaticDef.SWord w) = LocatedIR.Static.SWord w
@@ -657,5 +657,5 @@ LocatedProgram enc = LocatedIR.Program enc
 ||| The program in the IR, for the target.
 export
 allocRegs : {d : TermIR.Decls enc} -> Target -> TermIR.Program enc d -> LocatedIR.Program enc
-allocRegs target (TermIR.Program.MkProgram fs ss e conIds) =
-  LocatedIR.Program.MkProgram target (functions d d.sigs fs) (statics d d.statics ss) (entryName d e) conIds
+allocRegs target (TermIR.MkProgram fs ss e conIds) =
+  LocatedIR.MkProgram target (functions d d.sigs fs) (statics d d.statics ss) (entryName d e) conIds

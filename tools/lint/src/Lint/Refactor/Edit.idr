@@ -7,6 +7,7 @@
 module Lint.Refactor.Edit
 
 import Data.List
+import Data.Maybe
 import Data.String
 
 %default total
@@ -88,10 +89,14 @@ describe t e =
     marked m l = if l == "" then m else m ++ " " ++ l
 
 ||| The edits that keep a text's layout under edits that change the length
-||| of a line: each line after it indented past an edit's start, up to the
+||| of a line that opens a layout block after an edit (`do`, `of`, `let`,
+||| `where`): each line after it indented past the edit's start, up to the
 ||| first that is not, hangs off what follows the edit (the rest of a `do`
 ||| block or of a `case` alternative), so it moves as far as the edits
-||| before its indentation move the text. One edit a line, its moves summed.
+||| before its indentation move the text. A line that opens no block after
+||| its edits has no line hanging off it: what is indented under it is a
+||| continuation, inside brackets or not, which may stay where it is. One
+||| edit a line, its moves summed.
 export
 realigned : String -> List Edit -> List Edit
 realigned t es =
@@ -121,9 +126,21 @@ realigned t es =
           else if indentOf x <= start then []
           else (i, sum [ g | (c, g) <- here, c < indentOf x ]) :: go (i + 1) xs
 
-    -- each line hanging off an edited one, with how far it moves
+    -- whether a line opens a layout block from a column on: a keyword of
+    -- one among its words there
+    opensBlock : String -> Int -> Bool
+    opensBlock line c =
+      let rest = drop (cast c) (unpack line)
+          spaced = map (\ch => if isAlphaNum ch || ch == '_' || ch == '\'' then ch else ' ') rest
+      in any (\w => w `elem` ["do", "of", "let", "where"]) (words (pack spaced))
+
+    -- each line hanging off an edited one that opens a block after its
+    -- first edit, with how far it moves
     moves : List String -> List (Int, Int)
-    moves ls = concat [ hanging ls [ (c, g) | (l', c, g) <- grown, l' == l ] l | l <- nub (map fst grown) ]
+    moves ls =
+      concat [ hanging ls here l
+             | l <- nub (map fst grown), let here = [ (c, g) | (l', c, g) <- grown, l' == l ]
+             , opensBlock (fromMaybe "" (head' (drop (cast l) ls))) (foldr min 0x7FFFFFFF (map fst here)) ]
 
     -- a line's moves made one edit at its start
     moved : List (Int, Int) -> Int -> Maybe Edit

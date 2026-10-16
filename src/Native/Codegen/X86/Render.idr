@@ -163,7 +163,7 @@ parameters (enc : HeapObj.Enc) (realised : Linkage.Realised)
         -- and passes them as a call does, all `Val`s; a closure's arity is
         -- its function's number of parameters, and its function is CPS.
         arity = foldl max 0 [length f.params | f <- p.functions, f.conv == IRCommon.Conv.CPS]
-        applyAreas = Linkage.Areas.MkAreas (Target.argsWords abi (replicate arity Target.WordClass)) 0 arity
+        applyAreas = Linkage.MkAreas (Target.argsWords abi (replicate arity Target.WordClass)) 0 arity
     (s, _) <- runStateT (MkRS next2 funs params statics [<] [<] [<] applyAreas) $ do
       entry <- funLabel p.entry
       emits [Asm.Lbl (sym Linkage.Sym.SymMain), Asm.Jmp entry]
@@ -265,7 +265,7 @@ parameters (enc : HeapObj.Enc) (realised : Linkage.Realised)
           ||| The register's slot, recorded as used.
           useSlot : LocatedIR.Reg enc -> Render enc Nat
           useSlot r = do let n = LocatedIR.Reg.slotOf r
-                         uses (Linkage.Areas.MkAreas 0 0 (S n))
+                         uses (Linkage.MkAreas 0 0 (S n))
                          pure n
 
           slotMem : Nat -> Asm.Mem
@@ -291,7 +291,7 @@ parameters (enc : HeapObj.Enc) (realised : Linkage.Realised)
           takeValues ds = do
             let tys = map LocatedIR.Reg.regTy ds
                 items = zip (placeTys tys) ds
-            uses (Linkage.Areas.MkAreas (Target.argsWords abi (map IRCommon.Ty.classOf tys)) 0 0)
+            uses (Linkage.MkAreas (Target.argsWords abi (map IRCommon.Ty.classOf tys)) 0 0)
             traverse_ (\(l, d) => case l of
                                     Target.InWordReg r => store d (reg64 r)
                                     Target.InFloatReg f => do n <- useSlot d; emit (Asm.MovsdMR (slotMem n) (xmm f))
@@ -403,7 +403,7 @@ parameters (enc : HeapObj.Enc) (realised : Linkage.Realised)
           saveLive : (collects : Bool) -> (Asm.Instr -> Render enc ()) -> List (LocatedIR.Reg enc) -> Render enc ()
           saveLive collects out live = do
             let (gc, raw) = saved collects live
-            uses (Linkage.Areas.MkAreas 0 (length gc) 0)
+            uses (Linkage.MkAreas 0 (length gc) 0)
             when (not (null gc)) $ do
               out (Asm.Lea Asm.RSI (Asm.MRip (sym Linkage.Sym.SymNRoots) 0))
               out (Asm.MovRM Asm.RDX (Asm.MBase Asm.RSI 0))
@@ -488,7 +488,7 @@ parameters (enc : HeapObj.Enc) (realised : Linkage.Realised)
           ||| registers, then the word registers, since rcx is one of them.
           putValues : List (IRCommon.Ty enc) -> List (LocatedIR.Opnd enc) -> Render enc ()
           putValues tys xs = do
-            uses (Linkage.Areas.MkAreas (Target.argsWords abi (map IRCommon.Ty.classOf tys)) 0 0)
+            uses (Linkage.MkAreas (Target.argsWords abi (map IRCommon.Ty.classOf tys)) 0 0)
             let items = zip3 (placeTys tys) tys xs
             traverse_ (\(l, t, x) => case l of
                                        Target.InArgs i => do emit

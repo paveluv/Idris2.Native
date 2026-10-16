@@ -185,15 +185,15 @@ decodeHeader enc w = do
     -- A sign-magnitude program's BIGNUM header, matched on the record so
     -- that the match proves the sign is in the header.
     bignum : (enc' : Enc) -> Maybe (k : Kind ** Header enc' k)
-    bignum (Enc.MkEnc _ (BignumEnc.MkBignumEnc _ BignumEnc.SignMagnitude) _) =
+    bignum (MkEnc _ (MkBignumEnc _ BignumEnc.SignMagnitude) _) =
       Just (Kind.BIGNUM ** BignumH (get BignumNegative == 1) (get BignumWords))
     bignum _ = Nothing
 
     -- A string's header, matched on the record so that the match proves the
     -- encoding the constructor needs.
     string : (enc' : Enc) -> Maybe (k : Kind ** Header enc' k)
-    string (Enc.MkEnc _ _ StringEnc.Utf8) = Just (Kind.STRING ** StringH (get StringAscii == 1) (get StringBytes))
-    string (Enc.MkEnc _ _ StringEnc.Utf32) = Just (Kind.STRING ** StringCharsH (get StringChars))
+    string (MkEnc _ _ StringEnc.Utf8) = Just (Kind.STRING ** StringH (get StringAscii == 1) (get StringBytes))
+    string (MkEnc _ _ StringEnc.Utf32) = Just (Kind.STRING ** StringCharsH (get StringChars))
 
     parse : Maybe Kind -> Maybe (k : Kind ** Header enc k)
     parse (Just Kind.CON) = Just (Kind.CON ** ConH (get ConId) (get ConArity))

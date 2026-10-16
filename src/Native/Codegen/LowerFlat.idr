@@ -43,7 +43,7 @@ import Native.Codegen.TermIR.Build as TermIR
 import Native.Codegen.TermIR.Decls as TermIR
 import Native.Codegen.TermIR.Instr
 import Native.Codegen.TermIR.IsInt
-import Native.Codegen.TermIR.Mem
+import Native.Codegen.TermIR.Mem as TermIR
 import Native.Codegen.TermIR.Opnd as TermIR
 import Native.Codegen.TermIR.Sig as TermIR
 import Native.Codegen.TermIR.Var as TermIR
@@ -106,7 +106,7 @@ paramsLayout (p :: ps) = p.layout ++ paramsLayout ps
 export
 formSig : Flat.Exp.FlatDef -> TermIR.Sig enc
 formSig fd =
-  TermIR.Sig.MkSig (Linkage.Routine.flatName fd.name) (IRCommon.Conv.Direct (tys fd.result) False)
+  TermIR.MkSig (Linkage.Routine.flatName fd.name) (IRCommon.Conv.Direct (tys fd.result) False)
     (tys (paramsLayout fd.params)) (Linkage.ConvertsIn.convertsIn fd.name)
 
 ------------------------------------------------------------------------------
@@ -255,7 +255,7 @@ record Callee (d : TermIR.Decls enc) where
   constructor MkCallee
   form : Flat.Exp.FlatDef
   var : (n ** TermIR.Var d.sigs
-    (TermIR.Sig.MkSig n (IRCommon.Conv.Direct (tys form.result) False) (tys (paramsLayout form.params))
+    (TermIR.MkSig n (IRCommon.Conv.Direct (tys form.result) False) (tys (paramsLayout form.params))
      (convertsIn form.name)))
 
 ||| The forms the declarations have `Direct` functions for, by the forms'
@@ -268,7 +268,7 @@ callees d fds = fromList (mapMaybe one (TermIR.Var.enumerate d.sigs))
     byName = fromList [(Linkage.Routine.flatName fd.name, fd) | fd <- fds]
 
     one : (s ** TermIR.Var d.sigs s) -> Maybe (Name, Callee d)
-    one (TermIR.Sig.MkSig n (IRCommon.Conv.Direct rs False) ps cv ** var) = do
+    one (TermIR.MkSig n (IRCommon.Conv.Direct rs False) ps cv ** var) = do
       fd <- lookup n byName
       case (decEq rs (tys fd.result),
             decEq ps (tys (paramsLayout fd.params)), decEq cv (Linkage.ConvertsIn.convertsIn fd.name)) of
@@ -477,20 +477,20 @@ parameters {enc : HeapObj.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self
             wordExtern _ Linkage.InlineExtern.Load64 [base, off] = do
               p <- TermIR.Build.emit1 (TermIR.Instr.Arith Add base off)
               r <- TermIR.Build.emit1
-                (TermIR.Instr.Load IRCommon.Ty.W64 (TermIR.Mem.MkMem (TermIR.Mem.AtWord p) Nothing 0))
+                (TermIR.Instr.Load IRCommon.Ty.W64 (TermIR.MkMem (TermIR.Mem.AtWord p) Nothing 0))
               pure (MkValue [Flat.Exp.Word] [r])
             wordExtern _ (Linkage.InlineExtern.LoadNarrow sw) [base, off] = do
               p <- TermIR.Build.emit1 (TermIR.Instr.Arith Add base off)
-              r <- TermIR.Build.emit1 (TermIR.Instr.LoadN sw False (TermIR.Mem.MkMem (TermIR.Mem.AtWord p) Nothing 0))
+              r <- TermIR.Build.emit1 (TermIR.Instr.LoadN sw False (TermIR.MkMem (TermIR.Mem.AtWord p) Nothing 0))
               pure (MkValue [Flat.Exp.Word] [r])
             wordExtern _ Linkage.InlineExtern.Store64 [base, off, x] = do
               p <- TermIR.Build.emit1 (TermIR.Instr.Arith Add base off)
               TermIR.Build.emit0
-                (TermIR.Instr.Store IRCommon.Ty.W64 (TermIR.Mem.MkMem (TermIR.Mem.AtWord p) Nothing 0) x)
+                (TermIR.Instr.Store IRCommon.Ty.W64 (TermIR.MkMem (TermIR.Mem.AtWord p) Nothing 0) x)
               pure noRegs
             wordExtern _ (Linkage.InlineExtern.StoreNarrow sw) [base, off, x] = do
               p <- TermIR.Build.emit1 (TermIR.Instr.Arith Add base off)
-              TermIR.Build.emit0 (TermIR.Instr.StoreN sw (TermIR.Mem.MkMem (TermIR.Mem.AtWord p) Nothing 0) x)
+              TermIR.Build.emit0 (TermIR.Instr.StoreN sw (TermIR.MkMem (TermIR.Mem.AtWord p) Nothing 0) x)
               pure noRegs
             wordExtern _ Linkage.InlineExtern.PointerTag [] =
               pure (MkValue [Flat.Exp.Word] [TermIR.Opnd.W (cast (HeapObj.ValEnc.pointerTag enc.val))])

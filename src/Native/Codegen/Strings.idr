@@ -24,11 +24,11 @@ export
 literal : (enc : HeapObj.Enc) -> String ->
           Maybe (h : HeapObj.Header enc HeapObj.Kind.STRING ** Vect (HeapObj.Header.fieldWords h) Int64)
 literal enc s = case enc of
-  HeapObj.Enc.MkEnc _ _ HeapObj.StringEnc.Utf8 =>
+  HeapObj.MkEnc _ _ HeapObj.StringEnc.Utf8 =>
                    let bs = encodeAll utf8 (unpack s)
                        h = HeapObj.Header.StringH (all (< 0x80) bs) (length bs)
                    in map (\ws => (h ** ws)) (toVect _ (words bs))
-  HeapObj.Enc.MkEnc _ _ HeapObj.StringEnc.Utf32 =>
+  HeapObj.MkEnc _ _ HeapObj.StringEnc.Utf32 =>
                    let cs = unpack s
                        h = HeapObj.Header.StringCharsH (length cs)
                    in map (\ws => (h ** ws)) (toVect _ (words (encodeAll utf32 cs)))

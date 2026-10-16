@@ -270,7 +270,7 @@ seedRodata tl =
 ||| largest arity, which the program's areas cover.
 export
 seedAreas : Linkage.Areas
-seedAreas = Linkage.Areas.MkAreas 0 2 0
+seedAreas = Linkage.MkAreas 0 2 0
 
 ||| The zero-initialised per-thread areas, 8-aligned, in bss: `ARGS`, then
 ||| `ROOTS`, `NROOTS`, `SCRATCH`, `STACK_LIMIT`, `ARGV` and `RUNTIME`.

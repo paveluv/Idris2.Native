@@ -67,10 +67,10 @@ data Body : Decls enc -> IRCommon.Conv enc -> Bool -> List (List (IRCommon.Ty en
   Switch : {auto 0 int : IsInt t} -> Opnd (Var ctx) t -> (keys : List Int64) ->
            {auto 0 ok : So (distinct keys && keysFit t keys)} ->
            All (\_ => Body d c m ls ctx) keys -> (dflt : Body d c m ls ctx) -> Body d c m ls ctx
-  Call : Var d.sigs (Sig.MkSig n IRCommon.Conv.CPS ps cv) -> All (Opnd (Var ctx)) ps ->
+  Call : Var d.sigs (MkSig n IRCommon.Conv.CPS ps cv) -> All (Opnd (Var ctx)) ps ->
          (resume : Body d IRCommon.Conv.CPS m ls (IRCommon.Ty.Val :: ctx)) ->
          Body d IRCommon.Conv.CPS m ls ctx
-  TailCall : Var d.sigs (Sig.MkSig n IRCommon.Conv.CPS ps cv) -> All (Opnd (Var ctx)) ps ->
+  TailCall : Var d.sigs (MkSig n IRCommon.Conv.CPS ps cv) -> All (Opnd (Var ctx)) ps ->
              Body d IRCommon.Conv.CPS m ls ctx
   ||| Apply a closure to one argument, through the runtime's apply routine.
   Apply : (fn, arg : Opnd (Var ctx) IRCommon.Ty.Val) ->

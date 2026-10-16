@@ -8,7 +8,9 @@
 ||| `Data.Builder.piece`. A type named after its module drops the module's
 ||| name: `TermIR.StaticDef`, which Idris resolves only through an alias,
 ||| the module imported under the path's rest (`as TermIR`); a peer's type,
-||| of the same group, is bare (`Target`).
+||| of the same group, is bare (`Target`). So does the type's constructor
+||| `MkX`, named after it: `TermIR.MkStaticDef`, and a peer's bare
+||| (`MkPort`). Every other name keeps the whole path.
 module Lint.Qualifier
 
 import Data.List
@@ -33,14 +35,21 @@ pathFrom importer m = case dropShared (partsOf importer) (partsOf m) of
     partsOf : String -> List String
     partsOf m = forget (split (== '.') m)
 
+||| Whether a name is a module's key type, of its last name `m`, or the
+||| type's constructor, `MkX` for `X`.
+export
+keyNamed : (m, name : String) -> Bool
+keyNamed m n = n == m || n == "Mk" ++ m
+
 ||| The qualifier a name defined in a module at the path is written with,
-||| if any: the path, or, for the module's key type, the path but its last
-||| part, none if that leaves nothing.
+||| if any: the path, or, for the module's key type and its constructor
+||| `MkX` (`keyNamed`), the path but its last part, none if that leaves
+||| nothing.
 export
 qualifierOf : (path : List String) -> (name : String) -> Maybe String
 qualifierOf path n = case reverse path of
   (m :: rest) =>
-    if n == m then (if null rest then Nothing else Just (joinBy "." (reverse rest)))
+    if keyNamed m n then (if null rest then Nothing else Just (joinBy "." (reverse rest)))
     else Just (joinBy "." path)
   [] => Nothing
 

@@ -23,7 +23,7 @@ import Native.Runtime.State
 ||| from the state's scratch bytes.
 export covering
 prim__putChar : Char -> PrimIO ()
-prim__putChar c w = let (Heap.MkHeap # ()) = putOp (cast (ord c)) Heap.MkHeap in MkIORes () w
+prim__putChar c w = let (MkHeap # ()) = putOp (cast (ord c)) MkHeap in MkIORes () w
   where
     covering
     putOp : Bits64 -> Heap.Op Heap ()

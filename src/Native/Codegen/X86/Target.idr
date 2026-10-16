@@ -17,7 +17,7 @@ import Native.Codegen.Target
 ||| so C code preserves them.
 public export
 x86_64 : Target
-x86_64 = Target.MkTarget
+x86_64 = MkTarget
   { name = "x86-64"
   , wordSize = 8
   , lowering = Target.HeapLowering

@@ -63,7 +63,7 @@ import Native.HeapObj.Enc as HeapObj
 ||| The entry: a CPS function of the program, of no parameters.
 public export
 data Entry : Decls enc -> Type where
-  MkEntry : Var d.sigs (Sig.MkSig n IRCommon.Conv.CPS [] cv) -> Entry d
+  MkEntry : Var d.sigs (MkSig n IRCommon.Conv.CPS [] cv) -> Entry d
 
 ||| A program: a definition for every function and static, under distinct
 ||| names, its entry, and the link-time numbering of its constructors.

@@ -132,11 +132,11 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
       whenJust settings.dumpForeign $ \f => dumpForeign settings.encodings realised f
       cdata <- phase "Idris's passes" (getCompileData False VMCode tm)
       image <- case settings.encodings of
-        HeapObj.Enc.MkEnc HeapObj.ValEnc.FixnumTag1 b s =>
-          pipeline (HeapObj.Enc.MkEnc HeapObj.ValEnc.FixnumTag1 b s) settings realised table (vmcode cdata)
-        HeapObj.Enc.MkEnc HeapObj.ValEnc.FixnumTag0 b s =>
-          pipeline (HeapObj.Enc.MkEnc HeapObj.ValEnc.FixnumTag0 b s) settings realised table (vmcode cdata)
-        HeapObj.Enc.MkEnc HeapObj.ValEnc.NoFixnums _ _ =>
+        HeapObj.MkEnc HeapObj.ValEnc.FixnumTag1 b s =>
+          pipeline (HeapObj.MkEnc HeapObj.ValEnc.FixnumTag1 b s) settings realised table (vmcode cdata)
+        HeapObj.MkEnc HeapObj.ValEnc.FixnumTag0 b s =>
+          pipeline (HeapObj.MkEnc HeapObj.ValEnc.FixnumTag0 b s) settings realised table (vmcode cdata)
+        HeapObj.MkEnc HeapObj.ValEnc.NoFixnums _ _ =>
           throw (GenericMsg EmptyFC "native: the encoding nofixnums is not implemented")
       coreLift_ $ mkdirAll outputDir
       let outexec = outputDir </> outfile

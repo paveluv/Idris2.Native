@@ -45,7 +45,7 @@ data InlineExtern
 export
 lowerings : Intrinsics (\_ => InlineExtern)
 lowerings =
-  Intrinsics.MkIntrinsics
+  MkIntrinsics
     { syscall6 = Machine (IRCommon.Intrinsic.Syscall 6)
     , load64 = Load64, load32 = LoadNarrow IRCommon.Op.Sub32, load16 = LoadNarrow IRCommon.Op.Sub16
     , load8 = LoadNarrow IRCommon.Op.Sub8

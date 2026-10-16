@@ -7,6 +7,7 @@
 ||| `length`, which `Geo.Shape` exports too, is left as written.
 module Plan
 
+import Geo.Box
 import Geo.Shape
 import Left.Side as Left
 import Right.Side as Right
@@ -27,3 +28,13 @@ corners s = case s of
   Circle r => do putStrLn "none"
                  pure r
   _ => pure 0
+
+||| A record's type and its constructor, both named after their module,
+||| are written alike: `Geo.Box` and `Geo.MkBox`, the module imported as
+||| `Geo`. The fields under the constructor stay where they are: they hang
+||| off no block the qualifier moves.
+export
+box : Box
+box =
+  MkBox
+    { width = 1, height = 2 }

@@ -71,7 +71,7 @@ import Native.Codegen.TermIR.Def as TermIR
 import Native.Codegen.TermIR.FieldTys
 import Native.Codegen.TermIR.Instr
 import Native.Codegen.TermIR.IsInt
-import Native.Codegen.TermIR.Mem
+import Native.Codegen.TermIR.Mem as TermIR
 import Native.Codegen.TermIR.Opnd as TermIR
 import Native.Codegen.TermIR.OvOp as TermIR
 import Native.Codegen.TermIR.Program as TermIR
@@ -332,8 +332,8 @@ parameters {enc : HeapObj.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
   ||| A static object of the program, as a `Val`.
   staticVal : Name -> B (TermIR.Opnd v IRCommon.Ty.Val)
   staticVal name = case lookup name refs.stats of
-    Just (TermIR.StaticSig.MkStaticSig _ _ ** var) => do p <- TermIR.Build.emit1 (TermIR.Instr.StaticAddr var)
-                                                         TermIR.Build.emit1 (TermIR.Instr.WidenPtr p)
+    Just (TermIR.MkStaticSig _ _ ** var) => do p <- TermIR.Build.emit1 (TermIR.Instr.StaticAddr var)
+                                               TermIR.Build.emit1 (TermIR.Instr.WidenPtr p)
     Nothing => TermIR.Build.unsupported ("the static object " ++ show name ++ ", which no declaration makes")
 
   ------------------------------------------------------------------------------
@@ -364,7 +364,7 @@ parameters {enc : HeapObj.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
   boxWord : TermIR.Opnd v IRCommon.Ty.Val -> B (TermIR.Opnd v IRCommon.Ty.W64)
   boxWord x = do
     p <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr HeapObj.Kind.INT64 x)
-    TermIR.Build.emit1 (TermIR.Instr.Load IRCommon.Ty.W64 (TermIR.Mem.MkMem (TermIR.Mem.AtPtr p) Nothing 8))
+    TermIR.Build.emit1 (TermIR.Instr.Load IRCommon.Ty.W64 (TermIR.MkMem (TermIR.Mem.AtPtr p) Nothing 8))
 
   ||| A 64-bit integer's pattern: untagged from a fixnum, loaded from a box.
   wideWord : TermIR.Opnd v IRCommon.Ty.Val -> B (TermIR.Opnd v IRCommon.Ty.W64)
@@ -445,7 +445,7 @@ parameters {enc : HeapObj.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
         Flat.Exp.PrimShape DoubleType => do
                    p <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr HeapObj.Kind.DOUBLE x)
                    f <- TermIR.Build.emit1
-                     (TermIR.Instr.Load IRCommon.Ty.F64 (TermIR.Mem.MkMem (TermIR.Mem.AtPtr p) Nothing 8))
+                     (TermIR.Instr.Load IRCommon.Ty.F64 (TermIR.MkMem (TermIR.Mem.AtPtr p) Nothing 8))
                    pure (LowerFlat.MkValue [Flat.Exp.Dbl] [f])
         Flat.Exp.PrimShape WorldType => pure LowerFlat.noRegs
         Flat.Exp.PrimShape t => case intWidth t of
@@ -491,7 +491,7 @@ parameters {enc : HeapObj.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                          q <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr HeapObj.Kind.CON x)
                          traverse (\(j, s) => do f <- TermIR.Build.emit1
                                                    (TermIR.Instr.Load IRCommon.Ty.Val
-                                                    (TermIR.Mem.MkMem (TermIR.Mem.AtPtr q) Nothing (8 + 8 * cast j)))
+                                                    (TermIR.MkMem (TermIR.Mem.AtPtr q) Nothing (8 + 8 * cast j)))
                                                  unbox s f)
                                   (numbered fs)
             where
@@ -579,7 +579,7 @@ parameters {enc : HeapObj.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
       (MKCON r (Right n) _, _) :: is => TermIR.Build.unsupported ("the type constructor " ++ show n ++ " as a value")
       (MKCLOSURE r f missing args, _) :: is =>
         case lookup f refs.funs of
-          Just (TermIR.Sig.MkSig _ IRCommon.Conv.CPS _ _ ** code) => do
+          Just (TermIR.MkSig _ IRCommon.Conv.CPS _ _ ** code) => do
             x <- closure f code missing (map (get env) args)
             lower (set env r x) t is k
           _ => TermIR.Build.unsupported ("a closure of " ++ show f ++ ", which is not a function of the program")
@@ -624,13 +624,13 @@ parameters {enc : HeapObj.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
       (PROJECT r x i, _) :: is => do
         q <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr HeapObj.Kind.CON (get env x))
         f <- TermIR.Build.emit1
-          (TermIR.Instr.Load IRCommon.Ty.Val (TermIR.Mem.MkMem (TermIR.Mem.AtPtr q) Nothing (8 + 8 * i)))
+          (TermIR.Instr.Load IRCommon.Ty.Val (TermIR.MkMem (TermIR.Mem.AtPtr q) Nothing (8 + 8 * i)))
         lower (set env r f) t is k
       (ERROR msg, _) :: _ => TermIR.Build.crash msg
       where
         ||| A closure of the function, with the arguments filled and `missing` to
         ||| come, its header decided here.
-        closure : Name -> TermIR.Var d.sigs (TermIR.Sig.MkSig n IRCommon.Conv.CPS ps cv) -> (missing : Nat) ->
+        closure : Name -> TermIR.Var d.sigs (TermIR.MkSig n IRCommon.Conv.CPS ps cv) -> (missing : Nat) ->
                   (args : List (TermIR.Opnd v IRCommon.Ty.Val)) -> B (TermIR.Opnd v IRCommon.Ty.Val)
         closure f code missing args =
           case choose
@@ -650,9 +650,9 @@ parameters {enc : HeapObj.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
         cpsFunction : Name -> (n : Nat) ->
                       Maybe
                       (nm ** cv ** TermIR.Var d.sigs
-                       (TermIR.Sig.MkSig nm IRCommon.Conv.CPS (replicate n IRCommon.Ty.Val) cv))
+                       (TermIR.MkSig nm IRCommon.Conv.CPS (replicate n IRCommon.Ty.Val) cv))
         cpsFunction name n = case lookup name refs.funs of
-          Just (TermIR.Sig.MkSig nm IRCommon.Conv.CPS ps cv ** var) => case decEq ps (replicate n IRCommon.Ty.Val) of
+          Just (TermIR.MkSig nm IRCommon.Conv.CPS ps cv ** var) => case decEq ps (replicate n IRCommon.Ty.Val) of
             Yes Refl => Just (nm ** cv ** var)
             No _ => Nothing
           _ => Nothing
@@ -671,7 +671,7 @@ parameters {enc : HeapObj.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                then do a <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr HeapObj.Kind.ARRAY (get env x))
                        i <- wideWord (get env y)
                        set env r <$> TermIR.Build.emit1
-                         (TermIR.Instr.Load IRCommon.Ty.Val (TermIR.Mem.MkMem (TermIR.Mem.AtPtr a) (Just i) 8))
+                         (TermIR.Instr.Load IRCommon.Ty.Val (TermIR.MkMem (TermIR.Mem.AtPtr a) (Just i) 8))
             else TermIR.Build.unsupported ("the external primitive " ++ show p)
           -- The result is `()`, which no caller inspects: the erased value.
           [_, x, y, z, _] =>
@@ -679,7 +679,7 @@ parameters {enc : HeapObj.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                then do a <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr HeapObj.Kind.ARRAY (get env x))
                        i <- wideWord (get env y)
                        TermIR.Build.emit0
-                         (TermIR.Instr.Store IRCommon.Ty.Val (TermIR.Mem.MkMem (TermIR.Mem.AtPtr a) (Just i) 8)
+                         (TermIR.Instr.Store IRCommon.Ty.Val (TermIR.MkMem (TermIR.Mem.AtPtr a) (Just i) 8)
                           (get env z))
                        pure (set env r TermIR.Opnd.Erased)
             else TermIR.Build.unsupported ("the external primitive " ++ show p)
@@ -762,9 +762,9 @@ parameters {enc : HeapObj.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
 
         ||| A runtime routine's variable, with its results and parameters.
         routine : Name -> (rs, ps : List (IRCommon.Ty enc)) ->
-                  Maybe (n' ** TermIR.Var d.sigs (TermIR.Sig.MkSig n' (IRCommon.Conv.Direct rs False) ps False))
+                  Maybe (n' ** TermIR.Var d.sigs (TermIR.MkSig n' (IRCommon.Conv.Direct rs False) ps False))
         routine name rs ps = case lookup name refs.funs of
-          Just (TermIR.Sig.MkSig n (IRCommon.Conv.Direct rs' False) ps' False ** var) =>
+          Just (TermIR.MkSig n (IRCommon.Conv.Direct rs' False) ps' False ** var) =>
             case (decEq rs' rs, decEq ps' ps) of
             (Yes Refl, Yes Refl) => Just (n ** var)
             _ => Nothing
@@ -1260,7 +1260,7 @@ parameters {enc : HeapObj.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
   ||| A function's definition, from its plan.
   defOf : (d : TermIR.Decls enc) -> Refs enc d -> LowerFlat.Forms enc d -> (s : TermIR.Sig enc) -> Plan ->
           TermIR.Def d s
-  defOf d refs fs (TermIR.Sig.MkSig n IRCommon.Conv.CPS ps False) (FromVM args body) =
+  defOf d refs fs (TermIR.MkSig n IRCommon.Conv.CPS ps False) (FromVM args body) =
     case decEq ps (replicate (length args) IRCommon.Ty.Val) of
     Yes Refl =>
       TermIR.Def.Defined
@@ -1275,14 +1275,14 @@ parameters {enc : HeapObj.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
       lowerFunction d refs args body = TermIR.Build.build $ \ps =>
         lower d refs (fromList (zip args (map (\x => (x, Nothing)) (allVals ps)))) True (annotate (singleton (-1)) body)
               (\env => TermIR.Build.return (get env RVal))
-  defOf d refs fs (TermIR.Sig.MkSig n IRCommon.Conv.CPS ps False) (Boundary arity fd ss r) =
+  defOf d refs fs (TermIR.MkSig n IRCommon.Conv.CPS ps False) (Boundary arity fd ss r) =
     case (decEq ps (replicate arity IRCommon.Ty.Val), lookup fd.name fs.callees) of
       (Yes Refl, Just ce) =>
         TermIR.Def.Defined
           (fromMaybe (TermIR.Body.Unsupported "a level outside its context")
            (TermIR.Build.close (lowerBoundary d refs ce ss r arity)))
       _ => TermIR.Def.Defined (TermIR.Body.Unsupported ("the boundary of " ++ show n))
-  defOf d refs fs (TermIR.Sig.MkSig n (IRCommon.Conv.Direct rs False) ps cv) (Form fd) =
+  defOf d refs fs (TermIR.MkSig n (IRCommon.Conv.Direct rs False) ps cv) (Form fd) =
     case (decEq rs (LowerFlat.tys fd.result),
       decEq ps (LowerFlat.tys (LowerFlat.paramsLayout fd.params)), decEq cv (Linkage.ConvertsIn.convertsIn fd.name)) of
       (Yes Refl, Yes Refl, Yes Refl) =>
@@ -1290,7 +1290,7 @@ parameters {enc : HeapObj.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
           (fromMaybe (TermIR.Body.Unsupported "a level outside its context")
            (TermIR.Build.close (LowerFlat.lowerForm d fs fd)))
       _ => TermIR.Def.Defined (TermIR.Body.Unsupported ("the registers of the flat form of " ++ show fd.name))
-  defOf d refs fs (TermIR.Sig.MkSig n IRCommon.Conv.CPS ps False) (Foreign arity) =
+  defOf d refs fs (TermIR.MkSig n IRCommon.Conv.CPS ps False) (Foreign arity) =
     case decEq ps (replicate arity IRCommon.Ty.Val) of
     Yes Refl =>
       TermIR.Def.Defined
@@ -1303,7 +1303,7 @@ parameters {enc : HeapObj.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                      TermIR.Build.Closed d IRCommon.Conv.CPS False (replicate arity IRCommon.Ty.Val)
       lowerForeign d refs n arity = TermIR.Build.build $ \ps =>
         TermIR.Build.unsupported ("the foreign function " ++ show n)
-  defOf d refs fs (TermIR.Sig.MkSig n (IRCommon.Conv.Direct rs False) ps False) Routine = TermIR.Def.External
+  defOf d refs fs (TermIR.MkSig n (IRCommon.Conv.Direct rs False) ps False) Routine = TermIR.Def.External
   defOf d refs fs s NoEntry = TermIR.Def.Defined (TermIR.Body.Unsupported "a program without __mainExpression")
   defOf d refs fs s _ = TermIR.Def.Defined (TermIR.Body.Unsupported ("the definition of " ++ show s.name))
 
@@ -1322,14 +1322,14 @@ program forms shapes realised entry es rs =
     (Data.Distinct.distinct (map (.name) (mainSig :: map Builtin.fst es))
      && Data.Distinct.distinct (map (.sym) (map DPair.fst rs))) of
     Left ok =>
-      (declsOf es rs ** TermIR.Program.MkProgram
+      (declsOf es rs ** TermIR.MkProgram
                      (defs (declsOf es rs) (refsOf (declsOf es rs))
                        (LowerFlat.MkForms (LowerFlat.callees (declsOf es rs) forms) shapes realised.services
                          realised.externs)
                            ((mainSig, entry) :: es))
                      (staticDefs (declsOf es rs) rs) (TermIR.Program.MkEntry TermIR.Var.here) IRCommon.ConIds.noConIds)
     Right _ =>
-      (TermIR.Decls.MkDecls [mainSig] [] ** TermIR.Program.MkProgram
+      (TermIR.MkDecls [mainSig] [] ** TermIR.MkProgram
                      [TermIR.Def.Defined (TermIR.Body.Unsupported "a program with two definitions of one name")] []
                        (TermIR.Program.MkEntry TermIR.Var.here) IRCommon.ConIds.noConIds)
   where
@@ -1344,12 +1344,12 @@ program forms shapes realised entry es rs =
 
     ||| The entry's signature: CPS, of no parameters.
     mainSig : TermIR.Sig enc'
-    mainSig = TermIR.Sig.MkSig mainExpression IRCommon.Conv.CPS [] False
+    mainSig = TermIR.MkSig mainExpression IRCommon.Conv.CPS [] False
 
     ||| The declarations: the entry first, the other functions, the statics.
     declsOf : (es : List (TermIR.Sig enc', Plan)) ->
               (rs : List (s' ** ({0 d : TermIR.Decls enc'} -> TermIR.StaticDef d s'))) -> TermIR.Decls enc'
-    declsOf es rs = TermIR.Decls.MkDecls (mainSig :: map Builtin.fst es) (map DPair.fst rs)
+    declsOf es rs = TermIR.MkDecls (mainSig :: map Builtin.fst es) (map DPair.fst rs)
 
 ||| Whether a value of the C type is held as a flat value of the skeleton:
 ||| an integer as its machine type, a `Char`, a `Double`, the world, `()`, a
@@ -1409,7 +1409,7 @@ lowerProgram enc platform realised forms shapes vmdefs = do
       planned = mapMaybe plan (filter ((/= mainExpression) . fst) vmdefs)
       others = planned
                  ++ [(LowerFlat.formSig fd, Form fd) | fd <- forms]
-                 ++ [(TermIR.Sig.MkSig r.name (IRCommon.Conv.Direct r.results False) r.params False, Routine)
+                 ++ [(TermIR.MkSig r.name (IRCommon.Conv.Direct r.results False) r.params False, Routine)
                     | r <- Linkage.Routine.routines {enc} realised, not r.provided]
       boxing = fromList [(nullaryCon c, Nullary c) | c <- toList (concatMap (boxed . snd) planned)]
       statics = Data.SortedMap.toList (foldl mergeLeft boxing (mapMaybe bodyStatics vmdefs))
@@ -1485,10 +1485,10 @@ lowerProgram enc platform realised forms shapes vmdefs = do
 
     plan : (Name, VMDef) -> Maybe (TermIR.Sig enc, Plan)
     plan (n, MkVMFun args body) =
-      Just (TermIR.Sig.MkSig n IRCommon.Conv.CPS (replicate (length args) IRCommon.Ty.Val) False,
+      Just (TermIR.MkSig n IRCommon.Conv.CPS (replicate (length args) IRCommon.Ty.Val) False,
             fromMaybe (FromVM args body) (boundaryOf n (length args)))
     plan (n, MkVMForeign _ fargs _) =
-      Just (TermIR.Sig.MkSig n IRCommon.Conv.CPS (replicate (length fargs) IRCommon.Ty.Val) False,
+      Just (TermIR.MkSig n IRCommon.Conv.CPS (replicate (length fargs) IRCommon.Ty.Val) False,
             fromMaybe (Foreign (length fargs)) (boundaryOf n (length fargs)))
     plan (n, MkVMError _) = Nothing
 
@@ -1549,12 +1549,12 @@ lowerProgram enc platform realised forms shapes vmdefs = do
     ready (n, Nullary c) = case choose (TermIR.FieldTys.wellFormed (HeapObj.Header.ConH {enc} (cast c) 0)) of
       Left ok =>
         Just
-          (TermIR.StaticSig.MkStaticSig n HeapObj.Kind.CON ** TermIR.StaticDef.MkStaticDef
+          (TermIR.MkStaticSig n HeapObj.Kind.CON ** TermIR.MkStaticDef
            (HeapObj.Header.ConH (cast c) 0) [])
       Right _ => Nothing
     ready (n, Boxed p) =
       Just
-        (TermIR.StaticSig.MkStaticSig n HeapObj.Kind.INT64 ** TermIR.StaticDef.MkStaticDef HeapObj.Header.Int64H
+        (TermIR.MkStaticSig n HeapObj.Kind.INT64 ** TermIR.MkStaticDef HeapObj.Header.Int64H
          [TermIR.StaticDef.SWord (cast p)])
     ready (n, Big v) = case HeapObj.BignumEnc.signInHeader enc.bignum of
       Just sh => bigStatic n v sh (HeapObj.BignumEnc.magnitudeWords (abs v))
@@ -1569,7 +1569,7 @@ lowerProgram enc platform realised forms shapes vmdefs = do
           case choose (TermIR.FieldTys.wellFormed (HeapObj.Header.BignumH {enc} @{sh} (v < 0) (length ws))) of
           Left ok =>
             Just
-              (TermIR.StaticSig.MkStaticSig n HeapObj.Kind.BIGNUM ** TermIR.StaticDef.MkStaticDef
+              (TermIR.MkStaticSig n HeapObj.Kind.BIGNUM ** TermIR.MkStaticDef
                (HeapObj.Header.BignumH @{sh} (v < 0) (length ws)) (map TermIR.StaticDef.SWord (fromList ws)))
           Right _ => Nothing
     ready (n, Text s) = do
@@ -1577,6 +1577,6 @@ lowerProgram enc platform realised forms shapes vmdefs = do
       case choose (TermIR.FieldTys.wellFormed h) of
         Left ok =>
           Just
-            (TermIR.StaticSig.MkStaticSig n HeapObj.Kind.STRING ** TermIR.StaticDef.MkStaticDef h
+            (TermIR.MkStaticSig n HeapObj.Kind.STRING ** TermIR.MkStaticDef h
              (map TermIR.StaticDef.SWord ws))
         Right _ => Nothing

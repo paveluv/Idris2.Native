@@ -155,7 +155,7 @@ routines r =
     ||| The symbols the rendering and the seed reach the generic routines by.
     symbols : Routines (\_ => Sym)
     symbols =
-      Routines.MkRoutines
+      MkRoutines
         { start = Sym.SymRuntimeStart, allocSlow = Sym.SymAllocSlow, allocMutable = Sym.SymAllocMutable
         , crash = Sym.SymCrash }
 

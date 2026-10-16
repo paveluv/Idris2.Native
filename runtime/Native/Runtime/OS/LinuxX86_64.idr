@@ -90,7 +90,7 @@ stackLimit = do
 export
 services : Services (Port.PortTy (\k => Memory.Addr k))
 services =
-  Services.MkServices
+  MkServices
     { exit = LinuxX86_64.exit, write = LinuxX86_64.write, reserve = LinuxX86_64.reserve
     , commit = LinuxX86_64.commit, release = LinuxX86_64.release
     , stackLimit = LinuxX86_64.stackLimit, pageBytes = LinuxX86_64.pageBytes }

@@ -42,23 +42,23 @@ public export
 record Services (f : Port -> Type) where
   constructor MkServices
   ||| End the process with the status.
-  exit : f (Port.MkPort [Port.Word] Nothing)
+  exit : f (MkPort [Port.Word] Nothing)
   ||| Write the bytes at an address to a standard handle (1 the output, 2
   ||| the errors); the bytes written.
-  write : f (Port.MkPort [Port.Word, Port.Word, Port.Word] (Just Port.Word))
+  write : f (MkPort [Port.Word, Port.Word, Port.Word] (Just Port.Word))
   ||| Reserve address space, readable by nothing, which no memory is
   ||| committed to; its address, 0 if there is none.
-  reserve : f (Port.MkPort [Port.Word] (Just Port.Word))
+  reserve : f (MkPort [Port.Word] (Just Port.Word))
   ||| Make reserved whole pages at an address readable and writable, and
   ||| zero; success.
-  commit : f (Port.MkPort [Port.Word, Port.Word] (Just Port.Word))
+  commit : f (MkPort [Port.Word, Port.Word] (Just Port.Word))
   ||| Give committed whole pages back and reserve them again.
-  release : f (Port.MkPort [Port.Word, Port.Word] Nothing)
+  release : f (MkPort [Port.Word, Port.Word] Nothing)
   ||| The most bytes the process's stack may grow to, 0 if the system does
   ||| not say.
-  stackLimit : f (Port.MkPort [] (Just Port.Word))
+  stackLimit : f (MkPort [] (Just Port.Word))
   ||| The system's page, the bytes memory is committed and released by.
-  pageBytes : f (Port.MkPort [] (Just Port.Word))
+  pageBytes : f (MkPort [] (Just Port.Word))
 
 ||| The services' externs, each checked against its field's port.
 public export

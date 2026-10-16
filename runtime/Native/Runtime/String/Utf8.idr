@@ -312,7 +312,7 @@ isNil cell = do
 ||| `fastPack`: a list of characters as a string.
 export covering
 fastPack : Flat.Uniform (List Char) -> Flat.Uniform String
-fastPack xs = let (Heap.MkHeap # r) = packOp xs Heap.MkHeap in r
+fastPack xs = let (MkHeap # r) = packOp xs MkHeap in r
   where
     ||| A list of characters as a string.
     covering
@@ -354,7 +354,7 @@ fastPack xs = let (Heap.MkHeap # r) = packOp xs Heap.MkHeap in r
 ||| `fastUnpack`: a string as a list of characters.
 export covering
 fastUnpack : Flat.Uniform String -> Flat.Uniform (List Char)
-fastUnpack str = let (Heap.MkHeap # r) = unpackOp str Heap.MkHeap in r
+fastUnpack str = let (MkHeap # r) = unpackOp str MkHeap in r
   where
     ||| A string as a list of characters.
     covering
@@ -400,7 +400,7 @@ fastUnpack str = let (Heap.MkHeap # r) = unpackOp str Heap.MkHeap in r
 ||| `fastConcat`: a list of strings as one.
 export covering
 fastConcat : Flat.Uniform (List String) -> Flat.Uniform String
-fastConcat xs = let (Heap.MkHeap # r) = concatOp xs Heap.MkHeap in r
+fastConcat xs = let (MkHeap # r) = concatOp xs MkHeap in r
   where
     ||| A list of strings as one.
     covering
@@ -496,7 +496,7 @@ strings =
 ||| them. Nothing is buffered, so nothing waits to be flushed.
 export covering
 prim__putStr : Flat.Uniform String -> PrimIO ()
-prim__putStr str w = let (Heap.MkHeap # ()) = putOp str Heap.MkHeap in MkIORes () w
+prim__putStr str w = let (MkHeap # ()) = putOp str MkHeap in MkIORes () w
   where
     covering
     putOp : Flat.Uniform String -> Heap.Op Heap ()

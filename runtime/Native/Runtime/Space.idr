@@ -224,17 +224,17 @@ allocMutable bytes = do
 export
 setHeapLimit : Bits64 -> IO ()
 setHeapLimit bytes = primIO $ \w =>
-  let (Heap.MkHeap # ()) = State.setState State.heapLimit bytes Heap.MkHeap in MkIORes () w
+  let (MkHeap # ()) = State.setState State.heapLimit bytes MkHeap in MkIORes () w
 
 %cg native flat Runtime.Space.getHeapLimit
 export
 getHeapLimit : IO Bits64
 getHeapLimit = primIO $ \w =>
-  let (Heap.MkHeap # n) = State.getState State.heapLimit Heap.MkHeap in MkIORes n w
+  let (MkHeap # n) = State.getState State.heapLimit MkHeap in MkIORes n w
 
 %cg native flat Runtime.Space.collectionCount
 ||| The collections so far.
 export
 collectionCount : IO Bits64
 collectionCount = primIO $ \w =>
-  let (Heap.MkHeap # n) = State.getState State.collections Heap.MkHeap in MkIORes n w
+  let (MkHeap # n) = State.getState State.collections MkHeap in MkIORes n w

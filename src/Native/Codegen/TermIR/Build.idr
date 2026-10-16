@@ -64,10 +64,10 @@ data PBody : Decls enc -> IRCommon.Conv enc -> Bool -> (v : IRCommon.Ty enc -> T
   PSwitch : {auto 0 int : IsInt t} -> Opnd v t -> (keys : List Int64) ->
             {auto 0 ok : So (distinct keys && keysFit t keys)} ->
             All (\_ => PBody d c m v l) keys -> PBody d c m v l -> PBody d c m v l
-  PCall : Var d.sigs (Sig.MkSig n IRCommon.Conv.CPS ps cv) -> All (Opnd v) ps ->
+  PCall : Var d.sigs (MkSig n IRCommon.Conv.CPS ps cv) -> All (Opnd v) ps ->
           (v IRCommon.Ty.Val -> PBody d IRCommon.Conv.CPS m v l) ->
           PBody d IRCommon.Conv.CPS m v l
-  PTailCall : Var d.sigs (Sig.MkSig n IRCommon.Conv.CPS ps cv) -> All (Opnd v) ps -> PBody d IRCommon.Conv.CPS m v l
+  PTailCall : Var d.sigs (MkSig n IRCommon.Conv.CPS ps cv) -> All (Opnd v) ps -> PBody d IRCommon.Conv.CPS m v l
   PApply : (fn, arg : Opnd v IRCommon.Ty.Val) -> (v IRCommon.Ty.Val -> PBody d IRCommon.Conv.CPS m v l) ->
            PBody d IRCommon.Conv.CPS m v l
   PTailApply : (fn, arg : Opnd v IRCommon.Ty.Val) -> PBody d IRCommon.Conv.CPS m v l
@@ -145,14 +145,14 @@ emit0 i = MkBuild (\k => PBind i (\[] => k ()))
 
 ||| A Direct call, binding its results.
 export
-directCall : {rs : List (IRCommon.Ty enc)} -> Var d.sigs (Sig.MkSig n (IRCommon.Conv.Direct rs col) ps cv) ->
+directCall : {rs : List (IRCommon.Ty enc)} -> Var d.sigs (MkSig n (IRCommon.Conv.Direct rs col) ps cv) ->
              All (Opnd v) ps ->
              Build d c m v l (All (Opnd v) rs)
 directCall f xs = vars <$> emit (Instr.DirectCall f xs)
 
 ||| A CPS call: the rest of the code is its continuation.
 export
-call : Var d.sigs (Sig.MkSig n IRCommon.Conv.CPS ps cv) -> All (Opnd v) ps ->
+call : Var d.sigs (MkSig n IRCommon.Conv.CPS ps cv) -> All (Opnd v) ps ->
        Build d IRCommon.Conv.CPS m v l (Opnd v IRCommon.Ty.Val)
 call f xs = MkBuild (\k => PCall f xs (k . Opnd.V))
 
@@ -163,7 +163,7 @@ apply : (fn, arg : Opnd v IRCommon.Ty.Val) -> Build d IRCommon.Conv.CPS m v l (O
 apply f x = MkBuild (\k => PApply f x (k . Opnd.V))
 
 export
-tailCall : Var d.sigs (Sig.MkSig n IRCommon.Conv.CPS ps cv) -> All (Opnd v) ps -> End d IRCommon.Conv.CPS m v l
+tailCall : Var d.sigs (MkSig n IRCommon.Conv.CPS ps cv) -> All (Opnd v) ps -> End d IRCommon.Conv.CPS m v l
 tailCall f xs = MkBuild (\_ => PTailCall f xs)
 
 export

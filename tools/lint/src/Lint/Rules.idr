@@ -555,8 +555,23 @@ fileRules : SourceFile -> Mentions -> List Declared -> List Finding
 fileRules f ms ds =
   importOrder f ++ publicImport f ++ defaultTotality f ++ elabReflection f ms
   ++ trustEscape f ms ++ citesPlan f ++ todo f ++ headerComment f
-  ++ implementationAdjacent f ds ++ moduleName' f ds ++ groupPrefix f ds ++ longFile f
+  ++ implementationAdjacent f ds ++ moduleName' f ds ++ groupPrefix f ds ++ longFile f ++ recordConstructor f ds
   where
+    ||| `record-constructor`: a record's constructor is named after it, `MkX`
+    ||| for `X`, so that a reader knows the record from its constructor, and
+    ||| the constructor of a module's key type is written as the type is.
+    recordConstructor : SourceFile -> List Declared -> List Finding
+    recordConstructor f ds = concatMap one ds
+      where
+        one : Declared -> List Finding
+        one d = case d.decl.val of
+          PRecord _ _ _ (MkPRecord n _ _ (Just c) _) =>
+            let want = "Mk" ++ nameRoot n in
+            if nameRoot c.val == want then []
+            else [finding f "record-constructor" d.decl.fc (nameRoot c.val)
+                    ("`" ++ nameRoot c.val ++ "` constructs `" ++ nameRoot n ++ "`: a record's constructor is `" ++ want ++ "`")]
+          _ => []
+
     ||| The lines a file may have before `long-file` reports it.
     longLines : Nat
     longLines = 256
@@ -696,4 +711,4 @@ ruleNames =
   [ "import-order", "public-import", "default-totality", "elab-reflection"
   , "trust-escape", "cites-plan", "todo", "header-comment", "implementation-adjacent", "module-name"
   , "layering", "syscall", "same-name", "import-unused", "import-indirect", "list-accumulation", "generic-export"
-  , "parent-unique", "import-alias" ]
+  , "import-alias", "group-prefix", "long-file", "public-unneeded", "extern-owner", "record-constructor" ]

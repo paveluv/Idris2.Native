@@ -23,16 +23,16 @@ record Routines (f : Port -> Type) where
   constructor MkRoutines
   ||| `idris_start`: the stack pointer at entry and the allocation window's
   ||| bytes; the program's start-up, before `main`.
-  start : f (Port.MkPort [Port.Word, Port.Word] Nothing)
+  start : f (MkPort [Port.Word, Port.Word] Nothing)
   ||| `idris_alloc_slow`: the bytes of an object the window has no room for;
   ||| its space, after a collection if one is due.
-  allocSlow : f (Port.MkPort [Port.Word] (Just Port.Address))
+  allocSlow : f (MkPort [Port.Word] (Just Port.Address))
   ||| `idris_alloc_mutable`: the bytes of an object that will be written
   ||| after it is made; its space.
-  allocMutable : f (Port.MkPort [Port.Word] (Just Port.Address))
+  allocMutable : f (MkPort [Port.Word] (Just Port.Address))
   ||| `idris_crash`: a message's address and bytes, written to the standard
   ||| error before the process ends with status 1.
-  crash : f (Port.MkPort [Port.Word, Port.Word] Nothing)
+  crash : f (MkPort [Port.Word, Port.Word] Nothing)
 
 ||| Each routine's entries of two records made one.
 public export
@@ -51,21 +51,21 @@ routineList r = [(_ ** r.start), (_ ** r.allocSlow), (_ ** r.allocMutable), (_ *
 public export
 record StringRoutines (f : Port -> Type) where
   constructor MkStringRoutines
-  length : f (Port.MkPort [Port.Str] (Just Port.Word))
-  head : f (Port.MkPort [Port.Str] (Just Port.Word))
-  tail : f (Port.MkPort [Port.Str] (Just Port.Str))
-  index : f (Port.MkPort [Port.Str, Port.Word] (Just Port.Word))
-  cons : f (Port.MkPort [Port.Word, Port.Str] (Just Port.Str))
-  append : f (Port.MkPort [Port.Str, Port.Str] (Just Port.Str))
-  reverse : f (Port.MkPort [Port.Str] (Just Port.Str))
+  length : f (MkPort [Port.Str] (Just Port.Word))
+  head : f (MkPort [Port.Str] (Just Port.Word))
+  tail : f (MkPort [Port.Str] (Just Port.Str))
+  index : f (MkPort [Port.Str, Port.Word] (Just Port.Word))
+  cons : f (MkPort [Port.Word, Port.Str] (Just Port.Str))
+  append : f (MkPort [Port.Str, Port.Str] (Just Port.Str))
+  reverse : f (MkPort [Port.Str] (Just Port.Str))
   ||| The characters from `start`, `len` of them, both clamped to the string.
-  substr : f (Port.MkPort [Port.Signed, Port.Signed, Port.Str] (Just Port.Str))
-  compare : f (Port.MkPort [Port.Str, Port.Str] (Just Port.Signed))
+  substr : f (MkPort [Port.Signed, Port.Signed, Port.Str] (Just Port.Str))
+  compare : f (MkPort [Port.Str, Port.Str] (Just Port.Signed))
   ||| A signed word in decimal, as Chez writes it: `-` before a negative
   ||| one's digits.
-  showSigned : f (Port.MkPort [Port.Signed] (Just Port.Str))
+  showSigned : f (MkPort [Port.Signed] (Just Port.Str))
   ||| A word, unsigned, in decimal.
-  showUnsigned : f (Port.MkPort [Port.Word] (Just Port.Str))
+  showUnsigned : f (MkPort [Port.Word] (Just Port.Str))
 
 ||| Each string routine's entries of two records made one.
 public export

@@ -51,9 +51,9 @@ public export
 data Instr : Decls enc -> Bool -> (var : IRCommon.Ty enc -> Type) -> List (IRCommon.Ty enc) -> Type where
   FConst : Double -> Instr d m var [IRCommon.Ty.F64]
   ||| The entry address of a CPS function of the program: a closure's code.
-  CodeAddr : Var d.sigs (Sig.MkSig n IRCommon.Conv.CPS ps cv) -> Instr d m var [IRCommon.Ty.W64]
+  CodeAddr : Var d.sigs (MkSig n IRCommon.Conv.CPS ps cv) -> Instr d m var [IRCommon.Ty.W64]
   ||| The address of a static object, as a pointer to its kind.
-  StaticAddr : Var d.statics (StaticSig.MkStaticSig s k) -> Instr d m var [IRCommon.Ty.PtrTo k]
+  StaticAddr : Var d.statics (MkStaticSig s k) -> Instr d m var [IRCommon.Ty.PtrTo k]
   AreaAddr : Area -> Instr d m var [IRCommon.Ty.W64]
   ||| Integer arithmetic on two `W64`s or two `Fix`es; on `Fix`es the
   ||| producer guarantees the result is a fixnum.
@@ -102,7 +102,7 @@ data Instr : Decls enc -> Bool -> (var : IRCommon.Ty enc -> Type) -> List (IRCom
                (count : Opnd var IRCommon.Ty.W64) ->
                Sizes.Fill var p -> Instr d m var [IRCommon.Ty.PtrTo k]
   ||| A machine call of a Direct function, binding its results.
-  DirectCall : Var d.sigs (Sig.MkSig n (IRCommon.Conv.Direct rs col) ps cv) -> All (Opnd var) ps -> Instr d m var rs
+  DirectCall : Var d.sigs (MkSig n (IRCommon.Conv.Direct rs col) ps cv) -> All (Opnd var) ps -> Instr d m var rs
   ||| An intrinsic, on what it takes, binding what it gives.
   Intrinsic : (i : Intrinsic) -> All (Opnd var) (params i) -> Instr d m var (results i)
   ||| The source location of what follows.

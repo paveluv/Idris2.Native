@@ -25,11 +25,11 @@ public export
 data SField : Decls enc -> Type where
   SWord : Int64 -> SField d
   SRef : Var d.statics s -> SField d
-  SCode : Var d.sigs (Sig.MkSig n IRCommon.Conv.CPS ps cv) -> SField d
+  SCode : Var d.sigs (MkSig n IRCommon.Conv.CPS ps cv) -> SField d
 
 ||| A static object's definition: its header and its words after it.
 public export
 data StaticDef : Decls enc -> StaticSig -> Type where
   MkStaticDef : {0 d : Decls enc} -> {k : HeapObj.Kind} -> (h : HeapObj.Header enc k) ->
                 {auto 0 ok : So (wellFormed h)} ->
-                Vect (fieldWords h) (SField d) -> StaticDef d (StaticSig.MkStaticSig s k)
+                Vect (fieldWords h) (SField d) -> StaticDef d (MkStaticSig s k)

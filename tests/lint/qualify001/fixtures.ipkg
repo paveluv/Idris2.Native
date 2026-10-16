@@ -3,6 +3,7 @@ package fixtures
 depends = idris2-native
 
 modules =
+    Geo.Box,
     Geo.Shape,
     Left.Side,
     Plan,
