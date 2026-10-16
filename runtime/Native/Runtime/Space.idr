@@ -24,6 +24,7 @@ import Native.Runtime.Bits
 import Native.Runtime.Collect
 import Native.Runtime.Heap
 import Native.Runtime.Memory
+import Native.Runtime.Raw
 
 import Native.Area
 import Native.HeapObj.LayoutWord
@@ -36,21 +37,26 @@ import Native.HeapObj.Shape as HeapObj
 
 ||| Memory committed to a space up to `need` and a window beyond, in whole
 ||| pages: `committed` and `end` are the state words of the space.
-commitSpace : (committed, end : State) -> (need : Bits64) -> Heap.Op Heap ()
+commitSpace : (committed, end : State Raw) -> (need : Raw) -> Heap.Op Heap ()
 commitSpace committed end need = do
   have <- State.getState committed
   limit <- State.getState end
   win <- State.getState State.windowBytes
   if need <= have then Heap.pure () else do
-    upto <- Memory.roundToPage (need + win)
+    upto <- Memory.alignToPage (Raw.offset need win)
     if upto > limit then Heap.crashOp "idris: the heap's reserved space is exhausted" else do
-      Memory.commitMemory have (upto - have)
+      Memory.commitMemory have (Raw.distance upto have)
       State.setState committed upto
 
-||| The first word of an object with a header, or of a continuation.
+||| The first word of an object with a header, or of a continuation, at an
+||| address the collector holds as a word.
 firstWord : Bits64 -> Heap.Op Heap Bits64
-firstWord a = Memory.loadAt a 0
+firstWord a = Memory.loadAt (Raw.fromWord a) 0
 
+||| The collector's interface (`Memory`) holds addresses as words, as it
+||| holds values: this module, its instance for the program's heap, makes
+||| them the raw addresses the rest of the runtime's memory is reached by.
+|||
 ||| The size and the scanned words of the object at the address, by its
 ||| first word: a header's shape and counts, or a continuation's layout
 ||| word, which precedes the code its first word names.
@@ -58,7 +64,7 @@ sizeAt : Bits64 -> Heap.Op Heap Bits64
 sizeAt a = do
   h <- firstWord a
   if HeapObj.Shape.isFrame h
-     then do l <- Memory.loadAt h (0 - 8); Heap.pure (HeapObj.LayoutWord.continuationWords l)
+     then do l <- Memory.loadAt (Raw.fromWord h) (0 - 8); Heap.pure (HeapObj.LayoutWord.continuationWords l)
      else Heap.pure (HeapObj.Shape.objectWordsOf h)
 
 export
@@ -68,7 +74,7 @@ Memory Heap where
     base <- State.getState State.fromBase
     hp <- Memory.allocationPointer
     let a = v - tag
-    Heap.pure (v .&. 1 == tag && base <= a && a < hp)
+    Heap.pure (v .&. 1 == tag && Raw.rawWord base <= a && a < Raw.rawWord hp)
   addressOf v = do
     tag <- Memory.pointerTag
     Heap.pure (v - tag)
@@ -82,27 +88,27 @@ Memory Heap where
       scannedAt a = do
         h <- firstWord a
         if HeapObj.Shape.isFrame h
-           then do l <- Memory.loadAt h (0 - 8); Heap.pure (HeapObj.LayoutWord.continuationScanned l)
+           then do l <- Memory.loadAt (Raw.fromWord h) (0 - 8); Heap.pure (HeapObj.LayoutWord.continuationScanned l)
            else Heap.pure (HeapObj.Shape.scannedOf h)
   forwarded a = do
     h <- firstWord a
     Heap.pure (if HeapObj.Shape.isForwarding h then Just (HeapObj.Shape.forwardedTo h) else Nothing)
-  setForwarded from to = Memory.storeAt from 0 (HeapObj.Shape.forwardingHeader to)
-  readWord a i = Memory.loadAt a (8 * i)
-  writeWord a i v = Memory.storeAt a (8 * i) v
+  setForwarded from to = Memory.storeAt (Raw.fromWord from) 0 (HeapObj.Shape.forwardingHeader to)
+  readWord a i = Memory.loadAt (Raw.fromWord a) (8 * i)
+  writeWord a i v = Memory.storeAt (Raw.fromWord a) (8 * i) v
   reserve n = do
     top <- State.getState State.toTop
-    let need = top + 8 * n
+    let need = Raw.offset top (8 * n)
     commitSpace State.toCommitted State.toEnd need
     State.setState State.toTop need
-    Heap.pure top
+    Heap.pure (Raw.rawWord top)
   nextToScan = do
     scan <- State.getState State.scanCursor
     top <- State.getState State.toTop
     if scan >= top then Heap.pure Nothing else do
-      n <- sizeAt scan
-      State.setState State.scanCursor (scan + 8 * n)
-      Heap.pure (Just scan)
+      n <- sizeAt (Raw.rawWord scan)
+      State.setState State.scanCursor (Raw.offset scan (8 * n))
+      Heap.pure (Just (Raw.rawWord scan))
   rootCount = do
     nr <- Memory.nrootsArea
     Memory.loadAt nr 0
@@ -123,7 +129,7 @@ Memory Heap where
     tc <- State.getState State.toCommitted
     tt <- State.getState State.toTop
     -- the old from-space is given back whole, and becomes the empty to-space
-    Memory.releaseMemory fb (fc - fb)
+    Memory.releaseMemory fb (Raw.distance fc fb)
     State.setState State.fromBase tb
     State.setState State.fromEnd te
     State.setState State.fromCommitted tc
@@ -132,7 +138,7 @@ Memory Heap where
     State.setState State.toCommitted fb
     State.setState State.toTop fb
     State.setState State.scanCursor fb
-    State.setState State.liveBytes (tt - tb)
+    State.setState State.liveBytes (Raw.distance tt tb)
     count <- State.getState State.collections
     State.setState State.collections (count + 1)
     -- the program allocates after the copies
@@ -147,23 +153,23 @@ collectionDue bytes = do
   live <- State.getState State.liveBytes
   win <- State.getState State.windowBytes
   let threshold = if 2 * live > 4 * win then 2 * live else 4 * win
-  Heap.pure (hp - base + bytes > threshold)
+  Heap.pure (Raw.distance hp base + bytes > threshold)
 
 ||| Room for `bytes` at the allocation pointer: the from-space committed to
 ||| a window beyond them, under the limit; the window moved past them; the
 ||| object's address.
-grow : (bytes : Bits64) -> Heap.Op Heap Bits64
+grow : (bytes : Bits64) -> Heap.Op Heap Raw
 grow bytes = do
   hp <- Memory.allocationPointer
   base <- State.getState State.fromBase
   limit <- State.getState State.heapLimit
   win <- State.getState State.windowBytes
-  let next = hp + bytes
-  if limit /= 0 && next - base > Bits.shiftR limit 1
+  let next = Raw.offset hp bytes
+  if limit /= 0 && Raw.distance next base > Bits.shiftR limit 1
      then Heap.crashOp "idris: heap limit exceeded"
      else do
-       commitSpace State.fromCommitted State.fromEnd (next + win)
-       Memory.setAllocation next (next + win)
+       commitSpace State.fromCommitted State.fromEnd (Raw.offset next win)
+       Memory.setAllocation next (Raw.offset next win)
        Heap.pure hp
 
 %cg native flat Runtime.Space.allocSlow
@@ -176,7 +182,7 @@ allocSlow bytes = do
   due <- collectionDue bytes
   if due then Collect.collect else Heap.pure ()
   a <- grow bytes
-  Heap.pure (Memory.fromWord a)
+  Heap.pure (Memory.objectAt a)
 
 ||| Room for `bytes` for the runtime's own objects, which the primitives
 ||| make: never a collection, since the primitives' callers hold values a
@@ -186,13 +192,13 @@ allocSlow bytes = do
 ||| collects. The space allocated past the window that way is bounded by one
 ||| primitive's objects. The object's address.
 export
-allocate : (bytes : Bits64) -> Heap.Op Heap Bits64
+allocate : (bytes : Bits64) -> Heap.Op Heap Raw
 allocate bytes = do
   hp <- Memory.allocationPointer
   lim <- Memory.allocationLimit
-  if hp + bytes <= lim
+  if Raw.offset hp bytes <= lim
      then do
-       Memory.setAllocation (hp + bytes) lim
+       Memory.setAllocation (Raw.offset hp bytes) lim
        Heap.pure hp
      else do
        due <- collectionDue bytes
@@ -210,10 +216,10 @@ allocMutable : (bytes : Bits64) -> Heap.Op Heap (Memory.Addr s)
 allocMutable bytes = do
   hp <- Memory.allocationPointer
   lim <- Memory.allocationLimit
-  if hp + bytes <= lim
+  if Raw.offset hp bytes <= lim
      then do
-       Memory.setAllocation (hp + bytes) lim
-       Heap.pure (Memory.fromWord hp)
+       Memory.setAllocation (Raw.offset hp bytes) lim
+       Heap.pure (Memory.objectAt hp)
      else allocSlow bytes
 
 -- What a program may set and read of the heap, each a flat function that

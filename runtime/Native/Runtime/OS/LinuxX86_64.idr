@@ -17,6 +17,7 @@ import Native.Port
 import Native.Runtime.Heap
 import Native.Runtime.Memory
 import Native.Runtime.PortTy
+import Native.Runtime.Raw
 import Native.Runtime.State
 import Native.Services
 
@@ -40,36 +41,37 @@ exit status = do
 
 %cg native flat Runtime.OS.LinuxX86_64.write
 export
-write : (handle, address, bytes : Bits64) -> Heap.Op Heap Bits64
+write : (handle : Bits64) -> (address : Raw) -> (bytes : Bits64) -> Heap.Op Heap Bits64
 write handle address bytes = do
   -- write(handle, address, bytes)
-  r <- Syscall.syscall 1 handle address bytes 0 0 0
+  r <- Syscall.syscall 1 handle (Raw.rawWord address) bytes 0 0 0
   Heap.pure (if failed r then 0 else r)
 
 %cg native flat Runtime.OS.LinuxX86_64.reserve
 export
-reserve : (bytes : Bits64) -> Heap.Op Heap Bits64
+reserve : (bytes : Bits64) -> Heap.Op Heap Raw
 reserve bytes = do
   -- mmap(NULL, bytes, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0):
   -- no overcommit setting counts a range that is not readable
   r <- Syscall.syscall 9 0 bytes 0 0x4022 0xFFFFFFFFFFFFFFFF 0
-  Heap.pure (if failed r then 0 else r)
+  -- the system gives the range's address as a word
+  Heap.pure (Raw.fromWord (if failed r then 0 else r))
 
 %cg native flat Runtime.OS.LinuxX86_64.commit
 export
-commit : (address, bytes : Bits64) -> Heap.Op Heap Bits64
+commit : (address : Raw) -> (bytes : Bits64) -> Heap.Op Heap Bits64
 commit address bytes = do
   -- mprotect(address, bytes, PROT_READ | PROT_WRITE): the pages are zero when first touched
-  r <- Syscall.syscall 10 address bytes 3 0 0 0
+  r <- Syscall.syscall 10 (Raw.rawWord address) bytes 3 0 0 0
   Heap.pure (if r == 0 then 1 else 0)
 
 %cg native flat Runtime.OS.LinuxX86_64.release
 export
-release : (address, bytes : Bits64) -> Heap.Op Heap ()
+release : (address : Raw) -> (bytes : Bits64) -> Heap.Op Heap ()
 release address bytes = do
   -- madvise(address, bytes, MADV_DONTNEED), then mprotect(address, bytes, PROT_NONE)
-  _ <- Syscall.syscall 28 address bytes 4 0 0 0
-  _ <- Syscall.syscall 10 address bytes 0 0 0 0
+  _ <- Syscall.syscall 28 (Raw.rawWord address) bytes 4 0 0 0
+  _ <- Syscall.syscall 10 (Raw.rawWord address) bytes 0 0 0 0
   Heap.pure ()
 
 %cg native flat Runtime.OS.LinuxX86_64.pageBytes
@@ -85,7 +87,7 @@ stackLimit = do
   -- left 0 if the call fails
   buffer <- State.scratchArea
   Memory.storeAt buffer 0 0
-  _ <- Syscall.syscall 97 3 buffer 0 0 0 0
+  _ <- Syscall.syscall 97 3 (Raw.rawWord buffer) 0 0 0 0
   Memory.loadAt buffer 0
 
 ||| The services on x86-64 Linux, each checked against its port: the

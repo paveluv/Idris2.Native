@@ -22,6 +22,7 @@ import Native.HeapObj.Shape
 import Native.Runtime.Bits
 import Native.Runtime.Heap
 import Native.Runtime.Memory
+import Native.Runtime.Raw
 import Native.Runtime.Space
 import Native.Runtime.State
 import Native.Support.Obj

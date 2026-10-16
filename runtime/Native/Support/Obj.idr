@@ -16,6 +16,7 @@ import public Native.Runtime.Memory
 import Native.Flat.Uniform as Flat
 import Native.HeapObj.Shape as HeapObj
 import Native.Runtime.Heap as Runtime
+import Native.Runtime.Raw as Runtime
 import Native.Types.Kind as Types
 
 %hide Prelude.Interfaces.(>>=)
@@ -47,15 +48,16 @@ store32 (MkObj _ a) = Runtime.Memory.store32 a
 store16 (MkObj _ a) = Runtime.Memory.store16 a
 store8 (MkObj _ a) = Runtime.Memory.store8 a
 
-||| The object at an address the allocator gave as a word.
+||| The object at raw memory the allocator gave.
 export %inline
-fromWord : {auto 0 shaped : Types.Kind.shapeOf k = Just s} -> Bits64 -> Obj k
-fromWord w = MkObj shaped (Runtime.Memory.fromWord w)
+objectAt : {auto 0 shaped : Types.Kind.shapeOf k = Just s} -> Runtime.Raw -> Obj k
+objectAt r = MkObj shaped (Runtime.Memory.objectAt r)
 
-||| The word an object's address is.
+||| An object's bytes from the offset, as raw memory: for the system to
+||| read or write them.
 export %inline
-toWord : Obj k -> Bits64
-toWord (MkObj _ a) = Runtime.Memory.toWord a
+objectBytes : Obj k -> (offset : Bits64) -> Runtime.Raw
+objectBytes (MkObj _ a) n = Runtime.Memory.objectBytes a n
 
 ||| The object a value is, and the value an object is, for a type whose
 ||| values ordinary code holds as objects of the kind always.

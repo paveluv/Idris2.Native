@@ -7,7 +7,8 @@
 # package's module through a package's re-export, all reported; `Spare` imports
 # a module it does not use, and `Frame` one that gives it only what it
 # imports directly; `JoinAll` accumulates lists in each shape, the
-# superlinear ones reported, a warning; `Shape` exports a generic helper.
+# superlinear ones reported, a warning; `Shape` exports a generic helper;
+# `Page` makes a raw address from a word.
 # Then the score's components that the resolution measures.
 idris2 --build fixtures.ipkg > /dev/null
 ../../../tools/lint/build/exec/idris2-native-lint --resolved --warnings .

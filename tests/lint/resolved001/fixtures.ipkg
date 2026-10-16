@@ -1,6 +1,6 @@
 package fixtures
 
-depends = idris2-native
+depends = idris2-native, idris2-native-runtime
 
 modules =
     Canvas,
@@ -9,6 +9,7 @@ modules =
     JoinAll,
     Mode,
     Pace,
+    Page,
     Report,
     Shape,
     Shapes,

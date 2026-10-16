@@ -479,7 +479,9 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
               TermIR.Build.emit0 (TermIR.Instr.StoreN sw (TermIR.MkMem (TermIR.Mem.AtWord a) Nothing 0) x)
               pure noRegs
             lower (Linkage.Lowering.Get r) [] = word <$> getWord r
-            lower (Linkage.Lowering.Set r) [x] = do setWord r x; pure noRegs
+            lower (Linkage.Lowering.Set IRCommon.Pinned.Hp) [x] = do setWord IRCommon.Pinned.Hp x; pure noRegs
+            lower (Linkage.Lowering.Set IRCommon.Pinned.HpLim) [x] = do setWord IRCommon.Pinned.HpLim x; pure noRegs
+            lower (Linkage.Lowering.Set IRCommon.Pinned.K) [x] = do setWord IRCommon.Pinned.K x; pure noRegs
             lower Linkage.Lowering.PointerTag [] = pure (word (TermIR.Opnd.W (cast (HeapObj.ValEnc.pointerTag enc.val))))
             lower (Linkage.Lowering.AreaAddress a) [] = word <$> TermIR.Build.emit1 (TermIR.Instr.AreaAddr a)
             -- a uniform value and a word: the conversions, so this module's

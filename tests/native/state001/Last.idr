@@ -7,10 +7,10 @@ import Native.Runtime.State
 
 %default total
 
--- `word 31` asks for `31 < 32 = True`, which Idris proves by computing it
-lastWord : State
-lastWord = word 31
+-- `count 31` asks for `31 < 32 = True`, which Idris proves by computing it
+lastWord : State Bits64
+lastWord = count 31
 
 -- two words from the 30th end at the area's end: `30 + 2 <= 32 = True`
-lastTwo : State
+lastTwo : Bits64
 lastTwo = words 30 2

@@ -34,6 +34,7 @@ import Native.Runtime.Heap as Runtime
 import Native.Runtime.Memory
 import Native.Runtime.OS
 import Native.Runtime.PortTy as Runtime
+import Native.Runtime.Raw as Runtime
 import Native.Runtime.Space
 import Native.Support.CodePoint
 import Native.Support.Obj
@@ -80,7 +81,7 @@ newString bytes = do
   let header = headerFor True bytes
       words = HeapObj.Shape.objectWordsOf header
   a <- Runtime.Space.allocate (8 * words)
-  let s = Obj.fromWord {k = Types.Kind.STRING} a
+  let s = Obj.objectAt {k = Types.Kind.STRING} a
   Obj.store64 s 0 header
   if words == 1 then Runtime.Heap.pure s else do
     Obj.store64 s (8 * (words - 1)) 0
@@ -374,9 +375,9 @@ fastUnpack str = let (Runtime.MkHeap # r) = unpackOp str Runtime.MkHeap in r
       h <- headerOf s
       n <- if asciiOf h then Runtime.Heap.pure (bytesOf h) else countChars s 0 (bytesOf h) 0
       block <- Runtime.Space.allocate (8 + 24 * n)
-      Obj.store64 (Obj.fromWord {k = Types.Kind.CON} block) 0 nilHeader
+      Obj.store64 (Obj.objectAt {k = Types.Kind.CON} block) 0 nilHeader
       unpackFill s 0 0 n block
-      Obj.objectValue (Obj.fromWord {k = Types.Kind.CON} (if n == 0 then block else block + 8))
+      Obj.objectValue (Obj.objectAt {k = Types.Kind.CON} (if n == 0 then block else Runtime.Raw.offset block 8))
       where
         ||| The header of a list's `[]`.
         nilHeader : Bits64
@@ -386,17 +387,17 @@ fastUnpack str = let (Runtime.MkHeap # r) = unpackOp str Runtime.MkHeap in r
         ||| `(::)`, 24 bytes, its tail the next, the last's tail the `[]`. Fills the
         ||| `k`th cell on from byte `i` of the string. Ends: `k` climbs to `n`.
         covering
-        unpackFill : Obj Types.Kind.STRING -> (i, k, n : Bits64) -> (block : Bits64) -> Runtime.Heap.Op Runtime.Heap ()
+        unpackFill : Obj Types.Kind.STRING -> (i, k, n : Bits64) -> (block : Raw) -> Runtime.Heap.Op Runtime.Heap ()
         unpackFill s i k n block =
           if k >= n then Runtime.Heap.pure () else do
             c <- decodeAt s i
             b <- byteAt s i
-            let cell = Obj.fromWord {k = Types.Kind.CON} (block + 8 + 24 * k)
+            let cell = Obj.objectAt {k = Types.Kind.CON} (Runtime.Raw.offset block (8 + 24 * k))
             Obj.store64 cell 0 consHeader
             w <- Runtime.Memory.fixnumWord c
             Obj.store64 cell 8 w
             tail <- Obj.fieldPointer
-              (Obj.fromWord {k = Types.Kind.CON} (if k + 1 == n then block else block + 8 + 24 * (k + 1)))
+              (Obj.objectAt {k = Types.Kind.CON} (if k + 1 == n then block else Runtime.Raw.offset block (8 + 24 * (k + 1))))
             Obj.store64 cell 16 tail
             unpackFill s (i + seqLength b) (k + 1) n block
           where
@@ -513,4 +514,4 @@ prim__putStr str w = let (Runtime.MkHeap # ()) = putOp str Runtime.MkHeap in MkI
     putOp str = do
       s <- stringObject str
       h <- headerOf s
-      Runtime.OS.osWriteAll Runtime.OS.stdout (Obj.toWord s + 8) (bytesOf h)
+      Runtime.OS.osWriteAll Runtime.OS.stdout (Obj.objectBytes s 8) (bytesOf h)

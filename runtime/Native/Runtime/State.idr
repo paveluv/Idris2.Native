@@ -11,6 +11,7 @@ module Native.Runtime.State
 
 import Native.Runtime.Heap
 import Native.Runtime.Memory
+import Native.Runtime.Raw
 
 import Native.Area
 
@@ -20,72 +21,91 @@ import Native.Area
 
 %default total
 
-||| A word of the state, by its index in the area.
+||| What a word of the state holds: an address, or a count.
 public export
-State : Type
-State = Bits64
+data Holds : Type -> Type where
+  AnAddress : Holds Raw
+  ACount : Holds Bits64
 
-||| The state's word `i`, which the area holds: a word past the area's
-||| (`Area.runtimeWords`) does not typecheck.
+||| A word of the state, by its index in the area, and what it holds.
 public export
-word : (i : Bits64) -> {auto 0 fits : i < Area.runtimeWords = True} -> State
-word i = i
+record State (t : Type) where
+  constructor MkState
+  index : Bits64
+  holds : Holds t
 
-||| The first of the `n` words of the state from its word `i`, all of which
-||| the area holds.
+||| The state's word `i`, which the area holds, an address or a count: a
+||| word past the area's (`Area.runtimeWords`) does not typecheck.
 public export
-words : (i, n : Bits64) -> {auto 0 fits : i + n <= Area.runtimeWords = True} -> State
-words i _ = i
+address : (i : Bits64) -> {auto 0 fits : i < Area.runtimeWords = True} -> State Raw
+address i = MkState i AnAddress
+
+public export
+count : (i : Bits64) -> {auto 0 fits : i < Area.runtimeWords = True} -> State Bits64
+count i = MkState i ACount
 
 ||| The from-space: its first address, the end of its reservation, and the
 ||| end of the memory committed to it.
 public export
-fromBase, fromEnd, fromCommitted : State
-fromBase = word 0
-fromEnd = word 1
-fromCommitted = word 2
+fromBase, fromEnd, fromCommitted : State Raw
+fromBase = address 0
+fromEnd = address 1
+fromCommitted = address 2
 
 ||| The to-space: the same, and during a collection the end of what has
 ||| been copied into it and the address of the next copy to scan.
 public export
-toBase, toEnd, toCommitted, toTop, scanCursor : State
-toBase = word 3
-toEnd = word 4
-toCommitted = word 5
-toTop = word 6
-scanCursor = word 7
+toBase, toEnd, toCommitted, toTop, scanCursor : State Raw
+toBase = address 3
+toEnd = address 4
+toCommitted = address 5
+toTop = address 6
+scanCursor = address 7
 
 ||| The bytes the last collection left live; the most bytes the heap may
 ||| commit, 0 for no limit; the window's size; the collections so far.
 export
-liveBytes, heapLimit, windowBytes, collections : State
-liveBytes = word 8
-heapLimit = word 9
-windowBytes = word 10
-collections = word 11
+liveBytes, heapLimit, windowBytes, collections : State Bits64
+liveBytes = count 8
+heapLimit = count 9
+windowBytes = count 10
+collections = count 11
 
-||| Two words, sixteen bytes, for a system call to write into: getrlimit's
-||| answer.
+||| The first of the `n` words of the state from its word `i`, all of which
+||| the area holds: a run of raw words.
 public export
-scratch : State
-scratch = words 16 2
+words : (i, n : Bits64) -> {auto 0 fits : i + n <= Area.runtimeWords = True} -> Bits64
+words i _ = i
 
-||| The word of the state.
+||| The word of the state, as what it holds: the state keeps an address as
+||| its word.
 export
-getState : State -> Heap.Op Heap Bits64
-getState i = do
+getState : State t -> Heap.Op Heap t
+getState (MkState i AnAddress) = do
+  rt <- Memory.runtimeArea
+  w <- Memory.loadAt rt (8 * i)
+  Heap.pure (Raw.fromWord w)
+getState (MkState i ACount) = do
   rt <- Memory.runtimeArea
   Memory.loadAt rt (8 * i)
 
 export
-setState : State -> Bits64 -> Heap.Op Heap ()
-setState i v = do
+setState : State t -> t -> Heap.Op Heap ()
+setState (MkState i AnAddress) v = do
+  rt <- Memory.runtimeArea
+  Memory.storeAt rt (8 * i) (Raw.rawWord v)
+setState (MkState i ACount) v = do
   rt <- Memory.runtimeArea
   Memory.storeAt rt (8 * i) v
 
-||| The address of the scratch bytes, as a word, since they hold no object.
+||| The address of the scratch bytes, raw memory, since they hold no object.
 export
-scratchArea : Heap.Op Heap Bits64
+scratchArea : Heap.Op Heap Raw
 scratchArea = do
   rt <- Memory.runtimeArea
-  Heap.pure (rt + 8 * scratch)
+  Heap.pure (Raw.offset rt (8 * scratch))
+  where
+    ||| The first of the two words, sixteen bytes, that a system call writes
+    ||| into: getrlimit's answer.
+    scratch : Bits64
+    scratch = words 16 2

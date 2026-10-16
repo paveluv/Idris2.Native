@@ -11,8 +11,8 @@
 #   `start` taking two;
 # * the routines' record leaves `crash` out: the record is not whole;
 # * `allocSlow` is bound to x86-64 Linux's `reserve`, which has the same
-#   registers, a word in and a word out, but gives a word where the port
-#   gives an object's address: refused, where a check of the registers
+#   registers, a word in and a word out, but gives a raw address where the
+#   port gives an object's address: refused, where a check of the registers
 #   alone would let it through;
 # * the platform's record has `reserve` and `commit` swapped.
 fault() {
@@ -25,10 +25,10 @@ fault() {
   (cd broken && idris2 --build idris2-native-runtime.ipkg 2>&1) | sed -n '/^Error/,/^$/p' | grep "^Error\|^Mismatch" | head -2
 }
 fault "start of three words" Start.idr \
-  -e 's/^start : (entry, window : Bits64)/start : (entry, window, extra : Bits64)/' \
+  -e 's/^start : (entry : Raw) -> (window : Bits64)/start : (entry : Raw) -> (window, extra : Bits64)/' \
   -e 's/^start entry window = do/start entry window _ = do/'
 fault "no crash" Routines.idr -e 's/^    , crash = System.crash }/    }/'
-fault "allocSlow giving a word" Routines.idr \
+fault "allocSlow giving a raw address" Routines.idr \
   -e 's/allocSlow = Space.allocSlow/allocSlow = LinuxX86_64.reserve/' \
   -e 's/^import Native.Runtime.Memory$/import Native.Runtime.Memory\nimport Native.Runtime.OS.LinuxX86_64/'
 fault "reserve and commit swapped" OS/LinuxX86_64.idr \

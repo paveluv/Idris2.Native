@@ -18,6 +18,7 @@ import Native.HeapObj.Shape
 import Native.Runtime.Bits
 import Native.Runtime.Heap
 import Native.Runtime.Memory
+import Native.Runtime.Raw
 
 -- this module's `do` is the runtime's, over the token
 %hide Prelude.Interfaces.(>>=)

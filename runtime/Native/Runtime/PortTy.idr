@@ -5,6 +5,7 @@
 module Native.Runtime.PortTy
 
 import Native.Runtime.Heap
+import Native.Runtime.Raw
 
 import Native.Flat.Uniform as Flat
 import Native.HeapObj.Shape as HeapObj
@@ -49,6 +50,7 @@ PortTy addr p =
     carried _ _ (Port.ValueOf t) = Flat.Uniform t
     carried _ a Port.Value = Flat.Uniform a
     carried s _ Port.Address = addr s
+    carried _ _ Port.Raw = Raw
 
     result : (0 s : HeapObj.Shape) -> (0 a : Type) -> Maybe Port.Carrier -> Type
     result _ _ Nothing = ()

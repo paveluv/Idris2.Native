@@ -68,6 +68,7 @@ carrierTy : Port.Carrier -> IRCommon.Ty enc
 carrierTy Port.Word = IRCommon.Ty.W64
 carrierTy Port.Signed = IRCommon.Ty.W64
 carrierTy Port.Address = IRCommon.Ty.W64
+carrierTy Port.Raw = IRCommon.Ty.W64
 carrierTy (Port.ValueOf _) = IRCommon.Ty.Val
 carrierTy Port.Value = IRCommon.Ty.Val
 

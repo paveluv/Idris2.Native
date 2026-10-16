@@ -97,8 +97,25 @@ export
 resolvedRules : List (SourceFile, List Declared, Mentions) -> (programNames : SortedSet String) -> Resolution -> List Finding
 resolvedRules fms programNames r =
   joined [ importUnused m ++ importIndirect r m ++ listAccumulation m ++ genericExport m | m <- modulesOf fms r ]
-  ++ joined [ publicUnneeded f ds | (f, ds, _) <- fms ]
+  ++ joined [ publicUnneeded f ds ++ rawMaker f | (f, ds, _) <- fms ]
   where
+    ||| `raw-maker`: a raw address made from a word (`Raw.fromWord`) outside
+    ||| the modules that keep addresses as words or are given them so: the
+    ||| memory module, the state, the spaces (the collector's interface holds
+    ||| addresses as words) and the platforms (the system gives its results
+    ||| as words). Elsewhere a raw address comes from an operation that gives
+    ||| one, so a count is not taken for an address.
+    rawMaker : SourceFile -> List Finding
+    rawMaker f =
+      let m = show f.mod.moduleNS in
+      if elem m makers || isPrefixOf "Native.Runtime.OS." m then [] else
+        [ finding f "raw-maker" f.mod.headerLoc u.name
+            ("`" ++ m ++ "` makes a raw address from a word, which only the modules that keep addresses as words do")
+        | rm <- r.modules, rm.name == m, u <- rm.uses, u.name == "fromWord", u.definer == "Native.Runtime.Raw" ]
+      where
+        makers : List String
+        makers = ["Native.Runtime.Raw", "Native.Runtime.Memory", "Native.Runtime.State", "Native.Runtime.Space"]
+
     ||| `public-unneeded`, a warning: a `public export` that only its module
     ||| needs public. A data type whose constructors no other module uses
     ||| (resolved) and no program writes could be `export`, the type kept and

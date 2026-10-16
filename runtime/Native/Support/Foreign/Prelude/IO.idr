@@ -8,6 +8,7 @@ module Native.Support.Foreign.Prelude.IO
 import Native.Runtime.Heap as Runtime
 import Native.Runtime.Memory
 import Native.Runtime.OS
+import Native.Runtime.Raw as Runtime
 import Native.Runtime.State
 import Native.Support.CodePoint
 

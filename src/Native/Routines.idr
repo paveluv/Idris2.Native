@@ -23,7 +23,7 @@ record Routines (f : Port -> Type) where
   constructor MkRoutines
   ||| `idris_start`: the stack pointer at entry and the allocation window's
   ||| bytes; the program's start-up, before `main`.
-  start : f (MkPort [Port.Word, Port.Word] Nothing)
+  start : f (MkPort [Port.Raw, Port.Word] Nothing)
   ||| `idris_alloc_slow`: the bytes of an object the window has no room for;
   ||| its space, after a collection if one is due.
   allocSlow : f (MkPort [Port.Word] (Just Port.Address))
@@ -32,7 +32,7 @@ record Routines (f : Port -> Type) where
   allocMutable : f (MkPort [Port.Word] (Just Port.Address))
   ||| `idris_crash`: a message's address and bytes, written to the standard
   ||| error before the process ends with status 1.
-  crash : f (MkPort [Port.Word, Port.Word] Nothing)
+  crash : f (MkPort [Port.Raw, Port.Word] Nothing)
 
 ||| Each routine's entries of two records made one.
 public export

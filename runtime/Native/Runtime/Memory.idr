@@ -25,6 +25,7 @@ import public Native.Runtime.PortTy
 -- the runtime's own, never re-exported: each module that uses it imports it
 import Native.Runtime.Bits
 import Native.Runtime.Heap
+import Native.Runtime.Raw
 
 import Native.Flat.Uniform as Flat
 import Native.HeapObj.Shape as HeapObj
@@ -67,52 +68,57 @@ record Addr (0 s : HeapObj.Shape) where
   word : Bits64
 
 
+||| The memory an object is, as raw memory.
+raw : Addr s -> Raw
+raw a = Raw.fromWord a.word
+
 ||| The word at the address plus the offset.
 export %inline
 load64 : Addr s -> (offset : Bits64) -> Heap.Op Heap Bits64
-load64 a = intrinsic__load64 a.word
+load64 a = intrinsic__load64 (raw a)
 
 ||| The 32, 16 or 8 bits at the address plus the offset, as a word.
 export %inline
 load32, load16, load8 : Addr s -> (offset : Bits64) -> Heap.Op Heap Bits64
-load32 a = intrinsic__load32 a.word
-load16 a = intrinsic__load16 a.word
-load8 a = intrinsic__load8 a.word
+load32 a = intrinsic__load32 (raw a)
+load16 a = intrinsic__load16 (raw a)
+load8 a = intrinsic__load8 (raw a)
 
 ||| Store the word at the address plus the offset.
 export %inline
 store64 : Addr s -> (offset, value : Bits64) -> Heap.Op Heap ()
-store64 a = intrinsic__store64 a.word
+store64 a = intrinsic__store64 (raw a)
 
 ||| Store the word's low 32, 16 or 8 bits at the address plus the offset.
 export %inline
 store32, store16, store8 : Addr s -> (offset, value : Bits64) -> Heap.Op Heap ()
-store32 a = intrinsic__store32 a.word
-store16 a = intrinsic__store16 a.word
-store8 a = intrinsic__store8 a.word
+store32 a = intrinsic__store32 (raw a)
+store16 a = intrinsic__store16 (raw a)
+store8 a = intrinsic__store8 (raw a)
 
 ------------------------------------------------------------------------------
--- Words as addresses, for the module that manages the spaces
+-- Raw memory and objects
 
-||| The address a word is: for the modules that lay out the heap's spaces
-||| and its objects, which compute addresses as words.
+||| The object at raw memory the allocator gave: for the modules that lay
+||| out the heap's spaces and its objects.
 export %inline
-fromWord : Bits64 -> Addr s
-fromWord = MkAddr
+objectAt : Raw -> Addr s
+objectAt r = MkAddr (Raw.rawWord r)
 
-||| The word an address is.
+||| An object's bytes from the offset, as raw memory: for the system to
+||| read or write them.
 export %inline
-toWord : Addr s -> Bits64
-toWord a = a.word
+objectBytes : Addr s -> (offset : Bits64) -> Raw
+objectBytes a n = Raw.offset (raw a) n
 
-||| The word at an address plus a byte offset, both words, and storing one:
-||| the loads and stores for code that works on addresses as words.
+||| The word at raw memory plus a byte offset, and storing one: the loads
+||| and stores of the memory that holds no object.
 export %inline
-loadAt : (base, offset : Bits64) -> Heap.Op Heap Bits64
+loadAt : Raw -> (offset : Bits64) -> Heap.Op Heap Bits64
 loadAt = intrinsic__load64
 
 export %inline
-storeAt : (base, offset, value : Bits64) -> Heap.Op Heap ()
+storeAt : Raw -> (offset, value : Bits64) -> Heap.Op Heap ()
 storeAt = intrinsic__store64
 
 ------------------------------------------------------------------------------
@@ -122,23 +128,18 @@ storeAt = intrinsic__store64
 ||| The allocation window: inline allocation bumps the allocation pointer
 ||| until the limit, and takes the slow path past it.
 export %inline
-allocationPointer : Heap.Op Heap Bits64
+allocationPointer : Heap.Op Heap Raw
 allocationPointer = intrinsic__getHp
 
 export %inline
-allocationLimit : Heap.Op Heap Bits64
+allocationLimit : Heap.Op Heap Raw
 allocationLimit = intrinsic__getHpLim
 
 export %inline
-setAllocation : (hp, hplim : Bits64) -> Heap.Op Heap ()
+setAllocation : (hp, hplim : Raw) -> Heap.Op Heap ()
 setAllocation hp hplim = do
   intrinsic__setHp hp
   intrinsic__setHpLim hplim
-
-||| Make `bytes` at the address the allocation window.
-export
-setWindow : Addr s -> (bytes : Bits64) -> Heap.Op Heap ()
-setWindow a bytes = setAllocation a.word (a.word + bytes)
 
 ||| The current continuation, as the pointer word it is, and setting it:
 ||| the collector's first root, which it rewrites when it moves the
@@ -159,30 +160,30 @@ export %inline
 pointerTag : Heap.Op Heap Bits64
 pointerTag = intrinsic__pointerTag
 
-||| The per-thread areas, as the words of their addresses, since they hold
-||| no object: the word that holds the lowest the machine stack pointer may
+||| The per-thread areas, as raw memory, since they hold no object: the
+||| word that holds the lowest the machine stack pointer may
 ||| go in direct code; the word that holds the stack pointer at the
 ||| program's entry, where the argument count, the arguments' addresses and
 ||| the environment's are; the root buffer and the word that counts its
 ||| entries in use; and the runtime's state.
 export %inline
-stackLimitArea : Heap.Op Heap Bits64
+stackLimitArea : Heap.Op Heap Raw
 stackLimitArea = intrinsic__stackLimitArea
 
 export %inline
-argvArea : Heap.Op Heap Bits64
+argvArea : Heap.Op Heap Raw
 argvArea = intrinsic__argvArea
 
 export %inline
-rootsArea : Heap.Op Heap Bits64
+rootsArea : Heap.Op Heap Raw
 rootsArea = intrinsic__rootsArea
 
 export %inline
-nrootsArea : Heap.Op Heap Bits64
+nrootsArea : Heap.Op Heap Raw
 nrootsArea = intrinsic__nrootsArea
 
 export %inline
-runtimeArea : Heap.Op Heap Bits64
+runtimeArea : Heap.Op Heap Raw
 runtimeArea = intrinsic__runtimeArea
 
 ------------------------------------------------------------------------------
@@ -238,25 +239,31 @@ fixnumWord n = do
 ------------------------------------------------------------------------------
 -- The system's memory
 
-||| `x` rounded up to a whole number of the system's pages, what it commits
-||| and releases by.
+||| `bytes` rounded up to a whole number of the system's pages, what it
+||| commits and releases by, and an address rounded up to a page's start.
 export
 roundToPage : Bits64 -> Heap.Op Heap Bits64
 roundToPage x = do
   page <- OS.osPageBytes
   Heap.pure ((x + (page - 1)) .&. (0 - page))
 
-||| `bytes` of address space reserved, not yet usable; 0 if the system has
-||| no such range.
+export
+alignToPage : Raw -> Heap.Op Heap Raw
+alignToPage r = do
+  page <- OS.osPageBytes
+  Heap.pure (Raw.alignUp r page)
+
+||| `bytes` of address space reserved, not yet usable; the null address if
+||| the system has no such range.
 export %inline
-reserveMemory : (bytes : Bits64) -> Heap.Op Heap Bits64
+reserveMemory : (bytes : Bits64) -> Heap.Op Heap Raw
 reserveMemory = OS.osReserve
 
 ||| Memory committed to `bytes` of a reserved range from `addr`, both whole
 ||| pages: readable, writable and zero. The program ends if the system has
 ||| none.
 export
-commitMemory : (addr, bytes : Bits64) -> Heap.Op Heap ()
+commitMemory : (addr : Raw) -> (bytes : Bits64) -> Heap.Op Heap ()
 commitMemory addr bytes = do
   ok <- OS.osCommit addr bytes
   -- lint: allow trust-escape: memory the system refuses ends the program, which returns nothing
@@ -265,7 +272,7 @@ commitMemory addr bytes = do
 ||| Memory given back from `bytes` of a committed range from `addr`, both
 ||| whole pages, and the range reserved again.
 export %inline
-releaseMemory : (addr, bytes : Bits64) -> Heap.Op Heap ()
+releaseMemory : (addr : Raw) -> (bytes : Bits64) -> Heap.Op Heap ()
 releaseMemory = OS.osRelease
 
 ||| `bytes` of fresh memory, zeroed, readable and writable, at an address the
@@ -275,8 +282,8 @@ mapMemory : (bytes : Bits64) -> Heap.Op Heap (Addr s)
 mapMemory bytes = do
   whole <- roundToPage bytes
   a <- OS.osReserve whole
-  ok <- if a == 0 then Heap.pure 0 else OS.osCommit a whole
+  ok <- if Raw.isNull a then Heap.pure 0 else OS.osCommit a whole
   -- lint: allow trust-escape: memory the system refuses ends the program, which returns nothing
   if ok == 0
      then assert_total (idris_crash "idris: cannot map memory")
-     else Heap.pure (MkAddr a)
+     else Heap.pure (objectAt a)

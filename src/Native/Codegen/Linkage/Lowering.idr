@@ -21,23 +21,31 @@ import Native.Port
 public export
 data Width = Whole | Narrow IRCommon.Op.SubWord
 
+||| What a pinned register carries across the boundary: the window's
+||| registers are raw addresses, the continuation its pointer word.
+public export
+pinnedCarrier : IRCommon.Pinned -> Port.Carrier
+pinnedCarrier IRCommon.Pinned.Hp = Port.Raw
+pinnedCarrier IRCommon.Pinned.HpLim = Port.Raw
+pinnedCarrier IRCommon.Pinned.K = Port.Word
+
 ||| The instructions an inline extern stands for, by the port they
 ||| implement: what they take and give is the port's.
 public export
 data Lowering : Port -> Type where
   ||| Load the width at a base address plus an offset, extended with zeros.
-  Load : Width -> Lowering (MkPort [Port.Word, Port.Word] (Just Port.Word))
+  Load : Width -> Lowering (MkPort [Port.Raw, Port.Word] (Just Port.Word))
   ||| Store the width of a word at a base address plus an offset.
-  Store : Width -> Lowering (MkPort [Port.Word, Port.Word, Port.Word] Nothing)
-  ||| Read a pinned register, as a word.
-  Get : IRCommon.Pinned -> Lowering (MkPort [] (Just Port.Word))
-  ||| Set a pinned register, from a word.
-  Set : IRCommon.Pinned -> Lowering (MkPort [Port.Word] Nothing)
+  Store : Width -> Lowering (MkPort [Port.Raw, Port.Word, Port.Word] Nothing)
+  ||| Read a pinned register, as what it carries.
+  Get : (r : IRCommon.Pinned) -> Lowering (MkPort [] (Just (pinnedCarrier r)))
+  ||| Set a pinned register.
+  Set : (r : IRCommon.Pinned) -> Lowering (MkPort [pinnedCarrier r] Nothing)
   ||| The pointer tag of the program's encoding: what a pointer word is
   ||| beyond the object's address.
   PointerTag : Lowering (MkPort [] (Just Port.Word))
   ||| The address of a per-thread area.
-  AreaAddress : Area -> Lowering (MkPort [] (Just Port.Word))
+  AreaAddress : Area -> Lowering (MkPort [] (Just Port.Raw))
   ||| The word a uniform value is.
   ValueWord : Lowering (MkPort [Port.Value] (Just Port.Word))
   ||| The uniform value a word is.
