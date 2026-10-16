@@ -68,8 +68,8 @@ import Data.Zippable
 import Native.Area
 import Native.Codegen.Bytes
 import Native.Codegen.IRCommon.Conv as IRCommon
-import Native.Codegen.IRCommon.Intrinsic
 import Native.Codegen.IRCommon.Op
+import Native.Codegen.IRCommon.Pinned as IRCommon
 import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.Codegen.Linkage.Areas as Linkage
 import Native.Codegen.Linkage.Realised as Linkage
@@ -242,7 +242,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
         -- bound once: an argument of a partial application is evaluated again
         -- at every call of it, which read the function's blocks once per block
         let rs = resumes f
-        traverse_ (block blk (results f.conv) rs) f.blocks
+        traverse_ (block blk (IRCommon.Conv.results f.conv) rs) f.blocks
         s <- get
         put ({ text := s.text ++ s.cold, cold := [<] } s)
         where
@@ -839,13 +839,11 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                   emit (Asm.Lea Asm.RAX (Asm.MRip (sym (Linkage.Sym.areaSym a)) 0))
                                   store d Asm.RAX
                 -- the pinned registers: the allocation window and the current continuation
-                LocatedIR.Instr.Intrinsic IRCommon.Intrinsic.GetHp [d] [] => store d Asm.R15
-                LocatedIR.Instr.Intrinsic IRCommon.Intrinsic.SetHp [] [x] => load Asm.R15 x
-                LocatedIR.Instr.Intrinsic IRCommon.Intrinsic.GetHpLim [d] [] => store d Asm.R14
-                LocatedIR.Instr.Intrinsic IRCommon.Intrinsic.SetHpLim [] [x] => load Asm.R14 x
-                LocatedIR.Instr.Intrinsic IRCommon.Intrinsic.GetK [d] [] => store d Asm.R12
-                LocatedIR.Instr.Intrinsic IRCommon.Intrinsic.SetK [] [x] => load Asm.R12 x
-                LocatedIR.Instr.Intrinsic (IRCommon.Intrinsic.Syscall _) [d] (n :: args) =>
+                LocatedIR.Instr.GetPinned r d => store d (pinnedReg r)
+                LocatedIR.Instr.SetPinned r x => load (pinnedReg r) x
+                -- Linux's system call on x86-64: the number in rax, the arguments in rdi,
+                -- rsi, rdx, r10, r8 and r9, the result in rax
+                LocatedIR.Instr.SystemCall d (n :: args) =>
                   if length args > 6 then failWith "a system call of more than six arguments" else do
                     traverse_ (\(r, x) => load r x) (zip [Asm.RDI, Asm.RSI, Asm.RDX, Asm.R10, Asm.R8, Asm.R9] args)
                     load Asm.RAX n
@@ -855,6 +853,12 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                 LocatedIR.Instr.Comment s => emit (Asm.Comment s)
                 i => failWith ("the rendering does not support " ++ LocatedIR.Instr.instrName i ++ " yet")
                 where
+                  -- The register each pinned register is.
+                  pinnedReg : IRCommon.Pinned -> Asm.Reg64
+                  pinnedReg IRCommon.Pinned.Hp = Asm.R15
+                  pinnedReg IRCommon.Pinned.HpLim = Asm.R14
+                  pinnedReg IRCommon.Pinned.K = Asm.R12
+
                   -- The bytes of an object of `r` bytes of data: the header word, then the
                   -- data rounded up to words.
                   bytesSize : Asm.Reg64 -> List Asm.Instr

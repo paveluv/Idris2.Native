@@ -97,7 +97,9 @@ functionPieces f =
           Instr.DirectCall f xs ds m live =>
                   assigned ds ++ "DirectCall " ++ show f ++ " (" ++ ops xs ++ ")"
                   ++ (if m then " mayCollect" else "") ++ " live " ++ regs live
-          i@(Instr.Intrinsic _ ds xs) => assigned ds ++ Instr.instrName i ++ " (" ++ ops xs ++ ")"
+          i@(Instr.GetPinned _ d) => assigned [d] ++ Instr.instrName i ++ " ()"
+          i@(Instr.SetPinned _ x) => Instr.instrName i ++ " (" ++ ops [x] ++ ")"
+          i@(Instr.SystemCall d xs) => assigned [d] ++ Instr.instrName i ++ " (" ++ ops xs ++ ")"
           Instr.Move d s => show d ++ " := " ++ show s
           Instr.Loc _ => "Loc"
           Instr.Comment s => "-- " ++ s

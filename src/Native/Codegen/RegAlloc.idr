@@ -23,8 +23,8 @@
 module Native.Codegen.RegAlloc
 
 import Native.Codegen.IRCommon.Conv as IRCommon
-import Native.Codegen.IRCommon.Intrinsic
 import Native.Codegen.IRCommon.Op
+import Native.Codegen.IRCommon.Pinned
 import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.Codegen.LocatedIR.Block as LocatedIR
 import Native.Codegen.LocatedIR.Cont as LocatedIR
@@ -490,7 +490,9 @@ parameters (d : TermIR.Decls enc)
             pure (pn ++ [LocatedIR.Instr.AllocSized r p rn fill live])
           (ds, TermIR.Instr.DirectCall f xs) =>
             pure [LocatedIR.Instr.DirectCall (nameOf f) (operands env xs) (regs ds) (collectsOf f) (values after)]
-          (ds, TermIR.Instr.Intrinsic i xs) => pure [LocatedIR.Instr.Intrinsic i (regs ds) (operands env xs)]
+          ([d], TermIR.Instr.GetPinned r) => pure [LocatedIR.Instr.GetPinned r d]
+          ([], TermIR.Instr.SetPinned r x) => pure [LocatedIR.Instr.SetPinned r (operand env x)]
+          ([d], TermIR.Instr.SystemCall _ xs) => pure [LocatedIR.Instr.SystemCall d (operands env xs)]
           ([], TermIR.Instr.Loc fc) => pure [LocatedIR.Instr.Loc fc]
           ([], TermIR.Instr.Comment s) => pure [LocatedIR.Instr.Comment s]
           where

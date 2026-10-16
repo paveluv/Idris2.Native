@@ -15,12 +15,14 @@ import Native.Codegen.TermIR.Var
 
 import Core.FC
 import Core.Name
+import Data.Fin
+import Data.List
 import Data.List.Quantifiers
 import Data.So
 import Native.Area
 import Native.Codegen.IRCommon.Conv
-import Native.Codegen.IRCommon.Intrinsic as IRCommon
 import Native.Codegen.IRCommon.Op
+import Native.Codegen.IRCommon.Pinned as IRCommon
 import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.HeapObj.ValEnc
 import Native.Types.Enc as Types
@@ -107,8 +109,14 @@ data Instr : Decls enc -> Bool -> (var : IRCommon.Ty enc -> Type) -> List (IRCom
                Sizes.Fill var p -> Instr d m var [IRCommon.Ty.PtrTo k]
   ||| A machine call of a Direct function, binding its results.
   DirectCall : Var d.sigs (MkSig n (IRCommon.Conv.Direct rs col) ps cv) -> All (Opnd var) ps -> Instr d m var rs
-  ||| An intrinsic, on what it takes, binding what it gives.
-  Intrinsic : (i : Intrinsic) -> All (Opnd var) (params i) -> Instr d m var (results i)
+  ||| A pinned register's value, and setting it.
+  GetPinned : (r : IRCommon.Pinned) -> Instr d m var [IRCommon.Pinned.pinnedTy r]
+  SetPinned : (r : IRCommon.Pinned) -> Opnd var (IRCommon.Pinned.pinnedTy r) -> Instr d m var []
+  ||| One system call of so many arguments, at most six: its number, then the
+  ||| arguments, giving its result, by the platform's convention. A
+  ||| collection never starts in a system call.
+  SystemCall : (n : Fin 7) -> All (Opnd var) (replicate (S (finToNat n)) IRCommon.Ty.W64) ->
+               Instr d m var [IRCommon.Ty.W64]
   ||| The source location of what follows.
   Loc : FC -> Instr d m var []
   Comment : String -> Instr d m var []
@@ -170,6 +178,8 @@ traverseInstr g (AllocSized Types.Header.BignumNegative {sizes} c f) =
 traverseInstr g (AllocSized Types.Header.BignumWords {sizes} c f) =
   (\c' => AllocSized Types.Header.BignumWords {sizes} c' f) <$> g c
 traverseInstr g (DirectCall r xs) = DirectCall r <$> Opnd.traverseAll g xs
-traverseInstr g (Intrinsic i xs) = Intrinsic i <$> Opnd.traverseAll g xs
+traverseInstr g (GetPinned r) = pure (GetPinned r)
+traverseInstr g (SetPinned r x) = SetPinned r <$> g x
+traverseInstr g (SystemCall n xs) = SystemCall n <$> Opnd.traverseAll g xs
 traverseInstr g (Loc fc) = pure (Loc fc)
 traverseInstr g (Comment s) = pure (Comment s)

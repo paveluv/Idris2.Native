@@ -4,7 +4,7 @@
 ||| The modules of `Native.Codegen.Linkage` are the code generator's side of
 ||| what generated code, the runtime and the linker agree on: the contract as
 ||| the loaded runtime realises it (`Realised`), the instructions of the
-||| inline externs (`InlineExtern`), the routines here, the foreign
+||| inline externs (`Lowering`), the routines here, the foreign
 ||| functions the runtime implements (`ForeignFunctions`), where a
 ||| platform's services are (`OSService`), where the runtime's modules are
 ||| (`RuntimeModule`), the image's symbols and their labels (`Sym`), the
@@ -13,12 +13,12 @@
 ||| runtime library's, the rest of the seed's are `Native.Codegen.Seed`, and
 ||| `Native.Codegen.Link` makes the image.
 |||
-||| The contract itself is shared, `Native.Port` and the records of its
-||| entries (`Native.Routines`, `Native.Intrinsics`, `Native.Services`):
-||| each side gives a record of what it provides, checked by Idris against
-||| the ports where that side is built, and the code generator takes the
-||| registers of each call from the ports and the function or extern of each
-||| entry from the records. A routine the runtime gives must also have a
+||| The contract itself is shared, `Native.Port` and its entries
+||| (`Native.Routines`, `Native.Intrinsic`, `Native.Services`): each side
+||| gives what it provides checked by Idris against the ports where that
+||| side is built, and the code generator takes the registers of each call
+||| from the ports, and the function or extern of each entry by its type (an
+||| inline extern) or from the record of them (the others). A routine the runtime gives must also have a
 ||| flat form, which the lowering checks. Code compiled to join a runtime
 ||| that is already built depends on the contract alone.
 module Native.Codegen.Linkage.Routine

@@ -32,7 +32,6 @@ import Data.List
 import Data.SortedMap
 import Data.Vect
 import Native.Codegen.IRCommon.Ty
-import Native.Codegen.Linkage.InlineExtern
 import Native.Codegen.Linkage.Realised
 import Native.Codegen.Linkage.Routine
 import Native.Codegen.Linkage.RuntimeModule
@@ -42,6 +41,7 @@ import Native.Codegen.TermIR.Decls
 import Native.Codegen.TermIR.Program
 import Native.Flat.Exp
 import Native.HeapObj.ValEnc
+import Native.Intrinsic
 import Native.Port
 import Native.Routines
 import Native.Types.BignumEnc

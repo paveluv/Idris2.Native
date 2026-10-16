@@ -1,22 +1,26 @@
 ||| The contract as the loaded runtime realises it (`Realised`): for each
-||| entry, the function or the extern that is it, read from the records that
-||| give them (`realise`), not named by the code generator.
+||| entry, the function or the extern that is it (`realise`), not named by
+||| the code generator.
 |||
-||| A record's value is its constructor applied to its entries, in the
-||| fields' order. The code generator takes them by position and rebuilds
-||| the record with the same constructor, so a field is the same field on
-||| both sides, and Idris has checked each entry against its field's port
-||| where the record was built. What the code generator names is the
-||| records: `routines` of the runtime's `Routines`, the string encoding's
-||| module's `strings`, the platform's module's `services`, and the records
-||| of the externs, each in the module that declares them: `intrinsics` of
-||| `Memory`, and `externs` of `OS.Syscall` and of `OS`.
+||| An inline extern is found by its type alone: the runtime declares each
+||| as `ExternTy (port c)` for its intrinsic `c` (`Native.Intrinsic`), which
+||| Idris checks, and which the loaded context keeps as written. The
+||| constructor `c` there is matched to the code generator's own by the
+||| contract's list of every intrinsic: the list's term in the context and
+||| the code generator's copy of it are one declaration, so their elements
+||| pair up whatever the order. Each intrinsic must have exactly one extern.
+|||
+||| The other entries are still read from records that give them: a
+||| record's value is its constructor applied to its entries, in the fields'
+||| order, which the code generator takes by position and rebuilds with the
+||| same constructor. It names those records: `routines` of the runtime's
+||| `Routines`, the string encoding's module's `strings`, the platform's
+||| module's `services`, and the services' `externs` of `OS`.
 |||
 ||| Part of what generated code, the runtime and the linker agree on
 ||| (`Native.Codegen.Linkage.Routine` says what it is).
 module Native.Codegen.Linkage.Realised
 
-import Native.Codegen.Linkage.InlineExtern
 import Native.Codegen.Linkage.OSService
 import Native.Codegen.Linkage.RuntimeModule
 
@@ -32,12 +36,12 @@ import Core.TT.Term
 import Data.List
 import Data.SortedMap
 import Data.Vect
+import Data.Zippable
 import Native.Codegen.Platform
-import Native.Intrinsics
+import Native.Intrinsic
 import Native.Port
 import Native.Routines
 import Native.Services
-import Native.Syscall
 import Native.Types.Enc as Types
 import Native.Types.StringRoutines as Types
 
@@ -58,8 +62,8 @@ record Realised where
   routines : Routines Named
   ||| The string encoding's routines, if the runtime has a module for it.
   strings : Maybe (Types.StringRoutines Named)
-  ||| Each inline extern, with the instruction it stands for.
-  externs : SortedMap Name InlineExtern
+  ||| Each inline extern, with the intrinsic it is.
+  externs : SortedMap Name Intrinsic
   ||| Each OS service's extern, with the platform's function for it.
   services : SortedMap Name Name
 
@@ -75,9 +79,7 @@ realise platform enc = do
     Nothing => pure (Right Nothing)
   let Right ss' = ss
     | Left e => pure (Left e)
-  Right is <- fieldsOf (in' (RuntimeModule.runtimeModule "Memory") "intrinsics") 22
-    | Left e => pure (Left e)
-  Right [sc] <- fieldsOf (in' (RuntimeModule.runtimeModule "OS.Syscall") "externs") 1
+  Right externs <- intrinsicsByType
     | Left e => pure (Left e)
   Right xs <- fieldsOf (in' (RuntimeModule.runtimeModule "OS") "externs") 7
     | Left e => pure (Left e)
@@ -85,17 +87,66 @@ realise platform enc = do
     | Nothing => pure (Left ("the platform " ++ show platform ++ " has no OS services"))
   Right fs <- fieldsOf (in' platformNs "services") 7
     | Left e => pure (Left e)
-  let externs =
-        map (\(_ ** p) => p)
-          (Intrinsics.intrinsicList
-            (Intrinsics.zipIntrinsics (\e, l => (e.name, l)) (intrinsicsOf is) InlineExtern.lowerings)
-          ++ Syscall.syscallList (Syscall.zipSyscall (\e, l => (e.name, l)) (MkSyscall {f = Named} (MkNamed sc))
-                                    InlineExtern.syscallLowering))
-      services =
+  let services =
         map (\(_ ** p) => p)
           (Services.serviceList (Services.zipServices (\x, f => (x.name, f.name)) (servicesOf xs) (servicesOf fs)))
-  pure (Right (MkRealised (routinesOf rs) (map stringRoutinesOf ss') (fromList externs) (fromList services)))
+  pure (Right (MkRealised (routinesOf rs) (map stringRoutinesOf ss') externs (fromList services)))
   where
+    ||| A definition of the root of a module.
+    in' : Namespace -> String -> Name
+    in' ns n = NS ns (UN (Basic n))
+
+    ||| Each inline extern of the loaded runtime, found by its type,
+    ||| `ExternTy (port c)`, with the intrinsic `c` is; or which intrinsics
+    ||| have no extern, or more than one.
+    intrinsicsByType : Core (Either String (SortedMap Name Intrinsic))
+    intrinsicsByType = do
+      defs <- get Ctxt
+      Just lg <- lookupCtxtExact (in' contract "allIntrinsics") (gamma defs)
+        | Nothing => pure (Left ("the runtime has no " ++ show (in' contract "allIntrinsics")))
+      listed <- case definition lg of
+        PMDef _ _ (STerm _ tm) _ _ => elements <$> toFullNames tm
+        _ => pure []
+      let byConstructor = the (SortedMap Name Intrinsic) (fromList (zip listed Intrinsic.allIntrinsics))
+      found <- traverse (externOf defs byConstructor) !(allNames (gamma defs))
+      let found' = catMaybes found
+          problems = mapMaybe (\c => case length (filter (\e => fst (snd e) == c) found') of
+                                        1 => Nothing
+                                        k => Just (show c ++ " has " ++ show k ++ " externs")) listed
+      pure $ case problems of
+        [] => Right (fromList (map (\(n, (_, i)) => (n, i)) found'))
+        _ => Left ("the runtime's inline externs: " ++ concat (intersperse "; " problems))
+      where
+        contract : Namespace
+        contract = mkNamespace "Native.Intrinsic"
+
+        -- the elements of a list's term, `(::) {a} x xs` down to `Nil`
+        elements : Term vars -> List Name
+        elements tm = case getFnArgs tm of
+          (Ref _ _ _, [_, Ref _ _ x, rest]) => x :: elements rest
+          _ => []
+
+        -- the extern a definition is, by its type, with its constructor and
+        -- intrinsic, if it is one
+        externOf : Defs -> SortedMap Name Intrinsic -> Name -> Core (Maybe (Name, (Name, Intrinsic)))
+        externOf defs byConstructor n = do
+          Just g <- lookupCtxtExact n (gamma defs)
+            | Nothing => pure Nothing
+          case definition g of
+            ExternDef _ => do
+              ty <- toFullNames (type g)
+              n' <- toFullNames n
+              pure $ case getFnArgs ty of
+                (Ref _ _ f, [arg]) =>
+                  if f /= NS (RuntimeModule.runtimeModule "PortTy") (UN (Basic "ExternTy")) then Nothing
+                  else case getFnArgs arg of
+                    (Ref _ _ pt, [Ref _ _ c]) =>
+                      if pt /= in' contract "port" then Nothing
+                      else map (\i => (n', (c, i))) (lookup c byConstructor)
+                    _ => Nothing
+                _ => Nothing
+            _ => pure Nothing
+
     ||| The `n` entries of the record a definition's value is, in the fields'
     ||| order: its constructor's last `n` arguments, after the record's
     ||| parameter.
@@ -133,15 +184,3 @@ realise platform enc = do
     servicesOf : Vect 7 Name -> Services Named
     servicesOf [a1, a2, a3, a4, a5, a6, a7] =
       MkServices (MkNamed a1) (MkNamed a2) (MkNamed a3) (MkNamed a4) (MkNamed a5) (MkNamed a6) (MkNamed a7)
-
-    intrinsicsOf : Vect 22 Name -> Intrinsics Named
-    intrinsicsOf [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20, a21,
-                  a22] =
-      MkIntrinsics (MkNamed a1) (MkNamed a2) (MkNamed a3) (MkNamed a4) (MkNamed a5) (MkNamed a6) (MkNamed a7)
-                   (MkNamed a8) (MkNamed a9) (MkNamed a10) (MkNamed a11) (MkNamed a12) (MkNamed a13) (MkNamed a14)
-                   (MkNamed a15) (MkNamed a16) (MkNamed a17) (MkNamed a18) (MkNamed a19) (MkNamed a20) (MkNamed a21)
-                   (MkNamed a22)
-
-    ||| A definition of the root of a module.
-    in' : Namespace -> String -> Name
-    in' ns n = NS ns (UN (Basic n))

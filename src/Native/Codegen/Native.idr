@@ -19,7 +19,6 @@ module Native.Codegen.Native
 import Native.Codegen.ELF
 import Native.Codegen.Link
 import Native.Codegen.Linkage.ForeignFunctions
-import Native.Codegen.Linkage.InlineExtern as Linkage
 import Native.Codegen.Linkage.OSService
 import Native.Codegen.Linkage.Realised as Linkage
 import Native.Codegen.Linkage.Routine as Linkage
@@ -65,6 +64,7 @@ import Native.Flat.Exp
 import Native.Flat.Marked
 import Native.Flat.Translate
 import Native.HeapObj.ValEnc
+import Native.Intrinsic
 import Native.Types.BignumEnc as Types
 import Native.Types.Enc as Types
 import Native.Types.StringEnc as Types

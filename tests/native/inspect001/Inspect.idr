@@ -13,8 +13,8 @@ import Data.Fin
 import Data.List
 import Language.Reflection
 import Native.Codegen.IRCommon.Conv
-import Native.Codegen.IRCommon.Intrinsic
 import Native.Codegen.IRCommon.Op
+import Native.Codegen.IRCommon.Pinned
 import Native.Codegen.IRCommon.Ty
 import Native.Codegen.Linkage.Sym
 import Native.Codegen.Platform
@@ -187,8 +187,8 @@ encodings = %runElab enumerate `{ValEnc}
 arithOps : List (String, ArithOp)
 arithOps = %runElab enumerate `{ArithOp}
 
-intrinsicNames : List (String, Intrinsic)
-intrinsicNames = %runElab enumerate `{Intrinsic}
+pinnedNames : List (String, Pinned)
+pinnedNames = %runElab enumerate `{Pinned}
 
 parts : List (String, String)
 parts = %runElab shows `{HeaderPart}
@@ -239,7 +239,7 @@ gatedEq = ["Arch", "Conv", "Kind", "Lowering", "OS", "Platform", "Reg64", "Ty", 
 failures : List String
 failures = concat
   [ nonEmpty "Kind" kinds, nonEmpty "Ty" tys, nonEmpty "Conv" convs
-  , nonEmpty "Lowering" lowerings, nonEmpty "ArithOp" arithOps, nonEmpty "Intrinsic" intrinsicNames
+  , nonEmpty "Lowering" lowerings, nonEmpty "ArithOp" arithOps, nonEmpty "Pinned" pinnedNames
   , nonEmpty "HeaderPart" parts, nonEmpty "Reg64" regs, nonEmpty "Xmm" xmms, nonEmpty "Cond" conds
   , nonEmpty "AluOp" aluOps, nonEmpty "ShiftOp" shiftOps, nonEmpty "SseOp" sseOps
   , nonEmpty "Width" widths, nonEmpty "Sym" syms, nonEmpty "ValEnc" encodings
@@ -252,7 +252,7 @@ failures = concat
   , eqFailures "ValEnc" encodings, showFailures "ValEnc" encodings
   , showFailures "Kind" kinds, distinct "HeaderPart" "both show as" parts
   , showFailures "ArithOp" arithOps, showFailures "Conv" convs, showFailures "Ty" tys
-  , showFailures "Intrinsic" intrinsicNames, showFailures "Reg64" regs
+  , showFailures "Pinned" pinnedNames, showFailures "Reg64" regs
   , showFailures "Xmm" xmms, showFailures "Cond" conds, showFailures "AluOp" aluOps
   , showFailures "ShiftOp" shiftOps, showFailures "SseOp" sseOps, showFailures "Width" widths
   , tableFailures "code" code kinds, inverseFailures "kindOfCode" code kindOfCode kinds

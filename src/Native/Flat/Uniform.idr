@@ -19,6 +19,6 @@ module Native.Flat.Uniform
 %default total
 
 public export
-record Uniform a where
+record Uniform (0 a : Type) where
   constructor MkUniform
   value : a

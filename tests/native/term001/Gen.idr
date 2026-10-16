@@ -29,11 +29,10 @@ import Native.Area
 import Native.Codegen.ELF
 import Native.Codegen.IRCommon.ConIds
 import Native.Codegen.IRCommon.Conv
-import Native.Codegen.IRCommon.Intrinsic
 import Native.Codegen.IRCommon.Op
+import Native.Codegen.IRCommon.Pinned
 import Native.Codegen.IRCommon.Ty
 import Native.Codegen.Link
-import Native.Codegen.Linkage.InlineExtern
 import Native.Codegen.Linkage.Realised
 import Native.Codegen.Linkage.Routine
 import Native.Codegen.Linkage.RuntimeModule
@@ -63,6 +62,7 @@ import Native.Data.Builder
 import Native.Data.Distinct
 import Native.HeapObj.Shape
 import Native.HeapObj.ValEnc
+import Native.Intrinsic
 import Native.Port
 import Native.Routines
 import Native.Types.BignumEnc
@@ -159,10 +159,10 @@ twoRef = here
 startBody : Closed Run (Direct [] False) False [W64, W64]
 startBody = build $ \[entry, window] => do
   -- mmap(NULL, window, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)
-  w <- emit1 (Intrinsic (Syscall 6) [W 9, W 0, window, W 3, W 0x22, W (-1), W 0])
-  emit0 (Intrinsic SetHp [w])
+  w <- emit1 (SystemCall 6 [W 9, W 0, window, W 3, W 0x22, W (-1), W 0])
+  emit0 (SetPinned Hp w)
   lim <- emit1 (Arith Add w window)
-  emit0 (Intrinsic SetHpLim [lim])
+  emit0 (SetPinned HpLim lim)
   ret []
 
 ||| The runtime's allocation slow path, reduced to what this program needs:
@@ -172,11 +172,11 @@ allocSlowBody : Closed Run (Direct [W64] False) False [W64]
 allocSlowBody = build $ \[bytes] => do
   size <- emit1 (Arith Add bytes (W 1048576))
   -- mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)
-  w <- emit1 (Intrinsic (Syscall 6) [W 9, W 0, size, W 3, W 0x22, W (-1), W 0])
+  w <- emit1 (SystemCall 6 [W 9, W 0, size, W 3, W 0x22, W (-1), W 0])
   hp <- emit1 (Arith Add w bytes)
-  emit0 (Intrinsic SetHp [hp])
+  emit0 (SetPinned Hp hp)
   lim <- emit1 (Arith Add w size)
-  emit0 (Intrinsic SetHpLim [lim])
+  emit0 (SetPinned HpLim lim)
   ret [w]
 
 ||| The runtime's `allocMutable`, which allocates a mutable object by a
@@ -184,19 +184,19 @@ allocSlowBody = build $ \[bytes] => do
 allocMutableBody : Closed Run (Direct [W64] False) False [W64]
 allocMutableBody = build $ \[bytes] => do
   size <- emit1 (Arith Add bytes (W 1048576))
-  w <- emit1 (Intrinsic (Syscall 6) [W 9, W 0, size, W 3, W 0x22, W (-1), W 0])
+  w <- emit1 (SystemCall 6 [W 9, W 0, size, W 3, W 0x22, W (-1), W 0])
   hp <- emit1 (Arith Add w bytes)
-  emit0 (Intrinsic SetHp [hp])
+  emit0 (SetPinned Hp hp)
   lim <- emit1 (Arith Add w size)
-  emit0 (Intrinsic SetHpLim [lim])
+  emit0 (SetPinned HpLim lim)
   ret [w]
 
 ||| The runtime's `crash`: the message, `length` bytes at `message`, written
 ||| to the standard error, then the process ended with status 1.
 crashBody : Closed Run (Direct [] False) False [W64, W64]
 crashBody = build $ \[message, length] => do
-  _ <- emit1 (Intrinsic (Syscall 6) [W 1, W 2, message, length, W 0, W 0, W 0])
-  _ <- emit1 (Intrinsic (Syscall 6) [W 231, W 1, W 0, W 0, W 0, W 0, W 0])
+  _ <- emit1 (SystemCall 6 [W 1, W 2, message, length, W 0, W 0, W 0])
+  _ <- emit1 (SystemCall 6 [W 231, W 1, W 0, W 0, W 0, W 0, W 0])
   ret []
 
 ||| Unbounded addition of two `Val`s: the fixnum fast path, and `slowAdd` when
@@ -435,13 +435,13 @@ coverBody = build $ \[] => do
   scratch <- emit1 (AreaAddr SCRATCH)
   byte <- emit1 (LoadN Sub8 False (MkMem (AtWord scratch) Nothing 0))
   emit0 (StoreN Sub16 (MkMem (AtWord scratch) (Just (W 1)) 0) byte)
-  hp <- emit1 (Intrinsic GetHp [])
-  emit0 (Intrinsic SetHp [hp])
-  lim <- emit1 (Intrinsic GetHpLim [])
-  emit0 (Intrinsic SetHpLim [lim])
-  k <- emit1 (Intrinsic GetK [])
-  emit0 (Intrinsic SetK [k])
-  pid <- emit1 (Intrinsic (Syscall 0) [W 39])
+  hp <- emit1 (GetPinned Hp)
+  emit0 (SetPinned Hp hp)
+  lim <- emit1 (GetPinned HpLim)
+  emit0 (SetPinned HpLim lim)
+  k <- emit1 (GetPinned K)
+  emit0 (SetPinned K k)
+  pid <- emit1 (SystemCall 0 [W 39])
   str <- emit1 (AllocSized StringBytes (W 5) ())
   hdr <- emit1 (LoadHeader str)
   i64 <- emit1 (AllocObj Int64H [W 5])

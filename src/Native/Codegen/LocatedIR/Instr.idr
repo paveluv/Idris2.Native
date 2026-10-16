@@ -12,8 +12,8 @@ import Native.Codegen.LocatedIR.Reg
 import Core.FC
 import Core.Name
 import Native.Area
-import Native.Codegen.IRCommon.Intrinsic as IRCommon
 import Native.Codegen.IRCommon.Op
+import Native.Codegen.IRCommon.Pinned as IRCommon
 import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.HeapObj.ValEnc
 import Native.Types.Enc as Types
@@ -165,9 +165,12 @@ data Instr : Types.Enc -> Type where
   ||| that cannot, all of them on the stack, since nothing moves.
   DirectCall : Name -> List (Opnd enc) -> (results : List (Reg enc)) -> (mayCollect : Bool) ->
                (live : List (Reg enc)) -> Instr enc
-  ||| An intrinsic: a fixed instruction sequence, never a call, giving its
-  ||| results from its operands.
-  Intrinsic  : Intrinsic -> (results : List (Reg enc)) -> List (Opnd enc) -> Instr enc
+  ||| A pinned register's value, and setting it.
+  GetPinned  : IRCommon.Pinned -> (result : Reg enc) -> Instr enc
+  SetPinned  : IRCommon.Pinned -> Opnd enc -> Instr enc
+  ||| A system call: its number, then its arguments, giving its result, by
+  ||| the platform's convention; never a call of a function.
+  SystemCall : (result : Reg enc) -> List (Opnd enc) -> Instr enc
   ||| Copy a register to another of the same type: a jump's arguments into
   ||| its block's parameters.
   Move       : Reg enc -> Reg enc -> Instr enc
@@ -213,7 +216,9 @@ instrName (LoadPart p _ _) = "LoadPart " ++ show p
 instrName (AllocObj _ _ _ _) = "AllocObj"
 instrName (AllocSized _ _ _ _ _) = "AllocSized"
 instrName (DirectCall f _ _ _ _) = "DirectCall " ++ show f
-instrName (Intrinsic n _ _) = show n
+instrName (GetPinned r _) = "get" ++ show r
+instrName (SetPinned r _) = "set" ++ show r
+instrName (SystemCall _ _) = "syscall"
 instrName (Move _ _) = "Move"
 instrName (Loc _) = "Loc"
 instrName (Comment _) = "Comment"

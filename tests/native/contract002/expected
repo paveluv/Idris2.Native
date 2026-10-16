@@ -1,12 +1,12 @@
 start of three words:
 Error: While processing right hand side of routines. When unifying:
-Mismatch between: Bits64 -> Op Heap () and (1 _ : Heap) -> Ret Heap (result (MkPort [Word, Word] Nothing) (\s => Addr s) s a ((MkPort [Word, Word] Nothing) .gives)).
+Mismatch between: Bits64 -> Op Heap () and (1 _ : Heap) -> Ret Heap (result (MkPort [Word, Word] Nothing) (\0 s => Addr s) VALUES () ((MkPort [Word, Word] Nothing) .gives)).
 no crash:
 Error: While processing right hand side of routines. When unifying:
-Mismatch between: ?f (MkPort [Word, Word] Nothing) -> Routines ?f and Routines (PortTy (\s => Addr s)).
+Mismatch between: ?f (MkPort [Word, Word] Nothing) -> Routines ?f and Routines (PortTy (\0 s => Addr s)).
 allocSlow giving a word:
 Error: While processing right hand side of routines. When unifying:
 Mismatch between: Bits64 and Addr s.
 reserve and commit swapped:
 Error: While processing right hand side of services. When unifying:
-Mismatch between: (1 _ : Heap) -> Ret Heap Bits64 and carried (MkPort [Word, Word] (Just Word)) (\s => Addr s) s a Word -> arrows (MkPort [Word, Word] (Just Word)) (\s => Addr s) s a [].
+Mismatch between: (1 _ : Heap) -> Ret Heap Bits64 and carried (MkPort [Word, Word] (Just Word)) (\0 s => Addr s) VALUES () Word -> arrows (MkPort [Word, Word] (Just Word)) (\0 s => Addr s) VALUES () [].

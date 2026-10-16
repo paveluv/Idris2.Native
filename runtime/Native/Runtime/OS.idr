@@ -12,7 +12,6 @@ module Native.Runtime.OS
 import Native.Runtime.Heap
 import Native.Runtime.PortTy
 
-import Native.HeapObj.Shape as HeapObj
 -- lint: allow import-unused: the record's fields unfold to its ports' types, which
 -- Idris compares with the record's entries only where `Native.Port` is imported
 import Native.Port
