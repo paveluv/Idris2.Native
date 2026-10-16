@@ -714,7 +714,7 @@ parameters (enc : HeapObj.Enc) (realised : Linkage.Realised)
                                   store d Asm.RAX
                 -- The count is checked against its part's bits first, so the size cannot
                 -- wrap and the header holds the whole count. A mutable kind is allocated by
-                -- a call, any other inline. The header is the kind's id plus the count in
+                -- a call, any other inline. The header is the kind's fixed word plus the count in
                 -- its part; a kind with scanned fields has each set to the fill, by a loop
                 -- over the count.
                 LocatedIR.Instr.AllocSized {k} d p count fill live => do
@@ -739,7 +739,7 @@ parameters (enc : HeapObj.Enc) (realised : Linkage.Realised)
                                      else allocateSized count size live
                                   loadReg Asm.RDX count
                                   emits [ Asm.ShiftI Asm.SHL Asm.RDX (cast (fst (HeapObj.Header.place p))),
-                                         Asm.AluI Asm.ADD Asm.RDX (cast (HeapObj.Kind.kindId k))
+                                         Asm.AluI Asm.ADD Asm.RDX (cast (HeapObj.Header.fixedWord k))
                                         , Asm.MovMR (Asm.MBase Asm.RAX 0) Asm.RDX ]
                                   case fill of
                                     Nothing => pure ()

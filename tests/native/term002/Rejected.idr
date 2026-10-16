@@ -35,6 +35,7 @@ import Native.Data.Distinct
 import Native.HeapObj.Enc
 import Native.HeapObj.Header
 import Native.HeapObj.Kind
+import Native.HeapObj.Shape
 import Native.HeapObj.ValEnc
 
 %default total

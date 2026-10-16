@@ -91,6 +91,7 @@ modules =
     Native.HeapObj.Header,
     Native.HeapObj.Kind,
     Native.HeapObj.LayoutWord,
+    Native.HeapObj.Shape,
     Native.HeapObj.StringEnc,
     Native.HeapObj.ValEnc,
     Native.Intrinsics,

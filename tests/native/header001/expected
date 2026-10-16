@@ -1,15 +1,17 @@
 round trip: 20 headers, 0 failed
 too wide for fits: 8 of 8
-kind 0: rejected
-the CONT id: rejected
-kind 12: rejected
-kind 15, the forwarding header: rejected
+id 0, a continuation's first word: rejected
+id 4, no shape's: rejected
+a RAW of tag 6, no kind's: rejected
+a VALUES of tag 3, no kind's: rejected
+id 15, the forwarding header: rejected
 an INT64 with a flag set: rejected
-an INT64 with a bit beyond its parts: rejected
+an INT64 of 16 bytes: rejected
+an INT64 with its shape's part set: rejected
 a CON with the mark bit set: rejected
 all ones: rejected
 a BIGNUM header under two's complement: rejected
-ConH 1 2 encodes as 0x0000002000000101
+ConH 1 2 encodes as 0x0000100000020001
 CON ConId=1 ConArity=2: 3 words, scanned (1, 2)
 CLOSURE ClosureArity=3 ClosureFilled=1: 3 words, scanned (2, 1)
 STRING StringAscii=1 StringBytes=9: 3 words, scanned (1, 0)

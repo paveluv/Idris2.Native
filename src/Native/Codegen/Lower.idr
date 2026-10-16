@@ -104,6 +104,7 @@ import Native.HeapObj.BignumEnc
 import Native.HeapObj.Enc as HeapObj
 import Native.HeapObj.Header as HeapObj
 import Native.HeapObj.Kind
+import Native.HeapObj.Shape
 import Native.HeapObj.ValEnc
 import Native.Port
 import Native.Routines

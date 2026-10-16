@@ -28,12 +28,12 @@ import Native.Flat.Uniform as Flat
 import Native.Heap
 import Native.HeapObj.Header
 import Native.HeapObj.Kind as HeapObj
+import Native.HeapObj.Shape as HeapObj
 import Native.Port
 import Native.Routines
 import Native.Runtime.Bits
 import Native.Runtime.CodePoint
 import Native.Runtime.Memory
-import Native.Runtime.Object
 import Native.Runtime.OS
 import Native.Runtime.Space
 
@@ -48,17 +48,17 @@ import Native.Runtime.Space
 
 ||| The bytes a header counts, and whether it says they are all ASCII.
 bytesOf : (header : Bits64) -> Bits64
-bytesOf = Object.part HeapObj.Header.StringBytes
+bytesOf = HeapObj.Header.readPart HeapObj.Header.StringBytes
 
 asciiOf : (header : Bits64) -> Bool
-asciiOf h = Object.part HeapObj.Header.StringAscii h == 1
+asciiOf h = HeapObj.Header.readPart HeapObj.Header.StringAscii h == 1
 
 ||| The header of a string of `bytes`.
 headerFor : (ascii : Bool) -> (bytes : Bits64) -> Bits64
 headerFor ascii bytes =
-  HeapObj.Kind.kindId HeapObj.Kind.STRING
-    + Bits.shiftL (if ascii then 1 else 0) (fst (HeapObj.Header.place HeapObj.Header.StringAscii))
-    + Bits.shiftL bytes (fst (HeapObj.Header.place HeapObj.Header.StringBytes))
+  HeapObj.Header.fixedWord HeapObj.Kind.STRING
+    + HeapObj.Header.partBits HeapObj.Header.StringAscii (if ascii then 1 else 0)
+    + HeapObj.Header.partBits HeapObj.Header.StringBytes bytes
 
 ||| A string's header.
 headerOf : Memory.Addr HeapObj.Kind.STRING -> Heap.Op Heap Bits64
@@ -68,12 +68,13 @@ headerOf s = Memory.load64 s 0
 ||| sets it, its bytes still to be written, its padding zero.
 newString : (bytes : Bits64) -> Heap.Op Heap (Memory.Addr HeapObj.Kind.STRING)
 newString bytes = do
-  let words = Object.byteWords bytes
-  a <- Space.allocate (8 * (1 + words))
+  let header = headerFor True bytes
+      words = HeapObj.Shape.objectWordsOf header
+  a <- Space.allocate (8 * words)
   let s = Memory.fromWord {k = HeapObj.Kind.STRING} a
-  Memory.store64 s 0 (headerFor True bytes)
-  if words == 0 then Heap.pure s else do
-    Memory.store64 s (8 * words) 0
+  Memory.store64 s 0 header
+  if words == 1 then Heap.pure s else do
+    Memory.store64 s (8 * (words - 1)) 0
     Heap.pure s
 
 ||| A new string's header set, and the string as ordinary code holds it.
@@ -306,7 +307,7 @@ compare x y = do
 isNil : Memory.Addr HeapObj.Kind.CON -> Heap.Op Heap Bool
 isNil cell = do
   h <- Memory.load64 cell 0
-  Heap.pure (Object.part HeapObj.Header.ConId h == 0)
+  Heap.pure (HeapObj.Header.readPart HeapObj.Header.ConId h == 0)
 
 %cg native flat Runtime.String.Utf8.fastPack
 ||| `fastPack`: a list of characters as a string.
@@ -370,7 +371,7 @@ fastUnpack str = let (MkHeap # r) = unpackOp str MkHeap in r
       where
         ||| The header of a list's `[]`.
         nilHeader : Bits64
-        nilHeader = HeapObj.Kind.kindId HeapObj.Kind.CON
+        nilHeader = HeapObj.Header.fixedWord HeapObj.Kind.CON
 
         ||| The cells of a list of `n` characters, one block: `[]` first, then each
         ||| `(::)`, 24 bytes, its tail the next, the last's tail the `[]`. Fills the
@@ -392,9 +393,9 @@ fastUnpack str = let (MkHeap # r) = unpackOp str MkHeap in r
           where
             ||| The header of a list's `(::)`.
             consHeader : Bits64
-            consHeader = HeapObj.Kind.kindId HeapObj.Kind.CON
-              + Bits.shiftL 1 (fst (HeapObj.Header.place HeapObj.Header.ConId))
-              + Bits.shiftL 2 (fst (HeapObj.Header.place HeapObj.Header.ConArity))
+            consHeader = HeapObj.Header.fixedWord HeapObj.Kind.CON
+              + HeapObj.Header.partBits HeapObj.Header.ConId 1
+              + HeapObj.Header.partBits HeapObj.Header.ConArity 2
 
 %cg native flat Runtime.String.Utf8.fastConcat
 ||| `fastConcat`: a list of strings as one.

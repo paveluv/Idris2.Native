@@ -18,7 +18,6 @@ modules =
     Native.Runtime.OS,
     Native.Runtime.OS.LinuxX86_64,
     Native.Runtime.OS.Syscall,
-    Native.Runtime.Object,
     Native.Runtime.Routines,
     Native.Runtime.Space,
     Native.Runtime.Start,

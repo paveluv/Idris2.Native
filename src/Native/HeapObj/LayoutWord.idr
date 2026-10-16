@@ -1,4 +1,5 @@
-||| The layout word of a continuation's resume point (`layoutWord`).
+||| The layout word of a continuation's resume point (`layoutWord`), and
+||| what the collector reads of it.
 |||
 ||| Part of the heap-object model, the contract between compiled code and
 ||| the runtime (`HeapObj.Enc` says what it is): it imports nothing from the
@@ -15,3 +16,25 @@ module Native.HeapObj.LayoutWord
 public export
 layoutWord : (nval, nraw : Integer) -> Integer
 layoutWord nval nraw = 0x1DC0000000000000 + nraw * 0x1000000 + nval
+
+||| A layout word's live values.
+export
+layoutValues : (layout : Bits64) -> Bits64
+layoutValues l = prim__and_Bits64 l 0xFFFFFF
+
+||| A layout word's live raw words.
+export
+layoutRaws : (layout : Bits64) -> Bits64
+layoutRaws l = prim__and_Bits64 (prim__shr_Bits64 l 24) 0xFFFFFF
+
+||| A continuation's words, by its layout word: the resume address, the
+||| parent, the values, then the raw words.
+export
+continuationWords : (layout : Bits64) -> Bits64
+continuationWords l = 2 + layoutValues l + layoutRaws l
+
+||| The words of a continuation that hold values: its parent and the live
+||| values.
+export
+continuationScanned : (layout : Bits64) -> (Bits64, Bits64)
+continuationScanned l = (1, 1 + layoutValues l)

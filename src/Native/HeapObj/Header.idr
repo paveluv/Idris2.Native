@@ -5,15 +5,15 @@
 ||| which says what the object is: its kind (`HeapObj.Kind`), and the parts
 ||| of its header, whose number and meaning depend on the kind. The words
 ||| after the header are the object's fields; offsets below are in bytes
-||| from the start of the object. The header alone gives the object's size
-||| and which of its fields the collector scans (`objectWords`, `scanned`);
-||| the collector needs nothing else. The exception is `CONT`, which has no
+||| from the start of the object. The exception is `CONT`, which has no
 ||| header word.
 |||
-||| The header word: the kind's id in bits 0..3; flags in bits 4..7, which the
-||| compiler always leaves 0 (the collector uses bit 4 as the mark bit of the
-||| large space during a full collection); from bit 8, the header's parts,
-||| laid out per kind (`place`).
+||| A header word is laid out by the kind's shape (`HeapObj.Shape`): the
+||| shape's id and the kind's tag (the kind's `code`), the shape's counts,
+||| which are parts of the header or fixed by the kind (`fixedWord`), and
+||| the kind's own parts in the shape's `Part` field (`place`). So the
+||| header alone gives the object's size and which of its fields the
+||| collector scans (`objectWords`, `scanned`), by its shape (`counts`).
 |||
 ||| Static objects (`Native.Codegen.LocatedIR.Static`) have exactly the
 ||| same layouts.
@@ -26,6 +26,7 @@ module Native.HeapObj.Header
 import Native.HeapObj.BignumEnc
 import Native.HeapObj.Enc
 import Native.HeapObj.Kind
+import Native.HeapObj.Shape
 import Native.HeapObj.StringEnc
 
 %default total
@@ -114,23 +115,53 @@ public export
   show h = show kn ++ concatMap (\pv => " " ++ show (fst pv) ++ "=" ++ show (snd pv)) (parts h)
 
 ||| Where a part lives in the header word: its first bit and its width, as
-||| the words the runtime's code shifts and masks by. This
-||| is the only place the bit layout is written down; encoding, decoding,
-||| the rendering of `LoadPart` and the seed's `idris_apply` all read it here. A kind's parts lie in bits
-||| 8..63 and do not overlap.
+||| the words the runtime's code shifts and masks by: a field of the kind's
+||| shape (`Shape.place`), or a count of whole units of a shape's count of
+||| bytes, which lies in the same bits but for the low ones the unit
+||| leaves 0. Encoding, decoding, the rendering of `LoadPart` and the seed's
+||| `idris_apply` all read it here. A kind's parts do not overlap.
 public export
 place : {0 k : Kind} -> HeaderPart k -> (Bits64, Bits64)
-place ConId = (8, 28)
-place ConArity = (36, 28)
-place ClosureArity = (8, 28)
-place ClosureFilled = (36, 28)
-place StringAscii = (8, 1)
-place StringBytes = (9, 55)
-place StringChars = (8, 56)
-place BignumNegative = (8, 1)
-place BignumWords = (9, 55)
-place ArrayElems = (8, 56)
-place BufferBytes = (8, 56)
+place ConId = Shape.place {s = VALUES} Part
+place ConArity = Shape.place Values
+place ClosureArity = Shape.place {s = MIXED} Part
+place ClosureFilled = Shape.place MixedValues
+place StringAscii = Shape.place {s = RAW} Part
+place StringBytes = Shape.place Bytes
+-- four bytes a character: the bytes' bits but for the low two
+place StringChars = (fst (Shape.place Bytes) + 2, snd (Shape.place Bytes) - 2)
+place BignumNegative = Shape.place {s = RAW} Part
+-- eight bytes a limb: the bytes' bits but for the low three
+place BignumWords = (fst (Shape.place Bytes) + 3, snd (Shape.place Bytes) - 3)
+place ArrayElems = Shape.place Values
+place BufferBytes = Shape.place Bytes
+
+||| The bits every header of the kind has: its code, and the counts of its
+||| shape that the kind fixes. A header is this word plus its parts, each
+||| where `place` puts it.
+public export
+fixedWord : Kind -> Bits64
+fixedWord k = Kind.code k + fixedCounts k
+  where
+    fixedCounts : Kind -> Bits64
+    fixedCounts Kind.CLOSURE = fieldBits Raws 1
+    fixedCounts Kind.IOREF = fieldBits Values 1
+    fixedCounts Kind.INT64 = fieldBits Bytes 8
+    fixedCounts Kind.DOUBLE = fieldBits Bytes 8
+    fixedCounts Kind.PTR = fieldBits Bytes 8
+    fixedCounts _ = 0
+
+||| A part of a header word. Inline, so that at a part written in the code
+||| the shift and the mask are constants.
+public export %inline
+readPart : {0 k : Kind} -> HeaderPart k -> (header : Bits64) -> Bits64
+readPart p h = prim__and_Bits64 (prim__shr_Bits64 h (fst (place p))) (prim__shl_Bits64 1 (snd (place p)) - 1)
+
+||| A part's value where it lives in a header word: the word to add to the
+||| kind's `fixedWord` for it.
+public export %inline
+partBits : {0 k : Kind} -> HeaderPart k -> (value : Bits64) -> Bits64
+partBits p v = prim__shl_Bits64 v (fst (place p))
 
 ||| What adding one to a part adds to the header word: a closure with one
 ||| more argument filled is its header plus `partUnit ClosureFilled`.
@@ -153,7 +184,7 @@ fits h = all (\pv => cast (snd pv) < prim__shl_Integer 1 (cast (snd (place (fst 
 ||| The header word, with flags 0.
 export
 encodeHeader : {k : Kind} -> Header enc k -> Int64
-encodeHeader h = signed (cast (Kind.kindId k) + sum (map part (parts h)))
+encodeHeader h = signed (cast (fixedWord k) + sum (map part (parts h)))
   where
     part : (HeaderPart k', Nat) -> Integer
     part (p, v) = (cast v `mod` prim__shl_Integer 1 (cast (snd (place p)))) * prim__shl_Integer 1 (cast (fst (place p)))
@@ -162,15 +193,15 @@ encodeHeader h = signed (cast (Kind.kindId k) + sum (map part (parts h)))
     signed u = cast (if u >= prim__shl_Integer 1 63 then u - prim__shl_Integer 1 64 else u)
 
 ||| The header a word encodes, if the word is exactly what `encodeHeader`
-||| makes of some header: a kind's id other than `CONT`'s, flags 0, and no
-||| bit outside the kind's parts. So `decodeHeader w = Just (k ** h)` implies
+||| makes of some header: a kind's code other than `CONT`'s, flags 0, the
+||| counts the kind fixes, and no bit outside the kind's parts. So `decodeHeader w = Just (k ** h)` implies
 ||| `encodeHeader h = w`, and for a header that fits,
 ||| `decodeHeader (encodeHeader h)` gives the header back, which
 ||| `tests/native/header001` checks for every part at its boundaries.
 export
 decodeHeader : (enc : Enc) -> Int64 -> Maybe (k : Kind ** Header enc k)
 decodeHeader enc w = do
-  r <- parse (Kind.kindOfId (cast (u `mod` 16)))
+  r <- parse (Kind.kindOfCode (cast (u `mod` 65536)))
   if encodeHeader (snd r) == w then Just r else Nothing
   where
     unsigned : Int64 -> Integer
@@ -209,25 +240,26 @@ decodeHeader enc w = do
     parse (Just Kind.CONT) = Nothing
     parse Nothing = Nothing
 
+||| The header's counts, by its kind's shape.
+public export
+counts : {0 k : Kind} -> Header enc k -> (s : Shape ** Counts s)
+counts h = case h of
+  ConH _ a => (_ ** ValuesOf a)
+  ClosureH _ f => (_ ** MixedOf 1 f)
+  Int64H => (_ ** WordsOf 1)
+  DoubleH => (_ ** WordsOf 1)
+  StringH _ n => (_ ** BytesOf n)
+  StringCharsH n => (_ ** BytesOf (4 * n))
+  BignumH _ n => (_ ** WordsOf n)
+  IORefH => (_ ** ValuesOf 1)
+  ArrayH n => (_ ** ValuesOf n)
+  BufferH n => (_ ** BytesOf n)
+  PtrH => (_ ** WordsOf 1)
+
 ||| The number of fields: the object's words after its header.
 public export
 fieldWords : {0 k : Kind} -> Header enc k -> Nat
-fieldWords h = case h of
-  ConH _ a => a
-  ClosureH _ f => 1 + f
-  Int64H => 1
-  DoubleH => 1
-  StringH _ n => byteWords n
-  StringCharsH n => byteWords (4 * n)
-  BignumH _ n => n
-  IORefH => 1
-  ArrayH n => n
-  BufferH n => byteWords n
-  PtrH => 1
-  where
-    -- the words a payload of so many bytes fills, padded to whole words
-    byteWords : Nat -> Nat
-    byteWords n = cast ((the Integer (cast n) + 7) `div` 8)
+fieldWords h = Shape.fieldWords (snd (counts h))
 
 ||| The object's size in words, its header included.
 public export
@@ -238,8 +270,4 @@ objectWords h = 1 + fieldWords h
 ||| scanned fields begin, and how many there are. Every other field is raw.
 public export
 scanned : {0 k : Kind} -> Header enc k -> (Nat, Nat)
-scanned (ConH _ a) = (1, a)
-scanned (ClosureH _ f) = (2, f)
-scanned IORefH = (1, 1)
-scanned (ArrayH n) = (1, n)
-scanned _ = (1, 0)
+scanned h = Shape.scanned (snd (counts h))

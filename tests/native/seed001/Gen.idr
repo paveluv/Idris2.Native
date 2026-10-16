@@ -21,6 +21,7 @@ import Native.Codegen.X86.Encode
 import Native.HeapObj.Enc
 import Native.HeapObj.Header
 import Native.HeapObj.Kind
+import Native.HeapObj.Shape
 import Native.HeapObj.ValEnc
 import System.File
 

@@ -106,7 +106,7 @@ cmp rcx, r14
 ja L81
 mov r15, rcx
 L82:
-mov rdx, 3
+mov rdx, 524290
 mov qword ptr [rax], rdx
 mov rdx, qword ptr [rbx+120]
 mov qword ptr [rax+8], rdx
@@ -196,7 +196,7 @@ cmp rcx, r14
 ja L91
 mov r15, rcx
 L92:
-mov rdx, 3
+mov rdx, 524290
 mov qword ptr [rax], rdx
 mov rdx, qword ptr [rbx+264]
 mov qword ptr [rax+8], rdx
@@ -375,7 +375,7 @@ cmp rcx, r14
 ja L81
 mov r15, rcx
 L82:
-mov rdx, 3
+mov rdx, 524290
 mov qword ptr [rax], rdx
 mov rdx, qword ptr [rbx+120]
 mov qword ptr [rax+8], rdx
@@ -465,7 +465,7 @@ cmp rcx, r14
 ja L91
 mov r15, rcx
 L92:
-mov rdx, 3
+mov rdx, 524290
 mov qword ptr [rax], rdx
 mov rdx, qword ptr [rbx+264]
 mov qword ptr [rax+8], rdx

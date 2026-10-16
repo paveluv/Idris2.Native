@@ -23,11 +23,12 @@ import public Native.Runtime.State
 import Native.Runtime.Bits
 import Native.Runtime.Collect
 import Native.Runtime.Memory
-import Native.Runtime.Object
 
 import Native.Area
 import Native.Heap
 import Native.HeapObj.Kind as HeapObj
+import Native.HeapObj.LayoutWord
+import Native.HeapObj.Shape as HeapObj
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
 %hide Prelude.Interfaces.pure
@@ -52,14 +53,14 @@ firstWord : Bits64 -> Heap.Op Heap Bits64
 firstWord a = Memory.loadAt a 0
 
 ||| The size and the scanned words of the object at the address, by its
-||| first word: a header's kind and parts, or a continuation's layout word,
-||| which precedes the code its first word names.
+||| first word: a header's shape and counts, or a continuation's layout
+||| word, which precedes the code its first word names.
 sizeAt : Bits64 -> Heap.Op Heap Bits64
 sizeAt a = do
   h <- firstWord a
-  if Object.isContinuation h
-     then do l <- Memory.loadAt h (0 - 8); Heap.pure (Object.continuationWords l)
-     else Heap.pure (Object.objectWords (Object.kindOfHeader h) h)
+  if HeapObj.Shape.isFrame h
+     then do l <- Memory.loadAt h (0 - 8); Heap.pure (HeapObj.LayoutWord.continuationWords l)
+     else Heap.pure (HeapObj.Shape.objectWordsOf h)
 
 export
 Memory Heap where
@@ -81,13 +82,13 @@ Memory Heap where
       scannedAt : Bits64 -> Heap.Op Heap (Bits64, Bits64)
       scannedAt a = do
         h <- firstWord a
-        if Object.isContinuation h
-           then do l <- Memory.loadAt h (0 - 8); Heap.pure (Object.continuationScanned l)
-           else Heap.pure (Object.scannedWords (Object.kindOfHeader h) h)
+        if HeapObj.Shape.isFrame h
+           then do l <- Memory.loadAt h (0 - 8); Heap.pure (HeapObj.LayoutWord.continuationScanned l)
+           else Heap.pure (HeapObj.Shape.scannedOf h)
   forwarded a = do
     h <- firstWord a
-    Heap.pure (if Object.kindOfHeader h == Object.forwardingId then Just (Object.forwardedTo h) else Nothing)
-  setForwarded from to = Memory.storeAt from 0 (Object.forwardingHeader to)
+    Heap.pure (if HeapObj.Shape.isForwarding h then Just (HeapObj.Shape.forwardedTo h) else Nothing)
+  setForwarded from to = Memory.storeAt from 0 (HeapObj.Shape.forwardingHeader to)
   readWord a i = Memory.loadAt a (8 * i)
   writeWord a i v = Memory.storeAt a (8 * i) v
   reserve n = do

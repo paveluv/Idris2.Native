@@ -23,6 +23,7 @@ import Native.Codegen.X86.Asm
 import Native.HeapObj.Enc
 import Native.HeapObj.Header
 import Native.HeapObj.Kind
+import Native.HeapObj.Shape
 import Native.HeapObj.ValEnc
 import System
 
@@ -254,7 +255,7 @@ failures = concat
   , showFailures "Intrinsic" intrinsicNames, showFailures "Reg64" regs
   , showFailures "Xmm" xmms, showFailures "Cond" conds, showFailures "AluOp" aluOps
   , showFailures "ShiftOp" shiftOps, showFailures "SseOp" sseOps, showFailures "Width" widths
-  , tableFailures "kindId" kindId kinds, inverseFailures "kindOfId" kindId kindOfId kinds
+  , tableFailures "code" code kinds, inverseFailures "kindOfCode" code kindOfCode kinds
   , tableFailures "regNum" regNum regs, tableFailures "xmmNum" xmmNum xmms
   , tableFailures "condCode" condCode conds, tableFailures "aluDigit" aluDigit aluOps
   , tableFailures "shiftDigit" shiftDigit shiftOps, tableFailures "sseOpcode" sseOpcode sseOps

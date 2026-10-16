@@ -4,8 +4,8 @@
 -- encodes are rejected; and under bignums in two's complement, whose header
 -- does not exist yet, no BIGNUM header decodes.
 --
--- Every object on the heap starts with a header word: its kind, and the
--- parts that say how big it is and what it holds. `Just x` is a CON, a
+-- Every object on the heap starts with a header word: its shape and its
+-- kind's tag, and the parts that say how big it is and what it holds. `Just x` is a CON, a
 -- constructor's object, of constructor id 1 and arity 1, its field `x`
 -- after the header; a closure's header holds the function's arity and the
 -- number of arguments filled; a string's, its number of bytes. Compiled
@@ -19,6 +19,7 @@ import Native.HeapObj.Enc
 import Native.HeapObj.Header
 import Native.HeapObj.Kind
 import Native.HeapObj.LayoutWord
+import Native.HeapObj.Shape
 import Native.HeapObj.StringEnc
 import Native.HeapObj.ValEnc
 
@@ -36,13 +37,13 @@ largest w = cast (pow2 w - 1)
 
 headers : List (k : Kind ** Header TestEnc k)
 headers =
-  [ (_ ** ConH 0 0), (_ ** ConH 1 1), (_ ** ConH (largest 28) (largest 28))
-  , (_ ** ClosureH 1 0), (_ ** ClosureH (largest 28) (largest 28))
+  [ (_ ** ConH 0 0), (_ ** ConH 1 1), (_ ** ConH (largest 20) (largest 28))
+  , (_ ** ClosureH 1 0), (_ ** ClosureH (largest 16) (largest 28))
   , (_ ** Int64H), (_ ** DoubleH), (_ ** IORefH), (_ ** PtrH)
-  , (_ ** StringH True 0), (_ ** StringH False 1), (_ ** StringH True (largest 55))
-  , (_ ** BufferH 0), (_ ** BufferH (largest 56))
-  , (_ ** BignumH False 0), (_ ** BignumH True 1), (_ ** BignumH True (largest 55))
-  , (_ ** ArrayH 0), (_ ** ArrayH 1), (_ ** ArrayH (largest 56)) ]
+  , (_ ** StringH True 0), (_ ** StringH False 1), (_ ** StringH True (largest 47))
+  , (_ ** BufferH 0), (_ ** BufferH (largest 47))
+  , (_ ** BignumH False 0), (_ ** BignumH True 1), (_ ** BignumH True (largest 44))
+  , (_ ** ArrayH 0), (_ ** ArrayH 1), (_ ** ArrayH (largest 28)) ]
 
 roundTrips : (k : Kind ** Header TestEnc k) -> Bool
 roundTrips (_ ** h) = case decodeHeader TestEnc (encodeHeader h) of
@@ -51,18 +52,20 @@ roundTrips (_ ** h) = case decodeHeader TestEnc (encodeHeader h) of
 
 tooWide : List (k : Kind ** Header TestEnc k)
 tooWide =
-  [ (_ ** ConH (largest 28 + 1) 0), (_ ** ConH 0 (largest 28 + 1))
-  , (_ ** ClosureH (largest 28 + 1) 0), (_ ** ClosureH 0 (largest 28 + 1))
-  , (_ ** StringH False (largest 55 + 1)), (_ ** BufferH (largest 56 + 1))
-  , (_ ** BignumH False (largest 55 + 1)), (_ ** ArrayH (largest 56 + 1)) ]
+  [ (_ ** ConH (largest 20 + 1) 0), (_ ** ConH 0 (largest 28 + 1))
+  , (_ ** ClosureH (largest 16 + 1) 0), (_ ** ClosureH 0 (largest 28 + 1))
+  , (_ ** StringH False (largest 47 + 1)), (_ ** BufferH (largest 47 + 1))
+  , (_ ** BignumH False (largest 44 + 1)), (_ ** ArrayH (largest 28 + 1)) ]
 
 noHeader : List (String, Int64)
 noHeader =
-  [ ("kind 0", 0), ("the CONT id", 11), ("kind 12", 12)
-  , ("kind 15, the forwarding header", 15)
-  , ("an INT64 with a flag set", 3 + 16)
-  , ("an INT64 with a bit beyond its parts", 3 + 256)
-  , ("a CON with the mark bit set", encodeHeader (ConH 1 2) + 16)
+  [ ("id 0, a continuation's first word", 0), ("id 4, no shape's", 4)
+  , ("a RAW of tag 6, no kind's", 0x602), ("a VALUES of tag 3, no kind's", 0x301)
+  , ("id 15, the forwarding header", 15)
+  , ("an INT64 with a flag set", encodeHeader {enc = TestEnc} Int64H + 16)
+  , ("an INT64 of 16 bytes", encodeHeader {enc = TestEnc} Int64H + 0x80000)
+  , ("an INT64 with its shape's part set", encodeHeader {enc = TestEnc} Int64H + 0x10000 * 0x10000 * 0x10000 * 0x8000)
+  , ("a CON with the mark bit set", encodeHeader {enc = TestEnc} (ConH 1 2) + 16)
   , ("all ones", -1) ]
 
 samples : List (k : Kind ** Header TestEnc k)

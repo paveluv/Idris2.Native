@@ -13,6 +13,7 @@ import Native.HeapObj.BignumEnc as HeapObj
 import Native.HeapObj.Enc as HeapObj
 import Native.HeapObj.Header as HeapObj
 import Native.HeapObj.Kind
+import Native.HeapObj.Shape
 import Native.HeapObj.StringEnc
 import Native.HeapObj.ValEnc as HeapObj
 

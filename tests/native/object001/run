@@ -1,6 +1,7 @@
 . ../../testutils.sh
 
-# The runtime's rules for reading objects as words against the compiler's
-# on typed headers, over every kind. It uses both as packages.
-idris2 -p idris2-native-runtime -p idris2-native -p idris2 Gen.idr -o gen > /dev/null
+# Each kind's layout against the shape description, as the compiler reads it
+# from typed headers and as the collector reads it from words, over every
+# kind. The heap-object model is in the compiler's package.
+idris2 -p idris2-native -p idris2 Gen.idr -o gen > /dev/null
 ./build/exec/gen

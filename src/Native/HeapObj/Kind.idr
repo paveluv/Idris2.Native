@@ -1,10 +1,12 @@
 ||| The kinds of heap object (`Kind`), each with its layout, and each kind's
-||| id, in the low bits of a header word.
+||| shape and tag, in the low bits of a header word.
 |||
 ||| Part of the heap-object model, the contract between compiled code and the
 ||| runtime (`HeapObj.Enc` says what it is): it imports
 ||| nothing from the compiler, so that the runtime's own Idris can import it.
 module Native.HeapObj.Kind
+
+import Native.HeapObj.Shape
 
 import Decidable.Equality
 import Decidable.Equality.Core
@@ -59,55 +61,72 @@ data Kind
     ||| initialised. Only the rendering of `Call` and `Apply` makes one.
     CONT
 
-||| The kind's id, in bits 0..3 of a header word, as the word the runtime's
-||| code compares it with. Every id is between 1 and
-||| 15, so a header word's low four bits are never all zero; a continuation's
-||| word 0, a 16-aligned code address, has them all zero, which is how a
-||| `CONT` is told apart from an object with a header. Id 15 is reserved for
-||| the forwarding header a copying collector writes over an object it has
-||| moved; 12 to 14 are free.
+||| The shape a kind's objects have (`HeapObj.Shape`); a continuation has no
+||| header, and so no shape.
 public export
-kindId : Kind -> Bits64
-kindId CON = 1
-kindId CLOSURE = 2
-kindId INT64 = 3
-kindId DOUBLE = 4
-kindId STRING = 5
-kindId BIGNUM = 6
-kindId IOREF = 7
-kindId ARRAY = 8
-kindId BUFFER = 9
-kindId PTR = 10
-kindId CONT = 11
+shapeOf : Kind -> Maybe Shape
+shapeOf CON = Just VALUES
+shapeOf IOREF = Just VALUES
+shapeOf ARRAY = Just VALUES
+shapeOf CLOSURE = Just MIXED
+shapeOf INT64 = Just RAW
+shapeOf DOUBLE = Just RAW
+shapeOf PTR = Just RAW
+shapeOf STRING = Just RAW
+shapeOf BUFFER = Just RAW
+shapeOf BIGNUM = Just RAW
+shapeOf CONT = Nothing
 
-||| The kind with this id, if any.
+||| The kind's tag, which tells it apart from the other kinds of its shape.
 public export
-kindOfId : Bits64 -> Maybe Kind
-kindOfId 1 = Just CON
-kindOfId 2 = Just CLOSURE
-kindOfId 3 = Just INT64
-kindOfId 4 = Just DOUBLE
-kindOfId 5 = Just STRING
-kindOfId 6 = Just BIGNUM
-kindOfId 7 = Just IOREF
-kindOfId 8 = Just ARRAY
-kindOfId 9 = Just BUFFER
-kindOfId 10 = Just PTR
-kindOfId 11 = Just CONT
-kindOfId _ = Nothing
+tagOf : Kind -> Bits64
+tagOf CON = 0
+tagOf IOREF = 1
+tagOf ARRAY = 2
+tagOf CLOSURE = 0
+tagOf INT64 = 0
+tagOf DOUBLE = 1
+tagOf PTR = 2
+tagOf STRING = 3
+tagOf BUFFER = 4
+tagOf BIGNUM = 5
+tagOf CONT = 0
+
+||| The kind's code: bits 0..15 of each of its headers, its shape's id and
+||| its tag with the flags 0, as the word the runtime's code compares them
+||| with; 0 for a continuation, whose first word has bits 0..3 zero.
+public export
+code : Kind -> Bits64
+code k = maybe 0 (\s => shapeId s + fieldBits {s} Tag (tagOf k)) (shapeOf k)
+
+||| The kind with this code, if any.
+public export
+kindOfCode : Bits64 -> Maybe Kind
+kindOfCode 0x001 = Just CON
+kindOfCode 0x101 = Just IOREF
+kindOfCode 0x201 = Just ARRAY
+kindOfCode 0x003 = Just CLOSURE
+kindOfCode 0x002 = Just INT64
+kindOfCode 0x102 = Just DOUBLE
+kindOfCode 0x202 = Just PTR
+kindOfCode 0x302 = Just STRING
+kindOfCode 0x402 = Just BUFFER
+kindOfCode 0x502 = Just BIGNUM
+kindOfCode 0 = Just CONT
+kindOfCode _ = Nothing
 
 public export
 Eq Kind where
-  a == b = kindId a == kindId b
+  a == b = code a == code b
 
-||| Equal kinds have equal ids, since `kindOfId` inverts `kindId`.
+||| Equal kinds have equal codes, since `kindOfCode` inverts `code`.
 public export
 DecEq Kind where
-  decEq a b = case decEq (kindId a) (kindId b) of
-    Yes p => Yes (justInjective (trans (sym (kindRoundTrip a)) (trans (cong kindOfId p) (kindRoundTrip b))))
-    No c => No (\q => c (cong kindId q))
+  decEq a b = case decEq (code a) (code b) of
+    Yes p => Yes (justInjective (trans (sym (kindRoundTrip a)) (trans (cong kindOfCode p) (kindRoundTrip b))))
+    No c => No (\q => c (cong code q))
     where
-      kindRoundTrip : (k : Kind) -> kindOfId (kindId k) = Just k
+      kindRoundTrip : (k : Kind) -> kindOfCode (code k) = Just k
       kindRoundTrip CON = Refl
       kindRoundTrip CLOSURE = Refl
       kindRoundTrip INT64 = Refl

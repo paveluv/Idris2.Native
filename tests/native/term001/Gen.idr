@@ -65,6 +65,7 @@ import Native.HeapObj.BignumEnc
 import Native.HeapObj.Enc
 import Native.HeapObj.Header
 import Native.HeapObj.Kind
+import Native.HeapObj.Shape
 import Native.HeapObj.StringEnc
 import Native.HeapObj.ValEnc
 import Native.Port
