@@ -70,6 +70,7 @@ import Native.Types.Enc
 import Native.Types.Header
 import Native.Types.Kind
 import Native.Types.StringEnc
+import Native.Types.StringRoutines
 import System.File
 
 %default total

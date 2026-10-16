@@ -22,10 +22,10 @@ import Native.Heap
 import Native.HeapObj.Shape
 import Native.Runtime.Bits
 import Native.Runtime.Memory
-import Native.Runtime.Object
 import Native.Runtime.Space
 import Native.Runtime.State
-import Native.Runtime.String.Utf8
+import Native.Support.Obj
+import Native.Support.String.Utf8
 import Native.Types.Header
 import Native.Types.Kind
 
@@ -43,7 +43,7 @@ look : Uniform (List String) -> Op Heap (Bits64, Bits64, Bool)
 look xs = do
   before <- getState collections
   big <- stringObject (fastConcat xs)
-  bytes <- Object.load64 big 0
+  bytes <- Obj.load64 big 0
   during <- getState collections
   hp <- allocationPointer
   lim <- allocationLimit

@@ -92,6 +92,7 @@ modules =
     Native.Intrinsics,
     Native.Port,
     Native.Routines,
+    Native.Types.StringRoutines,
     Native.Services,
     Native.Syscall,
     Native.Types.BignumEnc,

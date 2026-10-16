@@ -177,19 +177,20 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
                 Nothing => Left ("target= takes <arch>-<os>, such as x86_64-linux, not " ++ show v)
               _ => Right o
 
-        ||| Load the runtime's modules into the context: the module `Runtime`, which
-        ||| imports the generic ones, the platform's module, which implements the OS
-        ||| services, and the string encoding's, which nothing generic imports
-        ||| either, from the installed package, with the backend's own
-        ||| package, whose heap-object model (the modules of `HeapObj`) the
-        ||| runtime shares.
+        ||| Load the runtime's modules into the context: the roots of its core and
+        ||| of its support tier, which import the generic ones, the platform's
+        ||| module, which implements the OS services, and the string encoding's,
+        ||| which nothing generic imports either, from the installed package,
+        ||| with the backend's own package, whose heap-object model and type
+        ||| layer (the modules of `HeapObj` and `Types`) the runtime shares.
         loadRuntime : Platform -> Types.Enc -> Core ()
         loadRuntime platform enc = do
           addPkgDir "idris2-native-runtime" anyBounds
           addPkgDir "idris2-native" anyBounds
           u <- newRef UST initUState
           traverse_ (\ns => addImport (MkImport EmptyFC False (nsAsModuleIdent ns) ns))
-                    (Linkage.RuntimeModule.runtimeModule "" :: toList (Linkage.OSService.platformModule platform)
+                    (Linkage.RuntimeModule.runtimeModule "" :: Linkage.RuntimeModule.supportModule ""
+                      :: toList (Linkage.OSService.platformModule platform)
                       ++ toList (Linkage.RuntimeModule.stringModule enc.string))
 
         ||| The foreign functions and externs of the libraries in the context, each

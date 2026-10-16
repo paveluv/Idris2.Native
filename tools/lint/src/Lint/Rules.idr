@@ -555,8 +555,28 @@ fileRules : SourceFile -> Mentions -> List Declared -> List Finding
 fileRules f ms ds =
   importOrder f ++ publicImport f ++ defaultTotality f ++ elabReflection f ms
   ++ trustEscape f ms ++ citesPlan f ++ todo f ++ headerComment f
-  ++ implementationAdjacent f ds ++ moduleName' f ds ++ groupPrefix f ds ++ longFile f ++ recordConstructor f ds
+  ++ implementationAdjacent f ds ++ moduleName' f ds ++ moduleType f ds ++ groupPrefix f ds ++ longFile f
+  ++ recordConstructor f ds
   where
+    ||| `module-type`: a module whose name an exported type of it begins, as
+    ||| a short name begins a long one (`Object` for `Obj`), and that is named
+    ||| after nothing it defines exactly, is named after that type, its key
+    ||| symbol, as a reader looks it up. Unlike `module-name`, an error: the
+    ||| near name says which name it means.
+    moduleType : SourceFile -> List Declared -> List Finding
+    moduleType f ds =
+      if namedAfterSymbol f ds then [] else
+        [ finding f "module-type" f.mod.headerLoc (show f.mod.moduleNS)
+            ("`" ++ show f.mod.moduleNS ++ "` is named almost after its type `" ++ t ++ "`: it is named `" ++ t ++ "`")
+        | t <- concatMap typeOf ds, isPrefixOf (toLower t) (toLower (lastPart (show f.mod.moduleNS))) ]
+      where
+        -- the exported types a declaration defines
+        typeOf : Declared -> List String
+        typeOf d = case d.decl.val of
+          PData _ _ _ _ => filter (`elem` d.visible) d.defines
+          PRecord _ _ _ _ => filter (`elem` d.visible) d.defines
+          _ => []
+
     ||| `record-constructor`: a record's constructor is named after it, `MkX`
     ||| for `X`, so that a reader knows the record from its constructor, and
     ||| the constructor of a module's key type is written as the type is.
@@ -711,4 +731,4 @@ ruleNames =
   [ "import-order", "public-import", "default-totality", "elab-reflection"
   , "trust-escape", "cites-plan", "todo", "header-comment", "implementation-adjacent", "module-name"
   , "layering", "syscall", "same-name", "import-unused", "import-indirect", "list-accumulation", "generic-export"
-  , "import-alias", "group-prefix", "long-file", "public-unneeded", "extern-owner", "record-constructor" ]
+  , "import-alias", "group-prefix", "long-file", "public-unneeded", "extern-owner", "record-constructor", "module-type" ]

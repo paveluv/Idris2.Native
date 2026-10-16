@@ -17,9 +17,9 @@ import Native.Types.Enc as Types
 ||| `base`, that the runtime implements, each with the flat function that
 ||| does: of the same type position by position, so that the lowering gives
 ||| the foreign function the boundary to it, which converts each argument and
-||| the result as their types say. Most are `Runtime.Foreign`'s, by the
+||| the result as their types say. Most are `Support.Foreign`'s, by the
 ||| foreign one's module path and name (`System.prim__exit` by
-||| `Runtime.Foreign.System.prim__exit`); those that lay strings out are the
+||| `Support.Foreign.System.prim__exit`); those that lay strings out are the
 ||| string module's, under the program's encoding. A foreign function is
 ||| bound by its Idris name, whatever names the library gives it for C or
 ||| Scheme; one not listed stays `Unsupported`.
@@ -34,5 +34,5 @@ foreignFunctions enc =
            (RuntimeModule.stringModule enc.string)
   where
     mirrored : Name -> (Name, Name)
-    mirrored n@(NS ns f) = (n, NS (RuntimeModule.runtimeModule ("Foreign." ++ show ns)) f)
-    mirrored n = (n, NS (RuntimeModule.runtimeModule "Foreign") n)
+    mirrored n@(NS ns f) = (n, NS (RuntimeModule.supportModule ("Foreign." ++ show ns)) f)
+    mirrored n = (n, NS (RuntimeModule.supportModule "Foreign") n)

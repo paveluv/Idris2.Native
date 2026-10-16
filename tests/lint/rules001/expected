@@ -19,6 +19,7 @@
 ./Native/Runtime/Direct.idr:5:1 syscall: the raw system call outside `Native.Runtime.OS`: the platform's services reach the system
 ./NoDefault.idr:1:1 default-totality: no `%default` directive
 ./Open.idr:6:1 todo: `TODO`: open work belongs in the plans
+./Rectangle.idr:1:1 module-type: `Rectangle` is named almost after its type `Rect`: it is named `Rect`
 ./Reexports.idr:6:1 public-import: `Data.List` imported publicly: a module that uses it imports it
 ./Reflects.idr:7:1 elab-reflection: `%language ElabReflection`
 ./Reflects.idr:11:1 elab-reflection: `%macro` function

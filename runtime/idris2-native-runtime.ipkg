@@ -10,12 +10,8 @@ depends = idris2-native
 modules =
     Native.Runtime,
     Native.Runtime.Bits,
-    Native.Runtime.CodePoint,
     Native.Runtime.Collect,
-    Native.Runtime.Foreign.Prelude.IO,
-    Native.Runtime.Foreign.System,
     Native.Runtime.Memory,
-    Native.Runtime.Object,
     Native.Runtime.OS,
     Native.Runtime.OS.LinuxX86_64,
     Native.Runtime.OS.Syscall,
@@ -23,5 +19,10 @@ modules =
     Native.Runtime.Space,
     Native.Runtime.Start,
     Native.Runtime.State,
-    Native.Runtime.String.Utf8,
-    Native.Runtime.System
+    Native.Runtime.System,
+    Native.Support,
+    Native.Support.CodePoint,
+    Native.Support.Foreign.Prelude.IO,
+    Native.Support.Foreign.System,
+    Native.Support.Obj,
+    Native.Support.String.Utf8

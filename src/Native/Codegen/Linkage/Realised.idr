@@ -37,6 +37,7 @@ import Native.Port
 import Native.Routines
 import Native.Services
 import Native.Types.Enc as Types
+import Native.Types.StringRoutines as Types
 
 %default covering
 
@@ -54,7 +55,7 @@ record Realised where
   ||| The generic runtime's routines.
   routines : Routines Named
   ||| The string encoding's routines, if the runtime has a module for it.
-  strings : Maybe (Routines.StringRoutines Named)
+  strings : Maybe (Types.StringRoutines Named)
   ||| Each inline extern, with the instruction it stands for.
   externs : SortedMap Name InlineExtern
   ||| Each OS service's extern, with the platform's function for it.
@@ -118,9 +119,9 @@ realise platform enc = do
     routinesOf : Vect 4 Name -> Routines Named
     routinesOf [a1, a2, a3, a4] = MkRoutines (MkNamed a1) (MkNamed a2) (MkNamed a3) (MkNamed a4)
 
-    stringRoutinesOf : Vect 11 Name -> Routines.StringRoutines Named
+    stringRoutinesOf : Vect 11 Name -> Types.StringRoutines Named
     stringRoutinesOf [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11] =
-      Routines.MkStringRoutines (MkNamed a1) (MkNamed a2) (MkNamed a3) (MkNamed a4) (MkNamed a5) (MkNamed a6)
+      Types.MkStringRoutines (MkNamed a1) (MkNamed a2) (MkNamed a3) (MkNamed a4) (MkNamed a5) (MkNamed a6)
         (MkNamed a7) (MkNamed a8) (MkNamed a9) (MkNamed a10) (MkNamed a11)
 
     servicesOf : Vect 7 Name -> Services Named

@@ -62,6 +62,7 @@ import Native.Routines
 import Native.Types.BignumEnc
 import Native.Types.Enc
 import Native.Types.StringEnc
+import Native.Types.StringRoutines
 import System.File
 
 %default total

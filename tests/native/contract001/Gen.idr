@@ -19,7 +19,7 @@
 -- So are the foreign functions the runtime implements, against `base`'s
 -- declarations: `System.prim__exit : Int -> PrimIO ()`, whose C types are
 -- an `Int` and the world, returning `IORes ()`, is implemented by
--- `Runtime.Foreign.System.prim__exit` of the same type, position by
+-- `Support.Foreign.System.prim__exit` of the same type, position by
 -- position; one taking a `Bits64` where `base` says `Int` is refused.
 module Main
 
@@ -47,6 +47,7 @@ import Native.Routines
 import Native.Types.BignumEnc
 import Native.Types.Enc
 import Native.Types.StringEnc
+import Native.Types.StringRoutines
 
 TestEnc : Enc
 TestEnc = defaultEnc
@@ -117,7 +118,7 @@ exitForeign = (NS (mkNamespace "System") (UN (Basic "prim__exit")), MkVMForeign 
 ||| The runtime's implementation of it, taking the argument given.
 exitImplementation : Skeleton -> FlatDef
 exitImplementation arg =
-  form (NS (mkNamespace "Native.Runtime.Foreign.System") (UN (Basic "prim__exit")))
+  form (NS (mkNamespace "Native.Support.Foreign.System") (UN (Basic "prim__exit")))
        [MkFlatVar (UN (Basic "status")) arg [Word], MkFlatVar (UN (Basic "w")) (SPrim WorldType) []]
        (SCon (NS (mkNamespace "PrimIO") (UN (Basic "IORes"))) [unit]) []
 

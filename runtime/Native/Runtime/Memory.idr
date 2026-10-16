@@ -32,7 +32,7 @@ import Native.HeapObj.Shape as HeapObj
 
 ||| The address of an object of the shape `s`, or of memory the runtime
 ||| maps. The core knows objects by their shapes only; the types an object
-||| may be are the support tier's (`Native.Runtime.Object`).
+||| may be are the support tier's (`Native.Support.Obj`).
 export
 record Addr (0 s : HeapObj.Shape) where
   constructor MkAddr

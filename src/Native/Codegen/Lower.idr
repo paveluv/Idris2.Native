@@ -103,11 +103,11 @@ import Native.Flat.Exp
 import Native.HeapObj.Shape as HeapObj
 import Native.HeapObj.ValEnc
 import Native.Port
-import Native.Routines
 import Native.Types.BignumEnc
 import Native.Types.Enc as Types
 import Native.Types.Header as Types
 import Native.Types.Kind
+import Native.Types.StringRoutines as Types
 
 %default covering
 
@@ -780,7 +780,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
 
         ||| A call of a string routine of the program's encoding, a field of the
         ||| string routines, of its port's registers.
-        strings : {p : Port} -> ({0 f : Port -> Type} -> Routines.StringRoutines f -> f p) ->
+        strings : {p : Port} -> ({0 f : Port -> Type} -> Types.StringRoutines f -> f p) ->
                   All (TermIR.Opnd v) (Linkage.Routine.portParams p) ->
                   B (All (TermIR.Opnd v) (Linkage.Routine.portResults p))
         strings field xs = callRoutine (Linkage.Routine.stringRoutine refs.realised field) xs
