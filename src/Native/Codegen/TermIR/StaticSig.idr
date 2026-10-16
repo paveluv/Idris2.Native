@@ -4,7 +4,7 @@
 module Native.Codegen.TermIR.StaticSig
 
 import Core.Name
-import Native.HeapObj.Kind as HeapObj
+import Native.Types.Kind as Types
 
 %default total
 
@@ -13,4 +13,4 @@ public export
 record StaticSig where
   constructor MkStaticSig
   sym : Name
-  kind : HeapObj.Kind
+  kind : Types.Kind

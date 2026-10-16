@@ -86,19 +86,19 @@ modules =
     Native.Flat.Translate,
     Native.Flat.Uniform,
     Native.Heap,
-    Native.HeapObj.BignumEnc,
-    Native.HeapObj.Enc,
-    Native.HeapObj.Header,
-    Native.HeapObj.Kind,
     Native.HeapObj.LayoutWord,
     Native.HeapObj.Shape,
-    Native.HeapObj.StringEnc,
     Native.HeapObj.ValEnc,
     Native.Intrinsics,
     Native.Port,
     Native.Routines,
     Native.Services,
-    Native.Syscall
+    Native.Syscall,
+    Native.Types.BignumEnc,
+    Native.Types.Enc,
+    Native.Types.Header,
+    Native.Types.Kind,
+    Native.Types.StringEnc
 
 main = Main
 executable = idris2-native

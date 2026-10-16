@@ -6,7 +6,7 @@ module Native.Codegen.LocatedIR.Mem
 
 import Native.Codegen.LocatedIR.Reg
 
-import Native.HeapObj.Enc as HeapObj
+import Native.Types.Enc as Types
 
 %default total
 
@@ -22,7 +22,7 @@ import Native.HeapObj.Enc as HeapObj
 ||| part of an address does so within the instruction, so no address outlives
 ||| it: an interior pointer never meets a collection.
 public export
-record Mem (enc : HeapObj.Enc) where
+record Mem (enc : Types.Enc) where
   constructor MkMem
   base : Reg enc
   index : Maybe (Reg enc)

@@ -10,7 +10,7 @@ import Native.Codegen.TermIR.Sig
 import Core.Name
 import Native.Codegen.IRCommon.Conv
 import Native.Codegen.IRCommon.Ty as IRCommon
-import Native.HeapObj.Enc as HeapObj
+import Native.Types.Enc as Types
 
 %default total
 

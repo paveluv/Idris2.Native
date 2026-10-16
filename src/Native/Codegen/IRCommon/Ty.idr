@@ -10,9 +10,9 @@ module Native.Codegen.IRCommon.Ty
 
 import Decidable.Equality.Core
 import Native.Codegen.Target
-import Native.HeapObj.Enc as HeapObj
-import Native.HeapObj.Kind as HeapObj
 import Native.HeapObj.ValEnc
+import Native.Types.Enc as Types
+import Native.Types.Kind as Types
 
 %default total
 
@@ -38,7 +38,7 @@ import Native.HeapObj.ValEnc
 ||| points to nothing. This distinction is what the rooting stubs and the
 ||| continuations' live sets are derived from.
 public export
-data Ty : HeapObj.Enc -> Type where
+data Ty : Types.Enc -> Type where
   ||| A raw 64-bit word: integers of every width, with narrowing explicit
   ||| (`Ext`), and addresses and header words.
   W64 : Ty enc
@@ -55,7 +55,7 @@ data Ty : HeapObj.Enc -> Type where
   Fix : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Ty enc
   ||| A pointer to an object of the kind: the same word as a `Val` that
   ||| points to it.
-  PtrTo : HeapObj.Kind -> Ty enc
+  PtrTo : Types.Kind -> Ty enc
 
 public export
 Eq (Ty enc) where

@@ -89,11 +89,11 @@ import Native.Codegen.LocatedIR.Static as LocatedIR
 import Native.Codegen.LocatedIR.Terminator as LocatedIR
 import Native.Codegen.Target
 import Native.Data.Builder as Data
-import Native.HeapObj.Enc as HeapObj
-import Native.HeapObj.Header as HeapObj
-import Native.HeapObj.Kind as HeapObj
 import Native.HeapObj.LayoutWord
 import Native.HeapObj.ValEnc
+import Native.Types.Enc as Types
+import Native.Types.Header as Types
+import Native.Types.Kind as Types
 
 %default covering
 
@@ -107,7 +107,7 @@ record Rendered where
   rodata : List (Asm.Label, List Bits8)
   areas : Linkage.Areas
 
-record RS (enc : HeapObj.Enc) where
+record RS (enc : Types.Enc) where
   constructor MkRS
   nextLabel : Nat
   funs : SortedMap Name Asm.Label
@@ -128,7 +128,7 @@ record RS (enc : HeapObj.Enc) where
 -- immediate and a fixnum are words, and the pointer tag every access
 -- through a pointer folds into its displacement.
 
-parameters (enc : HeapObj.Enc) (realised : Linkage.Realised)
+parameters (enc : Types.Enc) (realised : Linkage.Realised)
   ------------------------------------------------------------------------------
   -- Operands
 
@@ -174,7 +174,7 @@ parameters (enc : HeapObj.Enc) (realised : Linkage.Realised)
                 p.statics
     pure (MkRendered (s.text <>> []) (s.rodata <>> []) s.areas)
     where
-      Render : HeapObj.Enc -> Type -> Type
+      Render : Types.Enc -> Type -> Type
       Render enc = StateT (RS enc) (Either String)
 
       failWith : String -> Render enc' a
@@ -185,7 +185,7 @@ parameters (enc : HeapObj.Enc) (realised : Linkage.Realised)
         fields <- traverse field s.fields
         pure
           (toList
-            (Data.Builder.piece (Bytes.le64 (cast (HeapObj.Header.encodeHeader s.header)))
+            (Data.Builder.piece (Bytes.le64 (cast (Types.Header.encodeHeader s.header)))
              <+> concatMap Data.Builder.piece fields))
         where
           field : LocatedIR.Static.SField -> Render enc (List Bits8)
@@ -694,17 +694,17 @@ parameters (enc : HeapObj.Enc) (realised : Linkage.Realised)
                                   loadReg Asm.RAX o
                                   emit (Asm.MovRM Asm.RAX (Asm.MBase Asm.RAX (negate (baseTag o))))
                                   emits
-                                    (Asm.extractField Asm.RAX (cast (fst (HeapObj.Header.place p)))
-                                     (cast (snd (HeapObj.Header.place p))))
+                                    (Asm.extractField Asm.RAX (cast (fst (Types.Header.place p)))
+                                     (cast (snd (Types.Header.place p))))
                                   store d Asm.RAX
                 LocatedIR.Instr.AllocObj {k} d h fs live => do
                                   if mutableKind k
                                      then allocateMutable
-                                       (\r => emit (Asm.MovRI r (cast (8 * HeapObj.Header.objectWords h)))) live
-                                     else allocate (8 * HeapObj.Header.objectWords h) live
-                                  emits [Asm.MovRI Asm.RDX (cast (HeapObj.Header.encodeHeader h)),
+                                       (\r => emit (Asm.MovRI r (cast (8 * Types.Header.objectWords h)))) live
+                                     else allocate (8 * Types.Header.objectWords h) live
+                                  emits [Asm.MovRI Asm.RDX (cast (Types.Header.encodeHeader h)),
                                          Asm.MovMR (Asm.MBase Asm.RAX 0) Asm.RDX]
-                                  let (from, count) = HeapObj.Header.scanned h
+                                  let (from, count) = Types.Header.scanned h
                                       fieldTy : Nat -> IRCommon.Ty enc
                                       fieldTy i = if S i >= from && S i < from + count then IRCommon.Ty.Val
                                         else IRCommon.Ty.W64
@@ -731,7 +731,7 @@ parameters (enc : HeapObj.Enc) (realised : Linkage.Realised)
                                   loadReg Asm.RCX count
                                   emits
                                     [Asm.MovRI Asm.RDX
-                                      (cast (prim__shl_Integer 1 (cast (snd (HeapObj.Header.place p))) - 1)),
+                                      (cast (prim__shl_Integer 1 (cast (snd (Types.Header.place p))) - 1)),
                                      Asm.Alu Asm.CMP Asm.RCX Asm.RDX, Asm.Jcc Asm.A big]
                                   size <- sizeOf p
                                   if mutableKind k
@@ -740,8 +740,8 @@ parameters (enc : HeapObj.Enc) (realised : Linkage.Realised)
                                                                     emits (size r)) live
                                      else allocateSized count size live
                                   loadReg Asm.RDX count
-                                  emits [ Asm.ShiftI Asm.SHL Asm.RDX (cast (fst (HeapObj.Header.place p))),
-                                         Asm.AluI Asm.ADD Asm.RDX (cast (HeapObj.Header.fixedWord k))
+                                  emits [ Asm.ShiftI Asm.SHL Asm.RDX (cast (fst (Types.Header.place p))),
+                                         Asm.AluI Asm.ADD Asm.RDX (cast (Types.Header.fixedWord k))
                                         , Asm.MovMR (Asm.MBase Asm.RAX 0) Asm.RDX ]
                                   case fill of
                                     Nothing => pure ()
@@ -862,13 +862,13 @@ parameters (enc : HeapObj.Enc) (realised : Linkage.Realised)
 
                   -- The object's bytes, from the count in `r`: the header word, then the
                   -- elements as words, or the bytes rounded up to words.
-                  sizeOf : HeapObj.Header.HeaderPart k' -> Render enc (Asm.Reg64 -> List Asm.Instr)
-                  sizeOf HeapObj.Header.ArrayElems = pure (\r => [Asm.ShiftI Asm.SHL r 3, Asm.AluI Asm.ADD r 8])
+                  sizeOf : Types.Header.HeaderPart k' -> Render enc (Asm.Reg64 -> List Asm.Instr)
+                  sizeOf Types.Header.ArrayElems = pure (\r => [Asm.ShiftI Asm.SHL r 3, Asm.AluI Asm.ADD r 8])
                   -- a string made by its count is not known to be ASCII: its bit is 0,
                   -- which only costs the fast paths
-                  sizeOf HeapObj.Header.StringBytes = pure bytesSize
-                  sizeOf HeapObj.Header.StringChars = pure (\r => Asm.ShiftI Asm.SHL r 2 :: bytesSize r)
-                  sizeOf HeapObj.Header.BufferBytes = pure bytesSize
+                  sizeOf Types.Header.StringBytes = pure bytesSize
+                  sizeOf Types.Header.StringChars = pure (\r => Asm.ShiftI Asm.SHL r 2 :: bytesSize r)
+                  sizeOf Types.Header.BufferBytes = pure bytesSize
                   sizeOf q = failWith ("AllocSized cannot size an object by " ++ show q)
 
                   ||| Allocate an object whose size depends on `count`, as `allocate` does a
@@ -1009,10 +1009,10 @@ parameters (enc : HeapObj.Enc) (realised : Linkage.Realised)
                   ||| allocated by a call to `idris_alloc_mutable`, never by the inline bump,
                   ||| so that a collector with a nursery can keep them out of it, and then a
                   ||| write into an old object never makes it point into the nursery.
-                  mutableKind : HeapObj.Kind -> Bool
-                  mutableKind HeapObj.Kind.IOREF = True
-                  mutableKind HeapObj.Kind.ARRAY = True
-                  mutableKind HeapObj.Kind.BUFFER = True
+                  mutableKind : Types.Kind -> Bool
+                  mutableKind Types.Kind.IOREF = True
+                  mutableKind Types.Kind.ARRAY = True
+                  mutableKind Types.Kind.BUFFER = True
                   mutableKind _ = False
 
                   ||| Allocate a mutable object of the bytes `bytesInto` computes into a

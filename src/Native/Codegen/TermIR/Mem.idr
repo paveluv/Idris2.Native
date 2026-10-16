@@ -6,8 +6,8 @@ module Native.Codegen.TermIR.Mem
 import Native.Codegen.TermIR.Opnd
 
 import Native.Codegen.IRCommon.Ty as IRCommon
-import Native.HeapObj.Enc as HeapObj
-import Native.HeapObj.Kind as HeapObj
+import Native.Types.Enc as Types
+import Native.Types.Kind as Types
 
 %default total
 
@@ -21,7 +21,7 @@ data Base : (var : IRCommon.Ty enc -> Type) -> Type where
 ||| A memory reference: a base, an optional index counting units of the
 ||| access's width, and a constant byte offset.
 public export
-record Mem {0 enc : HeapObj.Enc} (var : IRCommon.Ty enc -> Type) where
+record Mem {0 enc : Types.Enc} (var : IRCommon.Ty enc -> Type) where
   constructor MkMem
   base : Base var
   index : Maybe (Opnd var IRCommon.Ty.W64)

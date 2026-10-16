@@ -56,7 +56,7 @@ import Native.Codegen.IRCommon.ConIds as IRCommon
 import Native.Codegen.IRCommon.Conv
 import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.Data.Distinct
-import Native.HeapObj.Enc as HeapObj
+import Native.Types.Enc as Types
 
 %default total
 
@@ -68,11 +68,11 @@ data Entry : Decls enc -> Type where
 ||| A program: a definition for every function and static, under distinct
 ||| names, its entry, and the link-time numbering of its constructors.
 public export
-data Program : (enc : HeapObj.Enc) -> Decls enc -> Type where
+data Program : (enc : Types.Enc) -> Decls enc -> Type where
   MkProgram : {auto 0 names : So (distinct (map (.name) d.sigs) && distinct (map (.sym) d.statics))} ->
               All (Def d) d.sigs -> All (StaticDef d) d.statics -> Entry d -> IRCommon.ConIds -> Program enc d
 
 ||| A program with its declarations, as a producer hands it on.
 public export
-TermProgram : HeapObj.Enc -> Type
+TermProgram : Types.Enc -> Type
 TermProgram enc = (d : Decls enc ** Program enc d)

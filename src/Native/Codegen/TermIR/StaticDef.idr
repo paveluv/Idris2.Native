@@ -14,9 +14,9 @@ import Data.So
 import Data.Vect
 import Native.Codegen.IRCommon.Conv
 import Native.Codegen.IRCommon.Ty as IRCommon
-import Native.HeapObj.Enc as HeapObj
-import Native.HeapObj.Header as HeapObj
-import Native.HeapObj.Kind as HeapObj
+import Native.Types.Enc as Types
+import Native.Types.Header as Types
+import Native.Types.Kind as Types
 
 %default total
 
@@ -30,6 +30,6 @@ data SField : Decls enc -> Type where
 ||| A static object's definition: its header and its words after it.
 public export
 data StaticDef : Decls enc -> StaticSig -> Type where
-  MkStaticDef : {0 d : Decls enc} -> {k : HeapObj.Kind} -> (h : HeapObj.Header enc k) ->
+  MkStaticDef : {0 d : Decls enc} -> {k : Types.Kind} -> (h : Types.Header enc k) ->
                 {auto 0 ok : So (wellFormed h)} ->
                 Vect (fieldWords h) (SField d) -> StaticDef d (MkStaticSig s k)

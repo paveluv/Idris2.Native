@@ -13,7 +13,7 @@ import public Native.Runtime.Bits
 import Native.Runtime.Object
 
 import Native.Heap
-import Native.HeapObj.Kind as HeapObj
+import Native.Types.Kind as Types
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)

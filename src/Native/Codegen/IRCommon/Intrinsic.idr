@@ -9,8 +9,8 @@ import Native.Codegen.IRCommon.Ty
 
 import Data.Fin
 import Data.List
-import Native.HeapObj.Enc as HeapObj
-import Native.HeapObj.Kind
+import Native.Types.Enc as Types
+import Native.Types.Kind
 
 %default total
 
@@ -57,7 +57,7 @@ namespace Intrinsic
   params GetHpLim = []
   params SetHpLim = [Ty.W64]
   params GetK = []
-  params SetK = [Ty.PtrTo HeapObj.Kind.CONT]
+  params SetK = [Ty.PtrTo Types.Kind.CONT]
   params (Syscall n) = replicate (S (finToNat n)) Ty.W64
 
   ||| What an intrinsic gives, in order.
@@ -67,6 +67,6 @@ namespace Intrinsic
   results SetHp = []
   results GetHpLim = [Ty.W64]
   results SetHpLim = []
-  results GetK = [Ty.PtrTo HeapObj.Kind.CONT]
+  results GetK = [Ty.PtrTo Types.Kind.CONT]
   results SetK = []
   results (Syscall _) = [Ty.W64]

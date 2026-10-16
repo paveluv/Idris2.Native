@@ -33,7 +33,7 @@
 ||| fixnum width and every offset.
 |||
 ||| The objects the IR allocates and reads, and how a uniform value is a
-||| word, are the heap-object model (`HeapObj.Header`), which the IR builds
+||| word, are the heap-object model (`Types.Header`), which the IR builds
 ||| on: the IR names kinds, headers and header parts, and never a bit
 ||| position or a size rule.
 |||
@@ -49,14 +49,14 @@ import Native.Codegen.LocatedIR.Static
 import Core.Name
 import Native.Codegen.IRCommon.ConIds as IRCommon
 import Native.Codegen.Target
-import Native.HeapObj.Enc as HeapObj
+import Native.Types.Enc as Types
 
 %default total
 
 ||| A whole program: its target, functions, statics, entry function and
 ||| constructor numbering.
 public export
-record Program (enc : HeapObj.Enc) where
+record Program (enc : Types.Enc) where
   constructor MkProgram
   target : Target
   functions : List (Function enc)

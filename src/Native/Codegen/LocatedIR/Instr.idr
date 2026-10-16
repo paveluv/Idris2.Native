@@ -15,10 +15,10 @@ import Native.Area
 import Native.Codegen.IRCommon.Intrinsic as IRCommon
 import Native.Codegen.IRCommon.Op
 import Native.Codegen.IRCommon.Ty as IRCommon
-import Native.HeapObj.Enc as HeapObj
-import Native.HeapObj.Header as HeapObj
-import Native.HeapObj.Kind as HeapObj
 import Native.HeapObj.ValEnc
+import Native.Types.Enc as Types
+import Native.Types.Header as Types
+import Native.Types.Kind as Types
 
 %default total
 
@@ -26,7 +26,7 @@ import Native.HeapObj.ValEnc
 ||| which comes first. The types stated here are the term's
 ||| (`Native.Codegen.TermIR.Program`), which the conversion keeps.
 public export
-data Instr : HeapObj.Enc -> Type where
+data Instr : Types.Enc -> Type where
   ||| A constant, into a `W64`, a `Val` or a `Fix`. Into a `W64` it is the
   ||| word itself. Into a `Val` or a `Fix` it is the integer, and the
   ||| rendering turns it into the value encoding's word (`valWord` in
@@ -106,7 +106,7 @@ data Instr : HeapObj.Enc -> Type where
   ||| there is.
   AddrToWord : Reg enc -> Reg enc -> Instr enc
   ||| A `W64` as a `PtrTo k`. No code. Restricted as `AddrToWord` is.
-  WordToAddr : HeapObj.Kind -> Reg enc -> Reg enc -> Instr enc
+  WordToAddr : Types.Kind -> Reg enc -> Reg enc -> Instr enc
   ||| A `Val` as a `W64`, and a `W64` as a `Val`. No code. Restricted as
   ||| `AddrToWord` is.
   ValToWord : Reg enc -> Reg enc -> Instr enc
@@ -118,7 +118,7 @@ data Instr : HeapObj.Enc -> Type where
   ||| the constructor id of a `CON`, for instance. The pointer's kind is the
   ||| part's kind, which the instruction keeps, so that a pass reads it here
   ||| instead of rebuilding it from the part.
-  LoadPart   : {0 k : HeapObj.Kind} -> HeapObj.Header.HeaderPart k -> Reg enc -> Reg enc -> Instr enc
+  LoadPart   : {0 k : Types.Kind} -> Types.Header.HeaderPart k -> Reg enc -> Reg enc -> Instr enc
   ||| A whole object in one step: the destination, a `PtrTo k` of the
   ||| header's kind, becomes a new object with this header and these initial
   ||| fields. Since one instruction makes the whole object, no collection can
@@ -134,7 +134,7 @@ data Instr : HeapObj.Enc -> Type where
   ||| across includes the field registers, because the fields are written
   ||| after the slow path's collection. The rendering may rematerialise a
   ||| static's address instead of saving it.
-  AllocObj   : {k : HeapObj.Kind} -> Reg enc -> HeapObj.Header enc k -> (fields : List (Opnd enc)) ->
+  AllocObj   : {k : Types.Kind} -> Reg enc -> Types.Header enc k -> (fields : List (Opnd enc)) ->
                (live : List (Reg enc)) -> Instr enc
   ||| A whole object whose size is known only at run time: the destination, a
   ||| `PtrTo k`, becomes a new object of the part's kind, whose size part is
@@ -149,7 +149,7 @@ data Instr : HeapObj.Enc -> Type where
   ||| A count that does not fit the part's bits ends the program, as `Crash`
   ||| does. The rendering checks it, so no count can make an object smaller
   ||| than its header claims, a negative `Int` read as a word included.
-  AllocSized : {k : HeapObj.Kind} -> Reg enc -> HeapObj.Header.HeaderPart k -> (count : Reg enc) ->
+  AllocSized : {k : Types.Kind} -> Reg enc -> Types.Header.HeaderPart k -> (count : Reg enc) ->
                (fill : Maybe (Opnd enc)) -> (live : List (Reg enc)) -> Instr enc
   ||| A machine call to a `Direct` function: one of the program's, or a
   ||| routine of the runtime. The registers receive the callee's results, in

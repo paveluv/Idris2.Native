@@ -6,8 +6,8 @@ module Native.Codegen.TermIR.Opnd
 import Data.List.Quantifiers
 import Data.So
 import Native.Codegen.IRCommon.Ty as IRCommon
-import Native.HeapObj.Enc as HeapObj
 import Native.HeapObj.ValEnc
+import Native.Types.Enc as Types
 
 %default total
 

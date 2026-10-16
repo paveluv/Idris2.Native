@@ -1,4 +1,4 @@
--- The header encoding of HeapObj.Header. Decoding a header's encoding gives
+-- The header encoding of Types.Header. Decoding a header's encoding gives
 -- the header back, for every kind with each part at 0, 1 and its largest
 -- value; a part one beyond its width does not fit; words that no header
 -- encodes are rejected; and under bignums in two's complement, whose header
@@ -14,14 +14,14 @@
 module Main
 
 import Data.List
-import Native.HeapObj.BignumEnc
-import Native.HeapObj.Enc
-import Native.HeapObj.Header
-import Native.HeapObj.Kind
 import Native.HeapObj.LayoutWord
 import Native.HeapObj.Shape
-import Native.HeapObj.StringEnc
 import Native.HeapObj.ValEnc
+import Native.Types.BignumEnc
+import Native.Types.Enc
+import Native.Types.Header
+import Native.Types.Kind
+import Native.Types.StringEnc
 
 ||| The encodings the headers are under: bignums in sign-magnitude, whose
 ||| header holds the sign.

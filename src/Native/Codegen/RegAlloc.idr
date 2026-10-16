@@ -68,17 +68,17 @@ import Data.Vect
 import Data.Zippable
 import Native.Data.Builder as Data
 import Native.Data.Distinct
-import Native.HeapObj.Enc as HeapObj
-import Native.HeapObj.Header as HeapObj
-import Native.HeapObj.Kind as HeapObj
 import Native.HeapObj.ValEnc
+import Native.Types.Enc as Types
+import Native.Types.Header as Types
+import Native.Types.Kind as Types
 
 %default total
 
 ------------------------------------------------------------------------------
 -- Environments
 
-RV : (enc : HeapObj.Enc) -> IRCommon.Ty enc -> Type
+RV : (enc : Types.Enc) -> IRCommon.Ty enc -> Type
 RV enc _ = LocatedIR.Reg enc
 
 ||| How a variable of the environment is held: in a register, or as the
@@ -87,25 +87,25 @@ RV enc _ = LocatedIR.Reg enc
 ||| allocation and never in a slot. The term binds one by `StaticAddr` and
 ||| widens it to a value by `WidenPtr`; the environment holds both as the
 ||| static.
-data Held : HeapObj.Enc -> Type where
+data Held : Types.Enc -> Type where
   InReg : LocatedIR.Reg enc -> Held enc
   OfStatic : Name -> Held enc
 
-HV : (enc : HeapObj.Enc) -> IRCommon.Ty enc -> Type
+HV : (enc : Types.Enc) -> IRCommon.Ty enc -> Type
 HV enc _ = Held enc
 
 ||| Registers, by identity.
-RegMap : HeapObj.Enc -> Type
+RegMap : Types.Enc -> Type
 RegMap enc = SortedMap Nat (LocatedIR.Reg enc)
 
-record LabelInfo (enc : HeapObj.Enc) where
+record LabelInfo (enc : Types.Enc) where
   constructor MkLabelInfo
   label : LocatedIR.Label
   params : List (LocatedIR.Reg enc)
   ||| The registers the block reads from outside it, its parameters excluded.
   free : RegMap enc
 
-LI : (enc : HeapObj.Enc) -> List (IRCommon.Ty enc) -> Type
+LI : (enc : Types.Enc) -> List (IRCommon.Ty enc) -> Type
 LI enc _ = LabelInfo enc
 
 append : All p xs -> All p ys -> All p (xs ++ ys)
@@ -156,7 +156,7 @@ JoinFrees = (Nat, SortedSet Level)
 ------------------------------------------------------------------------------
 -- The conversion's state
 
-record St (enc : HeapObj.Enc) where
+record St (enc : Types.Enc) where
   constructor MkSt
   nextReg : Nat
   nextLabel : Nat
@@ -166,7 +166,7 @@ record St (enc : HeapObj.Enc) where
   ||| the lowering meets them (`frees`).
   joins : List JoinFrees
 
-M : HeapObj.Enc -> Type -> Type
+M : Types.Enc -> Type -> Type
 M enc = State (St enc)
 
 fresh : IRCommon.Ty enc -> M enc (LocatedIR.Reg enc)
@@ -187,14 +187,14 @@ freshLabel = do
 
 ||| A block's code: its instructions, as the lowering produces them, and
 ||| its terminator.
-Code : HeapObj.Enc -> Type
+Code : Types.Enc -> Type
 Code enc = (Data.Builder (LocatedIR.Instr enc), LocatedIR.Terminator enc)
 
 addBlock : LocatedIR.Label -> List (LocatedIR.Reg enc) -> Code enc -> M enc ()
 addBlock l ps (is, t) = modify { blocks $= insert l (LocatedIR.MkBlock l ps (toList is) t) }
 
 ||| Code, with the registers of its environment it reads.
-Lowered : HeapObj.Enc -> Type
+Lowered : Types.Enc -> Type
 Lowered enc = (RegMap enc, Code enc)
 
 ------------------------------------------------------------------------------
@@ -494,13 +494,13 @@ parameters (d : TermIR.Decls enc)
           ([], TermIR.Instr.Loc fc) => pure [LocatedIR.Instr.Loc fc]
           ([], TermIR.Instr.Comment s) => pure [LocatedIR.Instr.Comment s]
           where
-            fillOf : {0 kind : HeapObj.Kind} -> (q : HeapObj.Header.HeaderPart kind) ->
+            fillOf : {0 kind : Types.Kind} -> (q : Types.Header.HeaderPart kind) ->
                      TermIR.Sizes.Fill (TermIR.Var ctx''') q -> Maybe (LocatedIR.Opnd enc)
-            fillOf HeapObj.Header.ArrayElems x = Just (operand env x)
+            fillOf Types.Header.ArrayElems x = Just (operand env x)
             fillOf _ _ = Nothing
-            fillUses : {0 kind : HeapObj.Kind} -> (q : HeapObj.Header.HeaderPart kind) ->
+            fillUses : {0 kind : Types.Kind} -> (q : Types.Header.HeaderPart kind) ->
                        TermIR.Sizes.Fill (TermIR.Var ctx''') q -> () -> RegMap enc
-            fillUses HeapObj.Header.ArrayElems x _ = uses env x
+            fillUses Types.Header.ArrayElems x _ = uses env x
             fillUses _ _ _ = empty
 
             collectsOf : TermIR.Var d.sigs s -> Bool
@@ -653,7 +653,7 @@ parameters (d : TermIR.Decls enc)
 ||| The IR's programs, for producers that build terms and need not import
 ||| the IR, whose names the term's share.
 export
-0 LocatedProgram : HeapObj.Enc -> Type
+0 LocatedProgram : Types.Enc -> Type
 LocatedProgram enc = LocatedIR.Program enc
 
 ||| The program in the IR, for the target.

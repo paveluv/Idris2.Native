@@ -2,7 +2,7 @@
 ||| what the collector reads of it.
 |||
 ||| Part of the heap-object model, the contract between compiled code and
-||| the runtime (`HeapObj.Enc` says what it is): it imports nothing from the
+||| the runtime (`HeapObj.Shape` says what it is): it imports nothing from the
 ||| compiler, so that the runtime's own Idris can import it.
 module Native.HeapObj.LayoutWord
 

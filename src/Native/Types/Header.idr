@@ -2,7 +2,7 @@
 ||| scanned fields the header gives.
 |||
 ||| Every heap object is 8-byte aligned and begins with one header word,
-||| which says what the object is: its kind (`HeapObj.Kind`), and the parts
+||| which says what the object is: its kind (`Types.Kind`), and the parts
 ||| of its header, whose number and meaning depend on the kind. The words
 ||| after the header are the object's fields; offsets below are in bytes
 ||| from the start of the object. The exception is `CONT`, which has no
@@ -18,16 +18,17 @@
 ||| Static objects (`Native.Codegen.LocatedIR.Static`) have exactly the
 ||| same layouts.
 |||
-||| Part of the heap-object model, the contract between compiled code and
-||| the runtime (`HeapObj.Enc` says what it is): it imports nothing from the
-||| compiler, so that the runtime's own Idris can import it.
-module Native.HeapObj.Header
+||| Part of the type layer, the modules of `Types` (`Types.Kind` says what
+||| it is): it imports nothing from the compiler, so that the runtime's own
+||| Idris can import it.
+module Native.Types.Header
 
-import Native.HeapObj.BignumEnc
-import Native.HeapObj.Enc
-import Native.HeapObj.Kind
-import Native.HeapObj.Shape
-import Native.HeapObj.StringEnc
+import Native.Types.BignumEnc
+import Native.Types.Enc
+import Native.Types.Kind
+import Native.Types.StringEnc
+
+import Native.HeapObj.Shape as HeapObj
 
 %default total
 
@@ -122,19 +123,19 @@ public export
 ||| `idris_apply` all read it here. A kind's parts do not overlap.
 public export
 place : {0 k : Kind} -> HeaderPart k -> (Bits64, Bits64)
-place ConId = Shape.place {s = VALUES} Part
-place ConArity = Shape.place Values
-place ClosureArity = Shape.place {s = MIXED} Part
-place ClosureFilled = Shape.place MixedValues
-place StringAscii = Shape.place {s = RAW} Part
-place StringBytes = Shape.place Bytes
+place ConId = HeapObj.Shape.place {s = HeapObj.Shape.VALUES} HeapObj.Shape.Part
+place ConArity = HeapObj.Shape.place HeapObj.Shape.Values
+place ClosureArity = HeapObj.Shape.place {s = HeapObj.Shape.MIXED} HeapObj.Shape.Part
+place ClosureFilled = HeapObj.Shape.place HeapObj.Shape.MixedValues
+place StringAscii = HeapObj.Shape.place {s = HeapObj.Shape.RAW} HeapObj.Shape.Part
+place StringBytes = HeapObj.Shape.place HeapObj.Shape.Bytes
 -- four bytes a character: the bytes' bits but for the low two
-place StringChars = (fst (Shape.place Bytes) + 2, snd (Shape.place Bytes) - 2)
-place BignumNegative = Shape.place {s = RAW} Part
+place StringChars = (fst (HeapObj.Shape.place HeapObj.Shape.Bytes) + 2, snd (HeapObj.Shape.place HeapObj.Shape.Bytes) - 2)
+place BignumNegative = HeapObj.Shape.place {s = HeapObj.Shape.RAW} HeapObj.Shape.Part
 -- eight bytes a limb: the bytes' bits but for the low three
-place BignumWords = (fst (Shape.place Bytes) + 3, snd (Shape.place Bytes) - 3)
-place ArrayElems = Shape.place Values
-place BufferBytes = Shape.place Bytes
+place BignumWords = (fst (HeapObj.Shape.place HeapObj.Shape.Bytes) + 3, snd (HeapObj.Shape.place HeapObj.Shape.Bytes) - 3)
+place ArrayElems = HeapObj.Shape.place HeapObj.Shape.Values
+place BufferBytes = HeapObj.Shape.place HeapObj.Shape.Bytes
 
 ||| The bits every header of the kind has: its code, and the counts of its
 ||| shape that the kind fixes. A header is this word plus its parts, each
@@ -144,11 +145,11 @@ fixedWord : Kind -> Bits64
 fixedWord k = Kind.code k + fixedCounts k
   where
     fixedCounts : Kind -> Bits64
-    fixedCounts Kind.CLOSURE = fieldBits Raws 1
-    fixedCounts Kind.IOREF = fieldBits Values 1
-    fixedCounts Kind.INT64 = fieldBits Bytes 8
-    fixedCounts Kind.DOUBLE = fieldBits Bytes 8
-    fixedCounts Kind.PTR = fieldBits Bytes 8
+    fixedCounts Kind.CLOSURE = HeapObj.Shape.fieldBits HeapObj.Shape.Raws 1
+    fixedCounts Kind.IOREF = HeapObj.Shape.fieldBits HeapObj.Shape.Values 1
+    fixedCounts Kind.INT64 = HeapObj.Shape.fieldBits HeapObj.Shape.Bytes 8
+    fixedCounts Kind.DOUBLE = HeapObj.Shape.fieldBits HeapObj.Shape.Bytes 8
+    fixedCounts Kind.PTR = HeapObj.Shape.fieldBits HeapObj.Shape.Bytes 8
     fixedCounts _ = 0
 
 ||| A part of a header word. Inline, so that at a part written in the code
@@ -242,24 +243,24 @@ decodeHeader enc w = do
 
 ||| The header's counts, by its kind's shape.
 public export
-counts : {0 k : Kind} -> Header enc k -> (s : Shape ** Counts s)
+counts : {0 k : Kind} -> Header enc k -> (s : HeapObj.Shape ** HeapObj.Shape.Counts s)
 counts h = case h of
-  ConH _ a => (_ ** ValuesOf a)
-  ClosureH _ f => (_ ** MixedOf 1 f)
-  Int64H => (_ ** WordsOf 1)
-  DoubleH => (_ ** WordsOf 1)
-  StringH _ n => (_ ** BytesOf n)
-  StringCharsH n => (_ ** BytesOf (4 * n))
-  BignumH _ n => (_ ** WordsOf n)
-  IORefH => (_ ** ValuesOf 1)
-  ArrayH n => (_ ** ValuesOf n)
-  BufferH n => (_ ** BytesOf n)
-  PtrH => (_ ** WordsOf 1)
+  ConH _ a => (_ ** HeapObj.Shape.ValuesOf a)
+  ClosureH _ f => (_ ** HeapObj.Shape.MixedOf 1 f)
+  Int64H => (_ ** HeapObj.Shape.WordsOf 1)
+  DoubleH => (_ ** HeapObj.Shape.WordsOf 1)
+  StringH _ n => (_ ** HeapObj.Shape.BytesOf n)
+  StringCharsH n => (_ ** HeapObj.Shape.BytesOf (4 * n))
+  BignumH _ n => (_ ** HeapObj.Shape.WordsOf n)
+  IORefH => (_ ** HeapObj.Shape.ValuesOf 1)
+  ArrayH n => (_ ** HeapObj.Shape.ValuesOf n)
+  BufferH n => (_ ** HeapObj.Shape.BytesOf n)
+  PtrH => (_ ** HeapObj.Shape.WordsOf 1)
 
 ||| The number of fields: the object's words after its header.
 public export
 fieldWords : {0 k : Kind} -> Header enc k -> Nat
-fieldWords h = Shape.fieldWords (snd (counts h))
+fieldWords h = HeapObj.Shape.fieldWords (snd (counts h))
 
 ||| The object's size in words, its header included.
 public export
@@ -270,4 +271,4 @@ objectWords h = 1 + fieldWords h
 ||| scanned fields begin, and how many there are. Every other field is raw.
 public export
 scanned : {0 k : Kind} -> Header enc k -> (Nat, Nat)
-scanned h = Shape.scanned (snd (counts h))
+scanned h = HeapObj.Shape.scanned (snd (counts h))

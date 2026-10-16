@@ -6,14 +6,14 @@ module Native.Codegen.TermIR.Decls
 import Native.Codegen.TermIR.Sig
 import Native.Codegen.TermIR.StaticSig
 
-import Native.HeapObj.Enc as HeapObj
+import Native.Types.Enc as Types
 
 %default total
 
 ||| The program's declarations: its functions, and the runtime's routines
 ||| it calls, and its statics.
 public export
-record Decls (enc : HeapObj.Enc) where
+record Decls (enc : Types.Enc) where
   constructor MkDecls
   sigs : List (Sig enc)
   statics : List StaticSig

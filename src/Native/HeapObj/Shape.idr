@@ -3,7 +3,7 @@
 ||| which of them hold values the collector must follow; which type the
 ||| object is, the collector never asks. Each type of object is laid out as
 ||| one shape, with a tag that tells it apart from the shape's other types
-||| (`HeapObj.Kind` gives each kind's), and the type's own part of the
+||| (`Types.Kind` gives each kind's), and the type's own part of the
 ||| header, which only code that knows the type reads.
 |||
 ||| A header word is the shape's id in bits 0..3; flags in bits 4..7, which
@@ -29,9 +29,16 @@
 ||| A new shape is a change to the collector, and so to the runtime's core;
 ||| a new type of an existing shape is not.
 |||
-||| Part of the heap-object model, the contract between compiled code and the
-||| runtime (`HeapObj.Enc` says what it is): it imports nothing from the
-||| compiler, so that the runtime's own Idris can import it.
+||| Part of the heap-object model, the modules of `HeapObj`: the contract
+||| between compiled code and the runtime about objects, not part of
+||| either, and so in the namespace of neither. It knows objects by their
+||| shapes; which types there are, and how each is laid out as a shape, is
+||| the type layer's (`Types.Kind`). Compiled code writes header words when
+||| it allocates, and the collector reads shapes, sizes, scanned ranges and
+||| continuation layouts. Every bit position and size rule is written down
+||| once, here or in the type layer, and both sides take it from there. Its
+||| modules import nothing from the compiler, so that the runtime's own
+||| Idris can import them too.
 module Native.HeapObj.Shape
 
 %default total

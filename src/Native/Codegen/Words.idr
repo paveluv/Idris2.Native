@@ -14,10 +14,10 @@ import Native.Codegen.TermIR.IsInt
 import Native.Codegen.TermIR.Opnd as TermIR
 
 import Data.List.Quantifiers
-import Native.HeapObj.Enc as HeapObj
+import Native.Types.Enc as Types
 %default total
 
-parameters {0 enc : HeapObj.Enc} {0 d : TermIR.Decls enc} {0 c : IRCommon.Conv enc} {0 m : Bool}
+parameters {0 enc : Types.Enc} {0 d : TermIR.Decls enc} {0 c : IRCommon.Conv enc} {0 m : Bool}
            {0 v : IRCommon.Ty enc -> Type} {0 l : List (IRCommon.Ty enc) -> Type}
 
   ||| The quotient or the remainder of the word `a` by the word `b`, which is

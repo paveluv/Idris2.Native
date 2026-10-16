@@ -41,12 +41,12 @@ import Native.Codegen.Platform
 import Native.Codegen.TermIR.Decls
 import Native.Codegen.TermIR.Program
 import Native.Flat.Exp
-import Native.HeapObj.BignumEnc
-import Native.HeapObj.Enc
-import Native.HeapObj.StringEnc
 import Native.HeapObj.ValEnc
 import Native.Port
 import Native.Routines
+import Native.Types.BignumEnc
+import Native.Types.Enc
+import Native.Types.StringEnc
 
 TestEnc : Enc
 TestEnc = defaultEnc

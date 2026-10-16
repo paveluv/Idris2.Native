@@ -15,6 +15,7 @@
 ./Headless.idr:1:1 header-comment: no comment says what the file is before its first import or declaration
 ./Native/Data/Upward.idr:5:1 layering: `Native.Data.Upward` may not import `Native.Codegen.Thing`: the layers
 ./Native/Flat/Upward.idr:5:1 layering: `Native.Flat.Upward` may not import `Native.Codegen.Thing`: the layers
+./Native/Port.idr:5:1 layering: `Native.Port` may not import `Native.Types.Thing`: the layers
 ./Native/Runtime/Direct.idr:5:1 syscall: the raw system call outside `Native.Runtime.OS`: the platform's services reach the system
 ./NoDefault.idr:1:1 default-totality: no `%default` directive
 ./Open.idr:6:1 todo: `TODO`: open work belongs in the plans

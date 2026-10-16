@@ -1,7 +1,7 @@
 -- The collector knows objects by their shape only (HeapObj.Shape): from a
 -- header word, an object's size and which of its words hold values. Each
 -- kind of object is laid out as a shape. Here each kind's layout, as its
--- documentation in HeapObj.Kind describes it, is written out by hand
+-- documentation in Types.Kind describes it, is written out by hand
 -- (`layout`), and compared with the shape description twice: as the
 -- compiler reads it, from a typed header (`objectWords`, `scanned`), and
 -- as the collector reads it, from the header's word (`objectWordsOf`,
@@ -11,14 +11,14 @@
 -- tag in its low bits.
 module Main
 
-import Native.HeapObj.BignumEnc
-import Native.HeapObj.Enc
-import Native.HeapObj.Header
-import Native.HeapObj.Kind
 import Native.HeapObj.LayoutWord
 import Native.HeapObj.Shape
-import Native.HeapObj.StringEnc
 import Native.HeapObj.ValEnc
+import Native.Types.BignumEnc
+import Native.Types.Enc
+import Native.Types.Header
+import Native.Types.Kind
+import Native.Types.StringEnc
 
 TestEnc : Enc
 TestEnc = MkEnc FixnumTag1 (MkBignumEnc Limb64 SignMagnitude) Utf8

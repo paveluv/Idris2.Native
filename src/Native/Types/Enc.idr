@@ -2,22 +2,17 @@
 ||| that compiled code and the runtime share is laid out in words is a choice
 ||| made once per compilation: an encoding. A program and its runtime must
 ||| agree on every one, so the IR, every pass that depends on one, and the
-||| headers (`HeapObj.Header`) are indexed by the program's encodings.
+||| headers (`Types.Header`) are indexed by the program's encodings.
 |||
-||| Part of the heap-object model, the modules of `HeapObj`: the contract
-||| between compiled code and the runtime, not part of either, and so in
-||| the namespace of neither.
-||| Compiled code writes header words when it allocates and reads constructor
-||| ids in a `case`, the runtime's `idris_apply` edits closure headers, and the
-||| collector reads kinds, sizes, scanned ranges and continuation layouts.
-||| Every bit position and size rule is written down there once, and both
-||| sides take it from there. Its modules import nothing from the compiler,
-||| so that the runtime's own Idris can import them too.
-module Native.HeapObj.Enc
+||| Part of the type layer, the modules of `Types` (`Types.Kind` says what
+||| it is): it imports nothing from the compiler, so that the runtime's own
+||| Idris can import it.
+module Native.Types.Enc
 
-import Native.HeapObj.BignumEnc
-import Native.HeapObj.StringEnc
-import Native.HeapObj.ValEnc
+import Native.Types.BignumEnc
+import Native.Types.StringEnc
+
+import Native.HeapObj.ValEnc as HeapObj
 
 %default total
 
@@ -33,7 +28,7 @@ public export
 record Enc where
   constructor MkEnc
   ||| How a uniform value is a word.
-  val : ValEnc
+  val : HeapObj.ValEnc
   ||| How an integer outside the small range is a `BIGNUM`.
   bignum : BignumEnc
   ||| How a `String` is laid out.
@@ -44,4 +39,4 @@ record Enc where
 ||| sign in the header, and UTF-8 strings.
 public export
 defaultEnc : Enc
-defaultEnc = MkEnc ValEnc.FixnumTag1 (MkBignumEnc BignumEnc.Limb64 BignumEnc.SignMagnitude) StringEnc.Utf8
+defaultEnc = MkEnc HeapObj.ValEnc.FixnumTag1 (MkBignumEnc BignumEnc.Limb64 BignumEnc.SignMagnitude) StringEnc.Utf8

@@ -6,13 +6,13 @@ module Native.Codegen.TermIR.Sig
 import Core.Name
 import Native.Codegen.IRCommon.Conv as IRCommon
 import Native.Codegen.IRCommon.Ty as IRCommon
-import Native.HeapObj.Enc as HeapObj
+import Native.Types.Enc as Types
 
 %default total
 
 ||| What a caller knows of a function.
 public export
-record Sig (enc : HeapObj.Enc) where
+record Sig (enc : Types.Enc) where
   constructor MkSig
   name : Name
   conv : IRCommon.Conv enc

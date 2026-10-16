@@ -15,8 +15,8 @@ import public Native.Runtime.Memory
 
 import Native.Flat.Uniform as Flat
 import Native.Heap
-import Native.HeapObj.Kind as HeapObj
 import Native.HeapObj.Shape as HeapObj
+import Native.Types.Kind as Types
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
@@ -27,8 +27,8 @@ import Native.HeapObj.Shape as HeapObj
 ||| The address of an object of the kind `k`: an address of the kind's
 ||| shape.
 export
-data Obj : (0 k : HeapObj.Kind) -> Type where
-  MkObj : {0 s : HeapObj.Shape} -> (0 shaped : HeapObj.Kind.shapeOf k = Just s) -> Memory.Addr s -> Obj k
+data Obj : (0 k : Types.Kind) -> Type where
+  MkObj : {0 s : HeapObj.Shape} -> (0 shaped : Types.Kind.shapeOf k = Just s) -> Memory.Addr s -> Obj k
 
 ||| The word, or 32, 16 or 8 bits of it, at the object plus the offset.
 export %inline
@@ -49,7 +49,7 @@ store8 (MkObj _ a) = Memory.store8 a
 
 ||| The object at an address the allocator gave as a word.
 export %inline
-fromWord : {auto 0 shaped : HeapObj.Kind.shapeOf k = Just s} -> Bits64 -> Obj k
+fromWord : {auto 0 shaped : Types.Kind.shapeOf k = Just s} -> Bits64 -> Obj k
 fromWord w = MkObj shaped (Memory.fromWord w)
 
 ||| The word an object's address is.
@@ -60,7 +60,7 @@ toWord (MkObj _ a) = Memory.toWord a
 ||| The object a value is, and the value an object is, for a type whose
 ||| values ordinary code holds as objects of the kind always.
 export %inline
-valueObject : {auto 0 shaped : HeapObj.Kind.shapeOf k = Just s} -> Flat.Uniform a -> Heap.Op Heap (Obj k)
+valueObject : {auto 0 shaped : Types.Kind.shapeOf k = Just s} -> Flat.Uniform a -> Heap.Op Heap (Obj k)
 valueObject v = do
   a <- Memory.valueObject v
   Heap.pure (MkObj shaped a)
@@ -72,7 +72,7 @@ objectValue (MkObj _ a) = Memory.objectValue a
 ||| The object a pointer word in a field points to, and the pointer word of
 ||| an object, to store in a field.
 export %inline
-fieldObject : {auto 0 shaped : HeapObj.Kind.shapeOf k = Just s} -> (word : Bits64) -> Heap.Op Heap (Obj k)
+fieldObject : {auto 0 shaped : Types.Kind.shapeOf k = Just s} -> (word : Bits64) -> Heap.Op Heap (Obj k)
 fieldObject w = do
   a <- Memory.fieldObject w
   Heap.pure (MkObj shaped a)

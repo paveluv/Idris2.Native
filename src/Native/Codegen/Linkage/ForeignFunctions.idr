@@ -9,7 +9,7 @@ import Native.Codegen.Linkage.RuntimeModule
 
 import Core.Name
 import Core.Name.Namespace
-import Native.HeapObj.Enc as HeapObj
+import Native.Types.Enc as Types
 
 %default total
 
@@ -24,7 +24,7 @@ import Native.HeapObj.Enc as HeapObj
 ||| bound by its Idris name, whatever names the library gives it for C or
 ||| Scheme; one not listed stays `Unsupported`.
 export
-foreignFunctions : HeapObj.Enc -> List (Name, Name)
+foreignFunctions : Types.Enc -> List (Name, Name)
 foreignFunctions enc =
   [ mirrored (NS (mkNamespace "System") (UN (Basic "prim__exit")))
   , mirrored (NS (mkNamespace "Prelude.IO") (UN (Basic "prim__putChar"))) ]

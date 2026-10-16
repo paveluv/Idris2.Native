@@ -4,7 +4,7 @@
 ||| entry (`rootOffset`).
 |||
 ||| Part of the contract between compiled code and the runtime, with the
-||| heap-object model (`HeapObj.Enc` says what it is), and like it of
+||| heap-object model (`HeapObj.Shape` says what it is), and like it of
 ||| neither: the code generator sizes and lays the areas out, in the image's
 ||| bss, and reaches them by their symbols; the runtime reaches them by the
 ||| inline externs that give their addresses. It imports nothing, so that

@@ -22,11 +22,11 @@ import Data.Maybe
 import Data.SortedMap
 import Data.Zippable
 import Native.Area
-import Native.HeapObj.Enc as HeapObj
-import Native.HeapObj.Header
-import Native.HeapObj.Kind
 import Native.HeapObj.LayoutWord
 import Native.HeapObj.ValEnc as HeapObj
+import Native.Types.Enc as Types
+import Native.Types.Header
+import Native.Types.Kind
 
 %default total
 
@@ -42,7 +42,7 @@ msgStackOverflow = map (cast . ord) (unpack "idris: stack overflow\n")
 ||| reads the program's result as a fixnum, which is the word shifted right by
 ||| one under either.
 export
-seedText : (enc : HeapObj.Enc) -> {auto 0 _ : HeapObj.ValEnc.HasFixnums enc.val} -> (window : Int) -> List X86.Asm.Instr
+seedText : (enc : Types.Enc) -> {auto 0 _ : HeapObj.ValEnc.HasFixnums enc.val} -> (window : Int) -> List X86.Asm.Instr
 seedText enc window = startText enc.val window ++ haltText enc.val ++ unsupportedText
                       ++ stackOverflowText
                       ++ applyText X86.Target.x86_64.abi enc.val
@@ -135,8 +135,8 @@ seedText enc window = startText enc.val window ++ haltText enc.val ++ unsupporte
       , X86.Asm.MovRR X86.Asm.R10 X86.Asm.RDI,
         X86.Asm.MovRR X86.Asm.R11 X86.Asm.RSI                     -- closure, argument
       , X86.Asm.MovRM X86.Asm.RAX (X86.Asm.MBase X86.Asm.R10 (0 - pt))                   -- header
-      , X86.Asm.MovRR X86.Asm.RCX X86.Asm.RAX ] ++ part X86.Asm.RCX HeapObj.Header.ClosureArity ++      -- arity
-      [ X86.Asm.MovRR X86.Asm.RDX X86.Asm.RAX ] ++ part X86.Asm.RDX HeapObj.Header.ClosureFilled
+      , X86.Asm.MovRR X86.Asm.RCX X86.Asm.RAX ] ++ part X86.Asm.RCX Types.Header.ClosureArity ++      -- arity
+      [ X86.Asm.MovRR X86.Asm.RDX X86.Asm.RAX ] ++ part X86.Asm.RDX Types.Header.ClosureFilled
         ++     -- arguments filled
       [ X86.Asm.MovRR X86.Asm.R8 X86.Asm.RDX,
         X86.Asm.AluI X86.Asm.ADD X86.Asm.R8 1                      -- arguments after this one
@@ -172,8 +172,8 @@ seedText enc window = startText enc.val window ++ haltText enc.val ++ unsupporte
       , X86.Asm.MovRR X86.Asm.RDI X86.Asm.R15, X86.Asm.MovRR X86.Asm.R15 X86.Asm.RSI
       , X86.Asm.Lbl initClosure                                  -- rdi: the new closure
       , X86.Asm.MovRM X86.Asm.RAX (X86.Asm.MBase X86.Asm.R10 (0 - pt)),
-        X86.Asm.MovRR X86.Asm.RDX X86.Asm.RAX ] ++ part X86.Asm.RDX HeapObj.Header.ClosureFilled ++
-      [ X86.Asm.MovRI X86.Asm.RSI (HeapObj.Header.partUnit HeapObj.Header.ClosureFilled),
+        X86.Asm.MovRR X86.Asm.RDX X86.Asm.RAX ] ++ part X86.Asm.RDX Types.Header.ClosureFilled ++
+      [ X86.Asm.MovRI X86.Asm.RSI (Types.Header.partUnit Types.Header.ClosureFilled),
         X86.Asm.Alu X86.Asm.ADD X86.Asm.RAX X86.Asm.RSI,
         X86.Asm.MovMR (X86.Asm.MBase X86.Asm.RDI 0) X86.Asm.RAX   -- one more filled
       , X86.Asm.MovRM X86.Asm.RAX (X86.Asm.MBase X86.Asm.R10 (8 - pt)),
@@ -232,8 +232,8 @@ seedText enc window = startText enc.val window ++ haltText enc.val ++ unsupporte
                       | (i, r) <- zip [0 .. nregs] (map X86.Asm.regOfNum abi.wordRegs), which r ]
 
         ||| A part of the closure header in `rax`, extracted into a register.
-        part : X86.Asm.Reg64 -> HeapObj.Header.HeaderPart HeapObj.Kind.CLOSURE -> List X86.Asm.Instr
-        part r p = X86.Asm.extractField r (cast (fst (HeapObj.Header.place p))) (cast (snd (HeapObj.Header.place p)))
+        part : X86.Asm.Reg64 -> Types.Header.HeaderPart Types.Kind.CLOSURE -> List X86.Asm.Instr
+        part r p = X86.Asm.extractField r (cast (fst (Types.Header.place p))) (cast (snd (Types.Header.place p)))
 
         -- local labels, below the program's
         extend, copy, copied, copyArgs, regs, initClosure, pcopy, pdone, slow : X86.Asm.Label

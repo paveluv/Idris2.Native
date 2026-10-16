@@ -9,29 +9,29 @@ module Native.Codegen.Strings
 
 import Data.List
 import Data.Vect
-import Native.HeapObj.BignumEnc as HeapObj
-import Native.HeapObj.Enc as HeapObj
-import Native.HeapObj.Header as HeapObj
-import Native.HeapObj.Kind
-import Native.HeapObj.Shape
-import Native.HeapObj.StringEnc
+import Native.HeapObj.Shape as HeapObj
 import Native.HeapObj.ValEnc as HeapObj
+import Native.Types.BignumEnc as Types
+import Native.Types.Enc as Types
+import Native.Types.Header as Types
+import Native.Types.Kind
+import Native.Types.StringEnc
 
 %default total
 
 ||| The static object of a literal under the program's encodings: its header
 ||| and the words after it.
 export
-literal : (enc : HeapObj.Enc) -> String ->
-          Maybe (h : HeapObj.Header enc HeapObj.Kind.STRING ** Vect (HeapObj.Header.fieldWords h) Int64)
+literal : (enc : Types.Enc) -> String ->
+          Maybe (h : Types.Header enc Types.Kind.STRING ** Vect (Types.Header.fieldWords h) Int64)
 literal enc s = case enc of
-  HeapObj.MkEnc _ _ HeapObj.StringEnc.Utf8 =>
+  Types.MkEnc _ _ Types.StringEnc.Utf8 =>
                    let bs = encodeAll utf8 (unpack s)
-                       h = HeapObj.Header.StringH (all (< 0x80) bs) (length bs)
+                       h = Types.Header.StringH (all (< 0x80) bs) (length bs)
                    in map (\ws => (h ** ws)) (toVect _ (words bs))
-  HeapObj.MkEnc _ _ HeapObj.StringEnc.Utf32 =>
+  Types.MkEnc _ _ Types.StringEnc.Utf32 =>
                    let cs = unpack s
-                       h = HeapObj.Header.StringCharsH (length cs)
+                       h = Types.Header.StringCharsH (length cs)
                    in map (\ws => (h ** ws)) (toVect _ (words (encodeAll utf32 cs)))
   where
     ||| The UTF-8 bytes of a character, shortest form.

@@ -32,11 +32,11 @@ import Data.List
 import Data.SortedMap
 import Data.Vect
 import Native.Codegen.Platform
-import Native.HeapObj.Enc as HeapObj
 import Native.Intrinsics
 import Native.Port
 import Native.Routines
 import Native.Services
+import Native.Types.Enc as Types
 
 %default covering
 
@@ -63,7 +63,7 @@ record Realised where
 ||| The contract as the loaded runtime realises it, for the platform and the
 ||| encodings, or what is missing.
 export
-realise : {auto c : Ref Ctxt Defs} -> Platform -> HeapObj.Enc -> Core (Either String Realised)
+realise : {auto c : Ref Ctxt Defs} -> Platform -> Types.Enc -> Core (Either String Realised)
 realise platform enc = do
   Right rs <- fieldsOf (in' (RuntimeModule.runtimeModule "Routines") "routines") 4
     | Left e => pure (Left e)

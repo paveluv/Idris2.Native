@@ -32,11 +32,11 @@ import Native.Codegen.TermIR.StaticDef
 import Native.Codegen.TermIR.StaticSig
 import Native.Codegen.TermIR.Var
 import Native.Data.Distinct
-import Native.HeapObj.Enc
-import Native.HeapObj.Header
-import Native.HeapObj.Kind
 import Native.HeapObj.Shape
 import Native.HeapObj.ValEnc
+import Native.Types.Enc
+import Native.Types.Header
+import Native.Types.Kind
 
 %default total
 

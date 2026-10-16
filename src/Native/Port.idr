@@ -12,7 +12,7 @@
 ||| from the port, the same data. Neither restates the other.
 |||
 ||| Part of the contract between compiled code and the runtime, with the
-||| heap-object model (`HeapObj.Enc` says what it is).
+||| heap-object model (`HeapObj.Shape` says what it is).
 module Native.Port
 
 import Native.Flat.Uniform as Flat

@@ -7,7 +7,7 @@ module Native.Codegen.Linkage.RuntimeModule
 
 import Core.Name.Namespace
 import Data.String
-import Native.HeapObj.StringEnc as HeapObj
+import Native.Types.StringEnc as Types
 
 %default total
 
@@ -33,6 +33,6 @@ inRuntime ns = let s = show ns in s == runtimeRoot || isPrefixOf (runtimeRoot ++
 ||| module of the runtime that reads a string's header or bytes. Every other
 ||| part of the runtime asks it. None yet for UTF-32.
 export
-stringModule : HeapObj.StringEnc -> Maybe Namespace
-stringModule HeapObj.StringEnc.Utf8 = Just (runtimeModule "String.Utf8")
-stringModule HeapObj.StringEnc.Utf32 = Nothing
+stringModule : Types.StringEnc -> Maybe Namespace
+stringModule Types.StringEnc.Utf8 = Just (runtimeModule "String.Utf8")
+stringModule Types.StringEnc.Utf32 = Nothing

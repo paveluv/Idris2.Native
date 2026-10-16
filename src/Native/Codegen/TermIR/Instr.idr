@@ -22,10 +22,10 @@ import Native.Codegen.IRCommon.Conv
 import Native.Codegen.IRCommon.Intrinsic as IRCommon
 import Native.Codegen.IRCommon.Op
 import Native.Codegen.IRCommon.Ty as IRCommon
-import Native.HeapObj.Enc as HeapObj
-import Native.HeapObj.Header as HeapObj
-import Native.HeapObj.Kind as HeapObj
 import Native.HeapObj.ValEnc
+import Native.Types.Enc as Types
+import Native.Types.Header as Types
+import Native.Types.Kind as Types
 
 %default total
 
@@ -83,26 +83,26 @@ data Instr : Decls enc -> Bool -> (var : IRCommon.Ty enc -> Type) -> List (IRCom
   NarrowFix : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Opnd var IRCommon.Ty.Val ->
               Instr d m var [IRCommon.Ty.Fix {enc}]
   ||| A `Val` the producer knows points to an object of the kind.
-  NarrowPtr : (k : HeapObj.Kind) -> Opnd var IRCommon.Ty.Val -> Instr d m var [IRCommon.Ty.PtrTo k]
+  NarrowPtr : (k : Types.Kind) -> Opnd var IRCommon.Ty.Val -> Instr d m var [IRCommon.Ty.PtrTo k]
   WidenFix : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Opnd var (IRCommon.Ty.Fix {enc}) ->
              Instr d m var [IRCommon.Ty.Val]
   WidenPtr : Opnd var (IRCommon.Ty.PtrTo k) -> Instr d m var [IRCommon.Ty.Val]
   AddrToWord : Opnd var (IRCommon.Ty.PtrTo k) -> Instr d True var [IRCommon.Ty.W64]
-  WordToAddr : (k : HeapObj.Kind) -> Opnd var IRCommon.Ty.W64 -> Instr d True var [IRCommon.Ty.PtrTo k]
+  WordToAddr : (k : Types.Kind) -> Opnd var IRCommon.Ty.W64 -> Instr d True var [IRCommon.Ty.PtrTo k]
   ||| The word a `Val` is, and the `Val` a word is, of any value: restricted
   ||| as `AddrToWord` is.
   ValToWord : Opnd var IRCommon.Ty.Val -> Instr d True var [IRCommon.Ty.W64]
   WordToVal : Opnd var IRCommon.Ty.W64 -> Instr d True var [IRCommon.Ty.Val]
   ||| The header word of an object; a continuation's layout word.
   LoadHeader : Opnd var (IRCommon.Ty.PtrTo k) -> Instr d m var [IRCommon.Ty.W64]
-  LoadPart : {0 k : HeapObj.Kind} -> HeapObj.Header.HeaderPart k -> Opnd var (IRCommon.Ty.PtrTo k) ->
+  LoadPart : {0 k : Types.Kind} -> Types.Header.HeaderPart k -> Opnd var (IRCommon.Ty.PtrTo k) ->
              Instr d m var [IRCommon.Ty.W64]
   ||| A whole object in one step, from a header known when the program is
   ||| compiled and its fields.
-  AllocObj : {k : HeapObj.Kind} -> (h : HeapObj.Header enc k) -> {auto 0 ok : So (wellFormed h)} ->
+  AllocObj : {k : Types.Kind} -> (h : Types.Header enc k) -> {auto 0 ok : So (wellFormed h)} ->
              All (Opnd var) (fieldTys h) -> Instr d m var [IRCommon.Ty.PtrTo k]
   ||| A whole object of a size known at run time: the count is the part.
-  AllocSized : {k : HeapObj.Kind} -> (p : HeapObj.Header.HeaderPart k) -> {auto 0 sizes : Sizes p} ->
+  AllocSized : {k : Types.Kind} -> (p : Types.Header.HeaderPart k) -> {auto 0 sizes : Sizes p} ->
                (count : Opnd var IRCommon.Ty.W64) ->
                Sizes.Fill var p -> Instr d m var [IRCommon.Ty.PtrTo k]
   ||| A machine call of a Direct function, binding its results.
@@ -147,28 +147,28 @@ traverseInstr g (WordToVal x) = WordToVal <$> g x
 traverseInstr g (LoadHeader x) = LoadHeader <$> g x
 traverseInstr g (LoadPart p x) = LoadPart p <$> g x
 traverseInstr g (AllocObj h {ok} fs) = (\fs' => AllocObj h {ok} fs') <$> Opnd.traverseAll g fs
-traverseInstr g (AllocSized HeapObj.Header.ArrayElems {sizes} c f) =
-  [| (\c', f' => AllocSized HeapObj.Header.ArrayElems {sizes} c' f') (g c) (g f) |]
-traverseInstr g (AllocSized HeapObj.Header.StringAscii {sizes} c f) =
-  (\c' => AllocSized HeapObj.Header.StringAscii {sizes} c' f) <$> g c
-traverseInstr g (AllocSized HeapObj.Header.StringBytes {sizes} c f) =
-  (\c' => AllocSized HeapObj.Header.StringBytes {sizes} c' f) <$> g c
-traverseInstr g (AllocSized HeapObj.Header.StringChars {sizes} c f) =
-  (\c' => AllocSized HeapObj.Header.StringChars {sizes} c' f) <$> g c
-traverseInstr g (AllocSized HeapObj.Header.BufferBytes {sizes} c f) =
-  (\c' => AllocSized HeapObj.Header.BufferBytes {sizes} c' f) <$> g c
-traverseInstr g (AllocSized HeapObj.Header.ConId {sizes} c f) =
-  (\c' => AllocSized HeapObj.Header.ConId {sizes} c' f) <$> g c
-traverseInstr g (AllocSized HeapObj.Header.ConArity {sizes} c f) =
-  (\c' => AllocSized HeapObj.Header.ConArity {sizes} c' f) <$> g c
-traverseInstr g (AllocSized HeapObj.Header.ClosureArity {sizes} c f) =
-  (\c' => AllocSized HeapObj.Header.ClosureArity {sizes} c' f) <$> g c
-traverseInstr g (AllocSized HeapObj.Header.ClosureFilled {sizes} c f) =
-  (\c' => AllocSized HeapObj.Header.ClosureFilled {sizes} c' f) <$> g c
-traverseInstr g (AllocSized HeapObj.Header.BignumNegative {sizes} c f) =
-  (\c' => AllocSized HeapObj.Header.BignumNegative {sizes} c' f) <$> g c
-traverseInstr g (AllocSized HeapObj.Header.BignumWords {sizes} c f) =
-  (\c' => AllocSized HeapObj.Header.BignumWords {sizes} c' f) <$> g c
+traverseInstr g (AllocSized Types.Header.ArrayElems {sizes} c f) =
+  [| (\c', f' => AllocSized Types.Header.ArrayElems {sizes} c' f') (g c) (g f) |]
+traverseInstr g (AllocSized Types.Header.StringAscii {sizes} c f) =
+  (\c' => AllocSized Types.Header.StringAscii {sizes} c' f) <$> g c
+traverseInstr g (AllocSized Types.Header.StringBytes {sizes} c f) =
+  (\c' => AllocSized Types.Header.StringBytes {sizes} c' f) <$> g c
+traverseInstr g (AllocSized Types.Header.StringChars {sizes} c f) =
+  (\c' => AllocSized Types.Header.StringChars {sizes} c' f) <$> g c
+traverseInstr g (AllocSized Types.Header.BufferBytes {sizes} c f) =
+  (\c' => AllocSized Types.Header.BufferBytes {sizes} c' f) <$> g c
+traverseInstr g (AllocSized Types.Header.ConId {sizes} c f) =
+  (\c' => AllocSized Types.Header.ConId {sizes} c' f) <$> g c
+traverseInstr g (AllocSized Types.Header.ConArity {sizes} c f) =
+  (\c' => AllocSized Types.Header.ConArity {sizes} c' f) <$> g c
+traverseInstr g (AllocSized Types.Header.ClosureArity {sizes} c f) =
+  (\c' => AllocSized Types.Header.ClosureArity {sizes} c' f) <$> g c
+traverseInstr g (AllocSized Types.Header.ClosureFilled {sizes} c f) =
+  (\c' => AllocSized Types.Header.ClosureFilled {sizes} c' f) <$> g c
+traverseInstr g (AllocSized Types.Header.BignumNegative {sizes} c f) =
+  (\c' => AllocSized Types.Header.BignumNegative {sizes} c' f) <$> g c
+traverseInstr g (AllocSized Types.Header.BignumWords {sizes} c f) =
+  (\c' => AllocSized Types.Header.BignumWords {sizes} c' f) <$> g c
 traverseInstr g (DirectCall r xs) = DirectCall r <$> Opnd.traverseAll g xs
 traverseInstr g (Intrinsic i xs) = Intrinsic i <$> Opnd.traverseAll g xs
 traverseInstr g (Loc fc) = pure (Loc fc)

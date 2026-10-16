@@ -19,8 +19,6 @@ module Probe
 -- re-export; flat code that reaches into them imports those too
 import Native.Flat.Uniform
 import Native.Heap
-import Native.HeapObj.Header
-import Native.HeapObj.Kind
 import Native.HeapObj.Shape
 import Native.Runtime.Bits
 import Native.Runtime.Memory
@@ -28,6 +26,8 @@ import Native.Runtime.Object
 import Native.Runtime.Space
 import Native.Runtime.State
 import Native.Runtime.String.Utf8
+import Native.Types.Header
+import Native.Types.Kind
 
 -- this module's `do` is the runtime's, over the token
 %hide Prelude.Interfaces.(>>=)

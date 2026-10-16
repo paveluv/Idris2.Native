@@ -18,11 +18,11 @@ import Native.Codegen.Link
 import Native.Codegen.Linkage.Sym
 import Native.Codegen.X86.Asm
 import Native.Codegen.X86.Encode
-import Native.HeapObj.Enc
-import Native.HeapObj.Header
-import Native.HeapObj.Kind
 import Native.HeapObj.Shape
 import Native.HeapObj.ValEnc
+import Native.Types.Enc
+import Native.Types.Header
+import Native.Types.Kind
 import System.File
 
 ||| The word of fixnum n, under fixnum tag 1.

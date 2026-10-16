@@ -21,9 +21,9 @@ import Native.Codegen.IRCommon.Conv as IRCommon
 import Native.Codegen.IRCommon.Op
 import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.Data.Builder as Data
-import Native.HeapObj.Enc as HeapObj
-import Native.HeapObj.Header as HeapObj
-import Native.HeapObj.Kind as HeapObj
+import Native.Types.Enc as Types
+import Native.Types.Header as Types
+import Native.Types.Kind as Types
 
 %default covering
 

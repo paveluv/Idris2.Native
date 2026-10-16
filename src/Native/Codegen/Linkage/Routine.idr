@@ -30,9 +30,9 @@ import Core.Name
 import Core.Name.Namespace
 import Data.List
 import Native.Codegen.IRCommon.Ty as IRCommon
-import Native.HeapObj.Enc as HeapObj
 import Native.Port
 import Native.Routines
+import Native.Types.Enc as Types
 
 %default total
 
@@ -45,7 +45,7 @@ flatName n = NS (mkNamespace "_flat") n
 
 ||| A routine of the runtime that generated code reaches.
 public export
-record Routine (enc : HeapObj.Enc) where
+record Routine (enc : Types.Enc) where
   constructor MkRoutine
   ||| The function of the runtime library that is the routine; for one the
   ||| runtime does not have yet, the name its calls use.
@@ -112,7 +112,7 @@ stringRoutine r field = case r.strings of
 ||| encoding's as the loaded runtime realises them, and the `Integer`
 ||| operations, which the runtime has none of yet.
 export
-routines : {enc : HeapObj.Enc} -> Realised -> List (Routine enc)
+routines : {enc : Types.Enc} -> Realised -> List (Routine enc)
 routines r =
   map (\(_ ** x) => x) (Routines.routineList (Routines.zipRoutines generic r.routines symbols))
     ++ strings
@@ -161,7 +161,7 @@ routines r =
 
 ||| The symbol the routine whose function has the name is reached by.
 export
-routineSymbol : {enc : HeapObj.Enc} -> Realised -> Name -> Maybe Sym
+routineSymbol : {enc : Types.Enc} -> Realised -> Name -> Maybe Sym
 routineSymbol r n = do
   x <- find (\x => x.provided && flatName x.name == n) (routines {enc} r)
   x.symbol

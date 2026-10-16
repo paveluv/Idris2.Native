@@ -8,7 +8,7 @@ module Native.Codegen.LocatedIR.Opnd
 import Native.Codegen.LocatedIR.Reg
 
 import Core.Name
-import Native.HeapObj.Enc as HeapObj
+import Native.Types.Enc as Types
 
 %default total
 
@@ -21,7 +21,7 @@ import Native.HeapObj.Enc as HeapObj
 ||| fixnum 0, which as a `Val` is also the erased value, under every value
 ||| encoding.
 public export
-data Opnd : HeapObj.Enc -> Type where
+data Opnd : Types.Enc -> Type where
   R : Reg enc -> Opnd enc
   Imm : Int64 -> Opnd enc
   ||| The address of a static object, as a value. A static never moves, so

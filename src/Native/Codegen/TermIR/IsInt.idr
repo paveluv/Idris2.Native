@@ -4,8 +4,8 @@
 module Native.Codegen.TermIR.IsInt
 
 import Native.Codegen.IRCommon.Ty as IRCommon
-import Native.HeapObj.Enc as HeapObj
 import Native.HeapObj.ValEnc
+import Native.Types.Enc as Types
 
 %default total
 

@@ -34,8 +34,8 @@ import Native.Codegen.IRCommon.Conv as IRCommon
 import Native.Codegen.IRCommon.Op
 import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.Data.Distinct
-import Native.HeapObj.Enc as HeapObj
 import Native.HeapObj.ValEnc
+import Native.Types.Enc as Types
 
 %default total
 

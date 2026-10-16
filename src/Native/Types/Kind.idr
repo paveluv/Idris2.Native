@@ -1,15 +1,18 @@
 ||| The kinds of heap object (`Kind`), each with its layout, and each kind's
 ||| shape and tag, in the low bits of a header word.
 |||
-||| Part of the heap-object model, the contract between compiled code and the
-||| runtime (`HeapObj.Enc` says what it is): it imports
-||| nothing from the compiler, so that the runtime's own Idris can import it.
-module Native.HeapObj.Kind
-
-import Native.HeapObj.Shape
+||| Part of the type layer, the modules of `Types`: the built-in types as
+||| the heap-object model lays objects out (`HeapObj.Shape`), each kind a
+||| shape and a tag, with their headers (`Types.Header`) and the encodings
+||| of strings and bignums (`Types.Enc`). The code generator and the
+||| runtime's support tier read it; the runtime's core, which knows objects
+||| by their shapes alone, never does. It imports nothing from the compiler,
+||| so that the runtime's own Idris can import it.
+module Native.Types.Kind
 
 import Decidable.Equality
 import Decidable.Equality.Core
+import Native.HeapObj.Shape as HeapObj
 
 %default total
 
@@ -64,17 +67,17 @@ data Kind
 ||| The shape a kind's objects have (`HeapObj.Shape`); a continuation has no
 ||| header, and so no shape.
 public export
-shapeOf : Kind -> Maybe Shape
-shapeOf CON = Just VALUES
-shapeOf IOREF = Just VALUES
-shapeOf ARRAY = Just VALUES
-shapeOf CLOSURE = Just MIXED
-shapeOf INT64 = Just RAW
-shapeOf DOUBLE = Just RAW
-shapeOf PTR = Just RAW
-shapeOf STRING = Just RAW
-shapeOf BUFFER = Just RAW
-shapeOf BIGNUM = Just RAW
+shapeOf : Kind -> Maybe HeapObj.Shape
+shapeOf CON = Just HeapObj.Shape.VALUES
+shapeOf IOREF = Just HeapObj.Shape.VALUES
+shapeOf ARRAY = Just HeapObj.Shape.VALUES
+shapeOf CLOSURE = Just HeapObj.Shape.MIXED
+shapeOf INT64 = Just HeapObj.Shape.RAW
+shapeOf DOUBLE = Just HeapObj.Shape.RAW
+shapeOf PTR = Just HeapObj.Shape.RAW
+shapeOf STRING = Just HeapObj.Shape.RAW
+shapeOf BUFFER = Just HeapObj.Shape.RAW
+shapeOf BIGNUM = Just HeapObj.Shape.RAW
 shapeOf CONT = Nothing
 
 ||| The kind's tag, which tells it apart from the other kinds of its shape.
@@ -97,7 +100,7 @@ tagOf CONT = 0
 ||| with; 0 for a continuation, whose first word has bits 0..3 zero.
 public export
 code : Kind -> Bits64
-code k = maybe 0 (\s => shapeId s + fieldBits {s} Tag (tagOf k)) (shapeOf k)
+code k = maybe 0 (\s => HeapObj.Shape.shapeId s + HeapObj.Shape.fieldBits {s} HeapObj.Shape.Tag (tagOf k)) (shapeOf k)
 
 ||| The kind with this code, if any.
 public export

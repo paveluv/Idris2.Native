@@ -5,9 +5,9 @@
 module Native.Codegen.LocatedIR.Static
 
 import Core.Name
-import Native.HeapObj.Enc as HeapObj
-import Native.HeapObj.Header as HeapObj
-import Native.HeapObj.Kind as HeapObj
+import Native.Types.Enc as Types
+import Native.Types.Header as Types
+import Native.Types.Kind as Types
 
 %default total
 
@@ -30,9 +30,9 @@ data SField
 ||| header. A static never points into a collected space, which lets the
 ||| collector recognise statics by address alone and leave them untouched.
 public export
-record Static (enc : HeapObj.Enc) where
+record Static (enc : Types.Enc) where
   constructor MkStatic
   sym : Name
-  kind : HeapObj.Kind
-  header : HeapObj.Header enc kind
+  kind : Types.Kind
+  header : Types.Header enc kind
   fields : List SField

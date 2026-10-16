@@ -15,8 +15,8 @@ import Native.Codegen.X86.Encode
 
 import Data.Maybe
 import Data.SortedMap
-import Native.HeapObj.Enc as HeapObj
 import Native.HeapObj.ValEnc
+import Native.Types.Enc as Types
 
 %default total
 
@@ -32,7 +32,7 @@ import Native.HeapObj.ValEnc
 ||| 8-aligned, at its label. Fails with what it could not assemble: labels it
 ||| could not resolve, and fields that do not fit.
 export
-linkProgram : (enc : HeapObj.Enc) -> {auto 0 _ : HeapObj.ValEnc.HasFixnums enc.val} ->
+linkProgram : (enc : Types.Enc) -> {auto 0 _ : HeapObj.ValEnc.HasFixnums enc.val} ->
               (window : Int) -> (areas : Linkage.Areas) -> (program : List X86.Asm.Instr) ->
               (rodata : List (X86.Asm.Label, List Bits8)) -> Either (List X86.Encode.AsmProblem) ELF.Image
 linkProgram enc window areas program items =
@@ -68,12 +68,12 @@ windowBytes = 4 * 1024 * 1024
 ||| `linkProgram` for a program that uses no per-thread area beyond the
 ||| seed's, with no read-only data of its own.
 export
-linkWith : (enc : HeapObj.Enc) -> {auto 0 _ : HeapObj.ValEnc.HasFixnums enc.val} ->
+linkWith : (enc : Types.Enc) -> {auto 0 _ : HeapObj.ValEnc.HasFixnums enc.val} ->
            (window : Int) -> (program : List X86.Asm.Instr) -> Either (List X86.Encode.AsmProblem) ELF.Image
 linkWith enc window program = linkProgram enc window Seed.seedAreas program []
 
 ||| `linkWith` the default window.
 export
-link : (enc : HeapObj.Enc) -> {auto 0 _ : HeapObj.ValEnc.HasFixnums enc.val} ->
+link : (enc : Types.Enc) -> {auto 0 _ : HeapObj.ValEnc.HasFixnums enc.val} ->
        (program : List X86.Asm.Instr) -> Either (List X86.Encode.AsmProblem) ELF.Image
 link enc = linkWith enc windowBytes

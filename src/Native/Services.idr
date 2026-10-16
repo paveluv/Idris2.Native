@@ -13,7 +13,7 @@
 ||| `services`).
 |||
 ||| Part of the contract between compiled code and the runtime, with the
-||| heap-object model (`HeapObj.Enc` says what it is).
+||| heap-object model (`HeapObj.Shape` says what it is).
 module Native.Services
 
 import Native.Heap

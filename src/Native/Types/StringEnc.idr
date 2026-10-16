@@ -1,10 +1,10 @@
 ||| How a `String` is laid out (`StringEnc`), one of the program's encodings
-||| (`HeapObj.Enc`).
+||| (`Types.Enc`).
 |||
-||| Part of the heap-object model, the contract between compiled code and
-||| the runtime (`HeapObj.Enc` says what it is): it imports nothing from the
-||| compiler, so that the runtime's own Idris can import it.
-module Native.HeapObj.StringEnc
+||| Part of the type layer, the modules of `Types` (`Types.Kind` says what
+||| it is): it imports nothing from the compiler, so that the runtime's own
+||| Idris can import it.
+module Native.Types.StringEnc
 
 %default total
 

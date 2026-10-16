@@ -56,12 +56,12 @@ import Native.Codegen.X86.Encode
 import Native.Codegen.X86.Render
 import Native.Codegen.X86.Target
 import Native.Data.Distinct
-import Native.HeapObj.BignumEnc
-import Native.HeapObj.Enc
-import Native.HeapObj.StringEnc
 import Native.HeapObj.ValEnc
 import Native.Port
 import Native.Routines
+import Native.Types.BignumEnc
+import Native.Types.Enc
+import Native.Types.StringEnc
 import System.File
 
 %default total

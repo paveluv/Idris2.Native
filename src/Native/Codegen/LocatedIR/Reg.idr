@@ -6,7 +6,7 @@
 module Native.Codegen.LocatedIR.Reg
 
 import Native.Codegen.IRCommon.Ty as IRCommon
-import Native.HeapObj.Enc as HeapObj
+import Native.Types.Enc as Types
 
 %default total
 
@@ -22,7 +22,7 @@ import Native.HeapObj.Enc as HeapObj
 ||| reads it, to tell the GC-visible members of a `live` list from the raw
 ||| ones, among others.
 public export
-data Reg : HeapObj.Enc -> Type where
+data Reg : Types.Enc -> Type where
   Slot : (n : Nat) -> IRCommon.Ty enc -> Reg enc
 
 public export

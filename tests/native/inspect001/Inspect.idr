@@ -20,11 +20,11 @@ import Native.Codegen.Linkage.Sym
 import Native.Codegen.Platform
 import Native.Codegen.Target
 import Native.Codegen.X86.Asm
-import Native.HeapObj.Enc
-import Native.HeapObj.Header
-import Native.HeapObj.Kind
 import Native.HeapObj.Shape
 import Native.HeapObj.ValEnc
+import Native.Types.Enc
+import Native.Types.Header
+import Native.Types.Kind
 import System
 
 %language ElabReflection

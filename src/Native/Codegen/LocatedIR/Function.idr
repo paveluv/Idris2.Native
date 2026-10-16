@@ -11,7 +11,7 @@ import Native.Codegen.LocatedIR.Reg
 import Core.FC
 import Core.Name
 import Native.Codegen.IRCommon.Conv as IRCommon
-import Native.HeapObj.Enc as HeapObj
+import Native.Types.Enc as Types
 
 %default total
 
@@ -22,7 +22,7 @@ import Native.HeapObj.Enc as HeapObj
 ||| function has none, and delivers one `Val` to its continuation by
 ||| `Return`.
 public export
-record Function (enc : HeapObj.Enc) where
+record Function (enc : Types.Enc) where
   constructor MkFunction
   name : Name
   conv : IRCommon.Conv enc

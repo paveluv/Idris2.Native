@@ -62,9 +62,9 @@ import Decidable.Equality.Core
 import Native.Data.Distinct
 import Native.Flat.ConstType
 import Native.Flat.Exp as Flat
-import Native.HeapObj.Enc as HeapObj
-import Native.HeapObj.Kind as HeapObj
 import Native.HeapObj.ValEnc
+import Native.Types.Enc as Types
+import Native.Types.Kind as Types
 
 %default covering
 
@@ -114,7 +114,7 @@ formSig fd =
 
 ||| A flat value: its layout and its registers.
 public export
-record Value (enc : HeapObj.Enc) (v : IRCommon.Ty enc -> Type) where
+record Value (enc : Types.Enc) (v : IRCommon.Ty enc -> Type) where
   constructor MkValue
   layout : Flat.Exp.Layout
   regs : All (TermIR.Opnd v) (tys layout)
@@ -306,7 +306,7 @@ data Held = Narrower IRCommon.Op.SubWord Bool | Whole Bool
 ||| function that implements it on the platform, and the inline externs,
 ||| each with the instruction it stands for.
 public export
-record Forms (enc : HeapObj.Enc) (d : TermIR.Decls enc) where
+record Forms (enc : Types.Enc) (d : TermIR.Decls enc) where
   constructor MkForms
   callees : SortedMap Name (Callee d)
   shapes : Flat.Exp.Shapes
@@ -314,10 +314,10 @@ record Forms (enc : HeapObj.Enc) (d : TermIR.Decls enc) where
   externs : SortedMap Name Linkage.InlineExtern
 
 ||| Each variable in scope: its type's skeleton and its value.
-Env : (enc : HeapObj.Enc) -> (IRCommon.Ty enc -> Type) -> Type
+Env : (enc : Types.Enc) -> (IRCommon.Ty enc -> Type) -> Type
 Env enc v = SortedMap Name (Flat.Exp.Skeleton, Value enc v)
 
-parameters {enc : HeapObj.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self : Flat.Exp.FlatDef) (m : Bool)
+parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self : Flat.Exp.FlatDef) (m : Bool)
            {0 v : IRCommon.Ty enc -> Type} {0 l : List (IRCommon.Ty enc) -> Type}
 
   0 B : Type -> Type
@@ -795,7 +795,7 @@ parameters {enc : HeapObj.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self
 ||| A form as the body of its `Direct` function. A form that calls itself
 ||| is a loop, which a call in tail position jumps back to.
 export
-lowerForm : {enc : HeapObj.Enc} -> (0 d : TermIR.Decls enc) -> Forms enc d -> (fd : Flat.Exp.FlatDef) ->
+lowerForm : {enc : Types.Enc} -> (0 d : TermIR.Decls enc) -> Forms enc d -> (fd : Flat.Exp.FlatDef) ->
             TermIR.Build.Closed d (IRCommon.Conv.Direct (tys fd.result) False) (Linkage.ConvertsIn.convertsIn fd.name)
               (tys (paramsLayout fd.params))
 lowerForm d pr fd = TermIR.Build.build $ \xs =>

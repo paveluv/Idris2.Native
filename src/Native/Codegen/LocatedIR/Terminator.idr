@@ -11,15 +11,15 @@ import Native.Codegen.LocatedIR.Reg
 
 import Core.Name
 import Native.Codegen.IRCommon.Op
-import Native.HeapObj.Enc as HeapObj
 import Native.HeapObj.ValEnc
+import Native.Types.Enc as Types
 
 %default total
 
 ||| How a block ends; every block ends in exactly one terminator. Which ones a
 ||| function may use depends on its convention (`Conv`).
 public export
-data Terminator : HeapObj.Enc -> Type where
+data Terminator : Types.Enc -> Type where
   ||| Continue at the block.
   Jump        : Label -> Terminator enc
   ||| Branch on whether every one of the `Val`s is a fixnum, that is, on their

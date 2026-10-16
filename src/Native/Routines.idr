@@ -10,7 +10,7 @@
 ||| each routine, and the registers of its calls from the port.
 |||
 ||| Part of the contract between compiled code and the runtime, with the
-||| heap-object model (`HeapObj.Enc` says what it is).
+||| heap-object model (`HeapObj.Shape` says what it is).
 module Native.Routines
 
 import Native.Port
