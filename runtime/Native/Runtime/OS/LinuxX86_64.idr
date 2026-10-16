@@ -2,24 +2,23 @@
 ||| stable system-call ABI: the number in rax and the arguments in rdi, rsi,
 ||| rdx, r10, r8 and r9, the result in rax, an error as a number from -4095
 ||| to -1. The numbers here are x86-64's; another architecture's Linux has
-||| its own. This module's record of them (`services`) is what the native
-||| code generator binds the services' externs (`Native.Services`) to when a
-||| program is compiled for x86-64 Linux, and it loads this module for it;
-||| nothing in the generic runtime imports it.
+||| its own. Each function is declared by its service's port
+||| (`Native.Service`), which Idris checks; the native code generator finds
+||| each by that type, and binds the service's extern to it when a program
+||| is compiled for x86-64 Linux, loading this module for it. Nothing in the
+||| generic runtime imports it.
 module Native.Runtime.OS.LinuxX86_64
 
 import Native.Runtime.OS.Syscall
 
-import Native.HeapObj.Shape as HeapObj
--- lint: allow import-unused: the record's fields unfold to its ports' types, which
--- Idris compares with the record's entries only where `Native.Port` is imported
+import Native.HeapObj.Shape
 import Native.Port
 import Native.Runtime.Heap
 import Native.Runtime.Memory
 import Native.Runtime.PortTy
 import Native.Runtime.Raw
 import Native.Runtime.State
-import Native.Services
+import Native.Service
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
@@ -33,7 +32,7 @@ failed r = r > 0xFFFFFFFFFFFFF000
 
 %cg native flat Runtime.OS.LinuxX86_64.exit
 export
-exit : (status : Bits64) -> Heap.Op Heap ()
+exit : PortTy Memory.Addr (Service.port Service.Exit)
 exit status = do
   -- exit_group(status)
   _ <- Syscall.syscall 231 status 0 0 0 0 0
@@ -41,7 +40,7 @@ exit status = do
 
 %cg native flat Runtime.OS.LinuxX86_64.write
 export
-write : (handle : Bits64) -> (address : Raw) -> (bytes : Bits64) -> Heap.Op Heap Bits64
+write : PortTy Memory.Addr (Service.port Service.Write)
 write handle address bytes = do
   -- write(handle, address, bytes)
   r <- Syscall.syscall 1 handle (Raw.rawWord address) bytes 0 0 0
@@ -49,7 +48,7 @@ write handle address bytes = do
 
 %cg native flat Runtime.OS.LinuxX86_64.reserve
 export
-reserve : (bytes : Bits64) -> Heap.Op Heap Raw
+reserve : PortTy Memory.Addr (Service.port Service.Reserve)
 reserve bytes = do
   -- mmap(NULL, bytes, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0):
   -- no overcommit setting counts a range that is not readable
@@ -59,7 +58,7 @@ reserve bytes = do
 
 %cg native flat Runtime.OS.LinuxX86_64.commit
 export
-commit : (address : Raw) -> (bytes : Bits64) -> Heap.Op Heap Bits64
+commit : PortTy Memory.Addr (Service.port Service.Commit)
 commit address bytes = do
   -- mprotect(address, bytes, PROT_READ | PROT_WRITE): the pages are zero when first touched
   r <- Syscall.syscall 10 (Raw.rawWord address) bytes 3 0 0 0
@@ -67,7 +66,7 @@ commit address bytes = do
 
 %cg native flat Runtime.OS.LinuxX86_64.release
 export
-release : (address : Raw) -> (bytes : Bits64) -> Heap.Op Heap ()
+release : PortTy Memory.Addr (Service.port Service.Release)
 release address bytes = do
   -- madvise(address, bytes, MADV_DONTNEED), then mprotect(address, bytes, PROT_NONE)
   _ <- Syscall.syscall 28 (Raw.rawWord address) bytes 4 0 0 0
@@ -76,12 +75,12 @@ release address bytes = do
 
 %cg native flat Runtime.OS.LinuxX86_64.pageBytes
 export
-pageBytes : Heap.Op Heap Bits64
+pageBytes : PortTy Memory.Addr (Service.port Service.PageBytes)
 pageBytes = Heap.pure 4096
 
 %cg native flat Runtime.OS.LinuxX86_64.stackLimit
 export
-stackLimit : Heap.Op Heap Bits64
+stackLimit : PortTy Memory.Addr (Service.port Service.StackLimit)
 stackLimit = do
   -- getrlimit(RLIMIT_STACK, buffer): the soft limit in the buffer's first word,
   -- left 0 if the call fails
@@ -89,13 +88,3 @@ stackLimit = do
   Memory.storeAt buffer 0 0
   _ <- Syscall.syscall 97 3 (Raw.rawWord buffer) 0 0 0 0
   Memory.loadAt buffer 0
-
-||| The services on x86-64 Linux, each checked against its port: the
-||| record the code generator binds `Native.Services`'s externs to.
-export
-services : Services (PortTy (\s => Memory.Addr s))
-services =
-  MkServices
-    { exit = LinuxX86_64.exit, write = LinuxX86_64.write, reserve = LinuxX86_64.reserve
-    , commit = LinuxX86_64.commit, release = LinuxX86_64.release
-    , stackLimit = LinuxX86_64.stackLimit, pageBytes = LinuxX86_64.pageBytes }

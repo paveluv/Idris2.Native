@@ -7,6 +7,6 @@ Mismatch between: ?f (MkPort [Raw, Word] Nothing) -> Routines ?f and Routines (P
 allocSlow giving a raw address:
 Error: While processing right hand side of routines. When unifying:
 Mismatch between: Raw and Addr s.
-reserve and commit swapped:
-Error: While processing right hand side of services. When unifying:
-Mismatch between: Bits64 and Raw.
+reserve by commit's port:
+Error: While processing right hand side of reserve. When unifying:
+Mismatch between: Raw and Bits64.

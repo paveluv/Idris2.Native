@@ -14,11 +14,11 @@
 ||| `Native.Codegen.Link` makes the image.
 |||
 ||| The contract itself is shared, `Native.Port` and its entries
-||| (`Native.Routines`, `Native.Intrinsic`, `Native.Services`): each side
+||| (`Native.Routines`, `Native.Intrinsic`, `Native.Service`): each side
 ||| gives what it provides checked by Idris against the ports where that
 ||| side is built, and the code generator takes the registers of each call
 ||| from the ports, and the function or extern of each entry by its type (an
-||| inline extern) or from the record of them (the others). A routine the runtime gives must also have a
+||| inline extern, a service) or from the record of them (a routine). A routine the runtime gives must also have a
 ||| flat form, which the lowering checks. Code compiled to join a runtime
 ||| that is already built depends on the contract alone.
 module Native.Codegen.Linkage.Routine

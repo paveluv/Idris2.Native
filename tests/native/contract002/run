@@ -1,9 +1,10 @@
 . ../../testutils.sh
 
 # The runtime contract, checked where the runtime is built: each record the
-# runtime gives (its routines, the string encoding's, the platform's
-# services) is checked by Idris against the contract's ports, field by
-# field, and a record must give every field. A copy of the runtime with one
+# runtime gives (its routines, the string encoding's) is checked by Idris
+# against the contract's ports, field by field, and a record must give every
+# field; each function declared by a port (the platform's services) is
+# checked against it where it is defined. A copy of the runtime with one
 # fault at a time is built, and Idris's error shown, where it is and what
 # does not match:
 #
@@ -14,7 +15,8 @@
 #   registers, a word in and a word out, but gives a raw address where the
 #   port gives an object's address: refused, where a check of the registers
 #   alone would let it through;
-# * the platform's record has `reserve` and `commit` swapped.
+# * the platform's `reserve` is declared by `commit`'s port: its body, which
+#   gives an address, does not fit that port, which gives a word.
 fault() {
   rm -rf broken
   cp -r ../../../runtime broken
@@ -31,7 +33,6 @@ fault "no crash" Routines.idr -e 's/^    , crash = System.crash }/    }/'
 fault "allocSlow giving a raw address" Routines.idr \
   -e 's/allocSlow = Space.allocSlow/allocSlow = LinuxX86_64.reserve/' \
   -e 's/^import Native.Runtime.Memory$/import Native.Runtime.Memory\nimport Native.Runtime.OS.LinuxX86_64/'
-fault "reserve and commit swapped" OS/LinuxX86_64.idr \
-  -e 's/reserve = LinuxX86_64.reserve/reserve = LinuxX86_64.commit/' \
-  -e 's/commit = LinuxX86_64.commit/commit = LinuxX86_64.reserve/'
+fault "reserve by commit's port" OS/LinuxX86_64.idr \
+  -e 's/^reserve : PortTy Memory.Addr (Service.port Service.Reserve)$/reserve : PortTy Memory.Addr (Service.port Service.Commit)/'
 rm -rf broken

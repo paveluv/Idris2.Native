@@ -1,6 +1,7 @@
 ||| Where a platform's OS services are (`platformModule`): the module of the
-||| runtime that implements every service (`Native.Services` says what they
-||| are) for the platform, by its record `services`.
+||| runtime that implements every service (`Native.Service` says what they
+||| are) for the platform, by functions each declared by its service's
+||| port.
 |||
 ||| Part of what generated code, the runtime and the linker agree on
 ||| (`Native.Codegen.Linkage.Routine` says what it is).

@@ -92,7 +92,7 @@ modules =
     Native.Port,
     Native.Routines,
     Native.Types.StringRoutines,
-    Native.Services,
+    Native.Service,
     Native.Types.BignumEnc,
     Native.Types.Enc,
     Native.Types.Header,
