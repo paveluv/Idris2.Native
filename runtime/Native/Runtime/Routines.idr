@@ -13,7 +13,7 @@ import Native.Runtime.System
 -- lint: allow import-unused: the ports unfold to `Op Heap`, which Idris
 -- compares with the routines' types only where `Native.Heap` is imported
 import Native.Heap
-import Native.HeapObj.Kind as HeapObj
+import Native.HeapObj.Shape as HeapObj
 import Native.Port
 import Native.Routines
 
@@ -22,7 +22,7 @@ import Native.Routines
 ||| The routines generated code calls, each checked against its port: the
 ||| record the code generator reads for the function that implements each.
 export covering
-routines : Routines (Port.PortTy (\k => Memory.Addr k))
+routines : Routines (Port.PortTy (\s => Memory.Addr s))
 routines =
   MkRoutines
     { start = Start.start, allocSlow = Space.allocSlow, allocMutable = Space.allocMutable

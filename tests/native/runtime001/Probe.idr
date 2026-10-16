@@ -15,7 +15,7 @@ module Probe
 -- the runtime's functions use its own bit operations, which it does not
 -- re-export; flat code that reaches into them imports those too
 import Native.Heap
-import Native.HeapObj.Kind
+import Native.HeapObj.Shape
 import Native.Runtime.Bits
 import Native.Runtime.Memory
 
@@ -34,7 +34,7 @@ failed b = if b then 0 else 1
 ||| that fail.
 checks : (x : Bits64) -> Op Heap Bits64
 checks x = do
-  a <- mapMemory {k = BUFFER} 4096
+  a <- mapMemory {s = RAW} 4096
   store64 a 0 x
   store64 a 8 (x * 2)
   store8 a 16 0x1FF                -- only its low byte, 0xFF, is stored

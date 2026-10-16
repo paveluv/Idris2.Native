@@ -24,6 +24,7 @@ import Native.HeapObj.Kind
 import Native.HeapObj.Shape
 import Native.Runtime.Bits
 import Native.Runtime.Memory
+import Native.Runtime.Object
 import Native.Runtime.Space
 import Native.Runtime.State
 import Native.Runtime.String.Utf8
@@ -36,13 +37,13 @@ import Native.Runtime.String.Utf8
 ||| The count before and after the primitive, and whether the window it
 ||| left is empty. `fastConcat` is the runtime's implementation of the
 ||| Prelude's, called directly, and `stringObject` opens its result, the
-||| `Uniform String`, to the address of the object, whose first word is the
+||| `Uniform String`, to the object, whose first word is the
 ||| header with the length in bytes.
 look : Uniform (List String) -> Op Heap (Bits64, Bits64, Bool)
 look xs = do
   before <- getState collections
   big <- stringObject (fastConcat xs)
-  bytes <- load64 big 0
+  bytes <- Object.load64 big 0
   during <- getState collections
   hp <- allocationPointer
   lim <- allocationLimit

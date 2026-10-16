@@ -11,7 +11,7 @@ module Native.Runtime.OS.LinuxX86_64
 import Native.Runtime.OS.Syscall
 
 import Native.Heap
-import Native.HeapObj.Kind as HeapObj
+import Native.HeapObj.Shape as HeapObj
 import Native.Port
 import Native.Runtime.Memory
 import Native.Runtime.State
@@ -88,7 +88,7 @@ stackLimit = do
 ||| The services on x86-64 Linux, each checked against its port: the
 ||| record the code generator binds `Native.Services`'s externs to.
 export
-services : Services (Port.PortTy (\k => Memory.Addr k))
+services : Services (Port.PortTy (\s => Memory.Addr s))
 services =
   MkServices
     { exit = LinuxX86_64.exit, write = LinuxX86_64.write, reserve = LinuxX86_64.reserve

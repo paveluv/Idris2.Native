@@ -20,7 +20,7 @@ module Native.Intrinsics
 
 import Native.Flat.Uniform as Flat
 import Native.Heap
-import Native.HeapObj.Kind as HeapObj
+import Native.HeapObj.Shape as HeapObj
 import Native.Port
 import Native.Syscall
 

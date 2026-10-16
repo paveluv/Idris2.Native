@@ -15,6 +15,7 @@ modules =
     Native.Runtime.Foreign.Prelude.IO,
     Native.Runtime.Foreign.System,
     Native.Runtime.Memory,
+    Native.Runtime.Object,
     Native.Runtime.OS,
     Native.Runtime.OS.LinuxX86_64,
     Native.Runtime.OS.Syscall,

@@ -17,7 +17,7 @@
 module Native.Services
 
 import Native.Heap
-import Native.HeapObj.Kind as HeapObj
+import Native.HeapObj.Shape as HeapObj
 import Native.Port
 
 %default total

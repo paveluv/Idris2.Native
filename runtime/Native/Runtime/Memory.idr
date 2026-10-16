@@ -22,7 +22,7 @@ import Native.Runtime.Bits
 
 import Native.Flat.Uniform as Flat
 import Native.Heap
-import Native.HeapObj.Kind as HeapObj
+import Native.HeapObj.Shape as HeapObj
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
@@ -30,33 +30,35 @@ import Native.HeapObj.Kind as HeapObj
 
 %default total
 
-||| The address of an object of kind `k`, or of memory the runtime maps.
+||| The address of an object of the shape `s`, or of memory the runtime
+||| maps. The core knows objects by their shapes only; the types an object
+||| may be are the support tier's (`Native.Runtime.Object`).
 export
-record Addr (0 k : HeapObj.Kind) where
+record Addr (0 s : HeapObj.Shape) where
   constructor MkAddr
   word : Bits64
 
 
 ||| The word at the address plus the offset.
 export %inline
-load64 : Addr k -> (offset : Bits64) -> Heap.Op Heap Bits64
+load64 : Addr s -> (offset : Bits64) -> Heap.Op Heap Bits64
 load64 a = Intrinsics.prim__load64 a.word
 
 ||| The 32, 16 or 8 bits at the address plus the offset, as a word.
 export %inline
-load32, load16, load8 : Addr k -> (offset : Bits64) -> Heap.Op Heap Bits64
+load32, load16, load8 : Addr s -> (offset : Bits64) -> Heap.Op Heap Bits64
 load32 a = Intrinsics.prim__load32 a.word
 load16 a = Intrinsics.prim__load16 a.word
 load8 a = Intrinsics.prim__load8 a.word
 
 ||| Store the word at the address plus the offset.
 export %inline
-store64 : Addr k -> (offset, value : Bits64) -> Heap.Op Heap ()
+store64 : Addr s -> (offset, value : Bits64) -> Heap.Op Heap ()
 store64 a = Intrinsics.prim__store64 a.word
 
 ||| Store the word's low 32, 16 or 8 bits at the address plus the offset.
 export %inline
-store32, store16, store8 : Addr k -> (offset, value : Bits64) -> Heap.Op Heap ()
+store32, store16, store8 : Addr s -> (offset, value : Bits64) -> Heap.Op Heap ()
 store32 a = Intrinsics.prim__store32 a.word
 store16 a = Intrinsics.prim__store16 a.word
 store8 a = Intrinsics.prim__store8 a.word
@@ -67,12 +69,12 @@ store8 a = Intrinsics.prim__store8 a.word
 ||| The address a word is: for the modules that lay out the heap's spaces
 ||| and its objects, which compute addresses as words.
 export %inline
-fromWord : Bits64 -> Addr k
+fromWord : Bits64 -> Addr s
 fromWord = MkAddr
 
 ||| The word an address is.
 export %inline
-toWord : Addr k -> Bits64
+toWord : Addr s -> Bits64
 toWord a = a.word
 
 ||| The word at an address plus a byte offset, both words, and storing one:
@@ -107,7 +109,7 @@ setAllocation hp hplim = do
 
 ||| Make `bytes` at the address the allocation window.
 export
-setWindow : Addr k -> (bytes : Bits64) -> Heap.Op Heap ()
+setWindow : Addr s -> (bytes : Bits64) -> Heap.Op Heap ()
 setWindow a bytes = setAllocation a.word (a.word + bytes)
 
 ||| The current continuation, as the pointer word it is, and setting it:
@@ -160,20 +162,20 @@ runtimeArea = Intrinsics.prim__runtimeArea
 
 
 ||| The object a value is, and the value an object is, for a type whose
-||| values ordinary code holds as objects of the kind `k` always, such as a
+||| values ordinary code holds as objects of the shape `s` always, such as a
 ||| string, or a list, whose `[]` is a static object: the caller, which
-||| knows the type, says the kind. These never test the word. The
+||| knows the type, says the shape. These never test the word. The
 ||| conversions between a value and its object's address are this module's,
 ||| so these are not inlined.
 export
-valueObject : Flat.Uniform a -> Heap.Op Heap (Addr k)
+valueObject : Flat.Uniform a -> Heap.Op Heap (Addr s)
 valueObject v = do
   w <- Intrinsics.prim__valueWord v
   tag <- pointerTag
   Heap.pure (MkAddr (w - tag))
 
 export
-objectValue : Addr k -> Heap.Op Heap (Flat.Uniform a)
+objectValue : Addr s -> Heap.Op Heap (Flat.Uniform a)
 objectValue a = do
   tag <- pointerTag
   Intrinsics.prim__wordValue (a.word + tag)
@@ -181,13 +183,13 @@ objectValue a = do
 ||| The address of the object a pointer word in a field points to, and the
 ||| pointer word of an address, to store in a field.
 export
-fieldObject : (word : Bits64) -> Heap.Op Heap (Addr k)
+fieldObject : (word : Bits64) -> Heap.Op Heap (Addr s)
 fieldObject w = do
   tag <- pointerTag
   Heap.pure (MkAddr (w - tag))
 
 export
-fieldPointer : Addr k -> Heap.Op Heap Bits64
+fieldPointer : Addr s -> Heap.Op Heap Bits64
 fieldPointer a = do
   tag <- pointerTag
   Heap.pure (a.word + tag)
@@ -241,7 +243,7 @@ releaseMemory = OS.osRelease
 ||| `bytes` of fresh memory, zeroed, readable and writable, at an address the
 ||| system chooses; the program ends if the system has none.
 export
-mapMemory : (bytes : Bits64) -> Heap.Op Heap (Addr k)
+mapMemory : (bytes : Bits64) -> Heap.Op Heap (Addr s)
 mapMemory bytes = do
   whole <- roundToPage bytes
   a <- OS.osReserve whole

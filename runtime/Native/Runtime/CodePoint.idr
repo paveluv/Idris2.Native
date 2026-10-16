@@ -10,7 +10,7 @@ module Native.Runtime.CodePoint
 -- use the bit operations, so it is loaded wherever this module is)
 import public Native.Runtime.Bits
 
-import Native.Runtime.Memory
+import Native.Runtime.Object
 
 import Native.Heap
 import Native.HeapObj.Kind as HeapObj
@@ -34,21 +34,21 @@ utf8Length b = if b < 0x80 then 1 else if b < 0xE0 then 2 else if b < 0xF0 then 
 ||| The code point whose lead byte is at the address plus the offset, the
 ||| bytes after it its sequence's, trusted to be well formed.
 export
-decodeUtf8 : Memory.Addr k -> (offset : Bits64) -> Heap.Op Heap Bits64
+decodeUtf8 : Object.Obj k -> (offset : Bits64) -> Heap.Op Heap Bits64
 decodeUtf8 a i = do
-  b0 <- Memory.load8 a i
+  b0 <- Object.load8 a i
   if b0 < 0x80 then Heap.pure b0 else
     if b0 < 0xE0 then do
-      b1 <- Memory.load8 a (i + 1)
+      b1 <- Object.load8 a (i + 1)
       Heap.pure (Bits.shiftL (b0 .&. 0x1F) 6 .|. b1 .&. 0x3F)
     else if b0 < 0xF0 then do
-      b1 <- Memory.load8 a (i + 1)
-      b2 <- Memory.load8 a (i + 2)
+      b1 <- Object.load8 a (i + 1)
+      b2 <- Object.load8 a (i + 2)
       Heap.pure (Bits.shiftL (b0 .&. 0x0F) 12 .|. Bits.shiftL (b1 .&. 0x3F) 6 .|. b2 .&. 0x3F)
     else do
-      b1 <- Memory.load8 a (i + 1)
-      b2 <- Memory.load8 a (i + 2)
-      b3 <- Memory.load8 a (i + 3)
+      b1 <- Object.load8 a (i + 1)
+      b2 <- Object.load8 a (i + 2)
+      b3 <- Object.load8 a (i + 3)
       Heap.pure (Bits.shiftL (b0 .&. 0x07) 18 .|. Bits.shiftL (b1 .&. 0x3F) 12
             .|. Bits.shiftL (b2 .&. 0x3F) 6 .|. b3 .&. 0x3F)
 
@@ -70,12 +70,12 @@ utf8Word c =
 ||| The code point `c` written at the address plus the offset, its
 ||| `utf8Bytes c` bytes.
 export
-encodeUtf8 : Memory.Addr k -> (offset, c : Bits64) -> Heap.Op Heap ()
+encodeUtf8 : Object.Obj k -> (offset, c : Bits64) -> Heap.Op Heap ()
 encodeUtf8 a j c =
   let w = utf8Word c in
-  if c < 0x80 then Memory.store8 a j w
-  else if c < 0x800 then Memory.store16 a j w
+  if c < 0x80 then Object.store8 a j w
+  else if c < 0x800 then Object.store16 a j w
   else if c < 0x10000 then do
-    Memory.store16 a j w
-    Memory.store8 a (j + 2) (Bits.shiftR w 16)
-  else Memory.store32 a j w
+    Object.store16 a j w
+    Object.store8 a (j + 2) (Bits.shiftR w 16)
+  else Object.store32 a j w

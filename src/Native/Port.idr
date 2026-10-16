@@ -17,7 +17,7 @@ module Native.Port
 
 import Native.Flat.Uniform as Flat
 import Native.Heap
-import Native.HeapObj.Kind as HeapObj
+import Native.HeapObj.Shape as HeapObj
 
 %default total
 
@@ -32,8 +32,8 @@ data Carrier
     ValueOf Type
   | ||| Any value, as ordinary code holds it: `Uniform a`, for the call's `a`.
     Value
-  | ||| The address of an object of the call's kind `k`, as the side that
-    ||| gives the entry types addresses: `addr k`.
+  | ||| The address of an object of the call's shape `s`, as the side that
+    ||| gives the entry types addresses: `addr s`.
     Address
 
 ||| An entry's shape: what its arguments carry, in order, and what its
@@ -47,25 +47,25 @@ record Port where
 
 ||| The Idris type of an entry of the port, for a side whose addresses are
 ||| `addr`: an operation on the arguments the port takes, of the result it
-||| gives, for any kind `k` and any value type `a` the carriers name.
+||| gives, for any shape `s` and any value type `a` the carriers name.
 public export
-PortTy : (addr : HeapObj.Kind -> Type) -> Port -> Type
-PortTy addr p = {k : HeapObj.Kind} -> {a : Type} -> arrows k a p.takes
+PortTy : (addr : HeapObj.Shape -> Type) -> Port -> Type
+PortTy addr p = {s : HeapObj.Shape} -> {a : Type} -> arrows s a p.takes
   where
-    carried : (k : HeapObj.Kind) -> (a : Type) -> Carrier -> Type
+    carried : (s : HeapObj.Shape) -> (a : Type) -> Carrier -> Type
     carried _ _ Word = Bits64
     carried _ _ Signed = Int
     carried _ _ (ValueOf t) = Flat.Uniform t
     carried _ a Value = Flat.Uniform a
-    carried k _ Address = addr k
+    carried s _ Address = addr s
 
-    result : (k : HeapObj.Kind) -> (a : Type) -> Maybe Carrier -> Type
+    result : (s : HeapObj.Shape) -> (a : Type) -> Maybe Carrier -> Type
     result _ _ Nothing = ()
-    result k a (Just c) = carried k a c
+    result s a (Just c) = carried s a c
 
-    arrows : (k : HeapObj.Kind) -> (a : Type) -> List Carrier -> Type
-    arrows k a [] = Heap.Op Heap (result k a p.gives)
-    arrows k a (c :: cs) = carried k a c -> arrows k a cs
+    arrows : (s : HeapObj.Shape) -> (a : Type) -> List Carrier -> Type
+    arrows s a [] = Heap.Op Heap (result s a p.gives)
+    arrows s a (c :: cs) = carried s a c -> arrows s a cs
 
 ||| The Idris type of an `%extern` of the port: no extern carries an
 ||| address, the type of which is the runtime's, so one that would is not
