@@ -89,6 +89,10 @@ data Instr : Decls enc -> Bool -> (var : IRCommon.Ty enc -> Type) -> List (IRCom
   WidenPtr : Opnd var (IRCommon.Ty.PtrTo k) -> Instr d m var [IRCommon.Ty.Val]
   AddrToWord : Opnd var (IRCommon.Ty.PtrTo k) -> Instr d True var [IRCommon.Ty.W64]
   WordToAddr : (k : HeapObj.Kind) -> Opnd var IRCommon.Ty.W64 -> Instr d True var [IRCommon.Ty.PtrTo k]
+  ||| The word a `Val` is, and the `Val` a word is, of any value: restricted
+  ||| as `AddrToWord` is.
+  ValToWord : Opnd var IRCommon.Ty.Val -> Instr d True var [IRCommon.Ty.W64]
+  WordToVal : Opnd var IRCommon.Ty.W64 -> Instr d True var [IRCommon.Ty.Val]
   ||| The header word of an object; a continuation's layout word.
   LoadHeader : Opnd var (IRCommon.Ty.PtrTo k) -> Instr d m var [IRCommon.Ty.W64]
   LoadPart : {0 k : HeapObj.Kind} -> HeapObj.Header.HeaderPart k -> Opnd var (IRCommon.Ty.PtrTo k) ->
@@ -138,6 +142,8 @@ traverseInstr g (WidenFix {fx} x) = WidenFix {fx} <$> g x
 traverseInstr g (WidenPtr x) = WidenPtr <$> g x
 traverseInstr g (AddrToWord x) = AddrToWord <$> g x
 traverseInstr g (WordToAddr k x) = WordToAddr k <$> g x
+traverseInstr g (ValToWord x) = ValToWord <$> g x
+traverseInstr g (WordToVal x) = WordToVal <$> g x
 traverseInstr g (LoadHeader x) = LoadHeader <$> g x
 traverseInstr g (LoadPart p x) = LoadPart p <$> g x
 traverseInstr g (AllocObj h {ok} fs) = (\fs' => AllocObj h {ok} fs') <$> Opnd.traverseAll g fs

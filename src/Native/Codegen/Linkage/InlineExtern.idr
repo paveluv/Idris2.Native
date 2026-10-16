@@ -9,7 +9,6 @@ import Data.Fin
 import Native.Area
 import Native.Codegen.IRCommon.Intrinsic as IRCommon
 import Native.Codegen.IRCommon.Op
-import Native.HeapObj.Kind as HeapObj
 import Native.Intrinsics
 import Native.Port
 
@@ -35,10 +34,10 @@ data InlineExtern
     PointerTag
   | ||| The address of a per-thread area.
     AreaAddress Area
-  | ||| The pointer word of a uniform value known to be an object of the kind.
-    ObjectWord HeapObj.Kind
-  | ||| The uniform value of a pointer word to an object of the kind.
-    WordObject HeapObj.Kind
+  | ||| The word a uniform value is.
+    ValueWord
+  | ||| The uniform value a word is.
+    WordValue
 
 ||| How the lowering provides each inline extern of the contract
 ||| (`Native.Intrinsics`): the field's instruction, the registers its port's.
@@ -58,5 +57,4 @@ lowerings =
     , stackLimitArea = AreaAddress Area.STACK_LIMIT, argvArea = AreaAddress Area.ARGV
     , rootsArea = AreaAddress Area.ROOTS, nrootsArea = AreaAddress Area.NROOTS
     , runtimeArea = AreaAddress Area.RUNTIME
-    , stringWord = ObjectWord HeapObj.Kind.STRING, wordString = WordObject HeapObj.Kind.STRING
-    , conWord = ObjectWord HeapObj.Kind.CON, wordCon = WordObject HeapObj.Kind.CON }
+    , valueWord = ValueWord, wordValue = WordValue }

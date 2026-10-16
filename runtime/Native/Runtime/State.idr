@@ -13,7 +13,6 @@ import Native.Runtime.Memory
 
 import Native.Area
 import Native.Heap
-import Native.HeapObj.Kind as HeapObj
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
@@ -84,9 +83,9 @@ setState i v = do
   rt <- Memory.runtimeArea
   Memory.storeAt rt (8 * i) v
 
-||| The address of the scratch bytes.
+||| The address of the scratch bytes, as a word, since they hold no object.
 export
-scratchArea : Heap.Op Heap (Memory.Addr k)
+scratchArea : Heap.Op Heap Bits64
 scratchArea = do
   rt <- Memory.runtimeArea
-  Heap.pure (Memory.fromWord (rt + 8 * scratch))
+  Heap.pure (rt + 8 * scratch)

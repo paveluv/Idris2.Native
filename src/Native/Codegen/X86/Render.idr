@@ -688,6 +688,8 @@ parameters (enc : HeapObj.Enc) (realised : Linkage.Realised)
                 -- a pointer word and an address are the same word
                 LocatedIR.Instr.AddrToWord d x => do loadReg Asm.RAX x; store d Asm.RAX
                 LocatedIR.Instr.WordToAddr _ d x => do loadReg Asm.RAX x; store d Asm.RAX
+                LocatedIR.Instr.ValToWord d x => do loadReg Asm.RAX x; store d Asm.RAX
+                LocatedIR.Instr.WordToVal d x => do loadReg Asm.RAX x; store d Asm.RAX
                 LocatedIR.Instr.LoadPart p d o => do
                                   loadReg Asm.RAX o
                                   emit (Asm.MovRM Asm.RAX (Asm.MBase Asm.RAX (negate (baseTag o))))

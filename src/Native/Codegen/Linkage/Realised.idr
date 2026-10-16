@@ -72,7 +72,7 @@ realise platform enc = do
     Nothing => pure (Right Nothing)
   let Right ss' = ss
     | Left e => pure (Left e)
-  Right is <- fieldsOf (in' (mkNamespace "Native.Intrinsics") "intrinsics") 25
+  Right is <- fieldsOf (in' (mkNamespace "Native.Intrinsics") "intrinsics") 23
     | Left e => pure (Left e)
   Right xs <- fieldsOf (in' (mkNamespace "Native.Services") "externs") 7
     | Left e => pure (Left e)
@@ -127,13 +127,13 @@ realise platform enc = do
     servicesOf [a1, a2, a3, a4, a5, a6, a7] =
       MkServices (MkNamed a1) (MkNamed a2) (MkNamed a3) (MkNamed a4) (MkNamed a5) (MkNamed a6) (MkNamed a7)
 
-    intrinsicsOf : Vect 25 Name -> Intrinsics Named
+    intrinsicsOf : Vect 23 Name -> Intrinsics Named
     intrinsicsOf [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20, a21,
-                  a22, a23, a24, a25] =
+                  a22, a23] =
       MkIntrinsics (MkNamed a1) (MkNamed a2) (MkNamed a3) (MkNamed a4) (MkNamed a5) (MkNamed a6) (MkNamed a7)
                    (MkNamed a8) (MkNamed a9) (MkNamed a10) (MkNamed a11) (MkNamed a12) (MkNamed a13) (MkNamed a14)
                    (MkNamed a15) (MkNamed a16) (MkNamed a17) (MkNamed a18) (MkNamed a19) (MkNamed a20) (MkNamed a21)
-                   (MkNamed a22) (MkNamed a23) (MkNamed a24) (MkNamed a25)
+                   (MkNamed a22) (MkNamed a23)
 
     ||| A definition of the root of a module.
     in' : Namespace -> String -> Name

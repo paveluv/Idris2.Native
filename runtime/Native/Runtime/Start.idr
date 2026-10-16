@@ -10,7 +10,6 @@ import Native.Runtime.OS
 import Native.Runtime.State
 
 import Native.Heap
-import Native.HeapObj.Kind
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
@@ -49,10 +48,10 @@ start entry window = do
   Memory.setAllocation fb (fb + window)
   given <- OS.osStackLimit
   let soft = if given == 0 then defaultStack else given
-  limit <- Memory.stackLimitArea {k = HeapObj.Kind.BUFFER}
-  Memory.store64 limit 0 (entry - (if soft > stackCap then stackCap else soft) + stackMargin)
-  argv <- Memory.argvArea {k = HeapObj.Kind.BUFFER}
-  Memory.store64 argv 0 entry
+  limit <- Memory.stackLimitArea
+  Memory.storeAt limit 0 (entry - (if soft > stackCap then stackCap else soft) + stackMargin)
+  argv <- Memory.argvArea
+  Memory.storeAt argv 0 entry
   where
     ||| The most of the process stack direct code may use, whatever the stack's
     ||| limit: 1 GiB.

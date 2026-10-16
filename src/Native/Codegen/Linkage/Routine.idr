@@ -67,7 +67,7 @@ carrierTy : Port.Carrier -> IRCommon.Ty enc
 carrierTy Port.Word = IRCommon.Ty.W64
 carrierTy Port.Signed = IRCommon.Ty.W64
 carrierTy Port.Address = IRCommon.Ty.W64
-carrierTy Port.Str = IRCommon.Ty.Val
+carrierTy (Port.ValueOf _) = IRCommon.Ty.Val
 carrierTy Port.Value = IRCommon.Ty.Val
 
 ||| The registers of a call of a port's entry: its arguments', the token

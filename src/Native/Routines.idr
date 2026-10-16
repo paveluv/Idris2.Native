@@ -51,21 +51,21 @@ routineList r = [(_ ** r.start), (_ ** r.allocSlow), (_ ** r.allocMutable), (_ *
 public export
 record StringRoutines (f : Port -> Type) where
   constructor MkStringRoutines
-  length : f (MkPort [Port.Str] (Just Port.Word))
-  head : f (MkPort [Port.Str] (Just Port.Word))
-  tail : f (MkPort [Port.Str] (Just Port.Str))
-  index : f (MkPort [Port.Str, Port.Word] (Just Port.Word))
-  cons : f (MkPort [Port.Word, Port.Str] (Just Port.Str))
-  append : f (MkPort [Port.Str, Port.Str] (Just Port.Str))
-  reverse : f (MkPort [Port.Str] (Just Port.Str))
+  length : f (MkPort [Port.ValueOf String] (Just Port.Word))
+  head : f (MkPort [Port.ValueOf String] (Just Port.Word))
+  tail : f (MkPort [Port.ValueOf String] (Just (Port.ValueOf String)))
+  index : f (MkPort [Port.ValueOf String, Port.Word] (Just Port.Word))
+  cons : f (MkPort [Port.Word, Port.ValueOf String] (Just (Port.ValueOf String)))
+  append : f (MkPort [Port.ValueOf String, Port.ValueOf String] (Just (Port.ValueOf String)))
+  reverse : f (MkPort [Port.ValueOf String] (Just (Port.ValueOf String)))
   ||| The characters from `start`, `len` of them, both clamped to the string.
-  substr : f (MkPort [Port.Signed, Port.Signed, Port.Str] (Just Port.Str))
-  compare : f (MkPort [Port.Str, Port.Str] (Just Port.Signed))
+  substr : f (MkPort [Port.Signed, Port.Signed, Port.ValueOf String] (Just (Port.ValueOf String)))
+  compare : f (MkPort [Port.ValueOf String, Port.ValueOf String] (Just Port.Signed))
   ||| A signed word in decimal, as Chez writes it: `-` before a negative
   ||| one's digits.
-  showSigned : f (MkPort [Port.Signed] (Just Port.Str))
+  showSigned : f (MkPort [Port.Signed] (Just (Port.ValueOf String)))
   ||| A word, unsigned, in decimal.
-  showUnsigned : f (MkPort [Port.Word] (Just Port.Str))
+  showUnsigned : f (MkPort [Port.Word] (Just (Port.ValueOf String)))
 
 ||| Each string routine's entries of two records made one.
 public export

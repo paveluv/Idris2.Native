@@ -475,6 +475,8 @@ parameters (d : TermIR.Decls enc)
           ([r], TermIR.Instr.WidenPtr x) => unary env x (LocatedIR.Instr.Widen r)
           ([r], TermIR.Instr.AddrToWord x) => unary env x (LocatedIR.Instr.AddrToWord r)
           ([r], TermIR.Instr.WordToAddr k x) => unary env x (LocatedIR.Instr.WordToAddr k r)
+          ([r], TermIR.Instr.ValToWord x) => unary env x (LocatedIR.Instr.ValToWord r)
+          ([r], TermIR.Instr.WordToVal x) => unary env x (LocatedIR.Instr.WordToVal r)
           ([r], TermIR.Instr.LoadHeader x) => unary env x (LocatedIR.Instr.LoadHeader r)
           ([r], TermIR.Instr.LoadPart p x) => unary env x (LocatedIR.Instr.LoadPart p r)
           ([r], TermIR.Instr.AllocObj h fs) =>

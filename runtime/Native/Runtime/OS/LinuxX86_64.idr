@@ -80,10 +80,10 @@ stackLimit : Heap.Op Heap Bits64
 stackLimit = do
   -- getrlimit(RLIMIT_STACK, buffer): the soft limit in the buffer's first word,
   -- left 0 if the call fails
-  buffer <- State.scratchArea {k = HeapObj.Kind.BUFFER}
-  Memory.store64 buffer 0 0
-  _ <- Syscall.syscall 97 3 (Memory.toWord buffer) 0 0 0 0
-  Memory.load64 buffer 0
+  buffer <- State.scratchArea
+  Memory.storeAt buffer 0 0
+  _ <- Syscall.syscall 97 3 buffer 0 0 0 0
+  Memory.loadAt buffer 0
 
 ||| The services on x86-64 Linux, each checked against its port: the
 ||| record the code generator binds `Native.Services`'s externs to.

@@ -69,13 +69,9 @@ export
 %extern prim__runtimeArea : (1 m : Heap) -> Heap.Ret Heap Bits64
 
 export
-%extern prim__stringWord : Flat.Uniform String -> (1 m : Heap) -> Heap.Ret Heap Bits64
+%extern prim__valueWord : {0 a : Type} -> Flat.Uniform a -> (1 m : Heap) -> Heap.Ret Heap Bits64
 export
-%extern prim__wordString : Bits64 -> (1 m : Heap) -> Heap.Ret Heap (Flat.Uniform String)
-export
-%extern prim__conWord : {0 a : Type} -> Flat.Uniform a -> (1 m : Heap) -> Heap.Ret Heap Bits64
-export
-%extern prim__wordCon : {0 a : Type} -> Bits64 -> (1 m : Heap) -> Heap.Ret Heap (Flat.Uniform a)
+%extern prim__wordValue : {0 a : Type} -> Bits64 -> (1 m : Heap) -> Heap.Ret Heap (Flat.Uniform a)
 
 ||| The inline externs, each a field of its port.
 public export
@@ -114,12 +110,10 @@ record Intrinsics (f : Port -> Type) where
   rootsArea : f (MkPort [] (Just Port.Word))
   nrootsArea : f (MkPort [] (Just Port.Word))
   runtimeArea : f (MkPort [] (Just Port.Word))
-  ||| The pointer word of a string, and the string of a pointer word.
-  stringWord : f (MkPort [Port.Str] (Just Port.Word))
-  wordString : f (MkPort [Port.Word] (Just Port.Str))
-  ||| The pointer word of a value of a data type, and the value of one.
-  conWord : f (MkPort [Port.Value] (Just Port.Word))
-  wordCon : f (MkPort [Port.Word] (Just Port.Value))
+  ||| The word a value is, as ordinary code holds it, and the value a word
+  ||| is: of any type, so the externs name none.
+  valueWord : f (MkPort [Port.Value] (Just Port.Word))
+  wordValue : f (MkPort [Port.Word] (Just Port.Value))
 
 ||| The externs, each checked against its field's port.
 public export
@@ -134,8 +128,7 @@ intrinsics =
     , pointerTag = prim__pointerTag
     , stackLimitArea = prim__stackLimitArea, argvArea = prim__argvArea, rootsArea = prim__rootsArea
     , nrootsArea = prim__nrootsArea, runtimeArea = prim__runtimeArea
-    , stringWord = prim__stringWord, wordString = prim__wordString
-    , conWord = prim__conWord, wordCon = prim__wordCon }
+    , valueWord = prim__valueWord, wordValue = prim__wordValue }
 
 ||| Each inline extern's entries of two records made one.
 public export
@@ -148,7 +141,7 @@ zipIntrinsics z a b =
     (z a.getK b.getK) (z a.setK b.setK) (z a.pointerTag b.pointerTag)
     (z a.stackLimitArea b.stackLimitArea) (z a.argvArea b.argvArea) (z a.rootsArea b.rootsArea)
     (z a.nrootsArea b.nrootsArea) (z a.runtimeArea b.runtimeArea)
-    (z a.stringWord b.stringWord) (z a.wordString b.wordString) (z a.conWord b.conWord) (z a.wordCon b.wordCon)
+    (z a.valueWord b.valueWord) (z a.wordValue b.wordValue)
 
 ||| The inline externs' entries, each with its port.
 public export
@@ -159,4 +152,4 @@ intrinsicList r =
   , (_ ** r.getHp), (_ ** r.setHp), (_ ** r.getHpLim), (_ ** r.setHpLim), (_ ** r.getK), (_ ** r.setK)
   , (_ ** r.pointerTag), (_ ** r.stackLimitArea), (_ ** r.argvArea), (_ ** r.rootsArea)
   , (_ ** r.nrootsArea), (_ ** r.runtimeArea)
-  , (_ ** r.stringWord), (_ ** r.wordString), (_ ** r.conWord), (_ ** r.wordCon) ]
+  , (_ ** r.valueWord), (_ ** r.wordValue) ]

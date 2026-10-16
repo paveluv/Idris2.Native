@@ -129,22 +129,19 @@ export %inline
 pointerTag : Heap.Op Heap Bits64
 pointerTag = Intrinsics.prim__pointerTag
 
-||| The per-thread areas, as addresses: the word that holds the lowest the
-||| machine stack pointer may go in direct code; the word that holds the
-||| stack pointer at the program's entry, where the argument count, the
-||| arguments' addresses and the environment's are; the root buffer and the
-||| word that counts its entries in use; and the runtime's state.
-export
-stackLimitArea : Heap.Op Heap (Addr k)
-stackLimitArea = do
-  w <- Intrinsics.prim__stackLimitArea
-  Heap.pure (MkAddr w)
+||| The per-thread areas, as the words of their addresses, since they hold
+||| no object: the word that holds the lowest the machine stack pointer may
+||| go in direct code; the word that holds the stack pointer at the
+||| program's entry, where the argument count, the arguments' addresses and
+||| the environment's are; the root buffer and the word that counts its
+||| entries in use; and the runtime's state.
+export %inline
+stackLimitArea : Heap.Op Heap Bits64
+stackLimitArea = Intrinsics.prim__stackLimitArea
 
-export
-argvArea : Heap.Op Heap (Addr k)
-argvArea = do
-  w <- Intrinsics.prim__argvArea
-  Heap.pure (MkAddr w)
+export %inline
+argvArea : Heap.Op Heap Bits64
+argvArea = Intrinsics.prim__argvArea
 
 export %inline
 rootsArea : Heap.Op Heap Bits64
@@ -162,37 +159,24 @@ runtimeArea = Intrinsics.prim__runtimeArea
 -- Values as ordinary code holds them, and the objects they point to
 
 
-||| The object a string is, and the string an object is. A string is always
-||| an object, so these never test the word. The conversions between a value
-||| and its object's address are this module's, so these are not inlined.
+||| The object a value is, and the value an object is, for a type whose
+||| values ordinary code holds as objects of the kind `k` always, such as a
+||| string, or a list, whose `[]` is a static object: the caller, which
+||| knows the type, says the kind. These never test the word. The
+||| conversions between a value and its object's address are this module's,
+||| so these are not inlined.
 export
-stringObject : Flat.Uniform String -> Heap.Op Heap (Addr HeapObj.Kind.STRING)
-stringObject s = do
-  w <- Intrinsics.prim__stringWord s
+valueObject : Flat.Uniform a -> Heap.Op Heap (Addr k)
+valueObject v = do
+  w <- Intrinsics.prim__valueWord v
   tag <- pointerTag
   Heap.pure (MkAddr (w - tag))
 
 export
-stringValue : Addr HeapObj.Kind.STRING -> Heap.Op Heap (Flat.Uniform String)
-stringValue a = do
+objectValue : Addr k -> Heap.Op Heap (Flat.Uniform a)
+objectValue a = do
   tag <- pointerTag
-  Intrinsics.prim__wordString (a.word + tag)
-
-||| The object a value of a data type is, and the value an object is: for a
-||| type whose values ordinary code holds as objects always, such as a list,
-||| whose `[]` is a static object.
-export
-conObject : Flat.Uniform a -> Heap.Op Heap (Addr HeapObj.Kind.CON)
-conObject v = do
-  w <- Intrinsics.prim__conWord v
-  tag <- pointerTag
-  Heap.pure (MkAddr (w - tag))
-
-export
-conValue : Addr HeapObj.Kind.CON -> Heap.Op Heap (Flat.Uniform a)
-conValue a = do
-  tag <- pointerTag
-  Intrinsics.prim__wordCon (a.word + tag)
+  Intrinsics.prim__wordValue (a.word + tag)
 
 ||| The address of the object a pointer word in a field points to, and the
 ||| pointer word of an address, to store in a field.

@@ -6,7 +6,6 @@
 module Native.Runtime.Foreign.Prelude.IO
 
 import Native.Heap
-import Native.HeapObj.Kind
 import Native.Runtime.CodePoint
 import Native.Runtime.Memory
 import Native.Runtime.OS
@@ -28,6 +27,6 @@ prim__putChar c w = let (MkHeap # ()) = putOp (cast (ord c)) MkHeap in MkIORes (
     covering
     putOp : Bits64 -> Heap.Op Heap ()
     putOp cp = do
-      b <- State.scratchArea {k = HeapObj.Kind.BUFFER}
-      CodePoint.encodeUtf8 b 0 cp
-      OS.osWriteAll OS.stdout (Memory.toWord b) (CodePoint.utf8Bytes cp)
+      b <- State.scratchArea
+      Memory.storeAt b 0 (CodePoint.utf8Word cp)
+      OS.osWriteAll OS.stdout b (CodePoint.utf8Bytes cp)

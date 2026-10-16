@@ -28,8 +28,8 @@ data Carrier
     Word
   | ||| A signed word: `Int`.
     Signed
-  | ||| A string, as ordinary code holds it: `Uniform String`.
-    Str
+  | ||| A value of the type, as ordinary code holds it: `Uniform t`.
+    ValueOf Type
   | ||| Any value, as ordinary code holds it: `Uniform a`, for the call's `a`.
     Value
   | ||| The address of an object of the call's kind `k`, as the side that
@@ -55,7 +55,7 @@ PortTy addr p = {k : HeapObj.Kind} -> {a : Type} -> arrows k a p.takes
     carried : (k : HeapObj.Kind) -> (a : Type) -> Carrier -> Type
     carried _ _ Word = Bits64
     carried _ _ Signed = Int
-    carried _ _ Str = Flat.Uniform String
+    carried _ _ (ValueOf t) = Flat.Uniform t
     carried _ a Value = Flat.Uniform a
     carried k _ Address = addr k
 

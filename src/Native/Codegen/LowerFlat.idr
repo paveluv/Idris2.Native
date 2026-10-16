@@ -420,16 +420,14 @@ parameters {enc : HeapObj.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self
         inlineExtern : Name -> Linkage.InlineExtern -> Value enc v -> B (Value enc v)
         -- a uniform value and a pointer word: the conversions, so this module's
         -- functions alone
-        inlineExtern n (Linkage.InlineExtern.ObjectWord k) (MkValue [Flat.Exp.Uniform] [u]) = case m of
+        inlineExtern n Linkage.InlineExtern.ValueWord (MkValue [Flat.Exp.Uniform] [u]) = case m of
           True => do
-            p <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr k u)
-            w <- TermIR.Build.emit1 (TermIR.Instr.AddrToWord p)
+            w <- TermIR.Build.emit1 (TermIR.Instr.ValToWord u)
             pure (MkValue [Flat.Exp.Word] [w])
           False => TermIR.Build.unsupported ("the inline extern " ++ show n ++ " outside the memory module")
-        inlineExtern n (Linkage.InlineExtern.WordObject k) (MkValue [Flat.Exp.Word] [w]) = case m of
+        inlineExtern n Linkage.InlineExtern.WordValue (MkValue [Flat.Exp.Word] [w]) = case m of
           True => do
-            p <- TermIR.Build.emit1 (TermIR.Instr.WordToAddr k w)
-            u <- TermIR.Build.emit1 (TermIR.Instr.WidenPtr p)
+            u <- TermIR.Build.emit1 (TermIR.Instr.WordToVal w)
             pure (MkValue [Flat.Exp.Uniform] [u])
           False => TermIR.Build.unsupported ("the inline extern " ++ show n ++ " outside the memory module")
         inlineExtern n i x = case words x of

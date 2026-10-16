@@ -60,6 +60,11 @@ headerFor ascii bytes =
     + HeapObj.Header.partBits HeapObj.Header.StringAscii (if ascii then 1 else 0)
     + HeapObj.Header.partBits HeapObj.Header.StringBytes bytes
 
+||| The object a string is: a string is always an object.
+export
+stringObject : Flat.Uniform String -> Heap.Op Heap (Memory.Addr HeapObj.Kind.STRING)
+stringObject s = Memory.valueObject s
+
 ||| A string's header.
 headerOf : Memory.Addr HeapObj.Kind.STRING -> Heap.Op Heap Bits64
 headerOf s = Memory.load64 s 0
@@ -81,7 +86,7 @@ newString bytes = do
 finish : Memory.Addr HeapObj.Kind.STRING -> (ascii : Bool) -> (bytes : Bits64) -> Heap.Op Heap (Flat.Uniform String)
 finish s ascii bytes = do
   Memory.store64 s 0 (headerFor ascii bytes)
-  Memory.stringValue s
+  Memory.objectValue s
 
 ||| The byte at `i`, and storing one.
 byteAt : Memory.Addr HeapObj.Kind.STRING -> (i : Bits64) -> Heap.Op Heap Bits64
@@ -166,7 +171,7 @@ slice s h from to = do
 export covering
 length : Flat.Uniform String -> Heap.Op Heap Bits64
 length str = do
-  s <- Memory.stringObject str
+  s <- stringObject str
   h <- headerOf s
   if asciiOf h then Heap.pure (bytesOf h) else countChars s 0 (bytesOf h) 0
 
@@ -175,7 +180,7 @@ length str = do
 export
 head : Flat.Uniform String -> Heap.Op Heap Bits64
 head str = do
-  s <- Memory.stringObject str
+  s <- stringObject str
   h <- headerOf s
   if bytesOf h == 0 then Heap.crashOp "idris: the head of an empty string" else decodeAt s 0
 
@@ -184,7 +189,7 @@ head str = do
 export covering
 tail : Flat.Uniform String -> Heap.Op Heap (Flat.Uniform String)
 tail str = do
-  s <- Memory.stringObject str
+  s <- stringObject str
   h <- headerOf s
   if bytesOf h == 0 then Heap.crashOp "idris: the tail of an empty string" else do
     b <- byteAt s 0
@@ -196,7 +201,7 @@ tail str = do
 export covering
 index : Flat.Uniform String -> (i : Bits64) -> Heap.Op Heap Bits64
 index str i = do
-  s <- Memory.stringObject str
+  s <- stringObject str
   h <- headerOf s
   off <- offsetOf s h i
   if off >= bytesOf h then Heap.crashOp "idris: an index outside a string" else decodeAt s off
@@ -206,7 +211,7 @@ index str i = do
 export covering
 cons : (c : Bits64) -> Flat.Uniform String -> Heap.Op Heap (Flat.Uniform String)
 cons c str = do
-  s <- Memory.stringObject str
+  s <- stringObject str
   h <- headerOf s
   let k = charBytes c
   let n = bytesOf h
@@ -220,8 +225,8 @@ cons c str = do
 export covering
 append : Flat.Uniform String -> Flat.Uniform String -> Heap.Op Heap (Flat.Uniform String)
 append x y = do
-  a <- Memory.stringObject x
-  b <- Memory.stringObject y
+  a <- stringObject x
+  b <- stringObject y
   ha <- headerOf a
   hb <- headerOf b
   let na = bytesOf ha
@@ -236,7 +241,7 @@ append x y = do
 export covering
 reverse : Flat.Uniform String -> Heap.Op Heap (Flat.Uniform String)
 reverse str = do
-  s <- Memory.stringObject str
+  s <- stringObject str
   h <- headerOf s
   let n = bytesOf h
   r <- newString n
@@ -262,7 +267,7 @@ reverse str = do
 export covering
 substr : (start, len : Int) -> Flat.Uniform String -> Heap.Op Heap (Flat.Uniform String)
 substr start len str = do
-  s <- Memory.stringObject str
+  s <- stringObject str
   h <- headerOf s
   let n = bytesOf h
   count <- if asciiOf h then Heap.pure n else countChars s 0 n 0
@@ -280,8 +285,8 @@ substr start len str = do
 export covering
 compare : Flat.Uniform String -> Flat.Uniform String -> Heap.Op Heap Int
 compare x y = do
-  a <- Memory.stringObject x
-  b <- Memory.stringObject y
+  a <- stringObject x
+  b <- stringObject y
   ha <- headerOf a
   hb <- headerOf b
   compareFrom a b 0 (bytesOf ha) (bytesOf hb)
@@ -319,7 +324,7 @@ fastPack xs = let (MkHeap # r) = packOp xs MkHeap in r
     covering
     packOp : Flat.Uniform (List Char) -> Heap.Op Heap (Flat.Uniform String)
     packOp xs = do
-      cell <- Memory.conObject xs
+      cell <- Memory.valueObject {k = HeapObj.Kind.CON} xs
       (n, seen) <- packMeasure cell 0 0
       s <- newString n
       packWrite cell s 0
@@ -361,13 +366,13 @@ fastUnpack str = let (MkHeap # r) = unpackOp str MkHeap in r
     covering
     unpackOp : Flat.Uniform String -> Heap.Op Heap (Flat.Uniform (List Char))
     unpackOp str = do
-      s <- Memory.stringObject str
+      s <- stringObject str
       h <- headerOf s
       n <- if asciiOf h then Heap.pure (bytesOf h) else countChars s 0 (bytesOf h) 0
       block <- Space.allocate (8 + 24 * n)
       Memory.store64 (Memory.fromWord {k = HeapObj.Kind.CON} block) 0 nilHeader
       unpackFill s 0 0 n block
-      Memory.conValue (Memory.fromWord (if n == 0 then block else block + 8))
+      Memory.objectValue (Memory.fromWord {k = HeapObj.Kind.CON} (if n == 0 then block else block + 8))
       where
         ||| The header of a list's `[]`.
         nilHeader : Bits64
@@ -407,7 +412,7 @@ fastConcat xs = let (MkHeap # r) = concatOp xs MkHeap in r
     covering
     concatOp : Flat.Uniform (List String) -> Heap.Op Heap (Flat.Uniform String)
     concatOp xs = do
-      cell <- Memory.conObject xs
+      cell <- Memory.valueObject {k = HeapObj.Kind.CON} xs
       (n, ascii) <- concatMeasure cell 0 True
       r <- newString n
       concatWrite cell r 0
@@ -502,6 +507,6 @@ prim__putStr str w = let (MkHeap # ()) = putOp str MkHeap in MkIORes () w
     covering
     putOp : Flat.Uniform String -> Heap.Op Heap ()
     putOp str = do
-      s <- Memory.stringObject str
+      s <- stringObject str
       h <- headerOf s
       OS.osWriteAll OS.stdout (Memory.toWord s + 8) (bytesOf h)

@@ -24,9 +24,9 @@
 ||| * The convention indexes the body: `Ret` exists only in a Direct body
 |||   and returns its declared results; `Return`, `Call`, `TailCall`, `Apply`
 |||   and `TailApply` only in a CPS one. A second index, whether the function
-|||   may convert between words and addresses, is the only way to
-|||   `AddrToWord` and `WordToAddr`; the producer decides it from the
-|||   function's module.
+|||   may convert between words and addresses or values, is the only way to
+|||   `AddrToWord`, `WordToAddr`, `ValToWord` and `WordToVal`; the producer
+|||   decides it from the function's module.
 ||| * What must be decided is decided where the term is made, and the term
 |||   keeps the evidence: an immediate encodes as its type, a switch's keys
 |||   are distinct (and fixnums, on a `Fix`), a header's parts fit their bits

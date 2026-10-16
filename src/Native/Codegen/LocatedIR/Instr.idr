@@ -107,6 +107,10 @@ data Instr : HeapObj.Enc -> Type where
   AddrToWord : Reg enc -> Reg enc -> Instr enc
   ||| A `W64` as a `PtrTo k`. No code. Restricted as `AddrToWord` is.
   WordToAddr : HeapObj.Kind -> Reg enc -> Reg enc -> Instr enc
+  ||| A `Val` as a `W64`, and a `W64` as a `Val`. No code. Restricted as
+  ||| `AddrToWord` is.
+  ValToWord : Reg enc -> Reg enc -> Instr enc
+  WordToVal : Reg enc -> Reg enc -> Instr enc
   ||| The header word of the object a `PtrTo k` points to, as a `W64`. For a
   ||| `CONT`, which has no header, it is the layout word.
   LoadHeader : Reg enc -> Reg enc -> Instr enc
@@ -202,6 +206,8 @@ instrName (Narrow _ _ _) = "Narrow"
 instrName (Widen _ _) = "Widen"
 instrName (AddrToWord _ _) = "AddrToWord"
 instrName (WordToAddr _ _ _) = "WordToAddr"
+instrName (ValToWord _ _) = "ValToWord"
+instrName (WordToVal _ _) = "WordToVal"
 instrName (LoadHeader _ _) = "LoadHeader"
 instrName (LoadPart p _ _) = "LoadPart " ++ show p
 instrName (AllocObj _ _ _ _) = "AllocObj"

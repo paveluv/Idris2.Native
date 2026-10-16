@@ -86,6 +86,8 @@ functionPieces f =
           Instr.Widen d x => show d ++ " := Widen " ++ show x
           Instr.AddrToWord d x => show d ++ " := AddrToWord " ++ show x
           Instr.WordToAddr k d x => show d ++ " := WordToAddr " ++ show k ++ " " ++ show x
+          Instr.ValToWord d x => show d ++ " := ValToWord " ++ show x
+          Instr.WordToVal d x => show d ++ " := WordToVal " ++ show x
           Instr.LoadHeader d x => show d ++ " := LoadHeader " ++ show x
           Instr.LoadPart p d x => show d ++ " := LoadPart " ++ show p ++ " " ++ show x
           Instr.AllocObj d h fs live => show d ++ " := AllocObj " ++ show h ++ " (" ++ ops fs ++ ") live " ++ regs live
