@@ -8,8 +8,6 @@ modules =
     Gallery,
     JoinAll,
     Mode,
-    Raw,
-
     Pace,
     Report,
     Shape,

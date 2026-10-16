@@ -5,7 +5,7 @@
 ||| result as their types say.
 module Native.Support.Foreign.System
 
-import Native.Heap
+import Native.Runtime.Heap as Runtime
 import Native.Runtime.System
 
 %default total
@@ -14,4 +14,4 @@ import Native.Runtime.System
 ||| End the process with the status: its low byte is what the parent sees.
 export
 prim__exit : Int -> PrimIO ()
-prim__exit status w = let (MkHeap # ()) = Runtime.System.exit (cast status) MkHeap in MkIORes () w
+prim__exit status w = let (Runtime.MkHeap # ()) = Runtime.System.exit (cast status) Runtime.MkHeap in MkIORes () w

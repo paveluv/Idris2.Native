@@ -32,7 +32,7 @@ import Libraries.Data.WithData
 
 ||| The layers of the product, from the bottom: `Data` (structures any part
 ||| may use), the contract (what the code generator and the runtime share:
-||| the shapes of objects, the areas, the token, and the routines, inline
+||| the shapes of objects, the areas, and the ports of the routines, inline
 ||| externs and OS services each provides the other), `Types` (the type
 ||| layer: the built-in types as shapes, their headers and encodings, of
 ||| the contract but above its core), `Flat` (the flat fragment, of no
@@ -66,7 +66,7 @@ allowed ours importer imported = case layerOf importer of
   where
     ||| The groups of the contract.
     contract : List String
-    contract = ["HeapObj", "Area", "Heap", "Port", "Routines", "Intrinsics", "Syscall", "Services"]
+    contract = ["HeapObj", "Area", "Port", "Routines", "Intrinsics", "Syscall", "Services"]
 
     ||| A module's layer: the group under the product's root its name is in
     ||| (`Codegen` for `Native.Codegen.TermIR.Instr`), or the linter's.

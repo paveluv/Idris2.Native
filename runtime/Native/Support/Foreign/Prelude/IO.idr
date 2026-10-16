@@ -5,7 +5,7 @@
 ||| module's (`prim__putStr` in `Native.Support.String.Utf8`).
 module Native.Support.Foreign.Prelude.IO
 
-import Native.Heap
+import Native.Runtime.Heap as Runtime
 import Native.Runtime.Memory
 import Native.Runtime.OS
 import Native.Runtime.State
@@ -22,10 +22,10 @@ import Native.Support.CodePoint
 ||| from the state's scratch bytes.
 export covering
 prim__putChar : Char -> PrimIO ()
-prim__putChar c w = let (MkHeap # ()) = putOp (cast (ord c)) MkHeap in MkIORes () w
+prim__putChar c w = let (Runtime.MkHeap # ()) = putOp (cast (ord c)) Runtime.MkHeap in MkIORes () w
   where
     covering
-    putOp : Bits64 -> Heap.Op Heap ()
+    putOp : Bits64 -> Runtime.Heap.Op Runtime.Heap ()
     putOp cp = do
       b <- Runtime.State.scratchArea
       Runtime.Memory.storeAt b 0 (CodePoint.utf8Word cp)

@@ -85,7 +85,6 @@ modules =
     Native.Flat.Report,
     Native.Flat.Translate,
     Native.Flat.Uniform,
-    Native.Heap,
     Native.HeapObj.LayoutWord,
     Native.HeapObj.Shape,
     Native.HeapObj.ValEnc,

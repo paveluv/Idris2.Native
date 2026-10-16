@@ -1,6 +1,6 @@
 ||| The shape of an entry of the contract (`Port`): what each register of a
-||| call across it carries, as data, and the Idris type that says
-||| (`PortTy`).
+||| call across it carries, as data. The runtime gives it an Idris type
+||| (`Native.Runtime.PortTy`).
 |||
 ||| The contract's entries are the runtime's routines, which generated code
 ||| calls, the inline externs, which the lowering provides to the runtime's
@@ -15,9 +15,6 @@
 ||| heap-object model (`HeapObj.Shape` says what it is).
 module Native.Port
 
-import Native.Flat.Uniform as Flat
-import Native.Heap
-import Native.HeapObj.Shape as HeapObj
 
 %default total
 
@@ -44,32 +41,3 @@ record Port where
   constructor MkPort
   takes : List Carrier
   gives : Maybe Carrier
-
-||| The Idris type of an entry of the port, for a side whose addresses are
-||| `addr`: an operation on the arguments the port takes, of the result it
-||| gives, for any shape `s` and any value type `a` the carriers name.
-public export
-PortTy : (addr : HeapObj.Shape -> Type) -> Port -> Type
-PortTy addr p = {s : HeapObj.Shape} -> {a : Type} -> arrows s a p.takes
-  where
-    carried : (s : HeapObj.Shape) -> (a : Type) -> Carrier -> Type
-    carried _ _ Word = Bits64
-    carried _ _ Signed = Int
-    carried _ _ (ValueOf t) = Flat.Uniform t
-    carried _ a Value = Flat.Uniform a
-    carried s _ Address = addr s
-
-    result : (s : HeapObj.Shape) -> (a : Type) -> Maybe Carrier -> Type
-    result _ _ Nothing = ()
-    result s a (Just c) = carried s a c
-
-    arrows : (s : HeapObj.Shape) -> (a : Type) -> List Carrier -> Type
-    arrows s a [] = Heap.Op Heap (result s a p.gives)
-    arrows s a (c :: cs) = carried s a c -> arrows s a cs
-
-||| The Idris type of an `%extern` of the port: no extern carries an
-||| address, the type of which is the runtime's, so one that would is not
-||| inhabited.
-public export
-ExternTy : Port -> Type
-ExternTy = PortTy (\_ => Void)

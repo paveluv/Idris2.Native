@@ -23,7 +23,7 @@
 ||| in tail position a join, whose parameters are the case's registers. A
 ||| call of a form is a `DirectCall`; a call of the form itself in tail
 ||| position jumps back to its start, so self tail recursion is a loop. The
-||| contract's inline externs (`Native.Intrinsics`) lower to the instructions
+||| inline externs (`Native.Intrinsics`, `Native.Syscall`) lower to the instructions
 ||| they stand for, and the services' externs to calls of the functions that
 ||| implement them on the platform, both as the loaded runtime realises the
 ||| contract (`Forms`); every other `%extern` and `%foreign` primitive

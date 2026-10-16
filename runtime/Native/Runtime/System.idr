@@ -6,7 +6,7 @@ module Native.Runtime.System
 -- which use it, so it is loaded wherever this module is)
 import public Native.Runtime.OS
 
-import Native.Heap
+import Native.Runtime.Heap
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)

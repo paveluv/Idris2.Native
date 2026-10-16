@@ -4,9 +4,9 @@
 ||| the others.
 module Native.Runtime
 
-import public Native.Heap
 import public Native.Runtime.Bits
 import public Native.Runtime.Collect
+import public Native.Runtime.Heap
 import public Native.Runtime.Memory
 import public Native.Runtime.OS
 import public Native.Runtime.Routines

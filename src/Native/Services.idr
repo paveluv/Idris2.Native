@@ -1,41 +1,23 @@
 ||| The OS services (`Services`): what the runtime asks of the operating
 ||| system, the same on every platform.
 |||
-||| The generic runtime calls a service through its `%extern` here, of the
-||| contract; each platform's module of the runtime implements every
-||| service, as a record of its functions (`services` in
-||| `Native.Runtime.OS.LinuxX86_64`) that Idris checks against the ports.
+||| The generic runtime calls a service through an `%extern` its module of
+||| the services declares, privately, and gives the record of
+||| (`Native.Runtime.OS`'s `externs`); each platform's module of the runtime
+||| implements every service, as a record of its functions (`services` in
+||| `Native.Runtime.OS.LinuxX86_64`). Idris checks both against the ports.
 ||| For the platform a program is compiled for, the code generator binds
-||| each extern of `externs` to the function in the same field of that
-||| platform's record. A service that can fail reports it, 1 for success
-||| and 0 for failure, and the caller decides what a failure means. Only
-||| the runtime's module of the services imports this one (the linter's
-||| `services`).
+||| each extern to the function in the same field of that platform's
+||| record. A service that can fail reports it, 1 for success and 0 for
+||| failure, and the caller decides what a failure means.
 |||
 ||| Part of the contract between compiled code and the runtime, with the
 ||| heap-object model (`HeapObj.Shape` says what it is).
 module Native.Services
 
-import Native.Heap
-import Native.HeapObj.Shape as HeapObj
 import Native.Port
 
 %default total
-
-export
-%extern prim__os_exit : (status : Bits64) -> (1 m : Heap) -> Heap.Ret Heap ()
-export
-%extern prim__os_write : (handle, address, bytes : Bits64) -> (1 m : Heap) -> Heap.Ret Heap Bits64
-export
-%extern prim__os_reserve : (bytes : Bits64) -> (1 m : Heap) -> Heap.Ret Heap Bits64
-export
-%extern prim__os_commit : (address, bytes : Bits64) -> (1 m : Heap) -> Heap.Ret Heap Bits64
-export
-%extern prim__os_release : (address, bytes : Bits64) -> (1 m : Heap) -> Heap.Ret Heap ()
-export
-%extern prim__os_stackLimit : (1 m : Heap) -> Heap.Ret Heap Bits64
-export
-%extern prim__os_pageBytes : (1 m : Heap) -> Heap.Ret Heap Bits64
 
 ||| The OS services, each a field of its port.
 public export
@@ -59,14 +41,6 @@ record Services (f : Port -> Type) where
   stackLimit : f (MkPort [] (Just Port.Word))
   ||| The system's page, the bytes memory is committed and released by.
   pageBytes : f (MkPort [] (Just Port.Word))
-
-||| The services' externs, each checked against its field's port.
-public export
-externs : Services Port.ExternTy
-externs =
-  MkServices
-    { exit = prim__os_exit, write = prim__os_write, reserve = prim__os_reserve, commit = prim__os_commit
-    , release = prim__os_release, stackLimit = prim__os_stackLimit, pageBytes = prim__os_pageBytes }
 
 ||| Each service's entries of two records made one.
 public export

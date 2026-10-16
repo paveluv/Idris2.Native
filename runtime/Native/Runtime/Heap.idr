@@ -8,7 +8,7 @@
 ||| no fields, so it takes no register: the ordering costs nothing at run
 ||| time. `do` works over the inline bind below, which unfolds into the
 ||| chain of `let`s it stands for.
-module Native.Heap
+module Native.Runtime.Heap
 
 %default total
 

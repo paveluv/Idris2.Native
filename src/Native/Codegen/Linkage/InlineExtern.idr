@@ -11,6 +11,7 @@ import Native.Codegen.IRCommon.Intrinsic as IRCommon
 import Native.Codegen.IRCommon.Op
 import Native.Intrinsics
 import Native.Port
+import Native.Syscall
 
 %default total
 
@@ -45,8 +46,7 @@ export
 lowerings : Intrinsics (\_ => InlineExtern)
 lowerings =
   MkIntrinsics
-    { syscall6 = Machine (IRCommon.Intrinsic.Syscall 6)
-    , load64 = Load64, load32 = LoadNarrow IRCommon.Op.Sub32, load16 = LoadNarrow IRCommon.Op.Sub16
+    { load64 = Load64, load32 = LoadNarrow IRCommon.Op.Sub32, load16 = LoadNarrow IRCommon.Op.Sub16
     , load8 = LoadNarrow IRCommon.Op.Sub8
     , store64 = Store64, store32 = StoreNarrow IRCommon.Op.Sub32, store16 = StoreNarrow IRCommon.Op.Sub16
     , store8 = StoreNarrow IRCommon.Op.Sub8
@@ -58,3 +58,8 @@ lowerings =
     , rootsArea = AreaAddress Area.ROOTS, nrootsArea = AreaAddress Area.NROOTS
     , runtimeArea = AreaAddress Area.RUNTIME
     , valueWord = ValueWord, wordValue = WordValue }
+
+||| How the lowering provides the raw system call (`Native.Syscall`).
+export
+syscallLowering : Syscall (\_ => InlineExtern)
+syscallLowering = MkSyscall { syscall6 = Machine (IRCommon.Intrinsic.Syscall 6) }

@@ -10,10 +10,13 @@ module Native.Runtime.OS.LinuxX86_64
 
 import Native.Runtime.OS.Syscall
 
-import Native.Heap
 import Native.HeapObj.Shape as HeapObj
+-- lint: allow import-unused: the record's fields unfold to its ports' types, which
+-- Idris compares with the record's entries only where `Native.Port` is imported
 import Native.Port
+import Native.Runtime.Heap
 import Native.Runtime.Memory
+import Native.Runtime.PortTy
 import Native.Runtime.State
 import Native.Services
 
@@ -88,7 +91,7 @@ stackLimit = do
 ||| The services on x86-64 Linux, each checked against its port: the
 ||| record the code generator binds `Native.Services`'s externs to.
 export
-services : Services (Port.PortTy (\s => Memory.Addr s))
+services : Services (PortTy (\s => Memory.Addr s))
 services =
   MkServices
     { exit = LinuxX86_64.exit, write = LinuxX86_64.write, reserve = LinuxX86_64.reserve

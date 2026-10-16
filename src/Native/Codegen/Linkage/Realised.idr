@@ -8,8 +8,9 @@
 ||| both sides, and Idris has checked each entry against its field's port
 ||| where the record was built. What the code generator names is the
 ||| records: `routines` of the runtime's `Routines`, the string encoding's
-||| module's `strings`, the platform's module's `services`, and the
-||| contract's `intrinsics` and `externs`.
+||| module's `strings`, the platform's module's `services`, and the records
+||| of the externs, each in the module that declares them: `intrinsics` of
+||| `Memory`, and `externs` of `OS.Syscall` and of `OS`.
 |||
 ||| Part of what generated code, the runtime and the linker agree on
 ||| (`Native.Codegen.Linkage.Routine` says what it is).
@@ -36,6 +37,7 @@ import Native.Intrinsics
 import Native.Port
 import Native.Routines
 import Native.Services
+import Native.Syscall
 import Native.Types.Enc as Types
 import Native.Types.StringRoutines as Types
 
@@ -73,9 +75,11 @@ realise platform enc = do
     Nothing => pure (Right Nothing)
   let Right ss' = ss
     | Left e => pure (Left e)
-  Right is <- fieldsOf (in' (mkNamespace "Native.Intrinsics") "intrinsics") 23
+  Right is <- fieldsOf (in' (RuntimeModule.runtimeModule "Memory") "intrinsics") 22
     | Left e => pure (Left e)
-  Right xs <- fieldsOf (in' (mkNamespace "Native.Services") "externs") 7
+  Right [sc] <- fieldsOf (in' (RuntimeModule.runtimeModule "OS.Syscall") "externs") 1
+    | Left e => pure (Left e)
+  Right xs <- fieldsOf (in' (RuntimeModule.runtimeModule "OS") "externs") 7
     | Left e => pure (Left e)
   Just platformNs <- pure (OSService.platformModule platform)
     | Nothing => pure (Left ("the platform " ++ show platform ++ " has no OS services"))
@@ -84,7 +88,9 @@ realise platform enc = do
   let externs =
         map (\(_ ** p) => p)
           (Intrinsics.intrinsicList
-           (Intrinsics.zipIntrinsics (\e, l => (e.name, l)) (intrinsicsOf is) InlineExtern.lowerings))
+            (Intrinsics.zipIntrinsics (\e, l => (e.name, l)) (intrinsicsOf is) InlineExtern.lowerings)
+          ++ Syscall.syscallList (Syscall.zipSyscall (\e, l => (e.name, l)) (MkSyscall {f = Named} (MkNamed sc))
+                                    InlineExtern.syscallLowering))
       services =
         map (\(_ ** p) => p)
           (Services.serviceList (Services.zipServices (\x, f => (x.name, f.name)) (servicesOf xs) (servicesOf fs)))
@@ -128,13 +134,13 @@ realise platform enc = do
     servicesOf [a1, a2, a3, a4, a5, a6, a7] =
       MkServices (MkNamed a1) (MkNamed a2) (MkNamed a3) (MkNamed a4) (MkNamed a5) (MkNamed a6) (MkNamed a7)
 
-    intrinsicsOf : Vect 23 Name -> Intrinsics Named
+    intrinsicsOf : Vect 22 Name -> Intrinsics Named
     intrinsicsOf [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20, a21,
-                  a22, a23] =
+                  a22] =
       MkIntrinsics (MkNamed a1) (MkNamed a2) (MkNamed a3) (MkNamed a4) (MkNamed a5) (MkNamed a6) (MkNamed a7)
                    (MkNamed a8) (MkNamed a9) (MkNamed a10) (MkNamed a11) (MkNamed a12) (MkNamed a13) (MkNamed a14)
                    (MkNamed a15) (MkNamed a16) (MkNamed a17) (MkNamed a18) (MkNamed a19) (MkNamed a20) (MkNamed a21)
-                   (MkNamed a22) (MkNamed a23)
+                   (MkNamed a22)
 
     ||| A definition of the root of a module.
     in' : Namespace -> String -> Name

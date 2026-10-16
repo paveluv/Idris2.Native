@@ -5,15 +5,18 @@
 ||| by field, for the function that implements each routine.
 module Native.Runtime.Routines
 
+-- lint: allow import-unused: the ports unfold to `Op Heap`, which Idris
+-- compares with the routines' types only where `Native.Runtime.Heap` is imported
+import Native.Runtime.Heap
 import Native.Runtime.Memory
+import Native.Runtime.PortTy
 import Native.Runtime.Space
 import Native.Runtime.Start
 import Native.Runtime.System
 
--- lint: allow import-unused: the ports unfold to `Op Heap`, which Idris
--- compares with the routines' types only where `Native.Heap` is imported
-import Native.Heap
 import Native.HeapObj.Shape as HeapObj
+-- lint: allow import-unused: the record's fields unfold to its ports' types, which
+-- Idris compares with the record's entries only where `Native.Port` is imported
 import Native.Port
 import Native.Routines
 
@@ -22,7 +25,7 @@ import Native.Routines
 ||| The routines generated code calls, each checked against its port: the
 ||| record the code generator reads for the function that implements each.
 export covering
-routines : Routines (Port.PortTy (\s => Memory.Addr s))
+routines : Routines (PortTy (\s => Memory.Addr s))
 routines =
   MkRoutines
     { start = Start.start, allocSlow = Space.allocSlow, allocMutable = Space.allocMutable

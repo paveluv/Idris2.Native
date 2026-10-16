@@ -731,4 +731,4 @@ ruleNames =
   [ "import-order", "public-import", "default-totality", "elab-reflection"
   , "trust-escape", "cites-plan", "todo", "header-comment", "implementation-adjacent", "module-name"
   , "layering", "syscall", "same-name", "import-unused", "import-indirect", "list-accumulation", "generic-export"
-  , "import-alias", "group-prefix", "long-file", "public-unneeded", "extern-owner", "record-constructor", "module-type" ]
+  , "import-alias", "group-prefix", "long-file", "public-unneeded", "record-constructor", "module-type" ]
