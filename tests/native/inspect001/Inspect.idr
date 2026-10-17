@@ -9,6 +9,8 @@
 -- and its inverse, each wrong in one place, and every check must report it.
 module Main
 
+import Core.Name as Core
+import Core.TT.Primitive as Core
 import Data.Fin
 import Data.List
 import Language.Reflection
@@ -20,10 +22,12 @@ import Native.Codegen.Linkage.Sym
 import Native.Codegen.Platform
 import Native.Codegen.Target
 import Native.Codegen.X86.Asm
+import Native.Flat.Exp
 import Native.HeapObj.Shape
 import Native.HeapObj.ValEnc
 import Native.Types.Enc
 import Native.Types.Header
+import Native.Types.IntegerRoutine
 import Native.Types.Kind
 import Native.Types.StringRoutine
 import System
@@ -51,6 +55,12 @@ Sample Bool where
 Sample (List a) where
   sample = []
 
+Sample Core.PrimType where
+  sample = Core.IntType
+
+Sample Core.Name where
+  sample = Core.UN (Core.Basic "a")
+
 Sample Kind where
   sample = CON
 
@@ -61,7 +71,7 @@ Sample OS where
   sample = Linux
 
 ||| The fully qualified name a short name refers to; `getCons` needs one.
-resolve : Name -> Elab Name
+resolve : TT.Name -> Elab TT.Name
 resolve n = do
   [(n', _)] <- getType n
     | _ => fail "\{show n} is not exactly one name"
@@ -72,7 +82,7 @@ explicitArgs (IPi _ _ ExplicitArg _ _ sc) = S (explicitArgs sc)
 explicitArgs (IPi _ _ _ _ _ sc) = explicitArgs sc
 explicitArgs _ = Z
 
-baseName : Name -> String
+baseName : TT.Name -> String
 baseName (NS _ n) = baseName n
 baseName (UN (Basic s)) = s
 baseName n = show n
@@ -87,7 +97,7 @@ pair x y = `(MkPair ~(x) ~(y))
 
 ||| Each constructor of the type, with its name, applied to `sample` for
 ||| every explicit argument, and passed to `wrap`.
-constructors : (wrap : TTImp -> TTImp) -> Name -> Elab TTImp
+constructors : (wrap : TTImp -> TTImp) -> TT.Name -> Elab TTImp
 constructors wrap ty = do
   cons <- getCons !(resolve ty)
   entries <- for cons $ \c => do
@@ -98,11 +108,11 @@ constructors wrap ty = do
   pure (foldr (\x, acc => `(~(x) :: ~(acc))) `([]) entries)
 
 ||| Every constructor of a type, as values: `[("CON", CON), …]`.
-enumerate : {a : Type} -> Name -> Elab (List (String, a))
+enumerate : {a : Type} -> TT.Name -> Elab (List (String, a))
 enumerate ty = check !(constructors id ty)
 
 ||| Every constructor of an indexed family, as the strings its `Show` gives.
-shows : Name -> Elab (List (String, String))
+shows : TT.Name -> Elab (List (String, String))
 shows ty = check !(constructors (\v => `(show ~(v))) ty)
 
 ------------------------------------------------------------------------------
@@ -191,6 +201,15 @@ arithOps = %runElab enumerate `{ArithOp}
 stringRoutines : List (String, StringRoutine)
 stringRoutines = %runElab enumerate `{StringRoutine}
 
+integerRoutines : List (String, IntegerRoutine)
+integerRoutines = %runElab enumerate `{IntegerRoutine}
+
+reps : List (String, Rep)
+reps = %runElab enumerate `{Rep}
+
+skeletons : List (String, Skeleton)
+skeletons = %runElab enumerate `{Skeleton}
+
 pinnedNames : List (String, Pinned)
 pinnedNames = %runElab enumerate `{Pinned}
 
@@ -236,9 +255,16 @@ platforms : List (String, Platform)
 platforms = [ (show a ++ "-" ++ show o, MkPlatform a o) | (_, a) <- arches, (_, o) <- oses ]
 
 ||| The types whose hand-written `Eq` the gate checks. The test's `run`
-||| compares this list with the `Eq` instances in the backend's source.
+||| compares this list, with the exempt ones, with the `Eq` instances in the
+||| backend's source.
 gatedEq : List String
-gatedEq = ["Arch", "Conv", "Kind", "Lowering", "OS", "Platform", "Reg64", "StringRoutine", "Ty", "ValEnc"]
+gatedEq =
+  [ "Arch", "Conv", "IntegerRoutine", "Kind", "Lowering", "OS", "Platform", "Reg64", "Rep", "Skeleton"
+  , "StringRoutine", "Ty", "ValEnc" ]
+
+||| The types whose hand-written `Eq` the gate does not check, each with why.
+exemptEq : List (String, String)
+exemptEq = [("Raw", "a record of one word, compared as its word, whose constructor is the runtime's")]
 
 failures : List String
 failures = concat
@@ -254,7 +280,9 @@ failures = concat
   , eqFailures "Kind" kinds, eqFailures "Ty" tys
   , eqFailures "Conv" convs, eqFailures "Lowering" lowerings, eqFailures "Reg64" regs
   , eqFailures "ValEnc" encodings, showFailures "ValEnc" encodings
-  , eqFailures "StringRoutine" stringRoutines
+  , eqFailures "StringRoutine" stringRoutines, eqFailures "IntegerRoutine" integerRoutines
+  , eqFailures "Rep" reps, eqFailures "Skeleton" skeletons
+  , nonEmpty "IntegerRoutine" integerRoutines, nonEmpty "Rep" reps, nonEmpty "Skeleton" skeletons
   , showFailures "Kind" kinds, distinct "HeaderPart" "both show as" parts
   , showFailures "ArithOp" arithOps, showFailures "Conv" convs, showFailures "Ty" tys
   , showFailures "Pinned" pinnedNames, showFailures "Reg64" regs
@@ -274,7 +302,8 @@ main : IO ()
 main = do
   args <- getArgs
   if "--gated" `elem` args
-     then traverse_ putStrLn gatedEq
+     then traverse_ putStrLn (gatedEq ++ map fst exemptEq)
      else do
        traverse_ putStrLn failures
        putStrLn "gated Eq: \{unwords gatedEq}"
+       traverse_ (\(t, why) => putStrLn "exempt Eq: \{t}, \{why}") exemptEq

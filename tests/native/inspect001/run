@@ -6,9 +6,15 @@
 idris2 -p idris2-native -p idris2 Inspect.idr -o inspect > /dev/null
 ./build/exec/inspect
 
-# Every hand-written Eq in the backend is gated: the instances in its source,
-# less the gate's list, must be empty.
-grep -rhE '^((public )?export )?([^=]*=> *)?Eq \(?[A-Z][A-Za-z0-9]*.* where *$' ../../../src/Compiler/Native \
+# Every hand-written Eq in the backend, the code generator's and the
+# runtime's, is gated or exempt: the instances in its source, less the gate's
+# lists, must be none. A source directory that is not there, or a search that
+# finds no instance, is reported, so that a move of the sources cannot leave
+# the check with nothing to check.
+sources="../../../src/Native ../../../runtime/Native"
+for d in $sources; do [ -d "$d" ] || echo "no source directory $d"; done
+grep -rhE '^((public )?export )?([^=]*=> *)?Eq \(?[A-Z][A-Za-z0-9]*.* where *$' $sources 2>/dev/null \
   | sed -E 's/.*Eq \(?([A-Z][A-Za-z0-9]*).*/\1/' | sort -u > build/eq-instances
+[ -s build/eq-instances ] || echo "no Eq instance found in the sources"
 ./build/exec/inspect --gated | sort -u > build/eq-gated
 comm -23 build/eq-instances build/eq-gated | sed 's/^/not gated: /'
