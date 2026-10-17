@@ -1,10 +1,10 @@
-||| The routines of the runtime that generated code reaches (`Routine`), with
-||| their registers.
+||| The routines of the runtime that generated code reaches, as their calls
+||| do (`RoutineCall`): with their registers.
 |||
 ||| The modules of `Native.Codegen.Linkage` are the code generator's side of
 ||| what generated code, the runtime and the linker agree on: the contract as
 ||| the loaded runtime realises it (`Realised`), the instructions of the
-||| inline externs (`Lowering`), the routines here, the foreign
+||| inline externs (`Expansion`), the routines here, the foreign
 ||| functions the runtime implements (`ForeignFunctions`), where a
 ||| platform's services are (`OSService`), where the runtime's modules are
 ||| (`RuntimeModule`), the image's symbols and their labels (`Sym`), the
@@ -31,9 +31,9 @@ import Core.Name.Namespace
 import Data.List
 import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.Port
-import Native.Routines
+import Native.Routine
 import Native.Types.Enc as Types
-import Native.Types.StringRoutines as Types
+import Native.Types.StringRoutine as Types
 
 %default total
 
@@ -44,10 +44,11 @@ public export
 flatName : Name -> Name
 flatName n = NS (mkNamespace "_flat") n
 
-||| A routine of the runtime that generated code reaches.
+||| A routine of the runtime that generated code reaches, as its calls do:
+||| the function, its symbol and its registers.
 public export
-record Routine (enc : Types.Enc) where
-  constructor MkRoutine
+record RoutineCall (enc : Types.Enc) where
+  constructor MkRoutineCall
   ||| The function of the runtime library that is the routine; for one the
   ||| runtime does not have yet, the name its calls use.
   name : Name
@@ -89,34 +90,38 @@ public export
 integerRoutine : String -> Name
 integerRoutine op = UN (Basic ("idris_integer_" ++ op))
 
-||| The names of the string routines the runtime has no module for, under
-||| the encoding: a call of one ends the program as `Unsupported` does.
-stringStubs : Types.StringRoutines (\_ => String)
-stringStubs =
-  Types.MkStringRoutines
-    { length = "length", head = "head", tail = "tail", index = "index", cons = "cons", append = "append"
-    , reverse = "reverse", substr = "substr", compare = "compare", showSigned = "show_signed"
-    , showUnsigned = "show_unsigned" }
+||| The name of a string routine the runtime has no module for, under the
+||| encoding: a call of one ends the program as `Unsupported` does.
+stubName : Types.StringRoutine -> Name
+stubName c = UN (Basic ("idris_string_" ++ op c))
+  where
+    op : Types.StringRoutine -> String
+    op Types.StringRoutine.Length = "length"
+    op Types.StringRoutine.Head = "head"
+    op Types.StringRoutine.Tail = "tail"
+    op Types.StringRoutine.Index = "index"
+    op Types.StringRoutine.Cons = "cons"
+    op Types.StringRoutine.Append = "append"
+    op Types.StringRoutine.Reverse = "reverse"
+    op Types.StringRoutine.Substr = "substr"
+    op Types.StringRoutine.Compare = "compare"
+    op Types.StringRoutine.ShowSigned = "show_signed"
+    op Types.StringRoutine.ShowUnsigned = "show_unsigned"
 
-||| The name of a string routine the runtime has no module for.
-stubName : String -> Name
-stubName op = UN (Basic ("idris_string_" ++ op))
-
-||| The name generated code calls a string routine by, a field of the
-||| string routines.
+||| The name generated code calls a string routine by.
 export
-stringRoutine : Realised -> ({0 f : Port -> Type} -> Types.StringRoutines f -> f p) -> Name
-stringRoutine r field = case r.strings of
-  Just ss => flatName (field ss).name
-  Nothing => stubName (field stringStubs)
+stringRoutine : Realised -> Types.StringRoutine -> Name
+stringRoutine r c = case r.strings of
+  Just ss => maybe (stubName c) (flatName . fst) (find ((== c) . snd) ss)
+  Nothing => stubName c
 
 ||| The routines, with their registers: the generic runtime's and the string
 ||| encoding's as the loaded runtime realises them, and the `Integer`
 ||| operations, which the runtime has none of yet.
 export
-routines : {enc : Types.Enc} -> Realised -> List (Routine enc)
+routines : {enc : Types.Enc} -> Realised -> List (RoutineCall enc)
 routines r =
-  map (\(_ ** x) => x) (Routines.routineList (Routines.zipRoutines generic r.routines symbols))
+  map generic r.routines
     ++ strings
     ++ [ integer "add" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
        , integer "sub" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
@@ -134,32 +139,30 @@ routines r =
        , integer "from_int64" [IRCommon.Ty.Val] [IRCommon.Ty.W64]
        , integer "from_bits64" [IRCommon.Ty.Val] [IRCommon.Ty.W64] ]
   where
-    generic : {p : Port} -> Realised.Named p -> Sym -> Routine enc
-    generic n s = MkRoutine n.name True (Just s) (portResults p) (portParams p)
+    ||| The symbol the rendering and the seed reach a routine of the core by.
+    symbolOf : Routine -> Sym
+    symbolOf Routine.Start = Sym.SymRuntimeStart
+    symbolOf Routine.AllocSlow = Sym.SymAllocSlow
+    symbolOf Routine.AllocMutable = Sym.SymAllocMutable
+    symbolOf Routine.Crash = Sym.SymCrash
 
-    provided : {p : Port} -> Realised.Named p -> Realised.Named p -> Routine enc
-    provided n _ = MkRoutine n.name True Nothing (portResults p) (portParams p)
+    generic : (Name, Routine) -> RoutineCall enc
+    generic (n, c) = MkRoutineCall n True (Just (symbolOf c)) (portResults (Routine.port c)) (portParams (Routine.port c))
 
-    stub : {p : Port} -> String -> String -> Routine enc
-    stub op _ = MkRoutine (stubName op) False Nothing (portResults p) (portParams p)
+    provided : (Name, Types.StringRoutine) -> RoutineCall enc
+    provided (n, c) =
+      MkRoutineCall n True Nothing (portResults (Types.StringRoutine.port c)) (portParams (Types.StringRoutine.port c))
 
-    strings : List (Routine enc)
+    stub : Types.StringRoutine -> RoutineCall enc
+    stub c = MkRoutineCall (stubName c) False Nothing (portResults (Types.StringRoutine.port c)) (portParams (Types.StringRoutine.port c))
+
+    strings : List (RoutineCall enc)
     strings = case r.strings of
-      Just ss => map (\(_ ** x) => x) (Types.StringRoutines.stringRoutineList (Types.StringRoutines.zipStringRoutines provided ss ss))
-      Nothing =>
-        map (\(_ ** x) => x)
-          (Types.StringRoutines.stringRoutineList
-           (Types.StringRoutines.zipStringRoutines (\{p}, op, x => stub {p} op x) stringStubs stringStubs))
+      Just ss => map provided ss
+      Nothing => map stub Types.StringRoutine.allStringRoutines
 
-    integer : String -> List (IRCommon.Ty enc) -> List (IRCommon.Ty enc) -> Routine enc
-    integer op rs ps = MkRoutine (integerRoutine op) False Nothing rs ps
-
-    ||| The symbols the rendering and the seed reach the generic routines by.
-    symbols : Routines (\_ => Sym)
-    symbols =
-      MkRoutines
-        { start = Sym.SymRuntimeStart, allocSlow = Sym.SymAllocSlow, allocMutable = Sym.SymAllocMutable
-        , crash = Sym.SymCrash }
+    integer : String -> List (IRCommon.Ty enc) -> List (IRCommon.Ty enc) -> RoutineCall enc
+    integer op rs ps = MkRoutineCall (integerRoutine op) False Nothing rs ps
 
 ||| The symbol the routine whose function has the name is reached by.
 export

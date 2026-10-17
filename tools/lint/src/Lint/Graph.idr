@@ -66,7 +66,7 @@ allowed ours importer imported = case layerOf importer of
   where
     ||| The groups of the contract.
     contract : List String
-    contract = ["HeapObj", "Area", "Port", "Routines", "Intrinsic", "Service"]
+    contract = ["HeapObj", "Area", "Port", "Routine", "Intrinsic", "Service"]
 
     ||| A module's layer: the group under the product's root its name is in
     ||| (`Codegen` for `Native.Codegen.TermIR.Instr`), or the linter's.

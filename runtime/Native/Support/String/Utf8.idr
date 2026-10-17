@@ -26,8 +26,6 @@ module Native.Support.String.Utf8
 
 import Native.Flat.Uniform as Flat
 import Native.HeapObj.Shape as HeapObj
--- lint: allow import-unused: the record's fields unfold to its ports' types, which
--- Idris compares with the record's entries only where `Native.Port` is imported
 import Native.Port
 import Native.Runtime.Bits
 import Native.Runtime.Heap as Runtime
@@ -40,7 +38,7 @@ import Native.Support.CodePoint
 import Native.Support.Obj
 import Native.Types.Header
 import Native.Types.Kind
-import Native.Types.StringRoutines as Types
+import Native.Types.StringRoutine
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
@@ -174,7 +172,7 @@ slice s h from to = do
 %cg native flat Support.String.Utf8.length
 ||| The characters of a string.
 export covering
-length : Flat.Uniform String -> Runtime.Heap.Op Runtime.Heap Bits64
+length : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.Length)
 length str = do
   s <- stringObject str
   h <- headerOf s
@@ -183,7 +181,7 @@ length str = do
 %cg native flat Support.String.Utf8.head
 ||| The first character.
 export
-head : Flat.Uniform String -> Runtime.Heap.Op Runtime.Heap Bits64
+head : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.Head)
 head str = do
   s <- stringObject str
   h <- headerOf s
@@ -192,7 +190,7 @@ head str = do
 %cg native flat Support.String.Utf8.tail
 ||| All but the first character.
 export covering
-tail : Flat.Uniform String -> Runtime.Heap.Op Runtime.Heap (Flat.Uniform String)
+tail : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.Tail)
 tail str = do
   s <- stringObject str
   h <- headerOf s
@@ -204,7 +202,7 @@ tail str = do
 ||| The character at an index. A negative index comes as a word past every
 ||| length.
 export covering
-index : Flat.Uniform String -> (i : Bits64) -> Runtime.Heap.Op Runtime.Heap Bits64
+index : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.Index)
 index str i = do
   s <- stringObject str
   h <- headerOf s
@@ -214,7 +212,7 @@ index str i = do
 %cg native flat Support.String.Utf8.cons
 ||| A character, then a string.
 export covering
-cons : (c : Bits64) -> Flat.Uniform String -> Runtime.Heap.Op Runtime.Heap (Flat.Uniform String)
+cons : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.Cons)
 cons c str = do
   s <- stringObject str
   h <- headerOf s
@@ -228,7 +226,7 @@ cons c str = do
 %cg native flat Support.String.Utf8.append
 ||| One string, then another.
 export covering
-append : Flat.Uniform String -> Flat.Uniform String -> Runtime.Heap.Op Runtime.Heap (Flat.Uniform String)
+append : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.Append)
 append x y = do
   a <- stringObject x
   b <- stringObject y
@@ -244,7 +242,7 @@ append x y = do
 %cg native flat Support.String.Utf8.reverse
 ||| The characters in the other order.
 export covering
-reverse : Flat.Uniform String -> Runtime.Heap.Op Runtime.Heap (Flat.Uniform String)
+reverse : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.Reverse)
 reverse str = do
   s <- stringObject str
   h <- headerOf s
@@ -270,7 +268,7 @@ reverse str = do
 ||| `string-substr` does: a negative one counts as 0, and a start past the
 ||| end gives the empty string.
 export covering
-substr : (start, len : Int) -> Flat.Uniform String -> Runtime.Heap.Op Runtime.Heap (Flat.Uniform String)
+substr : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.Substr)
 substr start len str = do
   s <- stringObject str
   h <- headerOf s
@@ -288,7 +286,7 @@ substr start len str = do
 ||| The order of two strings, -1, 0 or 1: by code point, which is the order
 ||| of their UTF-8 bytes.
 export covering
-compare : Flat.Uniform String -> Flat.Uniform String -> Runtime.Heap.Op Runtime.Heap Int
+compare : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.Compare)
 compare x y = do
   a <- stringObject x
   b <- stringObject y
@@ -483,24 +481,14 @@ decimal negative m = do
 ||| A signed word in decimal, as Chez writes it. The most negative word's
 ||| magnitude is its own pattern, unsigned.
 export covering
-showSigned : (n : Int) -> Runtime.Heap.Op Runtime.Heap (Flat.Uniform String)
+showSigned : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.ShowSigned)
 showSigned n = if n < 0 then decimal True (cast {to = Bits64} (0 - n)) else decimal False (cast n)
 
 %cg native flat Support.String.Utf8.showUnsigned
 ||| A word, unsigned, in decimal.
 export covering
-showUnsigned : (n : Bits64) -> Runtime.Heap.Op Runtime.Heap (Flat.Uniform String)
+showUnsigned : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.ShowUnsigned)
 showUnsigned = decimal False
-
-||| The string routines under UTF-8, each checked against its port: the
-||| record the code generator reads for the functions generated code calls.
-export covering
-strings : Types.StringRoutines (Runtime.PortTy (\s => Runtime.Memory.Addr s))
-strings =
-  Types.MkStringRoutines
-    { length = Utf8.length, head = Utf8.head, tail = Utf8.tail, index = Utf8.index, cons = Utf8.cons
-    , append = Utf8.append, reverse = Utf8.reverse, substr = Utf8.substr, compare = Utf8.compare
-    , showSigned = Utf8.showSigned, showUnsigned = Utf8.showUnsigned }
 
 %cg native flat Support.String.Utf8.prim__putStr
 ||| `putStr`: the string's bytes written to the standard output, all of

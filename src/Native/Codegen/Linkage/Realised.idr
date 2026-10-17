@@ -15,11 +15,9 @@
 ||| the platform's module that implements it, `PortTy addr (port c)`, paired
 ||| by their constructor.
 |||
-||| The other entries are still read from records that give them: a
-||| record's value is its constructor applied to its entries, in the fields'
-||| order, which the code generator takes by position and rebuilds with the
-||| same constructor. It names those records: `routines` of the runtime's
-||| `Routines` and the string encoding's module's `strings`.
+||| The routines are found the same way (`Native.Routine`), each a function
+||| `PortTy addr (port c)` of the runtime, and the string routines
+||| (`Native.Types.StringRoutine`) in the string encoding's module.
 |||
 ||| Part of what generated code, the runtime and the linker agree on
 ||| (`Native.Codegen.Linkage.Routine` says what it is).
@@ -35,37 +33,28 @@ import Core.Core
 import Core.Name
 import Core.Name.Namespace
 import Core.TT
-import Core.TT.Binder
 import Core.TT.Term
 import Data.List
 import Data.SortedMap
-import Data.Vect
 import Data.Zippable
 import Native.Codegen.Platform
 import Native.Intrinsic
-import Native.Port
-import Native.Routines
+import Native.Routine
 import Native.Service
 import Native.Types.Enc as Types
-import Native.Types.StringRoutines as Types
+import Native.Types.StringRoutine as Types
 
 %default covering
-
-||| An entry as the loaded runtime realises it: the function, or the
-||| extern, that is it.
-public export
-record Named (p : Port) where
-  constructor MkNamed
-  name : Name
 
 ||| The contract's entries, as the loaded runtime realises them.
 public export
 record Realised where
   constructor MkRealised
-  ||| The generic runtime's routines.
-  routines : Routines Named
-  ||| The string encoding's routines, if the runtime has a module for it.
-  strings : Maybe (Types.StringRoutines Named)
+  ||| Each routine of the runtime's core, with the function that is it.
+  routines : List (Name, Routine)
+  ||| Each routine of the string encoding's module, with the function that
+  ||| is it, if the runtime has a module for the encoding.
+  strings : Maybe (List (Name, Types.StringRoutine))
   ||| Each inline extern, with the intrinsic it is.
   externs : SortedMap Name Intrinsic
   ||| Each OS service's extern, with the platform's function for it.
@@ -76,13 +65,14 @@ record Realised where
 export
 realise : {auto c : Ref Ctxt Defs} -> Platform -> Types.Enc -> Core (Either String Realised)
 realise platform enc = do
-  Right rs <- fieldsOf (in' (RuntimeModule.runtimeModule "Routines") "routines") 4
-    | Left e => pure (Left e)
+  Right rs <- entries "Native.Routine" "allRoutines" Routine.allRoutines [portTy] runtimeOwn
+    | Left e => pure (Left ("the runtime's routines: " ++ e))
   ss <- case RuntimeModule.stringModule enc.string of
-    Just ns => map (map Just) (fieldsOf (in' ns "strings") 11)
+    Just ns => map (map Just) (entries "Native.Types.StringRoutine" "allStringRoutines"
+                                 Types.StringRoutine.allStringRoutines [portTy] (inModule ns))
     Nothing => pure (Right Nothing)
   let Right ss' = ss
-    | Left e => pure (Left e)
+    | Left e => pure (Left ("the string encoding's routines: " ++ e))
   Just platformNs <- pure (OSService.platformModule platform)
     | Nothing => pure (Left ("the platform " ++ show platform ++ " has no OS services"))
   Right intrinsics <- entries "Native.Intrinsic" "allIntrinsics" Intrinsic.allIntrinsics [externTy] isExtern
@@ -93,7 +83,7 @@ realise platform enc = do
     | Left e => pure (Left ("the platform's OS services: " ++ e))
   let externs = fromList [ (n, i) | (n, _, i) <- intrinsics ]
       services = fromList [ (x, f) | (x, c, _) <- serviceExterns, (f, c', _) <- serviceFunctions, c == c' ]
-  pure (Right (MkRealised (routinesOf rs) (map stringRoutinesOf ss') externs services))
+  pure (Right (MkRealised (pairs rs) (map pairs ss') externs services))
   where
     ||| A definition of the root of a module.
     in' : Namespace -> String -> Name
@@ -111,6 +101,14 @@ realise platform enc = do
     inModule : Namespace -> Name -> GlobalDef -> Bool
     inModule ns (NS ns' _) _ = ns' == ns
     inModule _ _ _ = False
+
+    runtimeOwn : Name -> GlobalDef -> Bool
+    runtimeOwn (NS ns _) _ = RuntimeModule.inRuntime ns
+    runtimeOwn _ _ = False
+
+    -- each entry's definition, with the code generator's constructor
+    pairs : List (Name, Name, a) -> List (Name, a)
+    pairs es = [ (n, x) | (n, _, x) <- es ]
 
     ||| The definitions the context keeps whose type is the port of a
     ||| constructor of a contract's enumeration, `f (port c)` or `f addr (port
@@ -170,37 +168,3 @@ realise platform enc = do
               c <- portOf ty
               i <- lookup c byConstructor
               pure (n', c, i)
-
-    ||| The `n` entries of the record a definition's value is, in the fields'
-    ||| order: its constructor's last `n` arguments, after the record's
-    ||| parameter.
-    fieldsOf : Name -> (n : Nat) -> Core (Either String (Vect n Name))
-    fieldsOf def n = do
-      defs <- get Ctxt
-      Just gdef <- lookupCtxtExact def (gamma defs)
-        | Nothing => pure (Left ("the runtime has no " ++ show def))
-      case definition gdef of
-        PMDef _ _ (STerm _ tm) _ _ => do
-          tm' <- toFullNames tm
-          let args = snd (getFnArgs tm')
-          pure $ case traverse entryName (drop (length args `minus` n) args) of
-            Just ns => maybe (Left (show def ++ " is not a record of " ++ show n ++ " entries")) Right (toVect n ns)
-            Nothing => Left ("an entry of " ++ show def ++ " is neither a function nor an extern")
-        _ => pure (Left (show def ++ " is not a record's value"))
-      where
-        ||| The function or extern an entry is: under the lambdas Idris puts around
-        ||| it for the port's implicit arguments, the head of what they apply.
-        entryName : Term vars -> Maybe Name
-        entryName (Bind _ _ (Lam {}) sc) = entryName sc
-        entryName tm = case getFn tm of
-          Ref _ _ n => Just n
-          _ => Nothing
-
-    ||| The records, rebuilt from their entries in the fields' order.
-    routinesOf : Vect 4 Name -> Routines Named
-    routinesOf [a1, a2, a3, a4] = MkRoutines (MkNamed a1) (MkNamed a2) (MkNamed a3) (MkNamed a4)
-
-    stringRoutinesOf : Vect 11 Name -> Types.StringRoutines Named
-    stringRoutinesOf [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11] =
-      Types.MkStringRoutines (MkNamed a1) (MkNamed a2) (MkNamed a3) (MkNamed a4) (MkNamed a5) (MkNamed a6)
-        (MkNamed a7) (MkNamed a8) (MkNamed a9) (MkNamed a10) (MkNamed a11)

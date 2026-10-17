@@ -18,7 +18,6 @@ modules =
     Native.Runtime.OS.Syscall,
     Native.Runtime.PortTy,
     Native.Runtime.Raw,
-    Native.Runtime.Routines,
     Native.Runtime.Space,
     Native.Runtime.Start,
     Native.Runtime.State,

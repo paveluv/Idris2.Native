@@ -60,7 +60,7 @@ import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.Codegen.Linkage.ConvertsIn
 import Native.Codegen.Linkage.ForeignFunctions
 import Native.Codegen.Linkage.Realised as Linkage
-import Native.Codegen.Linkage.Routine as Linkage
+import Native.Codegen.Linkage.Routine
 import Native.Codegen.LowerFlat
 import Native.Codegen.Platform
 import Native.Codegen.Strings
@@ -107,7 +107,7 @@ import Native.Types.BignumEnc
 import Native.Types.Enc as Types
 import Native.Types.Header as Types
 import Native.Types.Kind
-import Native.Types.StringRoutines as Types
+import Native.Types.StringRoutine as Types
 
 %default covering
 
@@ -778,12 +778,11 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
           Just (_ ** r) => TermIR.Build.directCall r xs
           Nothing => TermIR.Build.crash ("no runtime routine " ++ show name)
 
-        ||| A call of a string routine of the program's encoding, a field of the
-        ||| string routines, of its port's registers.
-        strings : {p : Port} -> ({0 f : Port -> Type} -> Types.StringRoutines f -> f p) ->
-                  All (TermIR.Opnd v) (Linkage.Routine.portParams p) ->
-                  B (All (TermIR.Opnd v) (Linkage.Routine.portResults p))
-        strings field xs = callRoutine (Linkage.Routine.stringRoutine refs.realised field) xs
+        ||| A call of a string routine of the program's encoding, of its port's
+        ||| registers.
+        strings : (c : Types.StringRoutine) -> All (TermIR.Opnd v) (Linkage.Routine.portParams (Types.StringRoutine.port c)) ->
+                  B (All (TermIR.Opnd v) (Linkage.Routine.portResults (Types.StringRoutine.port c)))
+        strings c xs = callRoutine (Linkage.Routine.stringRoutine refs.realised c) xs
 
         ||| A case on integer or character constants. A 64-bit scrutinee is
         ||| matched as a fixnum against the cases in the fixnum range and as a box
@@ -852,7 +851,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
         stringCase x [] other = other
         stringCase x ((lit, code) :: cs) other = do
           l <- constant (Str lit)
-          [o] <- strings (.compare) [x, l]
+          [o] <- strings Types.StringRoutine.Compare [x, l]
           TermIR.Build.branch IRCommon.Op.EqR o (TermIR.Opnd.W 0) code (stringCase x cs other)
 
         ||| A primitive operation, and the environment after it.
@@ -870,7 +869,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
               else if from == CharType then do
                 w <- fixValue (get env x)
                 empty <- constant (Str "")
-                [c] <- strings (.cons) [w, empty]
+                [c] <- strings Types.StringRoutine.Cons [w, empty]
                 pure (set env r c)
               else set env r <$> decimal wf (get env x)
             _ => TermIR.Build.unsupported ("the cast from " ++ show from ++ " to " ++ show to)
@@ -969,8 +968,8 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
 
             ||| A word in decimal, signed or not, by the string routine for it.
             decimalWord : Bool -> TermIR.Opnd v IRCommon.Ty.W64 -> B (TermIR.Opnd v IRCommon.Ty.Val)
-            decimalWord True w = do [t] <- strings (.showSigned) [w]; pure t
-            decimalWord False w = do [t] <- strings (.showUnsigned) [w]; pure t
+            decimalWord True w = do [t] <- strings Types.StringRoutine.ShowSigned [w]; pure t
+            decimalWord False w = do [t] <- strings Types.StringRoutine.ShowUnsigned [w]; pure t
 
             ||| A number of the width in decimal, by its word; an `Integer` outside
             ||| the fixnums is not yet.
@@ -989,7 +988,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
             stringOrder : IRCommon.Op.Rel -> TermIR.Opnd v IRCommon.Ty.Val -> TermIR.Opnd v IRCommon.Ty.Val ->
                           B (TermIR.Opnd v IRCommon.Ty.Val)
             stringOrder rel x y = do
-              [o] <- strings (.compare) [x, y]
+              [o] <- strings Types.StringRoutine.Compare [x, y]
               b <- TermIR.Build.emit1 (TermIR.Instr.Cmp rel o (TermIR.Opnd.W 0))
               wordFix b
 
@@ -1195,28 +1194,28 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
             value (BXOr ty) [x, y] =
               withWidth ty "bitwise xor" (\w => arithmetic w IRCommon.Op.Xor "xor" (get env x) (get env y))
             -- the string primitives: the runtime's routines under the encoding
-            value StrLength [s] = do [n] <- strings (.length) [get env s]
+            value StrLength [s] = do [n] <- strings Types.StringRoutine.Length [get env s]
                                      wordFix n
-            value StrHead [s] = do [c] <- strings (.head) [get env s]
+            value StrHead [s] = do [c] <- strings Types.StringRoutine.Head [get env s]
                                    wordFix c
-            value StrTail [s] = do [r] <- strings (.tail) [get env s]
+            value StrTail [s] = do [r] <- strings Types.StringRoutine.Tail [get env s]
                                    pure r
             value StrIndex [s, i] = do
               w <- wideWord (get env i)
-              [c] <- strings (.index) [get env s, w]
+              [c] <- strings Types.StringRoutine.Index [get env s, w]
               wordFix c
             value StrCons [c, s] = do
               w <- fixValue (get env c)
-              [r] <- strings (.cons) [w, get env s]
+              [r] <- strings Types.StringRoutine.Cons [w, get env s]
               pure r
-            value StrAppend [a, b] = do [r] <- strings (.append) [get env a, get env b]
+            value StrAppend [a, b] = do [r] <- strings Types.StringRoutine.Append [get env a, get env b]
                                         pure r
-            value StrReverse [s] = do [r] <- strings (.reverse) [get env s]
+            value StrReverse [s] = do [r] <- strings Types.StringRoutine.Reverse [get env s]
                                       pure r
             value StrSubstr [o, l, s] = do
               wo <- wideWord (get env o)
               wl <- wideWord (get env l)
-              [r] <- strings (.substr) [wo, wl, get env s]
+              [r] <- strings Types.StringRoutine.Substr [wo, wl, get env s]
               pure r
             value (LT StringType) [x, y] = stringOrder IRCommon.Op.LtS (get env x) (get env y)
             value (LTE StringType) [x, y] = stringOrder IRCommon.Op.LeS (get env x) (get env y)
@@ -1418,7 +1417,7 @@ lowerProgram enc platform realised forms shapes vmdefs = do
     (program forms shapes realised entryPlan others (mapMaybe ready statics))
   where
     -- A routine the runtime has: its form, of its port's registers.
-    provided : Routine enc -> Either String ()
+    provided : Linkage.Routine.RoutineCall enc -> Either String ()
     provided r =
       if not r.provided then Right () else
       case find (\fd => fd.name == r.name) forms of

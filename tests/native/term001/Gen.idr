@@ -64,13 +64,13 @@ import Native.HeapObj.Shape
 import Native.HeapObj.ValEnc
 import Native.Intrinsic
 import Native.Port
-import Native.Routines
+import Native.Routine
 import Native.Types.BignumEnc
 import Native.Types.Enc
 import Native.Types.Header
 import Native.Types.Kind
 import Native.Types.StringEnc
-import Native.Types.StringRoutines
+import Native.Types.StringRoutine
 import System.File
 
 %default total
@@ -105,8 +105,8 @@ runtimeCrash = NS (runtimeModule "System") (UN (Basic "crash"))
 
 realised : Realised
 realised =
-  MkRealised (MkRoutines (MkNamed runtimeStart) (MkNamed runtimeAllocSlow) (MkNamed runtimeAllocMutable)
-                (MkNamed runtimeCrash))
+  MkRealised [(runtimeStart, Start), (runtimeAllocSlow, AllocSlow), (runtimeAllocMutable, AllocMutable),
+              (runtimeCrash, Crash)]
              Nothing empty empty
 
 Run : Decls TestEnc

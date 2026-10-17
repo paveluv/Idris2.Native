@@ -36,7 +36,7 @@ import Native.Codegen.IRCommon.Op
 import Native.Codegen.IRCommon.Pinned as IRCommon
 import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.Codegen.Linkage.ConvertsIn
-import Native.Codegen.Linkage.Lowering as Linkage
+import Native.Codegen.Linkage.Expansion as Linkage
 import Native.Codegen.Linkage.Routine
 import Native.Codegen.TermIR.Body
 import Native.Codegen.TermIR.Build as TermIR
@@ -419,11 +419,11 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
           _ => TermIR.Build.unsupported ("the constant " ++ show k ++ " in a flat form")
 
         ||| An inline extern's instructions, from its arguments' registers, which
-        ||| are its port's: the intrinsic's lowering (`Linkage.Lowering`), which
+        ||| are its port's: the intrinsic's expansion (`Linkage.Expansion`), which
         ||| Idris has checked against the same port.
         inlineExtern : Name -> Intrinsic -> Value enc v -> B (Value enc v)
         inlineExtern n i x = case operands (Linkage.Routine.portParams (Intrinsic.port i)) x.layout x.regs of
-          Just os => lower (Linkage.Lowering.lowering i) os
+          Just os => expand (Linkage.Expansion.expansion i) os
           Nothing => TermIR.Build.unsupported ("the inline extern " ++ show n ++ " on registers other than its port's")
           where
             outside : B a
@@ -461,40 +461,40 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
                 TermIR.Build.emit0 (TermIR.Instr.SetPinned IRCommon.Pinned.K p)
               False => outside
 
-            -- the instructions a lowering stands for, on its port's operands
-            lower : Linkage.Lowering p -> All (TermIR.Opnd v) (Linkage.Routine.portParams {enc} p) ->
+            -- the instructions an expansion stands for, on its port's operands
+            expand : Linkage.Expansion p -> All (TermIR.Opnd v) (Linkage.Routine.portParams {enc} p) ->
                     B (Value enc v)
-            lower (Linkage.Lowering.Load Linkage.Lowering.Whole) [base, off] = do
+            expand (Linkage.Expansion.Load Linkage.Expansion.Whole) [base, off] = do
               a <- TermIR.Build.emit1 (TermIR.Instr.Arith Add base off)
               word <$> TermIR.Build.emit1 (TermIR.Instr.Load IRCommon.Ty.W64 (TermIR.MkMem (TermIR.Mem.AtWord a) Nothing 0))
-            lower (Linkage.Lowering.Load (Linkage.Lowering.Narrow sw)) [base, off] = do
+            expand (Linkage.Expansion.Load (Linkage.Expansion.Narrow sw)) [base, off] = do
               a <- TermIR.Build.emit1 (TermIR.Instr.Arith Add base off)
               word <$> TermIR.Build.emit1 (TermIR.Instr.LoadN sw False (TermIR.MkMem (TermIR.Mem.AtWord a) Nothing 0))
-            lower (Linkage.Lowering.Store Linkage.Lowering.Whole) [base, off, x] = do
+            expand (Linkage.Expansion.Store Linkage.Expansion.Whole) [base, off, x] = do
               a <- TermIR.Build.emit1 (TermIR.Instr.Arith Add base off)
               TermIR.Build.emit0 (TermIR.Instr.Store IRCommon.Ty.W64 (TermIR.MkMem (TermIR.Mem.AtWord a) Nothing 0) x)
               pure noRegs
-            lower (Linkage.Lowering.Store (Linkage.Lowering.Narrow sw)) [base, off, x] = do
+            expand (Linkage.Expansion.Store (Linkage.Expansion.Narrow sw)) [base, off, x] = do
               a <- TermIR.Build.emit1 (TermIR.Instr.Arith Add base off)
               TermIR.Build.emit0 (TermIR.Instr.StoreN sw (TermIR.MkMem (TermIR.Mem.AtWord a) Nothing 0) x)
               pure noRegs
-            lower (Linkage.Lowering.Get r) [] = word <$> getWord r
-            lower (Linkage.Lowering.Set IRCommon.Pinned.Hp) [x] = do setWord IRCommon.Pinned.Hp x; pure noRegs
-            lower (Linkage.Lowering.Set IRCommon.Pinned.HpLim) [x] = do setWord IRCommon.Pinned.HpLim x; pure noRegs
-            lower (Linkage.Lowering.Set IRCommon.Pinned.K) [x] = do setWord IRCommon.Pinned.K x; pure noRegs
-            lower Linkage.Lowering.PointerTag [] = pure (word (TermIR.Opnd.W (cast (HeapObj.ValEnc.pointerTag enc.val))))
-            lower (Linkage.Lowering.AreaAddress a) [] = word <$> TermIR.Build.emit1 (TermIR.Instr.AreaAddr a)
+            expand (Linkage.Expansion.Get r) [] = word <$> getWord r
+            expand (Linkage.Expansion.Set IRCommon.Pinned.Hp) [x] = do setWord IRCommon.Pinned.Hp x; pure noRegs
+            expand (Linkage.Expansion.Set IRCommon.Pinned.HpLim) [x] = do setWord IRCommon.Pinned.HpLim x; pure noRegs
+            expand (Linkage.Expansion.Set IRCommon.Pinned.K) [x] = do setWord IRCommon.Pinned.K x; pure noRegs
+            expand Linkage.Expansion.PointerTag [] = pure (word (TermIR.Opnd.W (cast (HeapObj.ValEnc.pointerTag enc.val))))
+            expand (Linkage.Expansion.AreaAddress a) [] = word <$> TermIR.Build.emit1 (TermIR.Instr.AreaAddr a)
             -- a uniform value and a word: the conversions, so this module's
             -- functions alone
-            lower Linkage.Lowering.ValueWord [u] = case m of
+            expand Linkage.Expansion.ValueWord [u] = case m of
               True => word <$> TermIR.Build.emit1 (TermIR.Instr.ValToWord u)
               False => outside
-            lower Linkage.Lowering.WordValue [w] = case m of
+            expand Linkage.Expansion.WordValue [w] = case m of
               True => do
                 u <- TermIR.Build.emit1 (TermIR.Instr.WordToVal w)
                 pure (MkValue [Flat.Exp.Uniform] [u])
               False => outside
-            lower Linkage.Lowering.Syscall [a0, a1, a2, a3, a4, a5, a6] =
+            expand Linkage.Expansion.Syscall [a0, a1, a2, a3, a4, a5, a6] =
               word <$> TermIR.Build.emit1 (TermIR.Instr.SystemCall 6 [a0, a1, a2, a3, a4, a5, a6])
 
         ||| A constructor's value, from its fields'.

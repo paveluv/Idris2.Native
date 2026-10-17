@@ -25,6 +25,7 @@ import Native.HeapObj.ValEnc
 import Native.Types.Enc
 import Native.Types.Header
 import Native.Types.Kind
+import Native.Types.StringRoutine
 import System
 
 %language ElabReflection
@@ -187,6 +188,9 @@ encodings = %runElab enumerate `{ValEnc}
 arithOps : List (String, ArithOp)
 arithOps = %runElab enumerate `{ArithOp}
 
+stringRoutines : List (String, StringRoutine)
+stringRoutines = %runElab enumerate `{StringRoutine}
+
 pinnedNames : List (String, Pinned)
 pinnedNames = %runElab enumerate `{Pinned}
 
@@ -234,7 +238,7 @@ platforms = [ (show a ++ "-" ++ show o, MkPlatform a o) | (_, a) <- arches, (_, 
 ||| The types whose hand-written `Eq` the gate checks. The test's `run`
 ||| compares this list with the `Eq` instances in the backend's source.
 gatedEq : List String
-gatedEq = ["Arch", "Conv", "Kind", "Lowering", "OS", "Platform", "Reg64", "Ty", "ValEnc"]
+gatedEq = ["Arch", "Conv", "Kind", "Lowering", "OS", "Platform", "Reg64", "StringRoutine", "Ty", "ValEnc"]
 
 failures : List String
 failures = concat
@@ -250,6 +254,7 @@ failures = concat
   , eqFailures "Kind" kinds, eqFailures "Ty" tys
   , eqFailures "Conv" convs, eqFailures "Lowering" lowerings, eqFailures "Reg64" regs
   , eqFailures "ValEnc" encodings, showFailures "ValEnc" encodings
+  , eqFailures "StringRoutine" stringRoutines
   , showFailures "Kind" kinds, distinct "HeaderPart" "both show as" parts
   , showFailures "ArithOp" arithOps, showFailures "Conv" convs, showFailures "Ty" tys
   , showFailures "Pinned" pinnedNames, showFailures "Reg64" regs

@@ -6,7 +6,7 @@
 ||| declares each extern by its port (`%extern intrinsic__store64 : ExternTy
 ||| (port Store64)` in `Native.Runtime.Memory`), which Idris checks; the code
 ||| generator finds each extern by that type alone, and lowers it as
-||| `Native.Codegen.Linkage.Lowering` says, which Idris checks against the
+||| `Native.Codegen.Linkage.Expansion` says, which Idris checks against the
 ||| same port. Neither side restates it.
 |||
 ||| Each takes words, raw addresses or values as ordinary code holds them,

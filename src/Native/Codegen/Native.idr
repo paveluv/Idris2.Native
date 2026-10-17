@@ -21,7 +21,7 @@ import Native.Codegen.Link
 import Native.Codegen.Linkage.ForeignFunctions
 import Native.Codegen.Linkage.OSService
 import Native.Codegen.Linkage.Realised as Linkage
-import Native.Codegen.Linkage.Routine as Linkage
+import Native.Codegen.Linkage.Routine
 import Native.Codegen.Linkage.RuntimeModule
 import Native.Codegen.LocatedIR.Dump
 import Native.Codegen.LocatedIR.Program as LocatedIR

@@ -24,11 +24,14 @@ import Native.Runtime.Bits
 import Native.Runtime.Collect
 import Native.Runtime.Heap
 import Native.Runtime.Memory
+import Native.Runtime.PortTy
 import Native.Runtime.Raw
 
 import Native.Area
 import Native.HeapObj.LayoutWord
 import Native.HeapObj.Shape as HeapObj
+import Native.Port
+import Native.Routine
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
 %hide Prelude.Interfaces.pure
@@ -177,7 +180,7 @@ grow bytes = do
 ||| from-space has grown past twice the live data, and a few windows at
 ||| least, then room for the object.
 export covering
-allocSlow : (bytes : Bits64) -> Heap.Op Heap (Memory.Addr s)
+allocSlow : PortTy Memory.Addr (Routine.port Routine.AllocSlow)
 allocSlow bytes = do
   due <- collectionDue bytes
   if due then Collect.collect else Heap.pure ()
@@ -212,7 +215,7 @@ allocate bytes = do
 ||| allocated by a call so that a collector with a nursery can keep it out
 ||| of it; in this one space, the window's bump or the slow path.
 export covering
-allocMutable : (bytes : Bits64) -> Heap.Op Heap (Memory.Addr s)
+allocMutable : PortTy Memory.Addr (Routine.port Routine.AllocMutable)
 allocMutable bytes = do
   hp <- Memory.allocationPointer
   lim <- Memory.allocationLimit

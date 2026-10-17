@@ -9,7 +9,6 @@ import public Native.Runtime.Collect
 import public Native.Runtime.Heap
 import public Native.Runtime.Memory
 import public Native.Runtime.OS
-import public Native.Runtime.Routines
 import public Native.Runtime.Space
 import public Native.Runtime.Start
 import public Native.Runtime.State

@@ -7,7 +7,14 @@ module Native.Runtime.System
 import public Native.Runtime.OS
 
 import Native.Runtime.Heap
+import Native.Runtime.Memory
+import Native.Runtime.PortTy
+-- lint: allow import-unused: the flat translation judges the port's raw address, which
+-- it reduces only where `Native.Runtime.Raw` is imported
 import Native.Runtime.Raw
+
+import Native.HeapObj.Shape
+import Native.Routine
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
@@ -25,7 +32,7 @@ exit = OS.osExit
 ||| `idris_crash`: writes the message, `length` bytes at `message`, to the
 ||| standard error, and ends the process with status 1.
 export
-crash : (message : Raw) -> (length : Bits64) -> Heap.Op Heap ()
+crash : PortTy Memory.Addr (Routine.port Routine.Crash)
 crash message length = do
   _ <- OS.osWrite OS.stderr message length
   exit 1

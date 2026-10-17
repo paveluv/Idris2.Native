@@ -74,7 +74,7 @@ import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.Codegen.Linkage.Areas as Linkage
 import Native.Codegen.Linkage.Realised as Linkage
 import Native.Codegen.Linkage.ResumePoint
-import Native.Codegen.Linkage.Routine as Linkage
+import Native.Codegen.Linkage.Routine
 import Native.Codegen.Linkage.Sym as Linkage
 import Native.Codegen.LocatedIR.Block as LocatedIR
 import Native.Codegen.LocatedIR.Cont as LocatedIR

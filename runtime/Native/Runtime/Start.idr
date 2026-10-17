@@ -8,8 +8,13 @@ import Native.Runtime.Bits
 import Native.Runtime.Heap
 import Native.Runtime.Memory
 import Native.Runtime.OS
+import Native.Runtime.PortTy
 import Native.Runtime.Raw
 import Native.Runtime.State
+
+import Native.HeapObj.Shape
+import Native.Port
+import Native.Routine
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
@@ -26,7 +31,7 @@ import Native.Runtime.State
 ||| system's guard gap faults; and the stack pointer at entry, `entry`, kept
 ||| for the program's arguments.
 export covering
-start : (entry : Raw) -> (window : Bits64) -> Heap.Op Heap ()
+start : PortTy Memory.Addr (Routine.port Routine.Start)
 start entry window = do
   (fb, fs) <- reserveSpace 35184372088832
   (tb, ts) <- reserveSpace 35184372088832
