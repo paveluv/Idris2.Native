@@ -8,6 +8,7 @@ module Native.Codegen.Linkage.RuntimeModule
 
 import Core.Name.Namespace
 import Data.String
+import Native.Types.BignumEnc as Types
 import Native.Types.StringEnc as Types
 
 %default total
@@ -55,3 +56,9 @@ export
 stringModule : Types.StringEnc -> Maybe Namespace
 stringModule Types.StringEnc.Utf8 = Just (supportModule "String.Utf8")
 stringModule Types.StringEnc.Utf32 = Nothing
+
+||| The support tier's module that lays `Integer`s outside the fixnums out
+||| under the bignum encoding: none yet, for any encoding.
+export
+bignumModule : Types.BignumEnc -> Maybe Namespace
+bignumModule _ = Nothing

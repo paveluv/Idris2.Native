@@ -556,8 +556,49 @@ fileRules f ms ds =
   importOrder f ++ publicImport f ++ defaultTotality f ++ elabReflection f ms
   ++ trustEscape f ms ++ citesPlan f ++ todo f ++ headerComment f
   ++ implementationAdjacent f ds ++ moduleName' f ds ++ moduleType f ds ++ groupPrefix f ds ++ longFile f
-  ++ recordConstructor f ds
+  ++ recordConstructor f ds ++ externName f ds ms
   where
+    ||| `extern-name`: an `%extern` of the runtime is named by the contract
+    ||| it belongs to, so a reader knows from its name what kind of entry it
+    ||| is: `intrinsic__` for an inline extern, whose type is an intrinsic's
+    ||| port (`Native.Intrinsic`), `service__` for an OS service's
+    ||| (`Native.Service`). `prim__` stays Idris's primitives' and the
+    ||| libraries' foreign functions', which the support tier implements by
+    ||| their own names.
+    externName : SourceFile -> List Declared -> Mentions -> List Finding
+    externName f ds ms =
+      let m = show f.mod.moduleNS in
+      if not (isPrefixOf "Native.Runtime" m || isPrefixOf "Native.Support" m) then [] else concatMap one ds
+      where
+        isExtern : PFnOpt -> Bool
+        isExtern (IFnOpt ExternFn) = True
+        isExtern _ = False
+
+        -- whether a place lies within a span
+        inside : FC -> FC -> Bool
+        inside (MkFC _ s _) (MkFC _ a b) = s >= a && s <= b
+        inside _ _ = False
+
+        -- the names written within a declaration, as written, qualified
+        written : FC -> List String
+        written fc = [ show n | (at, n) <- ms.refs, inside at fc ]
+
+        portOf : String -> List String -> Bool
+        portOf contract ns = any (\n => n == contract ++ ".port" || isSuffixOf ("." ++ contract ++ ".port") n) ns
+
+        named : String -> List String -> Bool
+        named n ns = (isPrefixOf "intrinsic__" n && portOf "Intrinsic" ns) || (isPrefixOf "service__" n && portOf "Service" ns)
+
+        one : Declared -> List Finding
+        one d = case d.decl.val of
+          PClaim c =>
+            if not (any isExtern c.opts) then []
+            else [ finding f "extern-name" d.decl.fc n
+                     ("`" ++ n ++ "` is an extern of the runtime: it is named by its contract, `intrinsic__` for an "
+                      ++ "intrinsic's port, `service__` for a service's")
+                 | n <- d.defines, not (named n (written d.decl.fc)) ]
+          _ => []
+
     ||| `module-type`: a module whose name an exported type of it begins, as
     ||| a short name begins a long one (`Object` for `Obj`), and that is named
     ||| after nothing it defines exactly, is named after that type, its key
@@ -731,4 +772,4 @@ ruleNames =
   [ "import-order", "public-import", "default-totality", "elab-reflection"
   , "trust-escape", "cites-plan", "todo", "header-comment", "implementation-adjacent", "module-name"
   , "layering", "syscall", "same-name", "import-unused", "import-indirect", "list-accumulation", "generic-export"
-  , "import-alias", "group-prefix", "long-file", "public-unneeded", "record-constructor", "module-type", "raw-maker" ]
+  , "import-alias", "group-prefix", "long-file", "public-unneeded", "record-constructor", "module-type", "raw-maker", "extern-name" ]

@@ -49,9 +49,8 @@ allRoutines : List Routine
 allRoutines = [Start, AllocSlow, AllocMutable, Crash]
 
 ||| The list holds every routine.
-export
 complete : (r : Routine) -> Elem r Routine.allRoutines
-complete Start = Here
-complete AllocSlow = There (Here)
-complete AllocMutable = There (There (Here))
-complete Crash = There (There (There (Here)))
+complete Start = %search
+complete AllocSlow = %search
+complete AllocMutable = %search
+complete Crash = %search

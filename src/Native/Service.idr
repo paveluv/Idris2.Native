@@ -64,12 +64,11 @@ allServices : List Service
 allServices = [Exit, Write, Reserve, Commit, Release, StackLimit, PageBytes]
 
 ||| The list holds every service.
-export
 complete : (c : Service) -> Elem c Service.allServices
-complete Exit = Here
-complete Write = There (Here)
-complete Reserve = There (There (Here))
-complete Commit = There (There (There (Here)))
-complete Release = There (There (There (There (Here))))
-complete StackLimit = There (There (There (There (There (Here)))))
-complete PageBytes = There (There (There (There (There (There (Here))))))
+complete Exit = %search
+complete Write = %search
+complete Reserve = %search
+complete Commit = %search
+complete Release = %search
+complete StackLimit = %search
+complete PageBytes = %search

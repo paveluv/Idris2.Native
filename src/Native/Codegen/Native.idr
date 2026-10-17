@@ -269,7 +269,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
           (forms, shapes) <- phase "flat inputs" $
                                flatInputs table (Data.SortedMap.toList realised.services)
                                           (map fst defs
-                                            ++ [r.name | r <- Linkage.Routine.routines {enc} realised, r.provided]
+                                            ++ [r.name | r <- Linkage.Routine.routines {enc} realised]
                                            ++ mapMaybe (foreignRoot {enc' = enc}) defs)
           Right (_ ** term) <- phase "lowering"
             (later (Lower.lowerProgram enc settings.platform realised forms shapes defs))

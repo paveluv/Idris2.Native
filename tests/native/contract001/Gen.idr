@@ -46,6 +46,7 @@ import Native.Port
 import Native.Routine
 import Native.Types.BignumEnc
 import Native.Types.Enc
+import Native.Types.IntegerRoutine
 import Native.Types.StringEnc
 import Native.Types.StringRoutine
 
@@ -64,7 +65,7 @@ realised : Realised
 realised =
   MkRealised [(runtimeStart, Start), (runtimeAllocSlow, AllocSlow), (runtimeAllocMutable, AllocMutable),
               (runtimeCrash, Crash)]
-             Nothing empty empty
+             Nothing Nothing empty empty
 
 word : String -> FlatVar
 word s = MkFlatVar (UN (Basic s)) (SPrim Bits64Type) [Word]
@@ -85,7 +86,7 @@ standIn _ = (SPrim Bits64Type, [Word])
 ||| A stand-in for every routine the runtime has, of its port's registers.
 standIns : List FlatDef
 standIns = [ form r.name (zipWith param [0 .. length r.params] r.params) (result r.results) (concatMap (snd . standIn) r.results)
-           | r <- routines {enc = TestEnc} realised, r.provided ]
+           | r <- routines {enc = TestEnc} realised ]
   where
     param : Nat -> Ty TestEnc -> FlatVar
     param i t = MkFlatVar (UN (Basic ("p" ++ show i))) (fst (standIn t)) (snd (standIn t))

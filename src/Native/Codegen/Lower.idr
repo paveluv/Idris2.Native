@@ -106,6 +106,7 @@ import Native.Port
 import Native.Types.BignumEnc
 import Native.Types.Enc as Types
 import Native.Types.Header as Types
+import Native.Types.IntegerRoutine as Types
 import Native.Types.Kind
 import Native.Types.StringRoutine as Types
 
@@ -782,7 +783,18 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
         ||| registers.
         strings : (c : Types.StringRoutine) -> All (TermIR.Opnd v) (Linkage.Routine.portParams (Types.StringRoutine.port c)) ->
                   B (All (TermIR.Opnd v) (Linkage.Routine.portResults (Types.StringRoutine.port c)))
-        strings c xs = callRoutine (Linkage.Routine.stringRoutine refs.realised c) xs
+        strings c xs = case Linkage.Routine.stringRoutine refs.realised c of
+          Just n => callRoutine n xs
+          Nothing => TermIR.Build.unsupported "a string operation, which the runtime has no module for under the encoding"
+
+        ||| A call of an `Integer` routine of the program's encoding, of its port's
+        ||| registers.
+        integers : (c : Types.IntegerRoutine) ->
+                   All (TermIR.Opnd v) (Linkage.Routine.portParams (Types.IntegerRoutine.port c)) ->
+                   B (All (TermIR.Opnd v) (Linkage.Routine.portResults (Types.IntegerRoutine.port c)))
+        integers c xs = case Linkage.Routine.integerRoutine refs.realised c of
+          Just n => callRoutine n xs
+          Nothing => TermIR.Build.unsupported "an Integer operation beyond the fixnums, which the runtime has none of yet"
 
         ||| A case on integer or character constants. A 64-bit scrutinee is
         ||| matched as a fixnum against the cases in the fixnum range and as a box
@@ -926,8 +938,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                   [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done =>
                     TermIR.Build.ifFixnums [x] (\_ => done [x])
                       (do a <- boxWord x
-                          [r] <- callRoutine (Linkage.Routine.integerRoutine "from_int64") {rs = [IRCommon.Ty.Val]}
-                            {ps = [IRCommon.Ty.W64]} [a]
+                          [r] <- integers Types.IntegerRoutine.FromInt64 [a]
                           done [r])
                   pure r
                 (Wide False, Unbounded) => do
@@ -935,8 +946,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                   [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done =>
                     TermIR.Build.branch IRCommon.Op.LtU a (TermIR.Opnd.W 4611686018427387904)
                       (do f <- TermIR.Build.emit1 (TermIR.Instr.Tag a); r <- widen f; done [r])
-                      (do [r] <- callRoutine (Linkage.Routine.integerRoutine "from_bits64") {rs = [IRCommon.Ty.Val]}
-                            {ps = [IRCommon.Ty.W64]} [a]
+                      (do [r] <- integers Types.IntegerRoutine.FromBits64 [a]
                           done [r])
                   pure r
                 _ => pure x
@@ -956,8 +966,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                 integerBits x = do
                   [w] <- TermIR.Build.joinPoint [IRCommon.Ty.W64] $ \done =>
                     TermIR.Build.ifFixnums [x] (\[f] => do w <- untag (f); done [w])
-                      (do [w] <- callRoutine (Linkage.Routine.integerRoutine "to_bits64") {rs = [IRCommon.Ty.W64]}
-                            {ps = [IRCommon.Ty.Val]} [x]
+                      (do [w] <- integers Types.IntegerRoutine.ToBits64 [x]
                           done [w])
                   pure w
 
@@ -992,16 +1001,27 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
               b <- TermIR.Build.emit1 (TermIR.Instr.Cmp rel o (TermIR.Opnd.W 0))
               wordFix b
 
-            ||| An `Integer` routine that makes an `Integer`.
-            integerCall : String -> (xs : List (TermIR.Opnd v IRCommon.Ty.Val)) -> B (TermIR.Opnd v IRCommon.Ty.Val)
-            integerCall what xs = case xs of
-              [x] => do [r] <- callRoutine (Linkage.Routine.integerRoutine what) {rs = [IRCommon.Ty.Val]}
-                          {ps = [IRCommon.Ty.Val]} [x]
-                        pure r
-              [x, y] => do [r] <- callRoutine (Linkage.Routine.integerRoutine what) {rs = [IRCommon.Ty.Val]}
-                             {ps = [IRCommon.Ty.Val, IRCommon.Ty.Val]} [x, y]
-                           pure r
-              _ => TermIR.Build.crash ("the Integer routine " ++ what ++ " takes one or two values")
+            ||| A call of an `Integer` routine on values that gives one, chosen as the
+            ||| program is compiled: its operands and its result as its port's
+            ||| registers.
+            integerCall : Types.IntegerRoutine -> List (TermIR.Opnd v IRCommon.Ty.Val) -> B (TermIR.Opnd v IRCommon.Ty.Val)
+            integerCall c xs = case (Linkage.Routine.integerRoutine refs.realised c, operands (Linkage.Routine.portParams (Types.IntegerRoutine.port c)) xs) of
+              (Nothing, _) => TermIR.Build.unsupported "an Integer operation beyond the fixnums, which the runtime has none of yet"
+              (Just name, Just os) => do
+                rs <- callRoutine name {rs = Linkage.Routine.portResults (Types.IntegerRoutine.port c)} os
+                maybe (TermIR.Build.crash ("the Integer routine " ++ show name ++ " gives no value")) pure (one rs)
+              (Just name, Nothing) => TermIR.Build.crash ("the Integer routine " ++ show name ++ " takes other operands")
+              where
+
+                operands : (ts : List (IRCommon.Ty enc)) -> List (TermIR.Opnd v IRCommon.Ty.Val) ->
+                           Maybe (All (TermIR.Opnd v) ts)
+                operands [] [] = Just []
+                operands (IRCommon.Ty.Val :: ts) (x :: more) = (x ::) <$> operands ts more
+                operands _ _ = Nothing
+
+                one : {ts : List (IRCommon.Ty enc)} -> All (TermIR.Opnd v) ts -> Maybe (TermIR.Opnd v IRCommon.Ty.Val)
+                one {ts = [IRCommon.Ty.Val]} [r] = Just r
+                one _ = Nothing
 
             negation : IntWidth -> TermIR.Opnd v IRCommon.Ty.Val -> B (TermIR.Opnd v IRCommon.Ty.Val)
             negation (Narrow n s) x = do
@@ -1021,7 +1041,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
               pure r
             negation Unbounded x = do
               [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done => do
-                slow <- TermIR.Build.block [] $ \[] => do r <- integerCall "neg" [x]; done [r]
+                slow <- TermIR.Build.block [] $ \[] => do r <- integerCall Types.IntegerRoutine.Neg [x]; done [r]
                 TermIR.Build.ifFixnums [x]
                   (\[a] =>
                     TermIR.Build.arithOv TermIR.OvOp.OvSub (TermIR.Opnd.Fx 0) a (\f => do r <- widen f; done [r])
@@ -1046,7 +1066,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
               wideVal w
             division Unbounded m x y = do
               [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done => do
-                slow <- TermIR.Build.block [] $ \[] => do r <- integerCall (if m then "mod" else "div") [x, y]; done [r]
+                slow <- TermIR.Build.block [] $ \[] => do r <- integerCall (if m then Types.IntegerRoutine.Mod else Types.IntegerRoutine.Div) [x, y]; done [r]
                 TermIR.Build.ifFixnums [x, y]
                   (\[fa, fb] => do
                      a <- untag (fa)
@@ -1072,7 +1092,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
               wideVal w
             shifting Unbounded left x y = do
               [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done => do
-                slow <- TermIR.Build.block [] $ \[] => do r <- integerCall (if left then "shl" else "shr") [x, y]
+                slow <- TermIR.Build.block [] $ \[] => do r <- integerCall (if left then Types.IntegerRoutine.Shl else Types.IntegerRoutine.Shr) [x, y]
                                                           done [r]
                 TermIR.Build.ifFixnums [x, y]
                   (\[fa, fk] => do
@@ -1100,9 +1120,9 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
               Just w => k w
               Nothing => TermIR.Build.unsupported (what ++ " on " ++ show ty)
 
-            ||| Addition, subtraction, multiplication and the bitwise operations; the
-            ||| name is the operation's `Integer` routine.
-            arithmetic : IntWidth -> IRCommon.Op.ArithOp -> (routine : String) ->
+            ||| Addition, subtraction, multiplication and the bitwise operations, with
+            ||| the operation's `Integer` routine.
+            arithmetic : IntWidth -> IRCommon.Op.ArithOp -> (routine : Types.IntegerRoutine) ->
                          (x, y : TermIR.Opnd v IRCommon.Ty.Val) -> B (TermIR.Opnd v IRCommon.Ty.Val)
             arithmetic width o routine x y = case width of
               Narrow n s => do
@@ -1160,8 +1180,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                 [c] <- TermIR.Build.joinPoint [IRCommon.Ty.W64] $ \done =>
                   TermIR.Build.ifFixnums [x, y]
                     (\[a, b] => do c <- TermIR.Build.emit1 (TermIR.Instr.Cmp rel a b); done [c])
-                    (do [o] <- callRoutine (Linkage.Routine.integerRoutine "compare") {rs = [IRCommon.Ty.W64]}
-                          {ps = [IRCommon.Ty.Val, IRCommon.Ty.Val]} [x, y]
+                    (do [o] <- integers Types.IntegerRoutine.Compare [x, y]
                         c <- TermIR.Build.emit1 (TermIR.Instr.Cmp rel o (TermIR.Opnd.W 0))
                         done [c])
                 boolVal c
@@ -1179,20 +1198,20 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                 boolVal c = TermIR.Build.emit1 (TermIR.Instr.Tag c) >>= widen
 
             value : PrimFn m -> Vect m Reg -> B (TermIR.Opnd v IRCommon.Ty.Val)
-            value (Add ty) [x, y] = withWidth ty "addition" (\w => arithmetic w Add "add" (get env x) (get env y))
-            value (Sub ty) [x, y] = withWidth ty "subtraction" (\w => arithmetic w Sub "sub" (get env x) (get env y))
-            value (Mul ty) [x, y] = withWidth ty "multiplication" (\w => arithmetic w Mul "mul" (get env x) (get env y))
+            value (Add ty) [x, y] = withWidth ty "addition" (\w => arithmetic w Add Types.IntegerRoutine.Add (get env x) (get env y))
+            value (Sub ty) [x, y] = withWidth ty "subtraction" (\w => arithmetic w Sub Types.IntegerRoutine.Sub (get env x) (get env y))
+            value (Mul ty) [x, y] = withWidth ty "multiplication" (\w => arithmetic w Mul Types.IntegerRoutine.Mul (get env x) (get env y))
             value (Div ty) [x, y] = withWidth ty "division" (\w => division w False (get env x) (get env y))
             value (Mod ty) [x, y] = withWidth ty "remainder" (\w => division w True (get env x) (get env y))
             value (Neg ty) [x] = withWidth ty "negation" (\w => negation w (get env x))
             value (ShiftL ty) [x, y] = withWidth ty "a left shift" (\w => shifting w True (get env x) (get env y))
             value (ShiftR ty) [x, y] = withWidth ty "a right shift" (\w => shifting w False (get env x) (get env y))
             value (BAnd ty) [x, y] =
-              withWidth ty "bitwise and" (\w => arithmetic w IRCommon.Op.And "and" (get env x) (get env y))
+              withWidth ty "bitwise and" (\w => arithmetic w IRCommon.Op.And Types.IntegerRoutine.And (get env x) (get env y))
             value (BOr ty) [x, y] =
-              withWidth ty "bitwise or" (\w => arithmetic w IRCommon.Op.Or "or" (get env x) (get env y))
+              withWidth ty "bitwise or" (\w => arithmetic w IRCommon.Op.Or Types.IntegerRoutine.Or (get env x) (get env y))
             value (BXOr ty) [x, y] =
-              withWidth ty "bitwise xor" (\w => arithmetic w IRCommon.Op.Xor "xor" (get env x) (get env y))
+              withWidth ty "bitwise xor" (\w => arithmetic w IRCommon.Op.Xor Types.IntegerRoutine.Xor (get env x) (get env y))
             -- the string primitives: the runtime's routines under the encoding
             value StrLength [s] = do [n] <- strings Types.StringRoutine.Length [get env s]
                                      wordFix n
@@ -1244,8 +1263,6 @@ data Plan
     Form Flat.Exp.FlatDef
   | ||| A foreign function, of the arity.
     Foreign Nat
-  | ||| A routine of the runtime.
-    Routine
   | ||| The entry, when the program has none.
     NoEntry
 
@@ -1303,7 +1320,6 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                      TermIR.Build.Closed d IRCommon.Conv.CPS False (replicate arity IRCommon.Ty.Val)
       lowerForeign d refs n arity = TermIR.Build.build $ \ps =>
         TermIR.Build.unsupported ("the foreign function " ++ show n)
-  defOf d refs fs (TermIR.MkSig n (IRCommon.Conv.Direct rs False) ps False) Routine = TermIR.Def.External
   defOf d refs fs s NoEntry = TermIR.Def.Defined (TermIR.Body.Unsupported "a program without __mainExpression")
   defOf d refs fs s _ = TermIR.Def.Defined (TermIR.Body.Unsupported ("the definition of " ++ show s.name))
 
@@ -1392,8 +1408,9 @@ cfAgrees _ _ = False
 ||| The runtime's routines, as the loaded runtime realises the contract
 ||| (`Native.Codegen.Linkage.Realised`), are forms among them: a routine the
 ||| runtime has must have a form, of its port's registers, or the program
-||| is not lowered, and the error says which. One it does not have yet is
-||| declared as outside the program. The OS services' externs lower to calls
+||| is not lowered, and the error says which. A call of one it does not have
+||| yet, of an encoding it has no module for, ends the program as
+||| `Unsupported` does. The OS services' externs lower to calls
 ||| of the platform's functions for them, and the inline externs to the
 ||| instructions they stand for.
 export
@@ -1409,8 +1426,6 @@ lowerProgram enc platform realised forms shapes vmdefs = do
       planned = mapMaybe plan (filter ((/= mainExpression) . fst) vmdefs)
       others = planned
                  ++ [(LowerFlat.formSig fd, Form fd) | fd <- forms]
-                 ++ [(TermIR.MkSig r.name (IRCommon.Conv.Direct r.results False) r.params False, Routine)
-                    | r <- Linkage.Routine.routines {enc} realised, not r.provided]
       boxing = fromList [(nullaryCon c, Nullary c) | c <- toList (concatMap (boxed . snd) planned)]
       statics = Data.SortedMap.toList (foldl mergeLeft boxing (mapMaybe bodyStatics vmdefs))
   pure
@@ -1419,7 +1434,6 @@ lowerProgram enc platform realised forms shapes vmdefs = do
     -- A routine the runtime has: its form, of its port's registers.
     provided : Linkage.Routine.RoutineCall enc -> Either String ()
     provided r =
-      if not r.provided then Right () else
       case find (\fd => fd.name == r.name) forms of
         Nothing => Left ("the runtime has no routine " ++ show r.name ++ ", which generated code calls")
         Just fd =>

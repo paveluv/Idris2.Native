@@ -901,14 +901,10 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                     restoreLive True coldEmit live
                     coldEmit (Asm.Jmp done)
 
-                  ||| The label of a function outside the program: a routine of the runtime
-                  ||| contract that the runtime does not have yet, whose call ends the
-                  ||| program as `Unsupported` does.
+                  ||| A callee that is no function of the program: an error, since every
+                  ||| routine generated code calls is compiled into it.
                   runtimeRoutine : Name -> Render enc Asm.Label
-                  runtimeRoutine n =
-                    if any (\r => not r.provided && r.name == n) (Linkage.Routine.routines {enc} realised)
-                       then pure (sym Linkage.Sym.SymUnsupported)
-                       else failWith ("no runtime routine " ++ show n)
+                  runtimeRoutine n = failWith ("no runtime routine " ++ show n)
 
                   ||| What a load or store through the register subtracts: the pointer tag if
                   ||| the register holds a pointer word, nothing if it holds an address.

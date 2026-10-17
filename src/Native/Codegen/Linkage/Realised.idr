@@ -42,6 +42,7 @@ import Native.Intrinsic
 import Native.Routine
 import Native.Service
 import Native.Types.Enc as Types
+import Native.Types.IntegerRoutine as Types
 import Native.Types.StringRoutine as Types
 
 %default covering
@@ -55,6 +56,9 @@ record Realised where
   ||| Each routine of the string encoding's module, with the function that
   ||| is it, if the runtime has a module for the encoding.
   strings : Maybe (List (Name, Types.StringRoutine))
+  ||| Each routine of the bignum encoding's module, with the function that is
+  ||| it, if the runtime has a module for the encoding.
+  integers : Maybe (List (Name, Types.IntegerRoutine))
   ||| Each inline extern, with the intrinsic it is.
   externs : SortedMap Name Intrinsic
   ||| Each OS service's extern, with the platform's function for it.
@@ -73,6 +77,12 @@ realise platform enc = do
     Nothing => pure (Right Nothing)
   let Right ss' = ss
     | Left e => pure (Left ("the string encoding's routines: " ++ e))
+  is <- case RuntimeModule.bignumModule enc.bignum of
+    Just ns => map (map Just) (entries "Native.Types.IntegerRoutine" "allIntegerRoutines"
+                                 Types.IntegerRoutine.allIntegerRoutines [portTy] (inModule ns))
+    Nothing => pure (Right Nothing)
+  let Right is' = is
+    | Left e => pure (Left ("the bignum encoding's routines: " ++ e))
   Just platformNs <- pure (OSService.platformModule platform)
     | Nothing => pure (Left ("the platform " ++ show platform ++ " has no OS services"))
   Right intrinsics <- entries "Native.Intrinsic" "allIntrinsics" Intrinsic.allIntrinsics [externTy] isExtern
@@ -83,7 +93,7 @@ realise platform enc = do
     | Left e => pure (Left ("the platform's OS services: " ++ e))
   let externs = fromList [ (n, i) | (n, _, i) <- intrinsics ]
       services = fromList [ (x, f) | (x, c, _) <- serviceExterns, (f, c', _) <- serviceFunctions, c == c' ]
-  pure (Right (MkRealised (pairs rs) (map pairs ss') externs services))
+  pure (Right (MkRealised (pairs rs) (map pairs ss') (map pairs is') externs services))
   where
     ||| A definition of the root of a module.
     in' : Namespace -> String -> Name

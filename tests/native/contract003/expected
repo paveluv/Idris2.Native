@@ -1,0 +1,4 @@
+Error: native: the runtime's inline externs: Native.Intrinsic.Load64 has 2
+
+Error: native: the runtime's OS services: Native.Service.Exit has 2
+

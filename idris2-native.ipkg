@@ -17,14 +17,14 @@ modules =
     Native.Codegen.ELF,
     Native.Codegen.IRCommon.ConIds,
     Native.Codegen.IRCommon.Conv,
-    Native.Codegen.IRCommon.Pinned,
     Native.Codegen.IRCommon.Op,
+    Native.Codegen.IRCommon.Pinned,
     Native.Codegen.IRCommon.Ty,
     Native.Codegen.Link,
     Native.Codegen.Linkage.Areas,
     Native.Codegen.Linkage.ConvertsIn,
-    Native.Codegen.Linkage.ForeignFunctions,
     Native.Codegen.Linkage.Expansion,
+    Native.Codegen.Linkage.ForeignFunctions,
     Native.Codegen.Linkage.OSService,
     Native.Codegen.Linkage.Realised,
     Native.Codegen.Linkage.ResumePoint,
@@ -91,13 +91,14 @@ modules =
     Native.Intrinsic,
     Native.Port,
     Native.Routine,
-    Native.Types.StringRoutine,
     Native.Service,
     Native.Types.BignumEnc,
     Native.Types.Enc,
     Native.Types.Header,
+    Native.Types.IntegerRoutine,
     Native.Types.Kind,
-    Native.Types.StringEnc
+    Native.Types.StringEnc,
+    Native.Types.StringRoutine
 
 main = Main
 executable = idris2-native

@@ -61,6 +61,7 @@ import Native.Port
 import Native.Routine
 import Native.Types.BignumEnc
 import Native.Types.Enc
+import Native.Types.IntegerRoutine
 import Native.Types.StringEnc
 import Native.Types.StringRoutine
 import System.File
@@ -115,7 +116,7 @@ realised : Realised
 realised =
   MkRealised [(runtimeStart, Start), (runtimeAllocSlow, AllocSlow), (runtimeAllocMutable, AllocMutable),
               (runtimeCrash, Crash)]
-             Nothing empty empty
+             Nothing Nothing empty empty
 
 D : Decls TestEnc
 D = MkDecls [ MkSig (nm "main") CPS [] False

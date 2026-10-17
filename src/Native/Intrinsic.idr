@@ -87,28 +87,27 @@ allIntrinsics =
   , StackLimitArea, ArgvArea, RootsArea, NrootsArea, RuntimeArea, ValueWord, WordValue, Syscall6 ]
 
 ||| The list holds every intrinsic.
-export
 complete : (i : Intrinsic) -> Elem i Intrinsic.allIntrinsics
-complete Load64 = Here
-complete Load32 = There (Here)
-complete Load16 = There (There (Here))
-complete Load8 = There (There (There (Here)))
-complete Store64 = There (There (There (There (Here))))
-complete Store32 = There (There (There (There (There (Here)))))
-complete Store16 = There (There (There (There (There (There (Here))))))
-complete Store8 = There (There (There (There (There (There (There (Here)))))))
-complete GetHp = There (There (There (There (There (There (There (There (Here))))))))
-complete SetHp = There (There (There (There (There (There (There (There (There (Here)))))))))
-complete GetHpLim = There (There (There (There (There (There (There (There (There (There (Here))))))))))
-complete SetHpLim = There (There (There (There (There (There (There (There (There (There (There (Here)))))))))))
-complete GetK = There (There (There (There (There (There (There (There (There (There (There (There (Here))))))))))))
-complete SetK = There (There (There (There (There (There (There (There (There (There (There (There (There (Here)))))))))))))
-complete PointerTag = There (There (There (There (There (There (There (There (There (There (There (There (There (There (Here))))))))))))))
-complete StackLimitArea = There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (Here)))))))))))))))
-complete ArgvArea = There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (Here))))))))))))))))
-complete RootsArea = There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (Here)))))))))))))))))
-complete NrootsArea = There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (Here))))))))))))))))))
-complete RuntimeArea = There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (Here)))))))))))))))))))
-complete ValueWord = There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (Here))))))))))))))))))))
-complete WordValue = There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (Here)))))))))))))))))))))
-complete Syscall6 = There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (There (Here))))))))))))))))))))))
+complete Load64 = %search
+complete Load32 = %search
+complete Load16 = %search
+complete Load8 = %search
+complete Store64 = %search
+complete Store32 = %search
+complete Store16 = %search
+complete Store8 = %search
+complete GetHp = %search
+complete SetHp = %search
+complete GetHpLim = %search
+complete SetHpLim = %search
+complete GetK = %search
+complete SetK = %search
+complete PointerTag = %search
+complete StackLimitArea = %search
+complete ArgvArea = %search
+complete RootsArea = %search
+complete NrootsArea = %search
+complete RuntimeArea = %search
+complete ValueWord = %search
+complete WordValue = %search
+complete Syscall6 = %search

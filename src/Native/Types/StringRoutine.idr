@@ -70,16 +70,15 @@ allStringRoutines : List StringRoutine
 allStringRoutines = [Length, Head, Tail, Index, Cons, Append, Reverse, Substr, Compare, ShowSigned, ShowUnsigned]
 
 ||| The list holds every string routine.
-export
 complete : (r : StringRoutine) -> Elem r StringRoutine.allStringRoutines
-complete Length = Here
-complete Head = There (Here)
-complete Tail = There (There (Here))
-complete Index = There (There (There (Here)))
-complete Cons = There (There (There (There (Here))))
-complete Append = There (There (There (There (There (Here)))))
-complete Reverse = There (There (There (There (There (There (Here))))))
-complete Substr = There (There (There (There (There (There (There (Here)))))))
-complete Compare = There (There (There (There (There (There (There (There (Here))))))))
-complete ShowSigned = There (There (There (There (There (There (There (There (There (Here)))))))))
-complete ShowUnsigned = There (There (There (There (There (There (There (There (There (There (Here))))))))))
+complete Length = %search
+complete Head = %search
+complete Tail = %search
+complete Index = %search
+complete Cons = %search
+complete Append = %search
+complete Reverse = %search
+complete Substr = %search
+complete Compare = %search
+complete ShowSigned = %search
+complete ShowUnsigned = %search

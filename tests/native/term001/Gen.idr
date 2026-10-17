@@ -68,6 +68,7 @@ import Native.Routine
 import Native.Types.BignumEnc
 import Native.Types.Enc
 import Native.Types.Header
+import Native.Types.IntegerRoutine
 import Native.Types.Kind
 import Native.Types.StringEnc
 import Native.Types.StringRoutine
@@ -107,7 +108,7 @@ realised : Realised
 realised =
   MkRealised [(runtimeStart, Start), (runtimeAllocSlow, AllocSlow), (runtimeAllocMutable, AllocMutable),
               (runtimeCrash, Crash)]
-             Nothing empty empty
+             Nothing Nothing empty empty
 
 Run : Decls TestEnc
 Run = MkDecls

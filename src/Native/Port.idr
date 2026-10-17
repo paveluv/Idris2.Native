@@ -5,14 +5,15 @@
 ||| The contract's entries are the runtime's routines, which generated code
 ||| calls, the inline externs, which the lowering provides to the runtime's
 ||| code, and the OS services, which a platform provides to the rest of the
-||| runtime (`Native.Routines`, `Native.Intrinsic`, `Native.Service`). Each
-||| has a port, the one place its shape is stated: the side that provides an
-||| entry gives a value of the port's Idris type, which Idris checks where
-||| that side is built; the code generator reads the registers of a call
-||| from the port, the same data. Neither restates the other. The inline
-||| externs and the services are keyed by an enumeration (`Native.Intrinsic`,
-||| `Native.Service`); the routines are still fields of a record whose type
-||| is their port.
+||| runtime; and the routines of the string and bignum encodings' modules.
+||| Each kind of entry is an enumeration whose `port` gives each entry's
+||| arrow, the one place its shape is stated (`Native.Routine`,
+||| `Native.Intrinsic`, `Native.Service`, `Native.Types.StringRoutine`,
+||| `Native.Types.IntegerRoutine`). The side that provides an entry declares
+||| it by its port's Idris type, which Idris checks where it is defined; the
+||| code generator finds it by that type, checks there is one of each, and
+||| reads the registers of a call from the port, the same data. Neither
+||| restates the other.
 |||
 ||| Part of the contract between compiled code and the runtime, with the
 ||| heap-object model (`HeapObj.Shape` says what it is).

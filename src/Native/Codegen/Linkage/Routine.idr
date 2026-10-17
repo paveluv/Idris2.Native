@@ -13,13 +13,13 @@
 ||| runtime library's, the rest of the seed's are `Native.Codegen.Seed`, and
 ||| `Native.Codegen.Link` makes the image.
 |||
-||| The contract itself is shared, `Native.Port` and its entries
-||| (`Native.Routines`, `Native.Intrinsic`, `Native.Service`): each side
-||| gives what it provides checked by Idris against the ports where that
-||| side is built, and the code generator takes the registers of each call
-||| from the ports, and the function or extern of each entry by its type (an
-||| inline extern, a service) or from the record of them (a routine). A routine the runtime gives must also have a
-||| flat form, which the lowering checks. Code compiled to join a runtime
+||| The contract itself is shared, `Native.Port` and the enumerations of its
+||| entries (`Native.Port` says what they are): each side declares what it
+||| provides by the ports, which Idris checks where it is defined, and the
+||| code generator finds the function or extern of each entry by its type
+||| (`Realised`) and takes the registers of each call from the port. A
+||| routine the runtime gives must also have a flat form, which the lowering
+||| checks. Code compiled to join a runtime
 ||| that is already built depends on the contract alone.
 module Native.Codegen.Linkage.Routine
 
@@ -33,6 +33,7 @@ import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.Port
 import Native.Routine
 import Native.Types.Enc as Types
+import Native.Types.IntegerRoutine as Types
 import Native.Types.StringRoutine as Types
 
 %default total
@@ -49,12 +50,8 @@ flatName n = NS (mkNamespace "_flat") n
 public export
 record RoutineCall (enc : Types.Enc) where
   constructor MkRoutineCall
-  ||| The function of the runtime library that is the routine; for one the
-  ||| runtime does not have yet, the name its calls use.
+  ||| The function of the runtime library that is the routine.
   name : Name
-  ||| Whether the runtime has it. A call of a routine it does not have ends
-  ||| the program as `Unsupported` does.
-  provided : Bool
   ||| The symbol by which the rendering and the seed reach it, if they do:
   ||| the rendering defines it at the routine's function.
   symbol : Maybe Sym
@@ -84,60 +81,34 @@ public export
 portResults : Port -> List (IRCommon.Ty enc)
 portResults p = maybe [] (\c => [carrierTy c]) p.gives
 
-||| The routine for an `Integer` operation the fast paths leave to the
-||| runtime, which has none yet.
-public export
-integerRoutine : String -> Name
-integerRoutine op = UN (Basic ("idris_integer_" ++ op))
-
-||| The name of a string routine the runtime has no module for, under the
-||| encoding: a call of one ends the program as `Unsupported` does.
-stubName : Types.StringRoutine -> Name
-stubName c = UN (Basic ("idris_string_" ++ op c))
-  where
-    op : Types.StringRoutine -> String
-    op Types.StringRoutine.Length = "length"
-    op Types.StringRoutine.Head = "head"
-    op Types.StringRoutine.Tail = "tail"
-    op Types.StringRoutine.Index = "index"
-    op Types.StringRoutine.Cons = "cons"
-    op Types.StringRoutine.Append = "append"
-    op Types.StringRoutine.Reverse = "reverse"
-    op Types.StringRoutine.Substr = "substr"
-    op Types.StringRoutine.Compare = "compare"
-    op Types.StringRoutine.ShowSigned = "show_signed"
-    op Types.StringRoutine.ShowUnsigned = "show_unsigned"
-
-||| The name generated code calls a string routine by.
+||| The name generated code calls a string routine by, if the runtime has a
+||| module for the program's string encoding.
 export
-stringRoutine : Realised -> Types.StringRoutine -> Name
-stringRoutine r c = case r.strings of
-  Just ss => maybe (stubName c) (flatName . fst) (find ((== c) . snd) ss)
-  Nothing => stubName c
+stringRoutine : Realised -> Types.StringRoutine -> Maybe Name
+stringRoutine r c = do
+  ss <- r.strings
+  (n, _) <- find ((== c) . snd) ss
+  pure (flatName n)
 
-||| The routines, with their registers: the generic runtime's and the string
-||| encoding's as the loaded runtime realises them, and the `Integer`
-||| operations, which the runtime has none of yet.
+||| The name generated code calls an `Integer` routine by, if the runtime has
+||| a module for the program's bignum encoding.
+export
+integerRoutine : Realised -> Types.IntegerRoutine -> Maybe Name
+integerRoutine r c = do
+  is <- r.integers
+  (n, _) <- find ((== c) . snd) is
+  pure (flatName n)
+
+||| The routines, with their registers: the generic runtime's, the string
+||| encoding's and the bignum encoding's, as the loaded runtime realises
+||| them; none of an encoding it has no module for, whose calls end the
+||| program as `Unsupported` does.
 export
 routines : {enc : Types.Enc} -> Realised -> List (RoutineCall enc)
 routines r =
   map generic r.routines
     ++ strings
-    ++ [ integer "add" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
-       , integer "sub" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
-       , integer "mul" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
-       , integer "and" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
-       , integer "or" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
-       , integer "xor" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
-       , integer "div" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
-       , integer "mod" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
-       , integer "shl" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
-       , integer "shr" [IRCommon.Ty.Val] [IRCommon.Ty.Val, IRCommon.Ty.Val]
-       , integer "neg" [IRCommon.Ty.Val] [IRCommon.Ty.Val]
-       , integer "compare" [IRCommon.Ty.W64] [IRCommon.Ty.Val, IRCommon.Ty.Val]
-       , integer "to_bits64" [IRCommon.Ty.W64] [IRCommon.Ty.Val]
-       , integer "from_int64" [IRCommon.Ty.Val] [IRCommon.Ty.W64]
-       , integer "from_bits64" [IRCommon.Ty.Val] [IRCommon.Ty.W64] ]
+    ++ integers
   where
     ||| The symbol the rendering and the seed reach a routine of the core by.
     symbolOf : Routine -> Sym
@@ -147,26 +118,24 @@ routines r =
     symbolOf Routine.Crash = Sym.SymCrash
 
     generic : (Name, Routine) -> RoutineCall enc
-    generic (n, c) = MkRoutineCall n True (Just (symbolOf c)) (portResults (Routine.port c)) (portParams (Routine.port c))
+    generic (n, c) = MkRoutineCall n (Just (symbolOf c)) (portResults (Routine.port c)) (portParams (Routine.port c))
 
-    provided : (Name, Types.StringRoutine) -> RoutineCall enc
-    provided (n, c) =
-      MkRoutineCall n True Nothing (portResults (Types.StringRoutine.port c)) (portParams (Types.StringRoutine.port c))
+    string : (Name, Types.StringRoutine) -> RoutineCall enc
+    string (n, c) = MkRoutineCall n Nothing (portResults (Types.StringRoutine.port c)) (portParams (Types.StringRoutine.port c))
 
-    stub : Types.StringRoutine -> RoutineCall enc
-    stub c = MkRoutineCall (stubName c) False Nothing (portResults (Types.StringRoutine.port c)) (portParams (Types.StringRoutine.port c))
+    integer : (Name, Types.IntegerRoutine) -> RoutineCall enc
+    integer (n, c) =
+      MkRoutineCall n Nothing (portResults (Types.IntegerRoutine.port c)) (portParams (Types.IntegerRoutine.port c))
 
     strings : List (RoutineCall enc)
-    strings = case r.strings of
-      Just ss => map provided ss
-      Nothing => map stub Types.StringRoutine.allStringRoutines
+    strings = maybe [] (map string) r.strings
 
-    integer : String -> List (IRCommon.Ty enc) -> List (IRCommon.Ty enc) -> RoutineCall enc
-    integer op rs ps = MkRoutineCall (integerRoutine op) False Nothing rs ps
+    integers : List (RoutineCall enc)
+    integers = maybe [] (map integer) r.integers
 
 ||| The symbol the routine whose function has the name is reached by.
 export
 routineSymbol : {enc : Types.Enc} -> Realised -> Name -> Maybe Sym
 routineSymbol r n = do
-  x <- find (\x => x.provided && flatName x.name == n) (routines {enc} r)
+  x <- find (\x => flatName x.name == n) (routines {enc} r)
   x.symbol
