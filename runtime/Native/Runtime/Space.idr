@@ -13,6 +13,11 @@
 ||| Nothing here collects except `allocSlow`, which generated code calls
 ||| from the stub that has saved its live values in the root buffer. The
 ||| runtime's own allocation never collects.
+|||
+||| The semispace pair is the one space so far. Another (a nursery, a space
+||| for large objects, a region of continuations) is a change to the core,
+||| as a new shape is: the support tier, and code outside the runtime,
+||| allocate in the spaces the core has, and never make one.
 module Native.Runtime.Space
 
 -- lint: allow public-import: the flat translation reaches through this module
