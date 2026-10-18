@@ -24,7 +24,7 @@
 ||| string.
 module Native.Support.String.Utf8
 
--- lint: allow import-unused: the flat check reaches through systemPath's body, which records a failure by its code
+-- lint: allow import-unused: the flat check reaches through withSystemPath's body, which records a failure by its code
 import Native.Failure
 import Native.Flat.Uniform as Flat
 import Native.HeapObj.Shape as HeapObj
@@ -33,6 +33,7 @@ import Native.Primitive.DoubleBits
 -- lint: allow import-unused: the flat check reaches through the environment's bodies, which allocate outside the heap
 import Native.Runtime.Alloc.Allocator
 import Native.Runtime.Alloc.Arena
+import Native.Runtime.Alloc.Block
 import Native.Runtime.Alloc.Chunks
 import Native.Runtime.Alloc.Config
 import Native.Runtime.Alloc.Pages
@@ -770,11 +771,9 @@ withPath : (Runtime.Raw -> Runtime.Ordo.Op Runtime.Ordo Bits64) -> Flat.Uniform 
 withPath service path = do
   s <- stringObject path
   h <- headerOf s
-  p <- Path.systemPath (Obj.objectBytes s 8) (bytesOf h)
-  if p == 0 then Runtime.Ordo.pure (-1) else do
-    ok <- service (Runtime.Memory.foreignBytes p)
-    Runtime.Alloc.System.freeBlock p
-    Runtime.Ordo.pure (if ok == 1 then 0 else -1)
+  Path.withSystemPath (Obj.objectBytes s 8) (bytesOf h) (Runtime.Ordo.pure (-1)) (\p => do
+    ok <- service p
+    Runtime.Ordo.pure (if ok == 1 then 0 else -1))
 
 %cg native flat Support.String.Utf8.prim__changeDir
 ||| `changeDir`: the directory of the path made the current one; 0 when it

@@ -1,6 +1,6 @@
 ||| The foreign functions of `base`'s `System.FFI`, as the runtime implements
 ||| them: `malloc` and `free` over the process's allocator of memory outside
-||| the heap (`Native.Runtime.Alloc.System`), each a flat function of the
+||| the heap (`Native.Runtime.Alloc.Block`), each a flat function of the
 ||| foreign one's name and type (`Native.Support.Foreign.System` says how
 ||| they are bound). A block is a pointer as ordinary code holds one
 ||| (`Native.Support.Ptr`).
@@ -12,6 +12,7 @@ import Native.HeapObj.Shape as HeapObj
 -- lint: allow import-unused: the flat check reaches through the allocator's bodies, which hold its records
 import Native.Runtime.Alloc.Allocator
 import Native.Runtime.Alloc.Arena
+import Native.Runtime.Alloc.Block
 import Native.Runtime.Alloc.Chunks
 import Native.Runtime.Alloc.Config
 import Native.Runtime.Alloc.Pages
@@ -19,8 +20,8 @@ import Native.Runtime.Alloc.SizeClasses
 import Native.Runtime.Alloc.System
 -- lint: allow import-unused: the flat check reaches through the allocator's bodies, which use the word operations
 import Native.Runtime.Bits
+import Native.Runtime.Memory
 import Native.Runtime.Ordo as Runtime
--- lint: allow import-unused: the flat check reaches through ptrWord's body, which reads raw memory from an object
 import Native.Runtime.Raw as Runtime
 -- lint: allow import-unused: the flat check reaches through newPtr's body, which allocates the pointer's object
 import Native.Runtime.Space
@@ -48,9 +49,11 @@ prim__malloc size w = let (Runtime.MkOrdo # r) = mallocOp size Runtime.MkOrdo in
   where
     covering
     mallocOp : Int -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform AnyPtr)
-    mallocOp n = if n < 0 then Ptr.newPtr 0 else do
-      a <- Runtime.Alloc.System.allocateBlock (cast n)
-      Ptr.newPtr a
+    mallocOp n = if n < 0 then Ptr.newPtr 0 else
+      -- lint: allow sealed-allocator: the program owns the block, and frees it with `free`
+      Runtime.Alloc.Block.allocate (cast n) (Ptr.newPtr 0) (\b => do
+        a <- Runtime.Alloc.Block.releaseBlock b
+        Ptr.newPtr (Runtime.Raw.rawWord a))
 
 %cg native flat Support.Foreign.System.FFI.prim__free
 ||| `free`: a block `malloc` gave back; the null pointer is no block. An
@@ -63,4 +66,5 @@ prim__free p w = let (Runtime.MkOrdo # ()) = freeOp p Runtime.MkOrdo in MkIORes 
     freeOp : Flat.Uniform AnyPtr -> Runtime.Ordo.Op Runtime.Ordo ()
     freeOp p = do
       a <- Ptr.ptrWord p
-      Runtime.Alloc.System.freeBlock a
+      -- lint: allow sealed-allocator: an address the program gives back, as C's free takes one; the allocator ends the program for one it did not give
+      Runtime.Alloc.Block.free (Runtime.Alloc.Block.adoptBlock (Runtime.Memory.foreignBytes a))

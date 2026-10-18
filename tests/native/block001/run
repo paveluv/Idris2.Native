@@ -1,0 +1,11 @@
+. ../../testutils.sh
+
+# Blocks of memory outside the heap are linear: Owned.idr typechecks
+# exactly when each of its `failing` blocks fails, for the reason it names.
+# It uses the runtime's modules, installed as the package
+# `idris2-native-runtime`. `idris2 --check` can report an error and still
+# exit with 0, so the output is what says whether a block that should fail
+# did not, or the rest failed.
+idris2 -p idris2-native -p idris2-native-runtime --check Owned.idr > check.out 2>&1
+if grep -q "Error" check.out; then grep -A6 "Error" check.out; else echo "every failing block was rejected"; fi
+rm -f check.out

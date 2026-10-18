@@ -96,15 +96,48 @@ modulesOf fms r =
 ||| it is.
 export
 resolvedRuleNames : List String
-resolvedRuleNames = ["import-unused", "import-indirect", "generic-export", "public-unneeded", "raw-maker"]
+resolvedRuleNames = ["import-unused", "import-indirect", "generic-export", "public-unneeded", "raw-maker", "sealed-allocator"]
+
+||| The rules whose suppression covers one use, the first after it: each
+||| use is to say why it is sound by itself.
+export
+oneUseRules : List String
+oneUseRules = ["sealed-allocator"]
 
 ||| The rules over the program resolved.
 export
 resolvedRules : List (SourceFile, List Declared, Mentions) -> (programNames : SortedSet String) -> Resolution -> List Finding
 resolvedRules fms programNames r =
   joined [ importUnused m ++ importIndirect r m ++ genericExport m | m <- modulesOf fms r ]
-  ++ joined [ publicUnneeded f ds ++ rawMaker f | (f, ds, _) <- fms ]
+  ++ joined [ publicUnneeded f ds ++ rawMaker f ++ sealedAllocator f ms | (f, ds, ms) <- fms ]
   where
+    ||| `sealed-allocator`: outside the allocator's modules
+    ||| (`Native.Runtime.Alloc.`), a use of any of their names but the
+    ||| linear blocks' (`Alloc.Block`): the allocator's own functions, which
+    ||| take and give addresses as words, and the two that turn a block into
+    ||| a word and back. Each is a place the types no longer check that a
+    ||| block is freed once, so each is to say why it is sound. Every
+    ||| mention of such a name in the file is reported, where it is written.
+    sealedAllocator : SourceFile -> Mentions -> List Finding
+    sealedAllocator f ms =
+      let m = show f.mod.moduleNS in
+      if isPrefixOf "Native.Runtime.Alloc." m then [] else
+        let sealed = the (SortedSet String) (fromList
+              [ u.name | rm <- r.modules, rm.path == f.path, u <- rm.uses, leaves u ])
+        in [ finding f "sealed-allocator" fc (nameRoot n)
+               ("`" ++ nameRoot n ++ "` leaves the linear blocks of `Native.Runtime.Alloc.Block`: say why it is sound")
+           | (fc, n) <- ms.refs, contains (nameRoot n) sealed ]
+      where
+        ||| What the blocks' module gives that the types check.
+        linear : List String
+        linear = ["Block", "Addressed", "MkAddressed", "allocate", "address", "free"]
+
+        ||| Whether a use is of the allocator's modules, and not of the
+        ||| blocks that the types check.
+        leaves : Use -> Bool
+        leaves u = isPrefixOf "Native.Runtime.Alloc." u.definer
+                   && not (u.definer == "Native.Runtime.Alloc.Block" && any (== u.name) linear)
+
     ||| `raw-maker`: a raw address made from a word (`Raw.fromWord`) outside
     ||| the modules that keep addresses as words or are given them so: the
     ||| memory module, the state, the spaces (the collector's interface holds

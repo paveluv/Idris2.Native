@@ -8,6 +8,7 @@ modules =
     Gallery,
     JoinAll,
     Kept,
+    Lease,
     Mode,
     Pace,
     Page,

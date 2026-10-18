@@ -33,12 +33,16 @@ public export
 Op : (h : Type) -> Type -> Type
 Op h a = (1 m : h) -> Ret h a
 
+||| The bind, and the one that drops a unit: each uses its operands once,
+||| and says so, so that a linear value an operation holds (a block of
+||| memory, `Alloc.Block`) is used in only one of them, and `do` keeps it
+||| linear across its steps.
 public export %inline
-(>>=) : Op h a -> (a -> Op h b) -> Op h b
+(>>=) : (1 f : Op h a) -> (1 g : a -> Op h b) -> Op h b
 (>>=) f g m = let (m' # v) = f m in g v m'
 
 public export %inline
-(>>) : Op h () -> Op h b -> Op h b
+(>>) : (1 f : Op h ()) -> (1 g : Op h b) -> Op h b
 (>>) f g m = let (m' # _) = f m in g m'
 
 public export %inline

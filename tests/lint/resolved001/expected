@@ -1,5 +1,9 @@
 ./Frame.idr:7:1 import-unused: `Canvas` is imported, and of what it makes visible only `Shape` is used, which the module imports directly
 ./Gallery.idr:5:1 import-indirect: `Shape` is used (`Shape`, `Circle`) only through `Canvas`: import it
+./Lease.idr:31:52 sealed-allocator: `releaseBlock` leaves the linear blocks of `Native.Runtime.Alloc.Block`: say why it is sound
+./Lease.idr:44:15 sealed-allocator: `adoptBlock` leaves the linear blocks of `Native.Runtime.Alloc.Block`: say why it is sound
+./Lease.idr:48:26 sealed-allocator: `adoptBlock` leaves the linear blocks of `Native.Runtime.Alloc.Block`: say why it is sound
+./Lease.idr:52:7 sealed-allocator: `allocateBlock` leaves the linear blocks of `Native.Runtime.Alloc.Block`: say why it is sound
 ./Mode.idr:9:1 public-unneeded: `Mode`'s constructors are used only in its module: `export` keeps them there
 ./Mode.idr:20:1 public-unneeded: no other module uses `slower`: its body need not be public
 ./Page.idr:1:1 raw-maker: `Page` makes a raw address from a word, which only the modules that keep addresses as words do
@@ -8,8 +12,8 @@
 ./Spare.idr:5:1 import-unused: `Data.List` is imported, and nothing it makes visible is used
 ./Viewer.idr:7:1 import-indirect: `Data.Fin` is used (`Fin`, `FZ`) only through `Data.Vect`: import it
 ./Viewer.idr:8:1 import-indirect: `Shape` is used (`Square`, `Shape`) only through `Shapes`: import it
-    directness     87  modules used that are imported directly: 26 of 30
-    leanness       77  private imports needed: 10 of 13
+    directness     89  modules used that are imported directly: 31 of 35
+    leanness       82  private imports needed: 14 of 17
   efficiency       40
     accumulation   40  accumulations in a snoc-list or a builder: 2 of 5
           1  JoinAll.flatten: 0 grown at an end with `++`, 1 joined by a left fold

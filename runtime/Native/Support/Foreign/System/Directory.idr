@@ -11,6 +11,7 @@ import Native.HeapObj.Shape as HeapObj
 -- lint: allow import-unused: the flat check reaches through the allocator's bodies, which hold its records
 import Native.Runtime.Alloc.Allocator
 import Native.Runtime.Alloc.Arena
+import Native.Runtime.Alloc.Block
 import Native.Runtime.Alloc.Chunks
 import Native.Runtime.Alloc.Config
 import Native.Runtime.Alloc.Pages
@@ -41,10 +42,11 @@ import Native.Types.Kind
 
 %cg native flat Support.Foreign.System.Directory.prim__currentDir
 ||| `currentDir`: a pointer to the current directory's path, zero-ended, in
-||| a new block outside the heap, which `base` frees once it has copied the
-||| path (`System.FFI.prim__free`); the null pointer if there is no memory,
-||| or the path is longer than the block, `pathBytes`, as the C support's
-||| buffer is.
+||| a new block outside the heap, which `base`'s `currentDir` frees once it
+||| has copied the path (`System.FFI.free`, bound to
+||| `Support.Foreign.System.FFI.prim__free`); the null pointer if there is
+||| no memory, or the path is longer than the block, `pathBytes`, as the C
+||| support's buffer is.
 export covering
 prim__currentDir : PrimIO (Flat.Uniform (Ptr String))
 prim__currentDir w = let (Runtime.MkOrdo # r) = currentOp Runtime.MkOrdo in MkIORes r w
@@ -55,10 +57,15 @@ prim__currentDir w = let (Runtime.MkOrdo # r) = currentOp Runtime.MkOrdo in MkIO
 
     covering
     currentOp : Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform (Ptr String))
-    currentOp = do
-      p <- Runtime.Alloc.System.allocateBlock pathBytes
-      if p == 0 then Ptr.newPtr 0 else do
-        ok <- Runtime.OS.osCurrentDirectory (Runtime.Memory.foreignBytes p) pathBytes
-        if ok == 1 then Ptr.newPtr p else do
-          Runtime.Alloc.System.freeBlock p
-          Ptr.newPtr 0
+    currentOp = Runtime.Alloc.Block.allocate pathBytes (Ptr.newPtr 0) (\b => do
+      let MkAddressed p b' = Runtime.Alloc.Block.address b
+      ok <- Runtime.OS.osCurrentDirectory p pathBytes
+      case ok == 1 of
+        -- lint: allow sealed-allocator: base's `System.Directory.currentDir` frees the block
+        -- (`free $ prim__forgetPtr res`, our `prim__free`) once `prim__getString` has copied the path
+        True => do
+          a <- Runtime.Alloc.Block.releaseBlock b'
+          Ptr.newPtr (Runtime.Raw.rawWord a)
+        False => do
+          Runtime.Alloc.Block.free b'
+          Ptr.newPtr 0)

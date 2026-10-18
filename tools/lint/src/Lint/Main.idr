@@ -46,7 +46,10 @@
 |||
 ||| A finding is suppressed by a comment, `-- lint: allow <rule>: <reason>`,
 ||| on its line or in the lines above it up to a blank line: a suppression
-||| covers its paragraph from where it stands. A suppression without a
+||| covers its paragraph from where it stands. Of a rule that asks why at
+||| each use (`ResolvedRules.oneUseRules`), it covers only the first finding
+||| from where it stands, so that each use has a reason of its own. A
+||| suppression without a
 ||| reason, of no rule, or that suppresses nothing, is a finding itself. A
 ||| module is left out of a component of the score by another comment,
 ||| `-- lint: exclude <component>: <reason>` (`Exclusion`).
@@ -237,7 +240,14 @@ main = do
           in kept ++ joined (map (check fs) ss)
           where
             covers : Suppression -> Finding -> Bool
-            covers s fi = fi.rule == s.rule && fi.line >= s.line && fi.line <= s.through
+            covers s fi =
+              fi.rule == s.rule && fi.line >= s.line && fi.line <= s.through
+              && (not (s.rule `elem` oneUseRules) || Just (fi.line, fi.col) == firstFrom s)
+              where
+                -- the first finding of the rule in the suppression's paragraph
+                firstFrom : Suppression -> Maybe (Int, Int)
+                firstFrom s = head' (sort [ (g.line, g.col) | g <- fs, g.path == f.path, g.rule == s.rule
+                                                            , g.line >= s.line, g.line <= s.through ])
 
             check : List Finding -> Suppression -> List Finding
             check fs s =
