@@ -65,6 +65,7 @@ import Lint.Refactor.QualifyNames
 import Lint.Refactor.Refactoring
 import Lint.Refactor.ReflowLines
 import Lint.Refactor.RemoveUnused
+import Lint.Refactor.Rename
 import Lint.Refactor.RenameModule
 import Lint.Refactor.ScopeHelpers
 import Lint.Refactor.SplitModule
@@ -281,7 +282,7 @@ main = do
     ||| those that take them read: `split-module` the module to make and the
     ||| concepts to move to it.
     refactorings : List String -> List Refactoring
-    refactorings args = [inlineAlias args, joinModules args, mergeClauses, orderImports, pruneImports, qualifyNames, reflowLines args, removeUnused, renameModule args, scopeHelpers, splitModule args, unprime]
+    refactorings args = [inlineAlias args, joinModules args, mergeClauses, orderImports, pruneImports, qualifyNames, reflowLines args, removeUnused, rename args, renameModule args, scopeHelpers, splitModule args, unprime]
 
     ||| The files under a run's roots listed and parsed once, and again only
     ||| after a change, which may have moved one: a wide refactoring asks
@@ -304,11 +305,20 @@ main = do
       others <- joined <$> traverse (\(pp, t) => files (sourceDirOf pp t)) packages
       rights <$> traverse load (filter (\o => not (o `elem` paths)) (nub others))
 
-    ||| What the files' modules use, resolved, if their TTCs can be read.
+    ||| What the files' modules use, resolved, those whose TTCs can be read.
     resolvedFrom : List String -> IO (Maybe Resolution)
     resolvedFrom paths = do
       fs <- rights <$> traverse parse paths
-      either (const Nothing) Just <$> resolve fs
+      res <- resolve fs
+      case res of
+        Right r => pure (Just r)
+        -- the files whose TTCs are missing or stale, such as programs that
+        -- are not built, left out: the rest resolved
+        Left problems =>
+          let missing = map (.path) problems
+              rest = filter (\f => not (f.path `elem` missing)) fs
+          in if null missing || length rest == length fs then pure Nothing
+             else either (const Nothing) Just <$> resolve rest
 
     ||| The refactoring run over every file under the paths, each to a fixed
     ||| point, with what it changed and what stays printed unless `quiet`.

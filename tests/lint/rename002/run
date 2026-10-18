@@ -1,0 +1,23 @@
+. ../../testutils.sh
+
+# rename: a name a module defines renamed where it is defined and at every
+# use the resolution says is of it, written bare, qualified by the module,
+# or by an alias; not another module's of the same name, nor a comment or a
+# string. A copy of the fixtures is built, so that their uses resolve,
+# renamed, and checked after.
+rm -rf work
+mkdir work
+cp Token.idr User.idr Aliased.idr Other.idr fixtures.ipkg work
+cd work
+idris2 --build fixtures.ipkg > /dev/null
+lint=../../../../tools/lint/build/exec/idris2-native-lint
+$lint --refactor rename --arg Token.Tok --arg Ordo --check 'idris2 --check {} > /dev/null 2>&1' .
+idris2 --build fixtures.ipkg > /dev/null
+$lint --refactor rename --arg Token.MkTok --arg MkOrdo --check 'idris2 --check {} > /dev/null 2>&1' .
+for f in Token.idr User.idr Aliased.idr Other.idr; do
+  echo "--- $f"
+  cat $f
+done
+idris2 --build fixtures.ipkg > /dev/null && echo "the fixtures build"
+cd ..
+rm -rf work

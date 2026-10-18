@@ -1,0 +1,58 @@
+./Token.idr: 1 changed, 0 stay
+./Token.idr: 1 changed, 0 stay
+--- Token.idr
+||| The module whose names are renamed: a token, its type and its
+||| constructor, which the test renames to `Ordo` and `MkOrdo`. In its own
+||| module every use of the name in code is the module's own; the comments
+||| that say `Tok` stay as they are, for a person to rewrite.
+module Token
+
+%default total
+
+||| The token.
+public export
+data Ordo : Type where
+  MkOrdo : Ordo
+
+||| A token used: its one value matched.
+export
+spend : Ordo -> Nat
+spend MkOrdo = 1
+--- User.idr
+||| A module that takes the token from `Token`: written bare, and qualified
+||| by the module's name. Both are renamed, the qualifier kept. A string
+||| that says `Tok` is no use of it, and stays.
+module User
+
+import Token
+
+%default total
+
+twice : Ordo -> Nat
+twice t = spend t + spend Token.MkOrdo
+
+label : String
+label = "Tok"
+--- Aliased.idr
+||| A module that imports `Token` under an alias, and writes its names
+||| with it: renamed, the alias kept.
+module Aliased
+
+import Token as T
+
+%default total
+
+fresh : T.Ordo
+fresh = T.MkOrdo
+--- Other.idr
+||| A module with a `Tok` of its own, which takes nothing from `Token`:
+||| nothing here is renamed.
+module Other
+
+%default total
+
+data Tok = MkTok
+
+other : Tok
+other = MkTok
+the fixtures build

@@ -36,6 +36,7 @@ modules =
     Lint.Refactor.Refactoring,
     Lint.Refactor.ReflowLines,
     Lint.Refactor.RemoveUnused,
+    Lint.Refactor.Rename,
     Lint.Refactor.Reindent,
     Lint.Refactor.RenameModule,
     Lint.Refactor.ScopeHelpers,
