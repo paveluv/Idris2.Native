@@ -29,6 +29,8 @@ data Carrier
     Word
   | ||| A signed word: `Int`.
     Signed
+  | ||| A double, in a register of its own: `Double`.
+    Dbl
   | ||| A value of the type, as ordinary code holds it: `Uniform t`.
     ValueOf Type
   | ||| Any value, as ordinary code holds it: `Uniform a`, for the call's `a`.

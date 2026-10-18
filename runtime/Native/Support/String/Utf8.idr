@@ -27,6 +27,7 @@ module Native.Support.String.Utf8
 import Native.Flat.Uniform as Flat
 import Native.HeapObj.Shape as HeapObj
 import Native.Port
+import Native.Primitive.DoubleBits
 import Native.Runtime.Bits
 import Native.Runtime.Heap as Runtime
 import Native.Runtime.Memory
@@ -35,6 +36,7 @@ import Native.Runtime.PortTy as Runtime
 import Native.Runtime.Raw as Runtime
 import Native.Runtime.Space
 import Native.Support.CodePoint
+import Native.Support.Double.Shortest
 import Native.Support.Obj
 import Native.Types.Header
 import Native.Types.Kind
@@ -453,6 +455,19 @@ fastConcat xs = let (Runtime.MkHeap # r) = concatOp xs Runtime.MkHeap in r
 ------------------------------------------------------------------------------
 -- Numbers as text
 
+||| How many decimal digits a word has.
+covering
+decimalDigits : Bits64 -> Bits64
+decimalDigits n = if n < 10 then 1 else 1 + decimalDigits (n `div` 10)
+
+||| A word's decimal digits written to end at byte `end`, the last digit
+||| before it.
+covering
+writeDigits : Obj Types.Kind.STRING -> (end, n : Bits64) -> Runtime.Heap.Op Runtime.Heap ()
+writeDigits s end n = do
+  setByte s (end - 1) (48 + n `mod` 10)
+  if n < 10 then Runtime.Heap.pure () else writeDigits s (end - 1) (n `div` 10)
+
 ||| A magnitude in decimal, after a `-` if it is negative: an ASCII string.
 covering
 decimal : (negative : Bool) -> (magnitude : Bits64) -> Runtime.Heap.Op Runtime.Heap (Flat.Uniform String)
@@ -463,19 +478,6 @@ decimal negative m = do
   if negative then setByte s 0 45 else Runtime.Heap.pure ()
   writeDigits s bytes m
   finish s True bytes
-  where
-    ||| How many decimal digits a word has.
-    covering
-    decimalDigits : Bits64 -> Bits64
-    decimalDigits n = if n < 10 then 1 else 1 + decimalDigits (n `div` 10)
-
-    ||| A word's decimal digits written to end at byte `end`, the last digit
-    ||| before it.
-    covering
-    writeDigits : Obj Types.Kind.STRING -> (end, n : Bits64) -> Runtime.Heap.Op Runtime.Heap ()
-    writeDigits s end n = do
-      setByte s (end - 1) (48 + n `mod` 10)
-      if n < 10 then Runtime.Heap.pure () else writeDigits s (end - 1) (n `div` 10)
 
 %cg native flat Support.String.Utf8.showSigned
 ||| A signed word in decimal, as Chez writes it. The most negative word's
@@ -489,6 +491,142 @@ showSigned n = if n < 0 then decimal True (cast {to = Bits64} (0 - n)) else deci
 export covering
 showUnsigned : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.ShowUnsigned)
 showUnsigned = decimal False
+
+%cg native flat Support.String.Utf8.showDouble
+||| A double in decimal: the shortest digits that read back to it (Dragonbox,
+||| `Native.Support.Double.Shortest`), as Chez lays them out (`decimalText`),
+||| and `+nan.0`, `+inf.0`, `-inf.0`, `0.0` and `-0.0` as Chez writes them.
+||| Where two digits of the last place are as close to the double, the even
+||| one, where Chez takes the upper; and a subnormal double without the
+||| `|n` that Chez writes after it, the bits of its significand.
+export covering
+showDouble : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.ShowDouble)
+showDouble x =
+  let w = doubleBits x
+      negative = w `shiftR` 63 == 1
+      be = (w `shiftR` 52) .&. 0x7FF
+      f = w .&. 0xFFFFFFFFFFFFF
+  in if be == 0x7FF
+        -- +nan.0, -inf.0, +inf.0
+        then (if f /= 0 then packed 6 0x302E6E616E2B else if negative then packed 6 0x302E666E692D else packed 6 0x302E666E692B)
+     else if be == 0 && f == 0
+        -- -0.0, 0.0
+        then (if negative then packed 4 0x302E302D else packed 3 0x302E30)
+     else case shortest f be of
+       (sig, e10) => decimalText negative sig e10
+  where
+    ||| A short ASCII text, its bytes in a word, the first lowest: a new string
+    ||| of its `n` bytes.
+    covering
+    packed : (n, bytes : Bits64) -> Runtime.Heap.Op Runtime.Heap (Flat.Uniform String)
+    packed n w = do
+      s <- newString n
+      write s 0 w
+      finish s True n
+      where
+        covering
+        write : Obj Types.Kind.STRING -> (i, rest : Bits64) -> Runtime.Heap.Op Runtime.Heap ()
+        write s i rest = if i >= n then Runtime.Heap.pure () else do
+          setByte s i (rest .&. 0xFF)
+          write s (i + 1) (rest `shiftR` 8)
+
+    ||| A double's shortest digits, `significand` scaled by `10^exponent`, as
+    ||| Chez lays them out: positional where the first digit's power of ten,
+    ||| `e`, is from -3 to 9 (`0.001`, `1500.0`, `1.25`, with a digit after the
+    ||| point always), else as a digit, the others after a point, and `e`
+    ||| (`1e21`, `1.5e-7`); after a `-` if the double is negative.
+    covering
+    decimalText : (negative : Bool) -> (significand : Bits64) -> (exponent : Int) ->
+                  Runtime.Heap.Op Runtime.Heap (Flat.Uniform String)
+    decimalText negative sig e10 =
+      let n = decimalDigits sig
+          e = e10 + cast n - 1
+          sign : Bits64 = if negative then 1 else 0
+      in if e > -4 && e < 10 then positional n e sign else exponential n e sign
+      where
+        ||| 10 to the power.
+        covering
+        power : Bits64 -> Bits64
+        power 0 = 1
+        power k = 10 * power (k - 1)
+
+        ||| `count` digits of a word, leading zeros included, ending at byte
+        ||| `end`.
+        covering
+        writeFixed : Obj Types.Kind.STRING -> (end, count, v : Bits64) -> Runtime.Heap.Op Runtime.Heap ()
+        writeFixed s end 0 v = Runtime.Heap.pure ()
+        writeFixed s end count v = do
+          setByte s (end - 1) (48 + v `mod` 10)
+          writeFixed s (end - 1) (count - 1) (v `div` 10)
+
+        ||| `count` zeros from byte `i`.
+        covering
+        writeZeros : Obj Types.Kind.STRING -> (i, count : Bits64) -> Runtime.Heap.Op Runtime.Heap ()
+        writeZeros s i 0 = Runtime.Heap.pure ()
+        writeZeros s i count = do
+          setByte s i 48
+          writeZeros s (i + 1) (count - 1)
+
+        ||| A new string of the bytes, its `-` written if the double is negative.
+        covering
+        start : (sign, bytes : Bits64) -> Runtime.Heap.Op Runtime.Heap (Obj Types.Kind.STRING)
+        start sign bytes = do
+          s <- newString bytes
+          if sign == 1 then setByte s 0 45 else Runtime.Heap.pure ()
+          Runtime.Heap.pure s
+
+        covering
+        positional : (n : Bits64) -> (e : Int) -> (sign : Bits64) -> Runtime.Heap.Op Runtime.Heap (Flat.Uniform String)
+        positional n e sign =
+          if e < 0 then do
+            -- 0.001: the point, -e - 1 zeros, the digits
+            let zeros = cast {to = Bits64} (negate e - 1)
+                bytes = sign + 2 + zeros + n
+            s <- start sign bytes
+            setByte s sign 48
+            setByte s (sign + 1) 46
+            writeZeros s (sign + 2) zeros
+            writeFixed s bytes n sig
+            finish s True bytes
+          else let whole = cast {to = Bits64} e + 1 in
+            if whole >= n then do
+              -- 1500.0: the digits, zeros to the point, a zero after it
+              let bytes = sign + whole + 2
+              s <- start sign bytes
+              writeDigits s (sign + n) sig
+              writeZeros s (sign + n) (whole - n)
+              setByte s (sign + whole) 46
+              setByte s (sign + whole + 1) 48
+              finish s True bytes
+            else do
+              -- 1.25: the digits with the point among them
+              let fraction = n - whole
+                  d = power fraction
+                  bytes = sign + n + 1
+              s <- start sign bytes
+              writeFixed s (sign + whole) whole (sig `div` d)
+              setByte s (sign + whole) 46
+              writeFixed s bytes fraction (sig `mod` d)
+              finish s True bytes
+
+        covering
+        exponential : (n : Bits64) -> (e : Int) -> (sign : Bits64) -> Runtime.Heap.Op Runtime.Heap (Flat.Uniform String)
+        exponential n e sign = do
+          let rest = n - 1
+              d = power rest
+              mantissa = if rest == 0 then 1 else 2 + rest
+              magnitude = cast {to = Bits64} (if e < 0 then negate e else e)
+              minus : Bits64 = if e < 0 then 1 else 0
+              bytes = sign + mantissa + 1 + minus + decimalDigits magnitude
+          s <- start sign bytes
+          setByte s sign (48 + sig `div` d)
+          if rest == 0 then Runtime.Heap.pure () else do
+            setByte s (sign + 1) 46
+            writeFixed s (sign + mantissa) rest (sig `mod` d)
+          setByte s (sign + mantissa) 101
+          if minus == 1 then setByte s (sign + mantissa + 1) 45 else Runtime.Heap.pure ()
+          writeDigits s bytes magnitude
+          finish s True bytes
 
 %cg native flat Support.String.Utf8.prim__putStr
 ||| `putStr`: the string's bytes written to the standard output, all of

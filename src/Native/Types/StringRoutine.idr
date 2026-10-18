@@ -30,6 +30,9 @@ data StringRoutine
     ShowSigned
   | ||| A word, unsigned, in decimal.
     ShowUnsigned
+  | ||| A double in decimal, as Chez writes it: the shortest digits that read
+    ||| back to it.
+    ShowDouble
 
 ||| Whether two string routines are the same one: how the code generator
 ||| finds the function that is one.
@@ -46,6 +49,7 @@ Eq StringRoutine where
   Compare == Compare = True
   ShowSigned == ShowSigned = True
   ShowUnsigned == ShowUnsigned = True
+  ShowDouble == ShowDouble = True
   _ == _ = False
 
 ||| Each string routine's arrow: what its arguments and its result carry.
@@ -62,12 +66,13 @@ port Substr = MkPort [Port.Signed, Port.Signed, Port.ValueOf String] (Just (Port
 port Compare = MkPort [Port.ValueOf String, Port.ValueOf String] (Just Port.Signed)
 port ShowSigned = MkPort [Port.Signed] (Just (Port.ValueOf String))
 port ShowUnsigned = MkPort [Port.Word] (Just (Port.ValueOf String))
+port ShowDouble = MkPort [Port.Dbl] (Just (Port.ValueOf String))
 
 ||| Every string routine, once, which the code generator pairs with its own
 ||| copy, element by element.
 public export
 allStringRoutines : List StringRoutine
-allStringRoutines = [Length, Head, Tail, Index, Cons, Append, Reverse, Substr, Compare, ShowSigned, ShowUnsigned]
+allStringRoutines = [Length, Head, Tail, Index, Cons, Append, Reverse, Substr, Compare, ShowSigned, ShowUnsigned, ShowDouble]
 
 ||| The list holds every string routine.
 complete : (r : StringRoutine) -> Elem r StringRoutine.allStringRoutines
@@ -82,3 +87,4 @@ complete Substr = %search
 complete Compare = %search
 complete ShowSigned = %search
 complete ShowUnsigned = %search
+complete ShowDouble = %search

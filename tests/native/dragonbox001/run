@@ -1,0 +1,6 @@
+. ../../testutils.sh
+
+# Dragonbox against Chez's printer over edges and random doubles, compiled
+# by Chez: the core alone, the same source the native runtime runs.
+idris2 --cg chez -p idris2-native-runtime -p idris2-native -o core Core.idr > /dev/null
+./build/exec/core

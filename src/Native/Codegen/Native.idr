@@ -17,6 +17,7 @@
 module Native.Codegen.Native
 
 import Native.Codegen.ELF
+import Native.Codegen.Evaluate
 import Native.Codegen.Link
 import Native.Codegen.Linkage.ForeignFunctions
 import Native.Codegen.Linkage.OSService
@@ -132,10 +133,15 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
         | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
       whenJust settings.dumpFlat $ \f => dumpFlat f table
       whenJust settings.dumpForeign $ \f => dumpForeign settings.encodings realised f
+      -- the tables' compiled forms, and of all they call, for those that
+      -- only the runtime's flat code reads, which Idris's passes, from
+      -- `main`, do not reach
+      tableForms <- phase "the tables compiled" (Evaluate.compileFor (keys realised.tables))
       cdata <- phase "Idris's passes" (getCompileData False VMCode tm)
       -- the compiled form of each definition of the program, as Idris gives
-      -- it to every code generator: what the tables are computed from
-      let compiled = fromList (map (\(n, _, d) => (n, d)) cdata.namedDefs)
+      -- it to every code generator, and the tables': what the tables are
+      -- computed from
+      let compiled = mergeLeft (fromList (map (\(n, _, d) => (n, d)) cdata.namedDefs)) tableForms
       image <- case settings.encodings of
         Types.MkEnc HeapObj.ValEnc.FixnumTag1 b s =>
           pipeline (Types.MkEnc HeapObj.ValEnc.FixnumTag1 b s) settings realised table compiled (vmcode cdata)

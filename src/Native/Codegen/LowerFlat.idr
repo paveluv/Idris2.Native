@@ -470,6 +470,12 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
         primitive n Primitive.Mul128 (MkValue [Flat.Exp.Word, Flat.Exp.Word] [x, y]) = do
           [h, l] <- TermIR.Build.emit (TermIR.Instr.Mul128 x y)
           pure (MkValue [Flat.Exp.Word, Flat.Exp.Word] [TermIR.Opnd.V h, TermIR.Opnd.V l])
+        primitive n Primitive.DoubleBits (MkValue [Flat.Exp.Dbl] [f]) = do
+          w <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.FBits f)
+          pure (MkValue [Flat.Exp.Word] [w])
+        primitive n Primitive.BitsDouble (MkValue [Flat.Exp.Word] [w]) = do
+          f <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.BitsF w)
+          pure (MkValue [Flat.Exp.Dbl] [f])
         primitive n _ _ = TermIR.Build.unsupported ("the primitive " ++ show n ++ " on registers other than its signature's")
 
         ||| An inline extern's instructions, from its arguments' registers, which

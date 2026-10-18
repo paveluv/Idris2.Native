@@ -93,6 +93,7 @@ modules =
     Native.Intrinsic,
     Native.Port,
     Native.Primitive,
+    Native.Primitive.DoubleBits,
     Native.Primitive.Mul128,
     Native.Routine,
     Native.Service,

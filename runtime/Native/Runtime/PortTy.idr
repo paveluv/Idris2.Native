@@ -47,6 +47,7 @@ PortTy addr p =
     carried : (0 s : HeapObj.Shape) -> (0 a : Type) -> Port.Carrier -> Type
     carried _ _ Port.Word = Bits64
     carried _ _ Port.Signed = Int
+    carried _ _ Port.Dbl = Double
     carried _ _ (Port.ValueOf t) = Flat.Uniform t
     carried _ a Port.Value = Flat.Uniform a
     carried s _ Port.Address = addr s

@@ -59,12 +59,13 @@ record RoutineCall (enc : Types.Enc) where
   params : List (IRCommon.Ty enc)
 
 ||| The register a carrier of the contract is in: a word, a signed word or
-||| an address in a word, a value as ordinary code holds it in a uniform
-||| register.
+||| an address in a word, a double in a double's, a value as ordinary code
+||| holds it in a uniform register.
 public export
 carrierTy : Port.Carrier -> IRCommon.Ty enc
 carrierTy Port.Word = IRCommon.Ty.W64
 carrierTy Port.Signed = IRCommon.Ty.W64
+carrierTy Port.Dbl = IRCommon.Ty.F64
 carrierTy Port.Address = IRCommon.Ty.W64
 carrierTy Port.Raw = IRCommon.Ty.W64
 carrierTy (Port.ValueOf _) = IRCommon.Ty.Val

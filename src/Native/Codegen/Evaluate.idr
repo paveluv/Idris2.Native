@@ -16,7 +16,9 @@
 ||| (`Native.Codegen.Tabulate`).
 module Native.Codegen.Evaluate
 
+import Compiler.CompileExpr
 import Core.CompileExpr
+import Core.Context
 import Core.Context.Context
 import Core.Core
 import Core.FC
@@ -26,6 +28,7 @@ import Core.Primitives
 import Core.TT.Primitive
 import Core.Value
 import Data.List
+import Data.Maybe
 import Data.SortedMap
 import Data.String
 import Data.Vect
@@ -49,6 +52,56 @@ data Value : Type where
 
 ||| The label of the steps left, which bounds an evaluation.
 data Steps : Type where
+
+||| The compiled forms of the definitions and of everything they call, as
+||| their modules keep them, or compiled now: for functions that the program's compilation does not
+||| reach from `main`, such as a table only the runtime's flat code reads.
+||| Called while the context still holds the definitions, before
+||| `getCompileData`, which puts it back as it found it.
+export
+compileFor : {auto c : Ref Ctxt Defs} -> List Name -> Core (SortedMap Name NamedDef)
+compileFor ns = go ns empty
+  where
+    -- the definitions an expression refers to
+    refs : NamedCExp -> List Name
+    refs (NmRef _ n) = [n]
+    refs (NmLam _ _ b) = refs b
+    refs (NmLet _ _ v b) = refs v ++ refs b
+    refs (NmApp _ f as) = refs f ++ concatMap refs as
+    refs (NmCon _ _ _ _ as) = concatMap refs as
+    refs (NmOp _ _ as) = concatMap refs (toList as)
+    refs (NmExtPrim _ _ as) = concatMap refs as
+    refs (NmForce _ _ x) = refs x
+    refs (NmDelay _ _ x) = refs x
+    refs (NmConCase _ sc alts def) =
+      refs sc ++ concatMap (\(MkNConAlt _ _ _ _ b) => refs b) alts ++ maybe [] refs def
+    refs (NmConstCase _ sc alts def) =
+      refs sc ++ concatMap (\(MkNConstAlt _ b) => refs b) alts ++ maybe [] refs def
+    refs _ = []
+
+    defRefs : NamedDef -> List Name
+    defRefs (MkNmFun _ b) = refs b
+    defRefs (MkNmError b) = refs b
+    defRefs _ = []
+
+    go : List Name -> SortedMap Name NamedDef -> Core (SortedMap Name NamedDef)
+    go [] done = pure done
+    go (n :: rest) done =
+      if isJust (lookup n done) then go rest done else do
+        Just g <- lookupCtxtExact n (gamma !(get Ctxt))
+          | Nothing => go rest done
+        -- a module's TTC keeps its definitions' compiled forms; one of this
+        -- module's may not be compiled yet
+        cd <- case compexpr g of
+          Just cd => pure (Just cd)
+          Nothing => do
+            compileDef n
+            Just g' <- lookupCtxtExact n (gamma !(get Ctxt))
+              | Nothing => pure Nothing
+            pure (compexpr g')
+        case cd of
+          Nothing => go rest done
+          Just cd' => let d = forgetDef cd' in go (defRefs d ++ rest) (insert n d done)
 
 ||| The values of the function at each argument list, each evaluation of at
 ||| most `fuel` steps, over the program's compiled definitions; or why one

@@ -1,0 +1,5 @@
+. ../../testutils.sh
+
+# `show` of doubles, natively.
+idris2 --cg native -p idris2-native-runtime -p idris2-native -o show Show.idr > /dev/null
+./build/exec/show

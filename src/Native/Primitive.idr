@@ -34,6 +34,9 @@ public export
 data Primitive
   = ||| The 128-bit product of two words: its high word and its low word.
     Mul128
+  | ||| A double's 64 bits, as IEEE 754 lays them out, and the double of 64
+    ||| bits.
+    DoubleBits | BitsDouble
 
 ||| A primitive's arrow: what its arguments carry, and what its results do,
 ||| in order.
@@ -47,11 +50,13 @@ record Signature where
 public export
 signature : Primitive -> Signature
 signature Mul128 = MkSignature [Port.Word, Port.Word] [Port.Word, Port.Word]
+signature DoubleBits = MkSignature [Port.Dbl] [Port.Word]
+signature BitsDouble = MkSignature [Port.Word] [Port.Dbl]
 
 ||| The Idris type of a primitive of the signature: a function of its
 ||| arguments, of its results as a tuple, or of its one result. A word is a
-||| `Bits64`, a signed word an `Int`; a primitive carries nothing else, so
-||| one that would is not inhabited.
+||| `Bits64`, a signed word an `Int`, a double a `Double`; a primitive
+||| carries nothing else, so one that would is not inhabited.
 public export
 FunctionTy : Signature -> Type
 FunctionTy sig = arrows sig.takes
@@ -59,6 +64,7 @@ FunctionTy sig = arrows sig.takes
     carried : Port.Carrier -> Type
     carried Port.Word = Bits64
     carried Port.Signed = Int
+    carried Port.Dbl = Double
     carried _ = Void
 
     results : List Port.Carrier -> Type
@@ -74,8 +80,10 @@ FunctionTy sig = arrows sig.takes
 ||| element by element.
 public export
 allPrimitives : List Primitive
-allPrimitives = [Mul128]
+allPrimitives = [Mul128, DoubleBits, BitsDouble]
 
 ||| The list holds every primitive.
 complete : (p : Primitive) -> Elem p Primitive.allPrimitives
 complete Mul128 = %search
+complete DoubleBits = %search
+complete BitsDouble = %search
