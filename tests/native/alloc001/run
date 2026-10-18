@@ -1,0 +1,12 @@
+. ../../testutils.sh
+
+# The allocator of memory outside the heap. Its property test on Chez,
+# against a model of the system's memory (Model.idr); the same random
+# driver natively, on the system's memory (Native.idr); and base's malloc
+# and free natively (Base.idr).
+idris2 -p idris2-native -p idris2-native-runtime -o model Model.idr > /dev/null
+./build/exec/model
+idris2 -p idris2-native -p idris2-native-runtime --cg native -o native Native.idr > /dev/null
+./build/exec/native
+idris2 --cg native -o base Base.idr > /dev/null
+./build/exec/base

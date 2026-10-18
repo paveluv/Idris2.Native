@@ -1,0 +1,8 @@
+model, first run: 10098 allocations, 10098 frees, 0 null, 0 misaligned, 0 overlapping, 0 corrupted
+the region taken: 3276800 bytes; pages committed with every block freed: 38
+model, second run: 10098 allocations, 10098 frees, 0 null, 0 misaligned, 0 overlapping, 0 corrupted
+model, third run: 10098 allocations, 10098 frees, 0 null, 0 misaligned, 0 overlapping, 0 corrupted
+the region taken grew by 327680 bytes in the second run, by 0 in the third; faults: 0
+native: 10098 allocations, 10098 frees, 0 null, 0 misaligned, 0 overlapping, 0 corrupted
+blocks: 400, null: 0
+again: 300, null: 0

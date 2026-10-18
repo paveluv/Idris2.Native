@@ -9,6 +9,13 @@ depends = idris2-native
 
 modules =
     Native.Runtime,
+    Native.Runtime.Alloc.Allocator,
+    Native.Runtime.Alloc.Arena,
+    Native.Runtime.Alloc.Chunks,
+    Native.Runtime.Alloc.Config,
+    Native.Runtime.Alloc.Pages,
+    Native.Runtime.Alloc.SizeClasses,
+    Native.Runtime.Alloc.System,
     Native.Runtime.Bits,
     Native.Runtime.Collect,
     Native.Runtime.Heap,
@@ -32,6 +39,7 @@ modules =
     Native.Support.Foreign.Prelude.IO,
     Native.Support.Foreign.PrimIO,
     Native.Support.Foreign.System,
+    Native.Support.Foreign.System.FFI,
     Native.Support.Obj,
     Native.Support.Ptr,
     Native.Support.String.Utf8

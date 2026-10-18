@@ -78,9 +78,7 @@ missing  System.Directory.prim__openDir
 missing  System.Directory.prim__removeDir
 missing  System.Errno.prim__getErrno
 missing  System.Errno.prim__strerror
-missing  System.FFI.prim__free
 missing  System.FFI.prim__getField
-missing  System.FFI.prim__malloc
 missing  System.FFI.prim__setField
 missing  System.File.Buffer.prim__readBufferData
 missing  System.File.Buffer.prim__writeBufferData
@@ -158,8 +156,10 @@ runtime  Prelude.Types.fastConcat
 runtime  Prelude.Types.fastPack
 runtime  Prelude.Types.fastUnpack
 runtime  PrimIO.prim__nullAnyPtr
+runtime  System.FFI.prim__free
+runtime  System.FFI.prim__malloc
 runtime  System.prim__exit
 runtime  System.prim__getArg
 runtime  System.prim__getArgCount
 runtime  System.prim__getEnv
-11 by the runtime, 6 lowered inline, 147 missing
+13 by the runtime, 6 lowered inline, 145 missing

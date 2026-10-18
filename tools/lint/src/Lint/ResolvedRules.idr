@@ -108,8 +108,8 @@ resolvedRules fms programNames r =
     ||| `raw-maker`: a raw address made from a word (`Raw.fromWord`) outside
     ||| the modules that keep addresses as words or are given them so: the
     ||| memory module, the state, the spaces (the collector's interface holds
-    ||| addresses as words) and the platforms (the system gives its results
-    ||| as words). Elsewhere a raw address comes from an operation that gives
+    ||| addresses as words), the allocator's page source (`Pages` holds them
+    ||| so too) and the platforms (the system gives its results as words). Elsewhere a raw address comes from an operation that gives
     ||| one, so a count is not taken for an address.
     rawMaker : SourceFile -> List Finding
     rawMaker f =
@@ -120,7 +120,7 @@ resolvedRules fms programNames r =
         | rm <- r.modules, rm.name == m, u <- rm.uses, u.name == "fromWord", u.definer == "Native.Runtime.Raw" ]
       where
         makers : List String
-        makers = ["Native.Runtime.Raw", "Native.Runtime.Memory", "Native.Runtime.State", "Native.Runtime.Space"]
+        makers = ["Native.Runtime.Raw", "Native.Runtime.Memory", "Native.Runtime.State", "Native.Runtime.Space", "Native.Runtime.Alloc.System"]
 
     ||| `public-unneeded`: a `public export` that only its module
     ||| needs public. A data type whose constructors no other module uses

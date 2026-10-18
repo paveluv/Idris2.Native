@@ -71,6 +71,12 @@ heapLimit = count 9
 windowBytes = count 10
 collections = count 11
 
+||| The arena of the process's allocator of memory outside the heap
+||| (`Alloc.System`), null until the first allocation makes it.
+export
+foreignArena : State Raw
+foreignArena = address 12
+
 ||| The first of the `n` words of the state from its word `i`, all of which
 ||| the area holds: a run of raw words.
 public export

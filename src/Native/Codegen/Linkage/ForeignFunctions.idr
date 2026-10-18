@@ -29,7 +29,9 @@ foreignFunctions enc =
   [ mirrored (NS (mkNamespace "System") (UN (Basic "prim__exit")))
   , mirrored (NS (mkNamespace "System") (UN (Basic "prim__getArgCount")))
   , mirrored (NS (mkNamespace "Prelude.IO") (UN (Basic "prim__putChar")))
-  , mirrored (NS (mkNamespace "PrimIO") (UN (Basic "prim__nullAnyPtr"))) ]
+  , mirrored (NS (mkNamespace "PrimIO") (UN (Basic "prim__nullAnyPtr")))
+  , mirrored (NS (mkNamespace "System.FFI") (UN (Basic "prim__malloc")))
+  , mirrored (NS (mkNamespace "System.FFI") (UN (Basic "prim__free"))) ]
   ++ maybe [] (\ns => [ (NS (mkNamespace m) (UN (Basic f)), NS ns (UN (Basic f)))
                       | (m, f) <- [ ("Prelude.Types", "fastPack"), ("Prelude.Types", "fastUnpack")
                                   , ("Prelude.Types", "fastConcat"), ("Prelude.IO", "prim__putStr")

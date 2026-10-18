@@ -20,5 +20,6 @@ module Native.Support
 import public Native.Support.Foreign.Prelude.IO
 import public Native.Support.Foreign.PrimIO
 import public Native.Support.Foreign.System
+import public Native.Support.Foreign.System.FFI
 
 %default total
