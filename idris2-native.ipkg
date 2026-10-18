@@ -41,6 +41,7 @@ modules =
     Native.Codegen.LocatedIR.Mem,
     Native.Codegen.LocatedIR.Opnd,
     Native.Codegen.LocatedIR.Program,
+    Native.Codegen.LocatedIR.Reach,
     Native.Codegen.LocatedIR.Reg,
     Native.Codegen.LocatedIR.Static,
     Native.Codegen.LocatedIR.Terminator,

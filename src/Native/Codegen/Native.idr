@@ -24,8 +24,10 @@ import Native.Codegen.Linkage.OSService
 import Native.Codegen.Linkage.Realised as Linkage
 import Native.Codegen.Linkage.Routine
 import Native.Codegen.Linkage.RuntimeModule
+import Native.Codegen.Linkage.Sym
 import Native.Codegen.LocatedIR.Dump
 import Native.Codegen.LocatedIR.Program as LocatedIR
+import Native.Codegen.LocatedIR.Reach as LocatedIR
 import Native.Codegen.Lower
 import Native.Codegen.Platform
 import Native.Codegen.RegAlloc
@@ -283,12 +285,17 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
                                           (map fst defs
                                             ++ [r.name | r <- Linkage.Routine.routines {enc} realised]
                                            ++ mapMaybe (foreignRoot {enc' = enc}) defs)
-          rows <- phase "tables" (traverse tabulated (reached forms))
-          let tables = fromList [ (t.name, (t.lo, t.rowWords)) | t <- rows ]
+          -- each table's row, by its first: the lowering's reads of it
+          firsts <- phase "table rows" (traverse (\(n, (lo, _)) => tabulated (n, (lo, lo))) (reached forms))
+          let tables = fromList [ (t.name, (t.lo, t.rowWords)) | t <- firsts ]
           Right (_ ** term) <- phase "lowering"
             (later (Lower.lowerProgram enc settings.platform realised forms shapes tables defs))
             | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
-          ir <- phase "register allocation" (later (RegAlloc.allocRegs X86.Target.x86_64 term))
+          allocated <- phase "register allocation" (later (RegAlloc.allocRegs X86.Target.x86_64 term))
+          -- the image holds what the entry and the routines the seed reaches
+          -- by symbol reach, and the tables of that alone
+          let (ir, readTables) = LocatedIR.Reach.reach (\n => isJust (Linkage.Routine.routineSymbol {enc} realised n)) allocated
+          rows <- phase "tables" (traverse tabulated (mapMaybe (\n => (n,) <$> lookup n realised.tables) readTables))
           case settings.dumpIr of
             Just path => do
               Right () <- coreLift (Data.WriteBuilder.writeBuilder path (LocatedIR.Dump.dumpProgram ir))
