@@ -1,0 +1,6 @@
+. ../../testutils.sh
+
+# The environment of a native program: variables found, an empty one, a
+# non-ASCII one, ones not there, and names that are prefixes of others.
+idris2 --cg native -o env Env.idr > /dev/null
+env -i IDRX=prefixed IDR=one IDR_EMPTY= IDR_UTF8=été ./build/exec/env

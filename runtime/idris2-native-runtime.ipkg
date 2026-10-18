@@ -30,6 +30,8 @@ modules =
     Native.Support.Double.PowerOfTen,
     Native.Support.Double.Shortest,
     Native.Support.Foreign.Prelude.IO,
+    Native.Support.Foreign.PrimIO,
     Native.Support.Foreign.System,
     Native.Support.Obj,
+    Native.Support.Ptr,
     Native.Support.String.Utf8

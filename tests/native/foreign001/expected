@@ -1,6 +1,9 @@
 lowered  Data.IOArray.Prims.prim__arrayGet
 lowered  Data.IOArray.Prims.prim__arraySet
 lowered  Data.IOArray.Prims.prim__newArray
+lowered  Data.IORef.prim__newIORef
+lowered  Data.IORef.prim__readIORef
+lowered  Data.IORef.prim__writeIORef
 missing  Data.Buffer.prim__bufferSize
 missing  Data.Buffer.prim__copyData
 missing  Data.Buffer.prim__getBits16
@@ -29,18 +32,13 @@ missing  Data.Buffer.prim__setInt64
 missing  Data.Buffer.prim__setInt8
 missing  Data.Buffer.prim__setString
 missing  Data.Buffer.stringByteLength
-missing  Data.IORef.prim__newIORef
-missing  Data.IORef.prim__readIORef
-missing  Data.IORef.prim__writeIORef
 missing  Prelude.IO.prim__fork
 missing  Prelude.IO.prim__getChar
 missing  Prelude.IO.prim__getStr
-missing  Prelude.IO.prim__getString
 missing  Prelude.IO.prim__onCollect
 missing  Prelude.IO.prim__onCollectAny
 missing  Prelude.IO.prim__threadWait
 missing  PrimIO.prim__getNullAnyPtr
-missing  PrimIO.prim__nullAnyPtr
 missing  System.Clock.prim__clockTimeGcCpu
 missing  System.Clock.prim__clockTimeGcReal
 missing  System.Clock.prim__clockTimeMonotonic
@@ -144,7 +142,6 @@ missing  System.Term.prim__getTermCols
 missing  System.Term.prim__getTermLines
 missing  System.Term.prim__setupTerm
 missing  System.prim__enableRawMode
-missing  System.prim__getEnv
 missing  System.prim__getEnvPair
 missing  System.prim__getPID
 missing  System.prim__resetRawMode
@@ -154,12 +151,15 @@ missing  System.prim__system
 missing  System.prim__time
 missing  System.prim__unsetEnv
 missing  System.prim__usleep
+runtime  Prelude.IO.prim__getString
 runtime  Prelude.IO.prim__putChar
 runtime  Prelude.IO.prim__putStr
 runtime  Prelude.Types.fastConcat
 runtime  Prelude.Types.fastPack
 runtime  Prelude.Types.fastUnpack
+runtime  PrimIO.prim__nullAnyPtr
 runtime  System.prim__exit
 runtime  System.prim__getArg
 runtime  System.prim__getArgCount
-8 by the runtime, 3 lowered inline, 153 missing
+runtime  System.prim__getEnv
+11 by the runtime, 6 lowered inline, 147 missing

@@ -239,7 +239,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
             library (_, Nothing) = Nothing
 
             lowered : List String
-            lowered = ["prim__newArray", "prim__arrayGet", "prim__arraySet"]
+            lowered = ["prim__newArray", "prim__arrayGet", "prim__arraySet", "prim__newIORef", "prim__readIORef", "prim__writeIORef"]
 
             entry : (Name, GlobalDef) -> Core String
             entry (n, _) = do

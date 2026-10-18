@@ -1,0 +1,7 @@
+IDR: Just "one"
+IDRX: Just "prefixed"
+IDR_EMPTY: Just ""
+IDR_UTF8: Just "\233t\233"
+IDR_NONE: Nothing
+: Nothing
+IDR=one: Nothing

@@ -29,7 +29,8 @@
 ||| fixnum range; constructors, nullary ones as shared statics; closures;
 ||| application; calls and tail calls; cases on constructors, on integer and
 ||| character constants and on string constants; projection; the arrays
-||| behind `Data.IOArray` ("Arrays", below); the string primitives; and the
+||| behind `Data.IOArray` ("Arrays", below) and the references behind
+||| `Data.IORef` ("References"); the string primitives; and the
 ||| foreign functions the runtime implements. Everything else lowers to
 ||| `Unsupported`, the abort stub, so a program always links and fails only
 ||| on the paths it reaches.
@@ -401,6 +402,12 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
   -- read or a write are the caller's to check, as on every backend:
   -- `Data.IOArray` checks them. Writing an element needs no barrier while the
   -- collector is not generational.
+  --
+  -- References
+  --
+  -- The `%extern` primitives of `Data.IORef`, on `IOREF` objects: the value
+  -- at 8. Each takes the erased value type first and the world last. A
+  -- write needs no barrier, as an array's does not.
 
   ------------------------------------------------------------------------------
   -- Objects
@@ -663,33 +670,55 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
         set env r x = maybe env (\k => insert k (x, Nothing) env) (key r)
 
         extPrim : Env v -> Reg -> Name -> List Reg -> B (Env v)
-        extPrim env r p list = case list of
-          [_, x, y, _] =>
-            if p == arrayPrim "prim__newArray"
-               then do count <- wideWord (get env x)
-                       a <- TermIR.Build.emit1 (TermIR.Instr.AllocSized Types.Header.ArrayElems count (get env y))
-                       set env r <$> TermIR.Build.emit1 (TermIR.Instr.WidenPtr a)
-            else if p == arrayPrim "prim__arrayGet"
-               then do a <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr Types.Kind.ARRAY (get env x))
-                       i <- wideWord (get env y)
-                       set env r <$> TermIR.Build.emit1
-                         (TermIR.Instr.Load IRCommon.Ty.Val (TermIR.MkMem (TermIR.Mem.AtPtr a) (Just i) 8))
-            else TermIR.Build.unsupported ("the external primitive " ++ show p)
+        extPrim env r p list =
+          if p == arrayPrim "prim__newArray" then case list of
+            [_, x, y, _] => do count <- wideWord (get env x)
+                               a <- TermIR.Build.emit1 (TermIR.Instr.AllocSized Types.Header.ArrayElems count (get env y))
+                               set env r <$> TermIR.Build.emit1 (TermIR.Instr.WidenPtr a)
+            _ => notLowered
+          else if p == arrayPrim "prim__arrayGet" then case list of
+            [_, x, y, _] => do a <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr Types.Kind.ARRAY (get env x))
+                               i <- wideWord (get env y)
+                               set env r <$> TermIR.Build.emit1
+                                 (TermIR.Instr.Load IRCommon.Ty.Val (TermIR.MkMem (TermIR.Mem.AtPtr a) (Just i) 8))
+            _ => notLowered
           -- The result is `()`, which no caller inspects: the erased value.
-          [_, x, y, z, _] =>
-            if p == arrayPrim "prim__arraySet"
-               then do a <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr Types.Kind.ARRAY (get env x))
-                       i <- wideWord (get env y)
-                       TermIR.Build.emit0
-                         (TermIR.Instr.Store IRCommon.Ty.Val (TermIR.MkMem (TermIR.Mem.AtPtr a) (Just i) 8)
-                          (get env z))
-                       pure (set env r TermIR.Opnd.Erased)
-            else TermIR.Build.unsupported ("the external primitive " ++ show p)
-          _ => TermIR.Build.unsupported ("the external primitive " ++ show p)
+          else if p == arrayPrim "prim__arraySet" then case list of
+            [_, x, y, z, _] => do a <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr Types.Kind.ARRAY (get env x))
+                                  i <- wideWord (get env y)
+                                  TermIR.Build.emit0
+                                    (TermIR.Instr.Store IRCommon.Ty.Val (TermIR.MkMem (TermIR.Mem.AtPtr a) (Just i) 8)
+                                     (get env z))
+                                  pure (set env r TermIR.Opnd.Erased)
+            _ => notLowered
+          else if p == refPrim "prim__newIORef" then case list of
+            [_, x, _] => do a <- TermIR.Build.emit1 (TermIR.Instr.AllocObj Types.Header.IORefH [get env x])
+                            set env r <$> TermIR.Build.emit1 (TermIR.Instr.WidenPtr a)
+            _ => notLowered
+          else if p == refPrim "prim__readIORef" then case list of
+            [_, x, _] => do a <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr Types.Kind.IOREF (get env x))
+                            set env r <$> TermIR.Build.emit1
+                              (TermIR.Instr.Load IRCommon.Ty.Val (TermIR.MkMem (TermIR.Mem.AtPtr a) Nothing 8))
+            _ => notLowered
+          -- The result is `()`, as an array's write's.
+          else if p == refPrim "prim__writeIORef" then case list of
+            [_, x, y, _] => do a <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr Types.Kind.IOREF (get env x))
+                               TermIR.Build.emit0
+                                 (TermIR.Instr.Store IRCommon.Ty.Val (TermIR.MkMem (TermIR.Mem.AtPtr a) Nothing 8) (get env y))
+                               pure (set env r TermIR.Opnd.Erased)
+            _ => notLowered
+          else notLowered
           where
+            notLowered : B (Env v)
+            notLowered = TermIR.Build.unsupported ("the external primitive " ++ show p)
+
             ||| One of the `%extern` array primitives of `Data.IOArray.Prims`.
             arrayPrim : String -> Name
             arrayPrim s = NS (mkNamespace "Data.IOArray.Prims") (UN (Basic s))
+
+            ||| One of the `%extern` primitives of `Data.IORef`.
+            refPrim : String -> Name
+            refPrim s = NS (mkNamespace "Data.IORef") (UN (Basic s))
 
         ||| The alternatives of a case, as code, and the code after the case,
         ||| from the environment: in tail position each alternative returns
@@ -1395,7 +1424,9 @@ program forms shapes realised tables entry es rs =
 
 ||| Whether a value of the C type is held as a flat value of the skeleton:
 ||| an integer as its machine type, a `Char`, a `Double`, the world, `()`, a
-||| primitive's `IORes`, and a `String` held as ordinary code holds it.
+||| primitive's `IORes`, a `String` held as ordinary code holds it, and a
+||| pointer, `Ptr a` or `AnyPtr`, held as ordinary code holds it, an object
+||| of its address.
 export
 cfAgrees : CFType -> Flat.Exp.Skeleton -> Bool
 cfAgrees CFInt (Flat.Exp.SPrim IntType) = True
@@ -1413,6 +1444,9 @@ cfAgrees CFWorld (Flat.Exp.SPrim WorldType) = True
 cfAgrees CFUnit (Flat.Exp.SCon n []) = n == NS (mkNamespace "Builtin") (UN (Basic "Unit"))
 cfAgrees (CFIORes t) (Flat.Exp.SCon n [s]) = n == NS (mkNamespace "PrimIO") (UN (Basic "IORes")) && cfAgrees t s
 cfAgrees CFString (Flat.Exp.SCon n [Flat.Exp.SPrim StringType]) = n == Flat.Exp.uniformType
+cfAgrees CFPtr (Flat.Exp.SCon n [Flat.Exp.SCon p _]) =
+  n == Flat.Exp.uniformType
+  && (p == NS (mkNamespace "PrimIO") (UN (Basic "Ptr")) || p == NS (mkNamespace "PrimIO") (UN (Basic "AnyPtr")))
 cfAgrees (CFUser t _) (Flat.Exp.SCon n [Flat.Exp.SCon t' _]) = n == Flat.Exp.uniformType && t == t'
 cfAgrees _ _ = False
 

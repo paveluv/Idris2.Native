@@ -204,6 +204,33 @@ argumentBytes n = do
   p <- loadAt (Raw.fromWord entry) (8 + 8 * n)
   pure (Raw.fromWord p)
 
+||| The program's environment, as the system put it after the arguments and
+||| the zero word that ends them: entry `n`'s address, as a foreign pointer
+||| holds it, a word, the bytes `NAME=value` and a zero byte there; 0 for
+||| an `n` past the zero word that ends the entries.
+export covering
+environmentEntry : (n : Bits64) -> Heap.Op Heap Bits64
+environmentEntry n = do
+  argv <- argvArea
+  entry <- loadAt argv 0
+  let start = Raw.fromWord entry
+  count <- loadAt start 0
+  scan start (8 + 8 * (count + 1)) n
+  where
+    -- the entry `k` on from the one at `at`, stopping at the zero word
+    covering
+    scan : Raw -> (at, k : Bits64) -> Heap.Op Heap Bits64
+    scan start at k = do
+      p <- loadAt start at
+      if p == 0 || k == 0 then pure p else scan start (at + 8) (k - 1)
+
+||| The raw memory a foreign pointer's word addresses, such as an
+||| environment entry's: memory outside the heap, which the collector never
+||| moves.
+export %inline
+foreignBytes : (word : Bits64) -> Raw
+foreignBytes = Raw.fromWord
+
 ||| The byte at raw memory plus a byte offset.
 export %inline
 loadByteAt : Raw -> (offset : Bits64) -> Heap.Op Heap Bits64

@@ -41,6 +41,7 @@ import Native.Support.Double.Limbs
 import Native.Support.Double.Nearest
 import Native.Support.Double.Shortest
 import Native.Support.Obj
+import Native.Support.Ptr
 import Native.Types.Header
 import Native.Types.Kind
 import Native.Types.StringRoutine
@@ -645,6 +646,33 @@ prim__putStr str w = let (Runtime.MkHeap # ()) = putOp str Runtime.MkHeap in MkI
       h <- headerOf s
       Runtime.OS.osWriteAll Runtime.OS.stdout (Obj.objectBytes s 8) (bytesOf h)
 
+||| The string of the bytes at raw memory up to the zero byte that ends
+||| them, copied into a new string: the system's text, an argument or an
+||| environment entry, as the system gave it.
+covering
+zeroEnded : Runtime.Raw -> Runtime.Heap.Op Runtime.Heap (Flat.Uniform String)
+zeroEnded p = do
+  len <- zeroAt 0
+  s <- newString len
+  seen <- copy s 0 len 0
+  finish s (seen < 0x80) len
+  where
+    -- the bytes up to the zero byte that ends them
+    covering
+    zeroAt : Bits64 -> Runtime.Heap.Op Runtime.Heap Bits64
+    zeroAt i = do
+      b <- Runtime.Memory.loadByteAt p i
+      if b == 0 then Runtime.Heap.pure i else zeroAt (i + 1)
+
+    -- the bytes copied, and the OR of them, whose top bit says whether any
+    -- is not ASCII
+    covering
+    copy : Obj Types.Kind.STRING -> (i, end, seen : Bits64) -> Runtime.Heap.Op Runtime.Heap Bits64
+    copy s i end seen = if i >= end then Runtime.Heap.pure seen else do
+      b <- Runtime.Memory.loadByteAt p i
+      setByte s i b
+      copy s (i + 1) end (seen .|. b)
+
 %cg native flat Support.String.Utf8.prim__getArg
 ||| `getArg`: argument `n` of the program, its name argument 0, its bytes as
 ||| the system gave them; the empty string for an `n` it has no argument for.
@@ -652,22 +680,6 @@ export covering
 prim__getArg : Int -> PrimIO (Flat.Uniform String)
 prim__getArg n w = let (Runtime.MkHeap # r) = argOp Runtime.MkHeap in MkIORes r w
   where
-    -- the bytes up to the zero byte that ends them
-    covering
-    zeroAt : Runtime.Raw -> Bits64 -> Runtime.Heap.Op Runtime.Heap Bits64
-    zeroAt p i = do
-      b <- Runtime.Memory.loadByteAt p i
-      if b == 0 then Runtime.Heap.pure i else zeroAt p (i + 1)
-
-    -- the bytes copied, and the OR of them, whose top bit says whether any
-    -- is not ASCII
-    covering
-    copy : Runtime.Raw -> Obj Types.Kind.STRING -> (i, end, seen : Bits64) -> Runtime.Heap.Op Runtime.Heap Bits64
-    copy p s i end seen = if i >= end then Runtime.Heap.pure seen else do
-      b <- Runtime.Memory.loadByteAt p i
-      setByte s i b
-      copy p s (i + 1) end (seen .|. b)
-
     covering
     argOp : Runtime.Heap.Op Runtime.Heap (Flat.Uniform String)
     argOp = do
@@ -678,10 +690,61 @@ prim__getArg n w = let (Runtime.MkHeap # r) = argOp Runtime.MkHeap in MkIORes r 
            finish s True 0
          else do
            p <- Runtime.Memory.argumentBytes (cast n)
-           len <- zeroAt p 0
-           s <- newString len
-           seen <- copy p s 0 len 0
-           finish s (seen < 0x80) len
+           zeroEnded p
+
+%cg native flat Support.String.Utf8.prim__getEnv
+||| `getEnv`: the value of the environment's variable of the name, as a
+||| pointer to its bytes in the environment the system gave, the bytes
+||| after the first entry that begins with the name and `=`; the null
+||| pointer for a name no entry has. As the C library's `getenv`, which the
+||| other code generators call, the name is compared byte by byte, whatever
+||| it holds.
+export covering
+prim__getEnv : Flat.Uniform String -> PrimIO (Flat.Uniform (Ptr String))
+prim__getEnv name w = let (Runtime.MkHeap # r) = envOp Runtime.MkHeap in MkIORes r w
+  where
+    -- whether the entry at `e` begins with the name's bytes, from `i` on,
+    -- then `=`
+    covering
+    named : Obj Types.Kind.STRING -> (e, i, len : Bits64) -> Runtime.Heap.Op Runtime.Heap Bool
+    named s e i len = do
+      b <- Runtime.Memory.loadByteAt (Runtime.Memory.foreignBytes e) i
+      if i == len then Runtime.Heap.pure (b == 0x3D) else do
+        c <- byteAt s i
+        if b /= c then Runtime.Heap.pure False else named s e (i + 1) len
+
+    covering
+    search : Obj Types.Kind.STRING -> (n, len : Bits64) -> Runtime.Heap.Op Runtime.Heap (Flat.Uniform (Ptr String))
+    search s n len = do
+      e <- Runtime.Memory.environmentEntry n
+      if e == 0 then Ptr.newPtr 0 else do
+        found <- named s e 0 len
+        if found then Ptr.newPtr (e + len + 1) else search s (n + 1) len
+
+    covering
+    envOp : Runtime.Heap.Op Runtime.Heap (Flat.Uniform (Ptr String))
+    envOp = do
+      s <- stringObject name
+      h <- headerOf s
+      search s 0 (bytesOf h)
+
+%cg native flat Support.String.Utf8.prim__getString
+||| `getString`: the string a pointer to zero-ended bytes points to, copied;
+||| the empty string for the null pointer, which the C library would read
+||| through.
+export covering
+prim__getString : Flat.Uniform (Ptr String) -> Flat.Uniform String
+prim__getString p = let (Runtime.MkHeap # r) = getOp Runtime.MkHeap in r
+  where
+    covering
+    getOp : Runtime.Heap.Op Runtime.Heap (Flat.Uniform String)
+    getOp = do
+      word <- Ptr.ptrWord p
+      if word == 0
+         then do
+           s <- newString 0
+           finish s True 0
+         else zeroEnded (Runtime.Memory.foreignBytes word)
 
 ------------------------------------------------------------------------------
 -- Text as numbers
