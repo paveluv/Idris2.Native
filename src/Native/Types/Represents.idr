@@ -21,16 +21,14 @@ import Native.Types.Kind
 %default total
 
 ||| Every value of `a` is an object of kind `k`: a value of `a` can be taken
-||| for one.
+||| for one. A foreign pointer is not one of these, as it is of two kinds
+||| (`Represents`).
 public export
 data Only : Kind -> Type -> Type where
   ||| A string is a `STRING` always, the empty one too.
   AString : Only STRING String
   ||| A list is a `CON` always: `[]` a static object of no fields.
   AList : Only CON (List a)
-  ||| A foreign pointer is a `PTR`, the null one too.
-  APointer : Only PTR (Ptr a)
-  AnyPointer : Only PTR AnyPtr
 
 ||| An object of kind `k` is a value of `a`: one can be given as a value of
 ||| `a`.
@@ -38,6 +36,26 @@ public export
 data Represents : Kind -> Type -> Type where
   ||| A kind that holds every value of a type holds values of it.
   Sole : Only k a -> Represents k a
+  ||| A foreign pointer is an address outside the heap, as a `PTR`, the null
+  ||| one too;
+  AnAddress : Represents PTR (Ptr a)
+  AnyAddress : Represents PTR AnyPtr
+  ||| or, where `base` asks the runtime for a pointer to zero-ended bytes and
+  ||| reads it only through the runtime, the string itself
+  ||| (`Support.Ptr`), as an `AnyPtr` too, which `free` takes.
+  AHeapString : Represents STRING (Ptr String)
+  AnyHeapString : Represents STRING AnyPtr
+
+||| Every value of `a` is an object, never a fixnum, whose header says its
+||| kind: what a value of a type of several kinds is read by
+||| (`Support.Obj.asKind`).
+public export
+data Objects : Type -> Type where
+  ||| A type whose values are all objects of one kind.
+  OfOne : Only k a -> Objects a
+  ||| A foreign pointer, of either kind.
+  Pointers : Objects (Ptr a)
+  AnyPointers : Objects AnyPtr
 
 ||| The ids of `List`'s constructors, `[]` then `(::)`, as it declares them.
 export

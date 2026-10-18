@@ -128,6 +128,19 @@ export %inline
 objectValue : {auto 0 rep : Types.Represents k a} -> Obj k -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform a)
 objectValue (MkObj _ a) = Runtime.Memory.objectValue a
 
+||| The object a value is, if it is one of the kind `k`, for a type whose
+||| values are objects of several kinds, each told by its header: by the
+||| header's kind code (`Types.Kind.headerCode`), compared with `k`'s.
+export %inline
+asKind : (k : Types.Kind) -> {auto 0 objs : Types.Represents.Objects a} -> {auto 0 rep : Types.Represents k a} ->
+         {auto 0 shaped : Types.Kind.shapeOf k = Just s} -> Flat.Uniform a -> Runtime.Ordo.Op Runtime.Ordo (Maybe (Obj k))
+asKind k v = do
+  -- every value of the type is an object, whose header is at 0, whatever
+  -- its shape
+  a <- Runtime.Memory.valueObject {s} v
+  h <- Runtime.Memory.load64 a 0
+  if Types.Kind.headerCode h == Types.Kind.code k then Runtime.Ordo.pure (Just (MkObj shaped a)) else Runtime.Ordo.pure Nothing
+
 ||| The integer a fixnum stands for, of a type held as fixnums, and the
 ||| value of one.
 export %inline

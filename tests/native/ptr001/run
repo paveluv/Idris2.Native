@@ -1,0 +1,6 @@
+. ../../testutils.sh
+
+# Foreign pointers of both kinds: malloc's addresses, and the strings base
+# asks the runtime for as pointers.
+idris2 --cg native -o pointers Pointers.idr > /dev/null
+./build/exec/pointers

@@ -58,6 +58,11 @@ before r n = MkRaw (r.word - n)
 
 ||| Whether the address is the null one, which no memory has: what the
 ||| system gives for none.
+||| The null address, of no memory.
+export %inline
+null : Raw
+null = MkRaw 0
+
 export %inline
 isNull : Raw -> Bool
 isNull r = r.word == 0

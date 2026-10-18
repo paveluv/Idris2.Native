@@ -4,12 +4,15 @@
 module Native.Support.Foreign.PrimIO
 
 import Native.Flat.Uniform as Flat
+-- lint: allow import-unused: the flat check reaches through pointee's body, which compares a header's kind code
+import Native.HeapObj.Shape as HeapObj
 import Native.Runtime.Ordo as Runtime
--- lint: allow import-unused: the flat check reaches through ptrWord's body, which reads raw memory from an object
 import Native.Runtime.Raw as Runtime
--- lint: allow import-unused: the flat check reaches through ptrWord's body, which reads raw memory from an object
+-- lint: allow import-unused: the flat check reaches through pointee's body, which reads the pointer's object
 import Native.Support.Obj
 import Native.Support.Ptr
+-- lint: allow import-unused: the flat check reaches through pointee's body, which compares a header's kind code
+import Native.Types.Kind
 import Native.Types.Represents
 
 %hide Prelude.Interfaces.(>>=)
@@ -19,12 +22,15 @@ import Native.Types.Represents
 %default total
 
 %cg native flat Support.Foreign.PrimIO.prim__nullAnyPtr
-||| 1 for the null pointer, 0 for any other.
+||| 1 for the null pointer, 0 for any other: an object of the heap given for
+||| a pointer is never null (`Support.Ptr`).
 export
 prim__nullAnyPtr : Flat.Uniform AnyPtr -> Int
 prim__nullAnyPtr p = let (Runtime.MkOrdo # r) = nullOp p Runtime.MkOrdo in r
   where
     nullOp : Flat.Uniform AnyPtr -> Runtime.Ordo.Op Runtime.Ordo Int
     nullOp p = do
-      w <- Ptr.ptrWord p
-      if w == 0 then Runtime.Ordo.pure 1 else Runtime.Ordo.pure 0
+      target <- Ptr.pointee p
+      case target of
+        Address a => Runtime.Ordo.pure (if Runtime.Raw.isNull a then 1 else 0)
+        HeapString _ => Runtime.Ordo.pure 0

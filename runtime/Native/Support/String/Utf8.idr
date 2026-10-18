@@ -688,8 +688,9 @@ prim__getArg n w = let (Runtime.MkOrdo # r) = argOp Runtime.MkOrdo in MkIORes r 
 
 %cg native flat Support.String.Utf8.prim__getEnv
 ||| `getEnv`: the value of the environment's variable of the name
-||| (`Support.Environment`), as a pointer to its bytes, after the first entry
-||| that holds the name and `=`; the null pointer for a name no entry has.
+||| (`Support.Environment`), the bytes after the first entry that holds the
+||| name and `=`, copied into a string given as the pointer (`Support.Ptr`),
+||| which `base` reads at once; the null pointer for a name no entry has.
 ||| As the C library's `getenv`, which the other code generators call, the
 ||| name is compared byte by byte, whatever it holds.
 export covering
@@ -703,10 +704,27 @@ prim__getEnv name w = let (Runtime.MkOrdo # r) = envOp name Runtime.MkOrdo in Mk
       h <- headerOf s
       found <- Environment.find (Obj.objectBytes s 0) (bytesOf h)
       case found of
-        Nothing => Ptr.newPtr 0
+        Nothing => Ptr.nullPtr
         Just i => do
           e <- Environment.entryAt i
-          Ptr.newPtr (e + bytesOf h + 1)
+          v <- zeroEnded (Runtime.Memory.foreignBytes (e + bytesOf h + 1))
+          Ptr.stringPtr v
+
+%cg native flat Support.String.Utf8.prim__getEnvPair
+||| `getEnvironment`'s entry `n` of the environment (`Support.Environment`):
+||| its bytes, `NAME=value`, copied into a string given as the pointer
+||| (`Support.Ptr`); the null pointer past the last.
+export covering
+prim__getEnvPair : Int -> PrimIO (Flat.Uniform (Ptr String))
+prim__getEnvPair n w = let (Runtime.MkOrdo # r) = pairOp n Runtime.MkOrdo in MkIORes r w
+  where
+    covering
+    pairOp : Int -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform (Ptr String))
+    pairOp n = if n < 0 then Ptr.nullPtr else do
+      e <- Environment.entryAt (cast n)
+      if e == 0 then Ptr.nullPtr else do
+        v <- zeroEnded (Runtime.Memory.foreignBytes e)
+        Ptr.stringPtr v
 
 %cg native flat Support.String.Utf8.prim__setEnv
 ||| `setEnv`: the environment's variable of the name set to the value,
@@ -778,7 +796,8 @@ prim__removeDir : Flat.Uniform String -> PrimIO ()
 prim__removeDir path w = let (Runtime.MkOrdo # _) = withPath Runtime.OS.osRemoveDirectory path Runtime.MkOrdo in MkIORes () w
 
 %cg native flat Support.String.Utf8.prim__getString
-||| `getString`: the string a pointer to zero-ended bytes points to, copied;
+||| `getString`: the string a pointer is, if it is one of the heap
+||| (`Support.Ptr`), itself; else the zero-ended bytes it points to, copied;
 ||| the empty string for the null pointer, which the C library would read
 ||| through.
 export covering
@@ -788,12 +807,43 @@ prim__getString p = let (Runtime.MkOrdo # r) = getOp Runtime.MkOrdo in r
     covering
     getOp : Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform String)
     getOp = do
-      word <- Ptr.ptrWord p
-      if word == 0
-         then do
-           s <- newString 0
-           finish s True 0
-         else zeroEnded (Runtime.Memory.foreignBytes word)
+      target <- Ptr.pointee p
+      case target of
+        HeapString s => Obj.objectValue s
+        Address a =>
+          if Runtime.Raw.isNull a
+             then do
+               s <- newString 0
+               finish s True 0
+             else zeroEnded a
+
+%cg native flat Support.String.Utf8.prim__currentDir
+||| `currentDir`: the current directory's path, as the system writes it,
+||| zero-ended, into a block outside the heap of `pathBytes`, copied into a
+||| string given as the pointer (`Support.Ptr`), the block freed; the null
+||| pointer if there is no memory, or the path is longer than the block, as
+||| the C support's buffer is.
+export covering
+prim__currentDir : PrimIO (Flat.Uniform (Ptr String))
+prim__currentDir w = let (Runtime.MkOrdo # r) = currentOp Runtime.MkOrdo in MkIORes r w
+  where
+    ||| The most bytes of a path, its zero byte one: Linux's `PATH_MAX`.
+    pathBytes : Bits64
+    pathBytes = 4096
+
+    covering
+    currentOp : Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform (Ptr String))
+    currentOp = Runtime.Alloc.Block.allocate pathBytes (Ptr.nullPtr) (\b => do
+      let MkAddressed p b' = Runtime.Alloc.Block.address b
+      ok <- Runtime.OS.osCurrentDirectory p pathBytes
+      case ok == 1 of
+        True => do
+          s <- zeroEnded p
+          Runtime.Alloc.Block.free b'
+          Ptr.stringPtr s
+        False => do
+          Runtime.Alloc.Block.free b'
+          Ptr.nullPtr)
 
 ------------------------------------------------------------------------------
 -- Text as numbers

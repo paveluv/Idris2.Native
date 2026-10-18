@@ -43,7 +43,6 @@ modules =
     Native.Support.Foreign.Prelude.IO,
     Native.Support.Foreign.PrimIO,
     Native.Support.Foreign.System,
-    Native.Support.Foreign.System.Directory,
     Native.Support.Foreign.System.Errno,
     Native.Support.Foreign.System.FFI,
     Native.Support.Foreign.System.File.Error,

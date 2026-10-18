@@ -158,3 +158,13 @@ Show Kind where
   show BUFFER = "BUFFER"
   show PTR = "PTR"
   show CONT = "CONT"
+
+||| A header word's kind code, as `code` gives a kind's: its shape's id, in
+||| bits 0..3, and its tag, the flags between them left out, as the
+||| collector may set its mark there.
+public export %inline
+headerCode : (header : Bits64) -> Bits64
+headerCode h =
+  HeapObj.Shape.shapeIdOf h
+    + HeapObj.Shape.fieldBits {s = HeapObj.Shape.VALUES} HeapObj.Shape.Tag
+        (HeapObj.Shape.field {s = HeapObj.Shape.VALUES} HeapObj.Shape.Tag h)

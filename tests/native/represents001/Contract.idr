@@ -13,6 +13,10 @@
 --     FieldOf (List a) listCons 0 a    -- its field 0, the head, is an a
 --     FieldOf (List a) listCons 1 (List a)  -- its field 1, the tail, a list
 --     Immediate Char                   -- a Char is held as its code point
+--     Represents PTR (Ptr a)           -- a pointer may be an address,
+--     Represents STRING (Ptr String)   -- or, to zero-ended bytes, a string
+--     Objects (Ptr a)                  -- either way an object, its header
+--                                      -- saying which
 --
 -- So `fastPack`'s walk down a list of characters reads, with each step
 -- checked:
@@ -104,6 +108,25 @@ failing "Name Native.Types.ConstructorId.MkConstructorId is private"
   -- nor is one made of a word
   forgedId : ConstructorId
   forgedId = MkConstructorId 7
+
+-- a pointer to bytes read as the string it may be
+asString : Flat.Uniform (Ptr String) -> Op Ordo (Maybe (Obj STRING))
+asString p = asKind STRING p
+
+failing "Can't find an implementation for Only PTR (Ptr String)"
+  -- a pointer is of two kinds: no value of it is taken for one unread
+  unread : Flat.Uniform (Ptr String) -> Op Ordo (Obj PTR)
+  unread p = Obj.valueObject p
+
+failing "Can't find an implementation for Represents STRING (Ptr Int)"
+  -- only a pointer to bytes may be a string
+  intPointer : Flat.Uniform (Ptr Int) -> Op Ordo (Maybe (Obj STRING))
+  intPointer p = asKind STRING p
+
+failing "Can't find an implementation for Objects Char"
+  -- a character is a fixnum, with no header to read a kind from
+  charKind : Flat.Uniform Char -> Op Ordo (Maybe (Obj STRING))
+  charKind c = asKind STRING c
 
 failing "Name Native.Support.Obj.MkObj is private"
   -- an object is not made of an address but by `allocate`

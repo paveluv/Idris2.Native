@@ -25,7 +25,7 @@ import Native.Runtime.Ordo as Runtime
 import Native.Runtime.Raw as Runtime
 -- lint: allow import-unused: the flat check reaches through newPtr's body, which allocates the pointer's object
 import Native.Runtime.Space
--- lint: allow import-unused: the flat check reaches through ptrWord's body, which reads raw memory from an object
+-- lint: allow import-unused: the flat check reaches through pointee's body, which reads the pointer's object
 import Native.Support.Obj
 import Native.Support.Ptr
 -- lint: allow import-unused: the flat check reaches through newPtr's body, which writes the pointer's header
@@ -49,15 +49,17 @@ prim__malloc size w = let (Runtime.MkOrdo # r) = mallocOp size Runtime.MkOrdo in
   where
     covering
     mallocOp : Int -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform AnyPtr)
-    mallocOp n = if n < 0 then Ptr.newPtr 0 else
+    mallocOp n = if n < 0 then Ptr.nullPtr else
       -- lint: allow sealed-allocator: the program owns the block, and frees it with `free`
-      Runtime.Alloc.Block.allocate (cast n) (Ptr.newPtr 0) (\b => do
+      Runtime.Alloc.Block.allocate (cast n) (Ptr.nullPtr) (\b => do
         a <- Runtime.Alloc.Block.releaseBlock b
-        Ptr.newPtr (Runtime.Raw.rawWord a))
+        Ptr.newPtr a)
 
 %cg native flat Support.Foreign.System.FFI.prim__free
 ||| `free`: a block `malloc` gave back; the null pointer is no block. An
-||| address `malloc` did not give ends the program.
+||| address `malloc` did not give ends the program. A pointer that is an
+||| object of the heap (`Support.Ptr`), which `base` frees once it has read
+||| it, is the collector's, and freeing it does nothing.
 export covering
 prim__free : Flat.Uniform AnyPtr -> PrimIO ()
 prim__free p w = let (Runtime.MkOrdo # ()) = freeOp p Runtime.MkOrdo in MkIORes () w
@@ -65,6 +67,11 @@ prim__free p w = let (Runtime.MkOrdo # ()) = freeOp p Runtime.MkOrdo in MkIORes 
     covering
     freeOp : Flat.Uniform AnyPtr -> Runtime.Ordo.Op Runtime.Ordo ()
     freeOp p = do
-      a <- Ptr.ptrWord p
-      -- lint: allow sealed-allocator: an address the program gives back, as C's free takes one; the allocator ends the program for one it did not give
-      Runtime.Alloc.Block.free (Runtime.Alloc.Block.adoptBlock (Runtime.Memory.foreignBytes a))
+      target <- Ptr.pointee p
+      case target of
+        Address a =>
+          if Runtime.Raw.isNull a then Runtime.Ordo.pure () else
+            -- lint: allow sealed-allocator: an address the program gives back, as C's free takes one; the allocator ends the program for one it did not give
+            Runtime.Alloc.Block.free (Runtime.Alloc.Block.adoptBlock a)
+        -- the collector keeps an object of the heap given for a pointer
+        HeapString _ => Runtime.Ordo.pure ()

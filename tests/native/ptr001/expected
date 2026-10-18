@@ -1,0 +1,4 @@
+malloc 64 gives the null pointer: False
+getEnv after a thousand setEnv: Just "1000"
+currentDir ends with the test's directory: True
+getEnvironment has IDR_PTR: Just "1000"
