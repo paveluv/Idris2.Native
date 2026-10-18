@@ -30,8 +30,8 @@ main = do
   ignore (setEnv "IDRIS2_INC_CGS" (incremental cgs) True)
   mainWithCodegens [ ("chez", codegenChez)
                    , ("native", Native.Codegen.Native.codegenNative)
-                   , ("flat-oracle", Native.Flat.Oracle.codegenFlatOracle Native.Codegen.Linkage.Realised.primitiveNames)
-                   , ("flat-check", Native.Flat.Check.codegenFlatCheck Native.Codegen.Linkage.Realised.primitiveNames) ]
+                   , ("flat-oracle", Native.Flat.Oracle.codegenFlatOracle Native.Codegen.Linkage.Realised.flatPrimitives)
+                   , ("flat-check", Native.Flat.Check.codegenFlatCheck Native.Codegen.Linkage.Realised.flatPrimitives) ]
   where
     ||| The incremental code generators the environment names, and `flat-check`.
     incremental : Maybe String -> String

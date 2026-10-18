@@ -28,6 +28,7 @@ import Native.Codegen.LocatedIR.Program as LocatedIR
 import Native.Codegen.Lower
 import Native.Codegen.Platform
 import Native.Codegen.RegAlloc
+import Native.Codegen.Tabulate
 import Native.Codegen.TermIR.Decls as TermIR
 import Native.Codegen.TermIR.Program as TermIR
 import Native.Codegen.X86.Asm
@@ -37,6 +38,7 @@ import Native.Codegen.X86.Target
 
 import Compiler.Common
 import Compiler.VMCode
+import Core.CompileExpr
 import Core.Context
 import Core.Context.Context
 import Core.Core
@@ -124,18 +126,21 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
       Right settings <- parseSettings <$> getDirectives Flat.Marked.markingCG
         | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
       Just table <- phase "the runtime loaded"
-        (Flat.Marked.markedForms Linkage.Realised.primitiveNames (loadRuntime settings.platform settings.encodings))
+        (Flat.Marked.markedForms Linkage.Realised.flatPrimitives (loadRuntime settings.platform settings.encodings))
         | Nothing => pure Nothing
       Right realised <- phase "the contract realised" (Linkage.Realised.realise settings.platform settings.encodings)
         | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
       whenJust settings.dumpFlat $ \f => dumpFlat f table
       whenJust settings.dumpForeign $ \f => dumpForeign settings.encodings realised f
       cdata <- phase "Idris's passes" (getCompileData False VMCode tm)
+      -- the compiled form of each definition of the program, as Idris gives
+      -- it to every code generator: what the tables are computed from
+      let compiled = fromList (map (\(n, _, d) => (n, d)) cdata.namedDefs)
       image <- case settings.encodings of
         Types.MkEnc HeapObj.ValEnc.FixnumTag1 b s =>
-          pipeline (Types.MkEnc HeapObj.ValEnc.FixnumTag1 b s) settings realised table (vmcode cdata)
+          pipeline (Types.MkEnc HeapObj.ValEnc.FixnumTag1 b s) settings realised table compiled (vmcode cdata)
         Types.MkEnc HeapObj.ValEnc.FixnumTag0 b s =>
-          pipeline (Types.MkEnc HeapObj.ValEnc.FixnumTag0 b s) settings realised table (vmcode cdata)
+          pipeline (Types.MkEnc HeapObj.ValEnc.FixnumTag0 b s) settings realised table compiled (vmcode cdata)
         Types.MkEnc HeapObj.ValEnc.NoFixnums _ _ =>
           throw (GenericMsg EmptyFC "native: the encoding nofixnums is not implemented")
       coreLift_ $ mkdirAll outputDir
@@ -263,16 +268,19 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
         ||| From VMCode to the image, under encodings whose value encoding has
         ||| fixnums: produce the term, allocate its registers, render, link.
         pipeline : (enc : Types.Enc) -> {auto 0 _ : HeapObj.ValEnc.HasFixnums enc.val} ->
-                   Settings -> Linkage.Realised -> NameMap Flat.Exp.FlatDef -> List (Name, VMDef) ->
+                   Settings -> Linkage.Realised -> NameMap Flat.Exp.FlatDef ->
+                   (compiled : SortedMap Name NamedDef) -> List (Name, VMDef) ->
                    Core ELF.Image
-        pipeline enc settings realised table defs = do
+        pipeline enc settings realised table compiled defs = do
           (forms, shapes) <- phase "flat inputs" $
                                flatInputs table (Data.SortedMap.toList realised.services)
                                           (map fst defs
                                             ++ [r.name | r <- Linkage.Routine.routines {enc} realised]
                                            ++ mapMaybe (foreignRoot {enc' = enc}) defs)
+          rows <- phase "tables" (traverse tabulated (reached forms))
+          let tables = fromList [ (t.name, (t.lo, t.rowWords)) | t <- rows ]
           Right (_ ** term) <- phase "lowering"
-            (later (Lower.lowerProgram enc settings.platform realised forms shapes defs))
+            (later (Lower.lowerProgram enc settings.platform realised forms shapes tables defs))
             | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
           ir <- phase "register allocation" (later (RegAlloc.allocRegs X86.Target.x86_64 term))
           case settings.dumpIr of
@@ -281,7 +289,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
                 | Left err => throw (FileErr path err)
               pure ()
             Nothing => pure ()
-          Right rendered <- phase "rendering" (later (X86.Render.render enc realised ir))
+          Right rendered <- phase "rendering" (later (X86.Render.render enc realised (map (\t => (t.name, t.bytes)) rows) ir))
             | Left err => throw (InternalError ("native: " ++ err))
           case settings.dumpAsm of
             Just path => do
@@ -322,6 +330,17 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
                     reach (insert n () seen) (acc :< fd)
                           (Flat.Exp.formCallees fd
                             ++ mapMaybe (\p => Data.List.lookup p services) (Flat.Exp.formPrims fd) ++ ns)
+
+            ||| The tables the forms reach, with their ranges.
+            reached : List Flat.Exp.FlatDef -> List (Name, (Int, Int))
+            reached fs = nub (mapMaybe (\n => (n,) <$> lookup n realised.tables) (concatMap Flat.Exp.formPrims fs))
+
+            ||| A table's rows, computed now (`Native.Codegen.Tabulate`).
+            tabulated : (Name, (Int, Int)) -> Core Tabulate.Tabulated
+            tabulated (n, (lo, hi)) = do
+              Right t <- Tabulate.tabulate compiled 100000000 n lo hi
+                | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
+              pure t
 
             ||| A pure computation as an action, so that it runs where the action runs:
             ||| inside `phase`.

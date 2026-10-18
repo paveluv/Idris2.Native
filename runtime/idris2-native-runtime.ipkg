@@ -24,6 +24,7 @@ modules =
     Native.Runtime.System,
     Native.Support,
     Native.Support.CodePoint,
+    Native.Support.Double.PowerOfTen,
     Native.Support.Foreign.Prelude.IO,
     Native.Support.Foreign.System,
     Native.Support.Obj,

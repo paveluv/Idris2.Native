@@ -109,7 +109,7 @@ realised : Realised
 realised =
   MkRealised [(runtimeStart, Start), (runtimeAllocSlow, AllocSlow), (runtimeAllocMutable, AllocMutable),
               (runtimeCrash, Crash)]
-             Nothing Nothing empty empty empty
+             Nothing Nothing empty empty empty empty
 
 Run : Decls TestEnc
 Run = MkDecls
@@ -482,7 +482,7 @@ main = do
     | Right _ => putStrLn "the running program: names repeat"
   let run = allocRegs x86_64 (MkProgram {d = Run} [Defined m, Defined p, Defined s, Defined sa, Defined at, Defined sm, Defined dm, Defined fl, Defined by, Defined cr, Defined st, Defined al, Defined am]
                                    [MkStaticDef (ConH 2 0) []] (MkEntry here) noConIds)
-  let Right rendered = render TestEnc realised run
+  let Right rendered = render TestEnc realised [] run
     | Left err => putStrLn ("render: " ++ err)
   let Right image = linkProgram TestEnc windowBytes rendered.areas rendered.text rendered.rodata
     | Left problems => putStrLn ("link: " ++ show problems)

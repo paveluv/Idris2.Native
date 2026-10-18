@@ -283,6 +283,7 @@ callees d fds = fromList (mapMaybe one (TermIR.Var.enumerate d.sigs))
 -- Primitive types and operations
 
 ||| The word of an integer or character constant, extended as its type is.
+export
 constWord : Constant -> Maybe Int64
 constWord (I n) = Just (cast n)
 constWord (I8 n) = Just (cast n)
@@ -307,8 +308,9 @@ data Held = Narrower IRCommon.Op.SubWord Bool | Whole Bool
 ||| What the lowering of a form knows of the program: the forms it may call,
 ||| the shapes of the data types, the OS services' externs, each bound to the
 ||| function that implements it on the platform, the inline externs, each
-||| with the intrinsic it is, and the backend's primitives, each with the
-||| primitive it is.
+||| with the intrinsic it is, the backend's primitives, each with the
+||| primitive it is, and the tables the code generator computed, each with
+||| the index of its first row and the words of a row.
 public export
 record Forms (enc : Types.Enc) (d : TermIR.Decls enc) where
   constructor MkForms
@@ -317,6 +319,7 @@ record Forms (enc : Types.Enc) (d : TermIR.Decls enc) where
   services : SortedMap Name Name
   externs : SortedMap Name Intrinsic
   primitives : SortedMap Name Primitive
+  tables : SortedMap Name (Int, Nat)
 
 ||| Each variable in scope: its type's skeleton and its value.
 Env : (enc : Types.Enc) -> (IRCommon.Ty enc -> Type) -> Type
@@ -385,7 +388,12 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
                        maybe
                          (TermIR.Build.unsupported ("the primitive " ++ show n ++ ", whose result is not its type's"))
                              (\rs => pure (sk, MkValue lay rs)) (regsAs lay x)
-                     Nothing => TermIR.Build.unsupported ("the primitive " ++ show n ++ " in a flat form")
+                     Nothing => case lookup n pr.tables of
+                       -- a table: a load of the row at the index
+                       Just (lo, width) => do
+                         xs <- traverse (\a => snd <$> expr env a) args
+                         row n lo width lay (concatValues xs) >>= \rs => pure (sk, MkValue lay rs)
+                       Nothing => TermIR.Build.unsupported ("the primitive " ++ show n ++ " in a flat form")
                  Just i => do
                    xs <- traverse (\a => snd <$> expr env a) args
                    x <- inlineExtern n i (concatValues xs)
@@ -428,6 +436,33 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
         constant k = case (Flat.ConstType.constType k, constWord k) of
           (Just t, Just w) => pure (wordVal t (TermIR.Opnd.W w))
           _ => TermIR.Build.unsupported ("the constant " ++ show k ++ " in a flat form")
+
+        ||| The row of a table at an index, as the registers of the layout: the
+        ||| table's address plus the index's row, from `lo`, `width` words a row,
+        ||| each register its word of the row.
+        row : Name -> (lo : Int) -> (width : Nat) -> (lay : Flat.Exp.Layout) -> Value enc v ->
+              B (All (TermIR.Opnd v) (tys lay))
+        row n lo width lay (MkValue [Flat.Exp.Word] [k]) =
+          if length lay /= width
+             then TermIR.Build.unsupported ("the table " ++ show n ++ " of rows of another layout")
+             else do
+               base <- TermIR.Build.emit1 (TermIR.Instr.TableAddr n)
+               i <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.Sub k (TermIR.Opnd.W (cast lo)))
+               off <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.Mul i (TermIR.Opnd.W (cast (8 * width))))
+               a <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.Add base off)
+               words a 0 lay
+          where
+            words : TermIR.Opnd v IRCommon.Ty.W64 -> Int -> (l : Flat.Exp.Layout) -> B (All (TermIR.Opnd v) (tys l))
+            words a j [] = pure []
+            words a j (Flat.Exp.Word :: l) = do
+              w <- TermIR.Build.emit1 (TermIR.Instr.Load IRCommon.Ty.W64 (TermIR.MkMem (TermIR.Mem.AtWord a) Nothing j))
+              (w ::) <$> words a (j + 8) l
+            words a j (Flat.Exp.Dbl :: l) = do
+              f <- TermIR.Build.emit1 (TermIR.Instr.Load IRCommon.Ty.F64 (TermIR.MkMem (TermIR.Mem.AtWord a) Nothing j))
+              (f ::) <$> words a (j + 8) l
+            words a j (Flat.Exp.Uniform :: _) =
+              TermIR.Build.unsupported ("the table " ++ show n ++ " of a value as ordinary code holds it")
+        row n _ _ _ _ = TermIR.Build.unsupported ("the table " ++ show n ++ " at an index of another layout")
 
         ||| A primitive's instructions, from its arguments' registers, which are
         ||| its signature's, into its results'.

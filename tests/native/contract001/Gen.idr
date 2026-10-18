@@ -66,7 +66,7 @@ realised : Realised
 realised =
   MkRealised [(runtimeStart, Start), (runtimeAllocSlow, AllocSlow), (runtimeAllocMutable, AllocMutable),
               (runtimeCrash, Crash)]
-             Nothing Nothing empty empty empty
+             Nothing Nothing empty empty empty empty
 
 word : String -> FlatVar
 word s = MkFlatVar (UN (Basic s)) (SPrim Bits64Type) [Word]
@@ -106,7 +106,7 @@ without n = filter (\g => g.name /= n) standIns
 
 checkWith : String -> List FlatDef -> List (Name, VMDef) -> IO ()
 checkWith what forms vmdefs = putStrLn $ what ++ ": " ++
-  case lowerProgram TestEnc defaultPlatform realised forms [] vmdefs of
+  case lowerProgram TestEnc defaultPlatform realised forms [] empty vmdefs of
     Left err => err
     Right _ => "lowered"
 

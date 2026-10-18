@@ -1330,10 +1330,10 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
 
 ||| The program of the declarations, the entry first.
 program : {enc : Types.Enc} -> {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> List Flat.Exp.FlatDef ->
-          Flat.Exp.Shapes -> Linkage.Realised -> Plan ->
+          Flat.Exp.Shapes -> Linkage.Realised -> (tables : SortedMap Name (Int, Nat)) -> Plan ->
           (es : List (TermIR.Sig enc, Plan)) -> (rs : List (s ** ({0 d : TermIR.Decls enc} -> TermIR.StaticDef d s))) ->
             TermIR.Program.TermProgram enc
-program forms shapes realised entry es rs =
+program forms shapes realised tables entry es rs =
   case choose
     (Data.Distinct.distinct (map (.name) (mainSig :: map Builtin.fst es))
      && Data.Distinct.distinct (map (.sym) (map DPair.fst rs))) of
@@ -1341,7 +1341,7 @@ program forms shapes realised entry es rs =
       (declsOf es rs ** TermIR.MkProgram
                      (defs (declsOf es rs) (refsOf (declsOf es rs))
                        (LowerFlat.MkForms (LowerFlat.callees (declsOf es rs) forms) shapes realised.services
-                         realised.externs realised.primitives)
+                         realised.externs realised.primitives tables)
                            ((mainSig, entry) :: es))
                      (staticDefs (declsOf es rs) rs) (TermIR.Program.MkEntry TermIR.Var.here) IRCommon.ConIds.noConIds)
     Right _ =>
@@ -1415,9 +1415,9 @@ cfAgrees _ _ = False
 ||| instructions they stand for.
 export
 lowerProgram : (enc : Types.Enc) -> {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Platform ->
-               Linkage.Realised -> List Flat.Exp.FlatDef -> Flat.Exp.Shapes ->
+               Linkage.Realised -> List Flat.Exp.FlatDef -> Flat.Exp.Shapes -> (tables : SortedMap Name (Int, Nat)) ->
                List (Name, VMDef) -> Either String (TermIR.Program.TermProgram enc)
-lowerProgram enc platform realised forms shapes vmdefs = do
+lowerProgram enc platform realised forms shapes tables vmdefs = do
   traverse_ provided (Linkage.Routine.routines {enc} realised)
   traverse_ agrees (mapMaybe boundForeign vmdefs)
   let entryPlan = case Data.List.lookup mainExpression vmdefs of
@@ -1429,7 +1429,7 @@ lowerProgram enc platform realised forms shapes vmdefs = do
       boxing = fromList [(nullaryCon c, Nullary c) | c <- toList (concatMap (boxed . snd) planned)]
       statics = Data.SortedMap.toList (foldl mergeLeft boxing (mapMaybe bodyStatics vmdefs))
   pure
-    (program forms shapes realised entryPlan others (mapMaybe ready statics))
+    (program forms shapes realised tables entryPlan others (mapMaybe ready statics))
   where
     -- A routine the runtime has: its form, of its port's registers.
     provided : Linkage.Routine.RoutineCall enc -> Either String ()

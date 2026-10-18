@@ -117,7 +117,7 @@ realised : Realised
 realised =
   MkRealised [(runtimeStart, Start), (runtimeAllocSlow, AllocSlow), (runtimeAllocMutable, AllocMutable),
               (runtimeCrash, Crash)]
-             Nothing Nothing empty empty empty
+             Nothing Nothing empty empty empty empty
 
 D : Decls TestEnc
 D = MkDecls [ MkSig (nm "main") CPS [] False
@@ -241,7 +241,7 @@ main = do
     Right _ => putStrLn "names repeat"
     Left ok => do
       let ir = allocRegs x86_64 (MkProgram {d = D} [Defined m, Defined s, Defined e, Defined cr, Defined st, Defined al] [] (MkEntry here) noConIds)
-      let Right rendered = render TestEnc realised ir
+      let Right rendered = render TestEnc realised [] ir
         | Left err => putStrLn ("render: " ++ err)
       let Right image = linkProgram TestEnc windowBytes rendered.areas rendered.text rendered.rodata
         | Left problems => putStrLn ("link: " ++ show problems)

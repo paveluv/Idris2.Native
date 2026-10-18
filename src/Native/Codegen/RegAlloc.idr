@@ -448,6 +448,7 @@ parameters (d : TermIR.Decls enc)
           -- not reached: `body` holds a static's address as itself, in no register
           ([r], TermIR.Instr.StaticAddr s) => pure [LocatedIR.Instr.StaticAddr r (symOf s)]
           ([r], TermIR.Instr.AreaAddr a) => pure [LocatedIR.Instr.AreaAddr r a]
+          ([r], TermIR.Instr.TableAddr n) => pure [LocatedIR.Instr.TableAddr r n]
           ([r], TermIR.Instr.Arith o x y) => pure [LocatedIR.Instr.Arith o r (operand env x) (operand env y)]
           ([h, l], TermIR.Instr.Mul128 x y) => pure [LocatedIR.Instr.Mul128 h l (operand env x) (operand env y)]
           ([r], TermIR.Instr.Unary o x) => unary env x (LocatedIR.Instr.Unary o r)
