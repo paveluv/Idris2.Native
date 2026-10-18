@@ -11,8 +11,9 @@
 ||| `Native.Runtime.OS.LinuxX86_64`). Idris checks both against the port;
 ||| for the platform a program is compiled for, the code generator finds
 ||| both by their types, and binds the extern to the function. A service
-||| that can fail reports it, 1 for success and 0 for failure, and the
-||| caller decides what a failure means.
+||| that can fail reports it, 1 for success and 0 for failure, and records
+||| why as the runtime's last failure (`Native.Failure`); the caller
+||| decides what a failure means.
 |||
 ||| Part of the contract between compiled code and the runtime, with the
 ||| heap-object model (`HeapObj.Shape` says what it is).
@@ -45,6 +46,27 @@ data Service
     StackLimit
   | ||| The system's page, the bytes memory is committed and released by.
     PageBytes
+  | ||| Make the terminal of the output take the escape sequences that move
+    ||| the cursor and colour text, where the system has to be asked.
+    PrepareTerminal
+  | ||| The columns of the terminal the standard input is, or else the
+    ||| standard output; 0 if neither is a terminal.
+    TerminalColumns
+  | ||| The lines of the terminal the standard input is, or else the
+    ||| standard output; 0 if neither is a terminal.
+    TerminalLines
+  | ||| Make the directory of a path, zero-ended bytes at an address, the
+    ||| current one; success.
+    ChangeDirectory
+  | ||| Write the current directory's path, zero-ended, into the bytes at an
+    ||| address, at most so many; success, which it is not for a path longer.
+    CurrentDirectory
+  | ||| Make a directory at a path, zero-ended bytes at an address, with the
+    ||| permissions the system gives a new one; success.
+    CreateDirectory
+  | ||| Remove the directory at a path, zero-ended bytes at an address, which
+    ||| has to be empty; success.
+    RemoveDirectory
 
 ||| Each service's arrow: what its arguments and its result carry.
 public export
@@ -56,12 +78,20 @@ port Commit = MkPort [Port.Raw, Port.Word] (Just Port.Word)
 port Release = MkPort [Port.Raw, Port.Word] Nothing
 port StackLimit = MkPort [] (Just Port.Word)
 port PageBytes = MkPort [] (Just Port.Word)
+port PrepareTerminal = MkPort [] Nothing
+port TerminalColumns = MkPort [] (Just Port.Word)
+port TerminalLines = MkPort [] (Just Port.Word)
+port ChangeDirectory = MkPort [Port.Raw] (Just Port.Word)
+port CurrentDirectory = MkPort [Port.Raw, Port.Word] (Just Port.Word)
+port CreateDirectory = MkPort [Port.Raw] (Just Port.Word)
+port RemoveDirectory = MkPort [Port.Raw] (Just Port.Word)
 
 ||| Every service, once. The code generator pairs this list's term, as the
 ||| loaded runtime's context holds it, with its own copy, element by element.
 public export
 allServices : List Service
-allServices = [Exit, Write, Reserve, Commit, Release, StackLimit, PageBytes]
+allServices = [Exit, Write, Reserve, Commit, Release, StackLimit, PageBytes, PrepareTerminal, TerminalColumns, TerminalLines, ChangeDirectory,
+               CurrentDirectory, CreateDirectory, RemoveDirectory]
 
 ||| The list holds every service.
 complete : (c : Service) -> Elem c Service.allServices
@@ -72,3 +102,10 @@ complete Commit = %search
 complete Release = %search
 complete StackLimit = %search
 complete PageBytes = %search
+complete PrepareTerminal = %search
+complete TerminalColumns = %search
+complete TerminalLines = %search
+complete ChangeDirectory = %search
+complete CurrentDirectory = %search
+complete CreateDirectory = %search
+complete RemoveDirectory = %search

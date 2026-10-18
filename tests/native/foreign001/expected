@@ -69,21 +69,15 @@ missing  System.Concurrency.prim__mutexRelease
 missing  System.Concurrency.prim__semaphorePost
 missing  System.Concurrency.prim__semaphoreWait
 missing  System.Concurrency.prim__setThreadData
-missing  System.Directory.prim__changeDir
 missing  System.Directory.prim__closeDir
-missing  System.Directory.prim__createDir
-missing  System.Directory.prim__currentDir
 missing  System.Directory.prim__dirEntry
 missing  System.Directory.prim__openDir
-missing  System.Directory.prim__removeDir
-missing  System.Errno.prim__getErrno
 missing  System.Errno.prim__strerror
 missing  System.FFI.prim__getField
 missing  System.FFI.prim__setField
 missing  System.File.Buffer.prim__readBufferData
 missing  System.File.Buffer.prim__writeBufferData
 missing  System.File.Error.prim__error
-missing  System.File.Error.prim__fileErrno
 missing  System.File.Handle.prim__close
 missing  System.File.Handle.prim__open
 missing  System.File.Meta.prim__fPoll
@@ -136,9 +130,6 @@ missing  System.Signal.prim__sigsegv
 missing  System.Signal.prim__sigtrap
 missing  System.Signal.prim__sigusr1
 missing  System.Signal.prim__sigusr2
-missing  System.Term.prim__getTermCols
-missing  System.Term.prim__getTermLines
-missing  System.Term.prim__setupTerm
 missing  System.prim__enableRawMode
 missing  System.prim__getPID
 missing  System.prim__resetRawMode
@@ -153,8 +144,17 @@ runtime  Prelude.Types.fastConcat
 runtime  Prelude.Types.fastPack
 runtime  Prelude.Types.fastUnpack
 runtime  PrimIO.prim__nullAnyPtr
+runtime  System.Directory.prim__changeDir
+runtime  System.Directory.prim__createDir
+runtime  System.Directory.prim__currentDir
+runtime  System.Directory.prim__removeDir
+runtime  System.Errno.prim__getErrno
 runtime  System.FFI.prim__free
 runtime  System.FFI.prim__malloc
+runtime  System.File.Error.prim__fileErrno
+runtime  System.Term.prim__getTermCols
+runtime  System.Term.prim__getTermLines
+runtime  System.Term.prim__setupTerm
 runtime  System.prim__exit
 runtime  System.prim__getArg
 runtime  System.prim__getArgCount
@@ -162,4 +162,4 @@ runtime  System.prim__getEnv
 runtime  System.prim__getEnvPair
 runtime  System.prim__setEnv
 runtime  System.prim__unsetEnv
-16 by the runtime, 6 lowered inline, 142 missing
+25 by the runtime, 6 lowered inline, 133 missing

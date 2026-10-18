@@ -1,0 +1,8 @@
+. ../../testutils.sh
+
+# Directories made and removed, and the failures they report.
+idris2 --cg native -o dir Dir.idr > /dev/null
+rm -rf new été full && mkdir full && touch full/file
+./build/exec/dir
+for d in new été full; do if [ -e "$d" ]; then echo "$d is there"; else echo "$d is not"; fi; done
+rm -rf full

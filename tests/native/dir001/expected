@@ -1,0 +1,7 @@
+in dir001
+sub: True, now in sub
+été: True, now in été
+../..: True, now in dir001
+not-there: False, now in dir001
+/: True, now in 
+/

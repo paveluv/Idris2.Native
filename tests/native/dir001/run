@@ -1,0 +1,8 @@
+. ../../testutils.sh
+
+# The current directory: changed into relative, non-ASCII and absolute
+# paths, and not into one that is not there.
+idris2 --cg native -o dir Dir.idr > /dev/null
+rm -rf sub && mkdir -p sub/été
+./build/exec/dir
+rm -rf sub

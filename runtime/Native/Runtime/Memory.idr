@@ -241,6 +241,18 @@ export %inline
 storeByteAt : Raw -> (offset, value : Bits64) -> Ordo.Op Ordo ()
 storeByteAt = intrinsic__store8
 
+||| `count` bytes copied from raw memory to raw memory, the two apart.
+export covering
+copyRaw : (from, to : Raw) -> (count : Bits64) -> Ordo.Op Ordo ()
+copyRaw from to n = go 0
+  where
+    covering
+    go : Bits64 -> Ordo.Op Ordo ()
+    go i = if i >= n then Ordo.pure () else do
+      c <- loadByteAt from i
+      storeByteAt to i c
+      go (i + 1)
+
 ------------------------------------------------------------------------------
 -- Values as ordinary code holds them, and the objects they point to
 

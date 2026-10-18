@@ -1,0 +1,6 @@
+. ../../testutils.sh
+
+# The terminal's size: none, then a pseudo-terminal's, read from the output.
+idris2 --cg native -o terminal Terminal.idr > /dev/null
+./build/exec/terminal < /dev/null | cat
+script -qec "stty cols 77 rows 23 < /dev/tty; ./build/exec/terminal < /dev/null" /dev/null < /dev/null | tr -d '\r'

@@ -1,0 +1,14 @@
+createDir new: made
+createDir new: File Exists
+createDir missing/new: File Not Found
+createDir été: made
+removeDir new, then errno 2
+createDir new: made
+removeDir full, then errno 39
+removeDir not-there, then errno 2
+changeDir not-there: False, errno 2
+removeDir new, then errno 2
+removeDir été, then errno 2
+new is not
+été is not
+full is there

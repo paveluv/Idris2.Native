@@ -90,6 +90,13 @@ environCount, environCapacity : State Bits64
 environCount = count 14
 environCapacity = count 15
 
+||| Why the last OS service that failed did, by the reason's code
+||| (`Native.Failure`); 0 until one fails. Each service that fails sets it,
+||| and none that succeeds clears it, as the C library's `errno`.
+export
+lastFailure : State Bits64
+lastFailure = count 18
+
 ||| The first of the `n` words of the state from its word `i`, all of which
 ||| the area holds: a run of raw words.
 public export

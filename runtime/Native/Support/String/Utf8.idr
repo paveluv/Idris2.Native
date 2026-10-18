@@ -24,6 +24,8 @@
 ||| string.
 module Native.Support.String.Utf8
 
+-- lint: allow import-unused: the flat check reaches through systemPath's body, which records a failure by its code
+import Native.Failure
 import Native.Flat.Uniform as Flat
 import Native.HeapObj.Shape as HeapObj
 import Native.Port
@@ -50,6 +52,7 @@ import Native.Support.Double.Nearest
 import Native.Support.Double.Shortest
 import Native.Support.Environment
 import Native.Support.Obj
+import Native.Support.Path
 import Native.Support.Ptr
 import Native.Types.Header
 import Native.Types.Kind
@@ -757,6 +760,42 @@ prim__unsetEnv name w = let (Runtime.MkOrdo # r) = unsetOp name Runtime.MkOrdo i
       nh <- headerOf n
       ok <- Environment.unset (Obj.objectBytes n 8) (bytesOf nh)
       if ok then Runtime.Ordo.pure 0 else Runtime.Ordo.pure (-1)
+
+||| An OS service of a path, called with the string's bytes as the system
+||| takes a path (`Support.Path`), the copy freed after: 0 when it succeeds,
+||| -1 when it fails or there is no memory for the copy, as the C library's
+||| calls answer.
+%inline covering
+withPath : (Runtime.Raw -> Runtime.Ordo.Op Runtime.Ordo Bits64) -> Flat.Uniform String -> Runtime.Ordo.Op Runtime.Ordo Int
+withPath service path = do
+  s <- stringObject path
+  h <- headerOf s
+  p <- Path.systemPath (Obj.objectBytes s 8) (bytesOf h)
+  if p == 0 then Runtime.Ordo.pure (-1) else do
+    ok <- service (Runtime.Memory.foreignBytes p)
+    Runtime.Alloc.System.freeBlock p
+    Runtime.Ordo.pure (if ok == 1 then 0 else -1)
+
+%cg native flat Support.String.Utf8.prim__changeDir
+||| `changeDir`: the directory of the path made the current one; 0 when it
+||| is, -1 when it is not, as the C library's `chdir` answers.
+export covering
+prim__changeDir : Flat.Uniform String -> PrimIO Int
+prim__changeDir path w = let (Runtime.MkOrdo # r) = withPath Runtime.OS.osChangeDirectory path Runtime.MkOrdo in MkIORes r w
+
+%cg native flat Support.String.Utf8.prim__createDir
+||| `createDir`: a directory made at the path; 0 when it is, -1 when it is
+||| not, as the C library's `mkdir` answers, the reason the last failure.
+export covering
+prim__createDir : Flat.Uniform String -> PrimIO Int
+prim__createDir path w = let (Runtime.MkOrdo # r) = withPath Runtime.OS.osCreateDirectory path Runtime.MkOrdo in MkIORes r w
+
+%cg native flat Support.String.Utf8.prim__removeDir
+||| `removeDir`: the empty directory at the path removed, if it can be, the
+||| reason the last failure if not.
+export covering
+prim__removeDir : Flat.Uniform String -> PrimIO ()
+prim__removeDir path w = let (Runtime.MkOrdo # _) = withPath Runtime.OS.osRemoveDirectory path Runtime.MkOrdo in MkIORes () w
 
 %cg native flat Support.String.Utf8.prim__getString
 ||| `getString`: the string a pointer to zero-ended bytes points to, copied;

@@ -137,24 +137,12 @@ set name nl value vl overwrite = do
     newEntry name nl value vl = do
       e <- Runtime.Alloc.System.allocateBlock (nl + vl + 2)
       if e == 0 then Runtime.Ordo.pure 0 else do
-        copyBytes name e 0 nl
-        Runtime.Memory.storeByteAt (Runtime.Memory.foreignBytes e) nl 0x3D
-        copyBytes value e (nl + 1) vl
-        Runtime.Memory.storeByteAt (Runtime.Memory.foreignBytes e) (nl + 1 + vl) 0
+        let b = Runtime.Memory.foreignBytes e
+        Runtime.Memory.copyRaw name b nl
+        Runtime.Memory.storeByteAt b nl 0x3D
+        Runtime.Memory.copyRaw value (Runtime.Raw.offset b (nl + 1)) vl
+        Runtime.Memory.storeByteAt b (nl + 1 + vl) 0
         Runtime.Ordo.pure e
-      where
-        ||| `count` bytes copied from raw memory to the block at `to`, from its
-        ||| byte `at`.
-        covering
-        copyBytes : (from : Raw) -> (to, at, count : Bits64) -> Runtime.Ordo.Op Runtime.Ordo ()
-        copyBytes from to at n = go 0
-          where
-            covering
-            go : Bits64 -> Runtime.Ordo.Op Runtime.Ordo ()
-            go i = if i >= n then Runtime.Ordo.pure () else do
-              c <- Runtime.Memory.loadByteAt from i
-              Runtime.Memory.storeByteAt (Runtime.Memory.foreignBytes to) (at + i) c
-              go (i + 1)
 
     ||| An entry put last in the runtime's array, which grows when it is full:
     ||| whether there was the memory for it.
