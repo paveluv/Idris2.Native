@@ -17,7 +17,8 @@ idris2 --build fixtures.ipkg > /dev/null
 ../../../tools/lint/build/exec/idris2-native-lint --resolved --health --offenders 3 . | sed -n '/^  efficiency/,$p'
 
 # A source changed after its build: its TTC no longer says what it uses, so
-# nothing is resolved, and the finding says so.
+# nothing is resolved, and the finding says so; `Kept`'s suppression of a
+# rule that did not run is not reported.
 touch Spare.idr
 ../../../tools/lint/build/exec/idris2-native-lint --resolved .
 rm -rf build

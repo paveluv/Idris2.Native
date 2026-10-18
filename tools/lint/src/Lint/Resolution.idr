@@ -33,6 +33,7 @@ import Core.TT.Primitive
 import Core.TT.Term
 import Core.TTC
 import Core.UnifyState
+import Data.Buffer
 import Data.List
 import Data.List1
 import Data.Maybe
@@ -51,7 +52,11 @@ import Libraries.Utils.Path
 import System
 import System.Directory
 import System.File
+import System.File.Buffer
+import System.File.Error
+import System.File.Handle
 import System.File.Meta
+import System.File.Mode
 
 %default covering
 
@@ -281,23 +286,44 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
 
     ||| A module's imports, each with whether it is public, read from the head
     ||| of its TTC, where they follow the hashes and the incremental data: the
-    ||| context keeps which modules are loaded, not which imports which.
+    ||| context keeps which modules are loaded, not which imports which. Only
+    ||| the file's first bytes are read, and all of it when the head is
+    ||| longer.
     importsOf : {auto c : Ref Ctxt Defs} -> String -> Core (List (String, Bool))
     importsOf m = do
       let mi = nsAsModuleIdent (mkNamespace m)
       Right path <- nsToPath EmptyFC mi
         | Left _ => pure []
-      Right buffer <- coreLift (readFromFile path)
+      Right first <- coreLift (firstBytes path)
         | Left _ => pure []
-      b <- newRef Bin buffer
-      ignore (getHashes path b)
-      ignore (fromBuf {a = List (Namespace, Int)})
-      ignore (fromBuf {a = List (CG, String, List String)})
-      is <- fromBuf {a = List (ModuleIdent, Bool, Namespace)}
-      pure (map edge is)
+      catch (decode path first) $ \_ => do
+        Right whole <- coreLift (readFromFile path)
+          | Left _ => pure []
+        decode path whole
       where
         edge : (ModuleIdent, Bool, Namespace) -> (String, Bool)
         edge (i, re, _) = (show i, re)
+
+        decode : String -> Binary -> Core (List (String, Bool))
+        decode path buffer = do
+          b <- newRef Bin buffer
+          ignore (getHashes path b)
+          ignore (fromBuf {a = List (Namespace, Int)})
+          ignore (fromBuf {a = List (CG, String, List String)})
+          is <- fromBuf {a = List (ModuleIdent, Bool, Namespace)}
+          pure (map edge is)
+
+        -- a file's first bytes, enough for a TTC's head as a rule
+        firstBytes : String -> IO (Either FileError Binary)
+        firstBytes path = do
+          Just buf <- newBuffer 16384
+            | Nothing => pure (Left FileReadError)
+          Right h <- openFile path Read
+            | Left err => pure (Left err)
+          Right n <- readBufferData h buf 0 16384
+            | Left err => do closeFile h; pure (Left err)
+          closeFile h
+          pure (Right (MkBin buf 0 (cast n) (cast n)))
 
     ||| The module a name belongs to: the longest of the modules whose name
     ||| begins its namespace.

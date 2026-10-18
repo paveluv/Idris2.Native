@@ -7,6 +7,7 @@ modules =
     Frame,
     Gallery,
     JoinAll,
+    Kept,
     Mode,
     Pace,
     Page,

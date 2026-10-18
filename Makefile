@@ -70,10 +70,17 @@ release:
 	$(WITH_PREFIX) $(UPSTREAM_IDRIS2) --build-dir build/release --output-dir build/release/exec --build idris2-native.ipkg
 
 # The linter is an Idris program of its own, on the API of the pinned Idris.
+# It is compiled as one whole program, which runs it in two thirds of the
+# time its incremental build would, and only when its sources changed: it
+# runs at every gate and changes seldom.
 LINTER := $(CURDIR)/tools/lint/build/exec/idris2-native-lint
+LINTER_SOURCES := $(shell find tools/lint/src -name '*.idr') tools/lint/idris2-native-lint.ipkg
 
-linter:
+linter: build/linter.stamp
+
+build/linter.stamp: $(LINTER_SOURCES) $(UPSTREAM_IDRIS2)
 	cd tools/lint && $(WITH_PREFIX) $(UPSTREAM_IDRIS2) --build idris2-native-lint.ipkg
+	touch $@
 
 testbin:
 	cd tests && $(WITH_PREFIX) $(UPSTREAM_IDRIS2) --build tests.ipkg
@@ -87,12 +94,14 @@ test: native linter testbin
 gate:
 	$(MAKE) --no-print-directory --output-sync=target -j2 test lint
 
-# Findings with their positions, then the health score; fails on a finding
-# or a score under the gate's minimum. The rules over what the modules use
-# read the TTCs of their build, so the product is built first.
+# Findings with their positions, then the health score of the code
+# generator and the runtime; fails on a finding or a score under the gate's
+# minimum. One run parses and resolves the files for both: the linter's own
+# code is bound by the rules, not scored, and the tests are programs. The
+# rules over what the modules use read the TTCs of their build, so the
+# product is built first.
 lint: native linter
-	$(WITH_PREFIX) $(LINTER) --resolved src runtime tools/lint/src --programs tests/native tests/flat tests/Main.idr
-	$(WITH_PREFIX) $(LINTER) --resolved --health --minimum 80 src runtime
+	$(WITH_PREFIX) $(LINTER) --resolved --minimum 80 src runtime --unscored tools/lint/src --programs tests/native tests/flat tests/Main.idr
 
 # The architectural health, each component with the offenders that cost it
 # most: what to change to raise it.

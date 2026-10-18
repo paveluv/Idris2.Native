@@ -8,8 +8,8 @@
 ./Spare.idr:5:1 import-unused: `Data.List` is imported, and nothing it makes visible is used
 ./Viewer.idr:7:1 import-indirect: `Data.Fin` is used (`Fin`, `FZ`) only through `Data.Vect`: import it
 ./Viewer.idr:8:1 import-indirect: `Shape` is used (`Square`, `Shape`) only through `Shapes`: import it
-    directness     86  modules used that are imported directly: 25 of 29
-    leanness       83  private imports needed: 10 of 12
+    directness     87  modules used that are imported directly: 26 of 30
+    leanness       77  private imports needed: 10 of 13
   efficiency       40
     accumulation   40  accumulations in a snoc-list or a builder: 2 of 5
           1  JoinAll.flatten: 0 grown at an end with `++`, 1 joined by a left fold

@@ -1,15 +1,19 @@
 ||| `idris2-native-lint`: the rules of the product's code, checked on Idris's
 ||| own parse of each file.
 |||
-|||   idris2-native-lint [--golden | --fix] [--health [--minimum N] [--offenders N]] [--helpers] [--refactor NAME [--arg VALUE]... [--dry-run] [--check COMMAND]] [--resolved] PATH... [--programs PATH...]
+|||   idris2-native-lint [--golden | --fix] [--health [--minimum N] [--offenders N]] [--helpers] [--refactor NAME [--arg VALUE]... [--dry-run] [--check COMMAND]] [--resolved] PATH... [--unscored PATH...] [--programs PATH...]
 |||
 ||| Each path is a `.idr` file or a directory, walked for `.idr` files, its
-||| `build` directories left out. The paths after `--programs` are programs
-||| (tests, examples), bound by the rules about what a file says of itself
-||| and the order of its imports, not by those of the product's code.
+||| `build` directories left out. The paths after `--unscored` are bound by
+||| the rules of the product's code but left out of the score (the linter's
+||| own). The paths after `--programs` are programs (tests, examples), bound
+||| by the rules about what a file says of itself and the order of its
+||| imports, not by those of the product's code.
 ||| The findings print with their positions, or with `--golden` without them,
-||| sorted, the form the gate compares; `--health` prints the architectural
-||| health score of the files instead, and with `--minimum` fails below it;
+||| sorted, the form the gate compares; `--minimum N` prints after them the
+||| architectural health score of the files before `--unscored`, and fails
+||| below `N`: the gate's run, which parses and resolves the files once for
+||| both; `--health` prints the score instead of the findings;
 ||| `--offenders N` lists under each component short of 100 the `N` that
 ||| cost it most: what each is about, its cost in the units the component
 ||| counts, and what the cost is made of.
@@ -105,6 +109,10 @@ record Suppression where
 ------------------------------------------------------------------------------
 -- Running
 
+||| Which of a run's paths a path given is: one of the files scored, one
+||| bound by the rules and not scored, or a program's.
+data Section = Scored | Unscored | Programs
+
 ||| What the linter is asked to do.
 record Request where
   constructor MkRequest
@@ -120,18 +128,19 @@ record Request where
   checkCommand : Maybe String
   arguments : List String
   paths : List String
+  unscored : List String
   programs : List String
-  inPrograms : Bool
+  section : Section
 
 main : IO ()
 main = do
   (_ :: args) <- getArgs
     | [] => exitWith (ExitFailure 2)
   let o = request args
-  when (null o.paths && null o.programs) $ do
-    putStrLn "usage: idris2-native-lint [--golden | --fix] [--health [--minimum N] [--offenders N]] [--helpers] [--refactor NAME [--arg VALUE]... [--dry-run] [--check COMMAND]] [--resolved] PATH... [--programs PATH...]"
+  when (null o.paths && null o.unscored && null o.programs) $ do
+    putStrLn "usage: idris2-native-lint [--golden | --fix] [--health [--minimum N] [--offenders N]] [--helpers] [--refactor NAME [--arg VALUE]... [--dry-run] [--check COMMAND]] [--resolved] PATH... [--unscored PATH...] [--programs PATH...]"
     exitWith (ExitFailure 2)
-  when o.fix $ runRefactoring True False Nothing orderImports (o.paths ++ o.programs)
+  when o.fix $ runRefactoring True False Nothing orderImports (o.paths ++ o.unscored ++ o.programs)
   whenJust o.refactoring $ \n => do
     case find (\r => r.name == n) (refactorings o.arguments) of
       Nothing => do
@@ -141,42 +150,37 @@ main = do
         when (r.needsCheck && isNothing o.checkCommand) $ do
           putStrLn ("`" ++ n ++ "` runs only with `--check`: only the type checker can judge its changes")
           exitWith (ExitFailure 2)
-        runRefactoring False o.dryRun o.checkCommand r (o.paths ++ o.programs)
+        runRefactoring False o.dryRun o.checkCommand r (o.paths ++ o.unscored ++ o.programs)
         exitWith ExitSuccess
   (fs, failed) <- parsed o.paths
+  (us, failedUnscored) <- parsed o.unscored
   (ps, failedPrograms) <- parsed o.programs
-  fdms <- traverse (\f => do ds <- declared f; ms <- mentions f.mod.decls; pure (f, ds, ms)) fs
+  scored <- traverse declaredIn fs
+  fdms <- (scored ++) <$> traverse declaredIn us
   let fds = map (\(f, ds, _) => (f, ds)) fdms
   when o.listHelpers $ do
     traverse_ (\(f, ds) => traverse_ (putStrLn . singleUse f) (fst (helpers ds))) fds
     exitWith ExitSuccess
-  res <- if o.resolved then Just <$> resolve fs else pure Nothing
-  if o.health
-    then do
-      r <- case res of
-        Just (Left problems) => do
-          traverse_ (putStrLn . withPosition) problems
-          exitWith (ExitFailure 2)
-        Just (Right r) => pure (Just r)
-        Nothing => pure Nothing
-      let cs = health fds ++ [distinction fds] ++ maybe [] (resolvedHealth fdms) r
-          overall = score cs
-      putStrLn ("architectural health: " ++ show overall)
-      for_ (groups cs) $ \g => do
-        putStrLn ("  " ++ padRight 16 ' ' g ++ padLeft 3 ' ' (show (groupScore cs g)))
-        traverse_ (component o.offenders) (inGroup g cs)
-      whenJust o.minimum $ \m => when (overall < m) $ do
-        putStrLn ("below the minimum, " ++ show m)
-        exitWith (ExitFailure 1)
-    else do
-      pms <- traverse (\f => mentions f.mod.decls) ps
-      let programNames = the (SortedSet String) (fromList (joined (map (\m => map (nameRoot . snd) m.refs) pms)))
-          findings = (failed ++ failedPrograms) ++ lint fdms ps programNames res
-      traverse_ (putStrLn . if o.golden then withoutPosition else withPosition) findings
-      when (not (null findings) && not o.golden) $ exitWith (ExitFailure 1)
+  res <- if o.resolved then Just <$> resolve (fs ++ us) else pure Nothing
+  findings <- the (IO (List Finding)) $ if o.health then pure [] else do
+    pms <- traverse (\f => mentions f.mod.decls) ps
+    let programNames = the (SortedSet String) (fromList (joined (map (\m => map (nameRoot . snd) m.refs) pms)))
+        findings = (failed ++ failedUnscored ++ failedPrograms) ++ lint fdms ps programNames res
+    traverse_ (putStrLn . if o.golden then withoutPosition else withPosition) findings
+    pure findings
+  low <- if not o.health && isNothing o.minimum then pure False else case res of
+    -- the findings print them, when they are asked for
+    Just (Left problems) => do
+      when o.health $ do
+        traverse_ (putStrLn . withPosition) problems
+        exitWith (ExitFailure 2)
+      pure False
+    Just (Right r) => healthOf o scored (Just ({ modules $= filter (\rm => rm.path `elem` map (.path) fs) } r))
+    Nothing => healthOf o scored Nothing
+  when (not o.golden && (not (null findings) || low)) $ exitWith (ExitFailure 1)
   where
     request : List String -> Request
-    request = go (MkRequest False False False Nothing 0 False False Nothing False Nothing [] [] [] False)
+    request = go (MkRequest False False False Nothing 0 False False Nothing False Nothing [] [] [] [] Scored)
       where
         go : Request -> List String -> Request
         go o [] = o
@@ -191,17 +195,26 @@ main = do
         go o ("--check" :: c :: as) = go ({ checkCommand := Just c } o) as
         go o ("--arg" :: a :: as) = go ({ arguments $= (++ [a]) } o) as
         go o ("--offenders" :: k :: as) = go ({ offenders := cast k } o) as
-        go o ("--programs" :: as) = go ({ inPrograms := True } o) as
-        go o (p :: as) = go (if o.inPrograms then { programs $= (++ [p]) } o else { paths $= (++ [p]) } o) as
+        go o ("--unscored" :: as) = go ({ section := Unscored } o) as
+        go o ("--programs" :: as) = go ({ section := Programs } o) as
+        go o (p :: as) = go (case o.section of
+                               Scored => { paths $= (++ [p]) } o
+                               Unscored => { unscored $= (++ [p]) } o
+                               Programs => { programs $= (++ [p]) } o) as
 
     ||| The findings of the product's files and of the programs, suppressions
     ||| applied: those of the resolved rules too, given the resolution, or the
-    ||| findings that kept it from being made.
+    ||| findings that kept it from being made. A suppression of a resolved
+    ||| rule suppresses nothing without the resolution, and is not reported
+    ||| for it then.
     lint : List (SourceFile, List Declared, Mentions) -> List SourceFile -> (programNames : SortedSet String) ->
            Maybe (Either (List Finding) Resolution) -> List Finding
     lint fdms ps programNames res =
       let fs = map (\(f, _, _) => f) fdms
           fds = map (\(f, ds, _) => (f, ds)) fdms
+          ran = case res of
+            Just (Right _) => True
+            _ => False
           resolved = case res of
             Nothing => []
             Just (Left problems) => problems
@@ -211,12 +224,12 @@ main = do
           aliases = joined (map (\(f, _, ms) => importAlias exportsOf f ms.refs) fdms)
           all = joined (map (\(f, ds, ms) => fileRules f ms ds) fdms) ++ joined (map programRules ps) ++ graphRules fs
                 ++ aliases ++ joined (map exclusionRules fs) ++ resolved
-      in sort (foldl (\acc, f => suppress f acc) all (fs ++ ps))
+      in sort (foldl (\acc, f => suppress ran f acc) all (fs ++ ps))
       where
         ||| The findings a file's suppressions leave, and the findings about the
         ||| suppressions themselves.
-        suppress : SourceFile -> List Finding -> List Finding
-        suppress f fs =
+        suppress : (ran : Bool) -> SourceFile -> List Finding -> List Finding
+        suppress ran f fs =
           let ss = suppressions f
               kept = filter (\fi => fi.path /= f.path || not (any (\s => covers s fi) ss)) fs
           in kept ++ joined (map (check fs) ss)
@@ -227,8 +240,9 @@ main = do
             check : List Finding -> Suppression -> List Finding
             check fs s =
               let at = MkFinding "suppression" f.path s.line s.col s.rule in
-              if not (s.rule `elem` ruleNames) then [at ("no rule `" ++ s.rule ++ "`")]
+              if not (s.rule `elem` ruleNames ++ resolvedRuleNames) then [at ("no rule `" ++ s.rule ++ "`")]
               else if s.reason == "" then [at ("a suppression of `" ++ s.rule ++ "` says why")]
+              else if not ran && (s.rule `elem` resolvedRuleNames) then []
               else if not (any (\fi => fi.path == f.path && covers s fi) fs) then [at ("the suppression of `" ++ s.rule ++ "` suppresses nothing")]
               else []
 
@@ -346,3 +360,28 @@ main = do
 
         name : Declared -> String
         name d = fromMaybe "?" (head' d.defines)
+
+    ||| A file with its declarations and what it mentions.
+    declaredIn : SourceFile -> IO (SourceFile, List Declared, Mentions)
+    declaredIn f = do
+      ds <- declared f
+      ms <- mentions f.mod.decls
+      pure (f, ds, ms)
+
+    ||| The health score of the files, with its groups and their components,
+    ||| printed; whether it is below the minimum asked for.
+    healthOf : Request -> List (SourceFile, List Declared, Mentions) -> Maybe Resolution -> IO Bool
+    healthOf o fdms r = do
+      let fds = map (\(f, ds, _) => (f, ds)) fdms
+          cs = health fds ++ [distinction fds] ++ maybe [] (resolvedHealth fdms) r
+          overall = score cs
+      putStrLn ("architectural health: " ++ show overall)
+      for_ (groups cs) $ \g => do
+        putStrLn ("  " ++ padRight 16 ' ' g ++ padLeft 3 ' ' (show (groupScore cs g)))
+        traverse_ (component o.offenders) (inGroup g cs)
+      case o.minimum of
+        Just m => if overall < m
+                    then do putStrLn ("below the minimum, " ++ show m)
+                            pure True
+                    else pure False
+        Nothing => pure False

@@ -705,12 +705,11 @@ fileRules f ms ds =
         escapes : List String
         escapes = ["assert_total", "assert_smaller", "believe_me", "really_believe_me", "idris_crash", "unsafePerformIO"]
 
-||| The names of every rule, those over the graph and over the resolution
-||| included.
+||| The names of the rules over the text, those over the graph included;
+||| `ResolvedRules.resolvedRuleNames` are the others.
 export
 ruleNames : List String
 ruleNames =
   [ "import-order", "public-import", "default-totality", "elab-reflection"
   , "trust-escape", "cites-plan", "todo", "header-comment", "implementation-adjacent"
-  , "layering", "syscall", "import-unused", "import-indirect", "generic-export"
-  , "import-alias", "public-unneeded", "record-constructor", "module-type", "raw-maker", "extern-name" ]
+  , "layering", "syscall", "import-alias", "record-constructor", "module-type", "extern-name" ]

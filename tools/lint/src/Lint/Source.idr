@@ -1,20 +1,19 @@
 ||| A source file as the linter sees it: Idris's own parse of it, the module
 ||| with its imports and its declarations, and its comments, each with its
-||| position and its text. Plain comments come from the parser's state, which
-||| keeps where each one is; documentation comments from the lexer, which
-||| gives each `|||` line as a token.
+||| position and its text, all from the parser's state, which keeps where
+||| each comment is: a plain one, or a documentation block, a comment for
+||| each of its `|||` lines.
 module Lint.Source
 
 import Core.Core
 import Core.FC
 import Core.Metadata
 import Data.List
+import Data.SortedMap
 import Data.String
+import Data.Zippable
 import Idris.Parser
 import Idris.Syntax
-import Libraries.Text.Bounded
-import Libraries.Text.Lexer.Core
-import Parser.Lexer.Source
 import Parser.Rule.Source
 import Parser.Source
 import Protocol.IDE.Decoration
@@ -52,19 +51,18 @@ parse path = do
     | Left err => pure (Left (path ++ ": " ++ show err))
   let origin = PhysicalPkgSrc path
       ls = lines text
+      numbered = the (SortedMap Int String) (fromList (zip [0 .. cast (length ls)] ls))
   case runParser origin Nothing text (prog origin) of
     Left err => pure (Left (path ++ ": does not parse: " ++ show err))
     Right (_, st, m) => do
-      let plain = mapMaybe (plainComment ls) st.decorations
-          docs = case lexTo (pred (const False)) text of
-                   Left _ => the (List SourceComment) []
-                   Right (_, toks) => mapMaybe docComment toks
-      pure (Right (MkSourceFile path m (sortBy (\a, b => compare (a.line, a.col) (b.line, b.col)) (plain ++ docs)) (blank 0 ls)))
+      let cs = nubBy (\a, b => (a.line, a.col) == (b.line, b.col)) (foldr (\d, rest => comments numbered d ++ rest) [] st.decorations)
+      pure (Right (MkSourceFile path m (sortBy (\a, b => compare (a.line, a.col) (b.line, b.col)) cs) (blank 0 ls)))
   where
-    ||| The text between two positions of a file given as its lines.
-    slice : List String -> (start, end : (Int, Int)) -> String
+    ||| The text between two positions of a file given as its lines, by
+    ||| number.
+    slice : SortedMap Int String -> (start, end : (Int, Int)) -> String
     slice ls (sl, sc) (el, ec) =
-      let inside = take (cast (el - sl + 1)) (drop (cast sl) ls) in
+      let inside = mapMaybe (\l => lookup l ls) [sl .. el] in
       case inside of
         [] => ""
         [one] => substr (cast sc) (cast (ec - sc)) one
@@ -88,19 +86,24 @@ parse path = do
         dropEnd : Nat -> List Char -> List Char
         dropEnd n xs = take (minus (length xs) n) xs
 
-    -- the parser records a documentation block as a comment too; those come
-    -- from the lexer, a line each
-    plainComment : List String -> ASemanticDecoration -> Maybe SourceComment
-    plainComment ls ((_, s, e), Comment, _) =
+    -- a documentation line's text, as Idris's lexer gives it: after the
+    -- marker, without one space
+    documented : String -> String
+    documented l =
+      let rest = substr 3 (length l) l in
+      if isPrefixOf " " rest then substr 1 (length rest) rest else rest
+
+    -- the comments a decoration of the parser records: a plain comment, or
+    -- a documentation block, a comment for each of its lines
+    comments : SortedMap Int String -> ASemanticDecoration -> List SourceComment
+    comments ls ((_, s, e), Comment, _) =
       let t = slice ls s e in
-      if isPrefixOf "|||" (trim t) then Nothing else Just (MkSourceComment (fst s) (snd s) False (unmarked t))
-    plainComment _ _ = Nothing
+      if not (isPrefixOf "|||" (trim t)) then [MkSourceComment (fst s) (snd s) False (unmarked t)]
+      else [ MkSourceComment (fst s + cast i) (if i == 0 then snd s else cast (length l `minus` length (ltrim l))) True (documented (ltrim l))
+           | (i, l) <- zip [0 .. length (lines t)] (lines t), isPrefixOf "|||" (ltrim l) ]
+    comments _ _ = []
 
     blank : Int -> List String -> List Int
     blank _ [] = []
     blank i (l :: rest) = if trim l == "" then i :: blank (i + 1) rest else blank (i + 1) rest
 
-    docComment : WithBounds Token -> Maybe SourceComment
-    docComment t = case t.val of
-      DocComment c => Just (MkSourceComment t.bounds.startLine t.bounds.startCol True c)
-      _ => Nothing

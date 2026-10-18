@@ -9,3 +9,9 @@
 # them, are concepts001's.
 ../../../tools/lint/build/exec/idris2-native-lint --health .
 ../../../tools/lint/build/exec/idris2-native-lint --health --offenders 2 .
+
+# The gate's run: the findings, none here, then the score of the files
+# before `--unscored`, failing below the minimum. `Elsewhere`, named after
+# nothing it defines, is bound by the rules but not scored: the names count
+# three modules of three.
+../../../tools/lint/build/exec/idris2-native-lint --minimum 99 Bat.idr Owl.idr Night.idr --unscored Elsewhere.idr || echo "exit $?"

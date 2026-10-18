@@ -24,3 +24,16 @@ architectural health: 98
     uniqueness     92  exported names never written bare where another of the name is seen: 22 of 24
           2  speak: defined in `Cat`, `Dog`; they meet bare in `Pets`, `Zoo`
     scoping       100  helpers local to a function or a namespace block, of those and the ones a single user leaves module-wide: 0 of 0
+architectural health: 98
+  structure        95
+    encapsulation 100  private imports, façades exempt: 2 of 2
+    layering      100  imports the layers allow: 0 of 0
+    coupling       78  module pairs a change cannot reach: 7 of 9
+    distinction   100  group members that stand apart from their siblings: 0 of 0
+  readability     100
+    cohesion      100  implementations next to their types: 0 of 0
+    names         100  modules named after a symbol they define: 3 of 3
+    uniqueness    100  exported names never written bare where another of the name is seen: 7 of 7
+    scoping       100  helpers local to a function or a namespace block, of those and the ones a single user leaves module-wide: 0 of 0
+below the minimum, 99
+exit 1

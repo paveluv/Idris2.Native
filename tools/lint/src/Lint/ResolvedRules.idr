@@ -92,6 +92,12 @@ modulesOf fms r =
 ------------------------------------------------------------------------------
 -- The rules
 
+||| The names of the rules over the program resolved, which run only when
+||| it is.
+export
+resolvedRuleNames : List String
+resolvedRuleNames = ["import-unused", "import-indirect", "generic-export", "public-unneeded", "raw-maker"]
+
 ||| The rules over the program resolved.
 export
 resolvedRules : List (SourceFile, List Declared, Mentions) -> (programNames : SortedSet String) -> Resolution -> List Finding
