@@ -16,8 +16,8 @@ import Native.Runtime.Alloc.Pages
 import Native.Runtime.Alloc.SizeClasses
 import Native.Runtime.Alloc.System
 import Native.Runtime.Bits
-import Native.Runtime.Heap as Runtime
 import Native.Runtime.Memory
+import Native.Runtime.Ordo as Runtime
 -- lint: allow import-unused: the flat check reaches through argumentCount's body, which uses raw memory
 import Native.Runtime.Raw as Runtime
 import Native.Runtime.Space
@@ -35,24 +35,24 @@ import Native.Types.Kind
 ||| End the process with the status: its low byte is what the parent sees.
 export
 prim__exit : Int -> PrimIO ()
-prim__exit status w = let (Runtime.MkHeap # ()) = Runtime.System.exit (cast status) Runtime.MkHeap in MkIORes () w
+prim__exit status w = let (Runtime.MkOrdo # ()) = Runtime.System.exit (cast status) Runtime.MkOrdo in MkIORes () w
 
 %cg native flat Support.Foreign.System.prim__getArgCount
 ||| How many arguments the program has, its name the first, as the system
 ||| gave them.
 export
 prim__getArgCount : PrimIO Int
-prim__getArgCount w = let (Runtime.MkHeap # n) = Runtime.Memory.argumentCount Runtime.MkHeap in MkIORes (cast n) w
+prim__getArgCount w = let (Runtime.MkOrdo # n) = Runtime.Memory.argumentCount Runtime.MkOrdo in MkIORes (cast n) w
 
 %cg native flat Support.Foreign.System.prim__getEnvPair
 ||| `getEnvironment`'s entry `n` of the environment (`Support.Environment`):
 ||| a pointer to its bytes, `NAME=value`; the null pointer past the last.
 export covering
 prim__getEnvPair : Int -> PrimIO (Flat.Uniform (Ptr String))
-prim__getEnvPair n w = let (Runtime.MkHeap # r) = pairOp n Runtime.MkHeap in MkIORes r w
+prim__getEnvPair n w = let (Runtime.MkOrdo # r) = pairOp n Runtime.MkOrdo in MkIORes r w
   where
     covering
-    pairOp : Int -> Runtime.Heap.Op Runtime.Heap (Flat.Uniform (Ptr String))
+    pairOp : Int -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform (Ptr String))
     pairOp n = if n < 0 then Ptr.newPtr 0 else do
       e <- Environment.entryAt (cast n)
       Ptr.newPtr e

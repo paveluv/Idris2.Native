@@ -1,6 +1,6 @@
 -- Flat code over raw memory, written as the runtime is: with the runtime
 -- library's own operations, imported here as a package. The runtime has no
--- monad and no `IO`. Each operation takes the token `Heap` and returns it
+-- monad and no `IO`. Each operation takes the token `Ordo` and returns it
 -- with its value, and the `do` below is the runtime's own bind over that
 -- shape, so the operations happen in the order they are written: a load
 -- after a store sees the store. The token takes no register, so the order
@@ -16,8 +16,8 @@ module Probe
 -- re-export; flat code that reaches into them imports those too
 import Native.HeapObj.Shape
 import Native.Runtime.Bits
-import Native.Runtime.Heap
 import Native.Runtime.Memory
+import Native.Runtime.Ordo
 import Native.Runtime.Raw
 
 -- this module's `do` is the runtime's, over the token
@@ -33,7 +33,7 @@ failed b = if b then 0 else 1
 
 ||| Write a page at several widths and read it back: the number of checks
 ||| that fail.
-checks : (x : Bits64) -> Op Heap Bits64
+checks : (x : Bits64) -> Op Ordo Bits64
 checks x = do
   a <- mapMemory {s = RAW} 4096
   store64 a 0 x
@@ -62,4 +62,4 @@ checks x = do
 %cg native flat Probe.probe
 export
 probe : Bits64 -> Bits64
-probe x = let (MkHeap # r) = checks x MkHeap in r
+probe x = let (MkOrdo # r) = checks x MkOrdo in r

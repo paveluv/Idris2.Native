@@ -14,7 +14,7 @@ import public Native.Intrinsic
 import public Native.Port
 import public Native.Runtime.PortTy
 
-import Native.Runtime.Heap
+import Native.Runtime.Ordo
 
 %default total
 
@@ -23,5 +23,5 @@ import Native.Runtime.Heap
 ||| A system call: its number and six arguments in, its result out, by the
 ||| architecture's and the operating system's convention.
 export %inline
-syscall : (n, a1, a2, a3, a4, a5, a6 : Bits64) -> Heap.Op Heap Bits64
+syscall : (n, a1, a2, a3, a4, a5, a6 : Bits64) -> Ordo.Op Ordo Bits64
 syscall = intrinsic__syscall6

@@ -28,7 +28,7 @@ import Native.Runtime.Alloc.Chunks
 import Native.Runtime.Alloc.Config
 import Native.Runtime.Alloc.Pages
 import Native.Runtime.Alloc.SizeClasses
-import Native.Runtime.Heap
+import Native.Runtime.Ordo
 
 %default covering
 

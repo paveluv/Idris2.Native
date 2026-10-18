@@ -13,8 +13,8 @@ Main.meters ({arg:9} : Main.Meters [Dbl]) : Main.Shape [Word, Dbl, Word, Word] =
 
 Main.mixed ({arg:0} : Main.Mixed [Word, Dbl, Word]) : (Builtin.Pair Bits64 (Builtin.Pair Bits64 Bits64)) [Word, Word, Word] =
   Builtin.MkPair(let {orig:8} : Bits8 [Word] = case {arg:0} of
-      Main.MkMixed ({e:4} : Bits8 [Word]) ({e:5} : Double [Dbl]) ({e:6} : Main.Heap []) ({e:7} : Prelude.Basics.Bool [Word]) => {e:4}
+      Main.MkMixed ({e:4} : Bits8 [Word]) ({e:5} : Double [Dbl]) ({e:6} : Main.Ordo []) ({e:7} : Prelude.Basics.Bool [Word]) => {e:4}
   cast-Bits8-Bits64({orig:8}), Builtin.MkPair(2, 3))
-  shape Main.Mixed = {Main.MkMixed#0 as object 0 (Bits8, Double, {Main.MkHeap#0 as object 0}, {Prelude.Basics.False#0 as tag | Prelude.Basics.True#1 as tag})}
+  shape Main.Mixed = {Main.MkMixed#0 as object 0 (Bits8, Double, {Main.MkOrdo#0 as object 0}, {Prelude.Basics.False#0 as tag | Prelude.Basics.True#1 as tag})}
   shape (Builtin.Pair Bits64 (Builtin.Pair Bits64 Bits64)) = {Builtin.MkPair#0 as object 1 (Bits64, {Builtin.MkPair#0 as object 1 (Bits64, Bits64)})}
 

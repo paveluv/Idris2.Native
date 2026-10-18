@@ -9,7 +9,7 @@
 ||| its memory is reached by.
 module Native.Runtime.Alloc.Pages
 
-import Native.Runtime.Heap
+import Native.Runtime.Ordo
 
 %default total
 
@@ -17,16 +17,16 @@ public export
 interface Pages (0 h : Type) where
   ||| `bytes` of address space reserved, whole pages, neither readable nor
   ||| writable; its address, 0 if the system has none.
-  reserve : (bytes : Bits64) -> Heap.Op h Bits64
+  reserve : (bytes : Bits64) -> Ordo.Op h Bits64
   ||| `bytes` of reserved whole pages from the address made readable,
   ||| writable and zero; whether the system had the memory.
-  commit : (addr, bytes : Bits64) -> Heap.Op h Bool
+  commit : (addr, bytes : Bits64) -> Ordo.Op h Bool
   ||| `bytes` of committed whole pages from the address given back, and
   ||| reserved again: they read as zero once committed anew.
-  release : (addr, bytes : Bits64) -> Heap.Op h ()
+  release : (addr, bytes : Bits64) -> Ordo.Op h ()
   ||| The system's page, what it reserves, commits and releases by.
-  pageBytes : Heap.Op h Bits64
+  pageBytes : Ordo.Op h Bits64
   ||| The word at the address plus a byte offset, in committed memory, and
   ||| storing one.
-  load : (addr, offset : Bits64) -> Heap.Op h Bits64
-  store : (addr, offset, value : Bits64) -> Heap.Op h ()
+  load : (addr, offset : Bits64) -> Ordo.Op h Bits64
+  store : (addr, offset, value : Bits64) -> Ordo.Op h ()

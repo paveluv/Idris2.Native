@@ -1,6 +1,6 @@
 start of three words:
 Error: While processing right hand side of start. When unifying:
-Mismatch between: (1 _ : Heap) -> Ret Heap ?b and Ret Heap (result (port Start) Addr VALUES () ((port Start) .gives)).
+Mismatch between: (1 _ : Ordo) -> Ret Ordo ?b and Ret Ordo (result (port Start) Addr VALUES () ((port Start) .gives)).
 crash by allocSlow's port:
 Error: While processing right hand side of crash. When unifying:
 Mismatch between: Bits64 and Raw.

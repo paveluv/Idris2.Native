@@ -8,7 +8,7 @@
 -- The contract's port for `crash` takes two words, the message's address
 -- and its length, and gives nothing, as if written
 --
---   crash : (message, length : Bits64) -> Op Heap ()
+--   crash : (message, length : Bits64) -> Op Ordo ()
 --
 -- and `allocSlow`'s takes the bytes and gives the object's address. Here
 -- the runtime's forms are stood in for by forms of the same names, with

@@ -23,8 +23,8 @@ record Point where
   y : Double
 
 -- One constructor and no run-time fields: a token.
-record Heap where
-  constructor MkHeap
+record Ordo where
+  constructor MkOrdo
 
 data Ret : Type -> Type -> Type where
   (#) : (1 m : h) -> (v : a) -> Ret h a
@@ -46,7 +46,7 @@ data AnyAddr : Type where
 interface Peek (0 h : Type) where
   peek : Bits64 -> Op h Bits64
 
-Peek Heap where
+Peek Ordo where
   peek a m = m # (a + 1)
 
 -- A record of two doubles takes two registers, as if written
@@ -92,13 +92,13 @@ fromVoid v impossible
 -- Generic over an interface. The dictionary is static: it is known where
 -- the function is called, not computed at run time. So this function has no
 -- flat form of its own: each call from flat code gets a copy made for the
--- instance it uses, and the copy is judged. A copy at `Heap`, the only
+-- instance it uses, and the copy is judged. A copy at `Ordo`, the only
 -- instance, would be as if written
 --
---   twiceHeap : Bits64 -> Op Heap Bits64
---   twiceHeap a m = let (m' # b) = peek a m in peek b m'   -- `peek` of `Peek Heap`
+--   twiceOrdo : Bits64 -> Op Ordo Bits64
+--   twiceOrdo a m = let (m' # b) = peek a m in peek b m'   -- `peek` of `Peek Ordo`
 --
--- whose `Heap` is a token: one constructor and no fields, so no registers.
+-- whose `Ordo` is a token: one constructor and no fields, so no registers.
 -- Here only the ordinary `main` calls it, so no copy is made.
 %cg native flat Main.twice
 twice : Peek h => Bits64 -> Op h Bits64
@@ -137,7 +137,7 @@ unwrap2 w = w.inner.inner
 
 -- The token `m` takes no register; the result is the pair's two words.
 %cg native flat Main.peekPair
-peekPair : Bits64 -> Op Heap (Bits64, Bool)
+peekPair : Bits64 -> Op Ordo (Bits64, Bool)
 peekPair a m = m # (a, a == 0)
 
 -- Sums that are not recursive. A value of a type of several constructors
@@ -201,14 +201,14 @@ main = do
   printLn (offset (MkAddr {k = CON} 40) 2).word
   printLn (kindless (MkAnyAddr CLOSURE (MkAddr 9)))
   printLn (erasedNat 3 21)
-  let (MkHeap # r) = twice 40 MkHeap
+  let (MkOrdo # r) = twice 40 MkOrdo
   printLn r
   nothing
   t <- fromPrim (tick 41)
   printLn t
   printLn (sum3 (1, 2, 3))
   printLn (unwrap2 (MkWrap (MkWrap 5)))
-  let (MkHeap # pr) = peekPair 0 MkHeap
+  let (MkOrdo # pr) = peekPair 0 MkOrdo
   printLn pr
   printLn (orZero (Just 8), orZero Nothing)
   printLn (either (Left 2), either (Right 2.5))

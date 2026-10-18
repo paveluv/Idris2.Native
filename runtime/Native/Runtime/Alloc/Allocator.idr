@@ -9,7 +9,7 @@
 ||| it, and would move or free what it points to.
 module Native.Runtime.Alloc.Allocator
 
-import Native.Runtime.Heap
+import Native.Runtime.Ordo
 
 %default total
 
@@ -17,8 +17,8 @@ public export
 interface Allocator (0 h : Type) (0 a : Type) where
   ||| A block of `bytes` at least, aligned to 16 bytes, its contents
   ||| unspecified: its address, 0 if there is no memory for it.
-  allocate : a -> (bytes : Bits64) -> Heap.Op h Bits64
+  allocate : a -> (bytes : Bits64) -> Ordo.Op h Bits64
   ||| A block given back, by the address `allocate` gave; 0 is no block, and
   ||| gives back nothing. An address this allocator did not give ends the
   ||| program.
-  free : a -> (addr : Bits64) -> Heap.Op h ()
+  free : a -> (addr : Bits64) -> Ordo.Op h ()

@@ -13,8 +13,8 @@ import Native.Runtime.OS.Syscall
 
 import Native.HeapObj.Shape
 import Native.Port
-import Native.Runtime.Heap
 import Native.Runtime.Memory
+import Native.Runtime.Ordo
 import Native.Runtime.PortTy
 import Native.Runtime.Raw
 import Native.Runtime.State
@@ -36,7 +36,7 @@ exit : PortTy Memory.Addr (Service.port Service.Exit)
 exit status = do
   -- exit_group(status)
   _ <- Syscall.syscall 231 status 0 0 0 0 0
-  Heap.pure ()
+  Ordo.pure ()
 
 %cg native flat Runtime.OS.LinuxX86_64.write
 export
@@ -44,7 +44,7 @@ write : PortTy Memory.Addr (Service.port Service.Write)
 write handle address bytes = do
   -- write(handle, address, bytes)
   r <- Syscall.syscall 1 handle (Raw.rawWord address) bytes 0 0 0
-  Heap.pure (if failed r then 0 else r)
+  Ordo.pure (if failed r then 0 else r)
 
 %cg native flat Runtime.OS.LinuxX86_64.reserve
 export
@@ -54,7 +54,7 @@ reserve bytes = do
   -- no overcommit setting counts a range that is not readable
   r <- Syscall.syscall 9 0 bytes 0 0x4022 0xFFFFFFFFFFFFFFFF 0
   -- the system gives the range's address as a word
-  Heap.pure (Raw.fromWord (if failed r then 0 else r))
+  Ordo.pure (Raw.fromWord (if failed r then 0 else r))
 
 %cg native flat Runtime.OS.LinuxX86_64.commit
 export
@@ -62,7 +62,7 @@ commit : PortTy Memory.Addr (Service.port Service.Commit)
 commit address bytes = do
   -- mprotect(address, bytes, PROT_READ | PROT_WRITE): the pages are zero when first touched
   r <- Syscall.syscall 10 (Raw.rawWord address) bytes 3 0 0 0
-  Heap.pure (if r == 0 then 1 else 0)
+  Ordo.pure (if r == 0 then 1 else 0)
 
 %cg native flat Runtime.OS.LinuxX86_64.release
 export
@@ -71,12 +71,12 @@ release address bytes = do
   -- madvise(address, bytes, MADV_DONTNEED), then mprotect(address, bytes, PROT_NONE)
   _ <- Syscall.syscall 28 (Raw.rawWord address) bytes 4 0 0 0
   _ <- Syscall.syscall 10 (Raw.rawWord address) bytes 0 0 0 0
-  Heap.pure ()
+  Ordo.pure ()
 
 %cg native flat Runtime.OS.LinuxX86_64.pageBytes
 export
 pageBytes : PortTy Memory.Addr (Service.port Service.PageBytes)
-pageBytes = Heap.pure 4096
+pageBytes = Ordo.pure 4096
 
 %cg native flat Runtime.OS.LinuxX86_64.stackLimit
 export

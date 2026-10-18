@@ -9,8 +9,8 @@
 ||| program sets decides how far the heap may grow.
 module Native.Runtime.State
 
-import Native.Runtime.Heap
 import Native.Runtime.Memory
+import Native.Runtime.Ordo
 import Native.Runtime.Raw
 
 import Native.Area
@@ -99,17 +99,17 @@ words i _ = i
 ||| The word of the state, as what it holds: the state keeps an address as
 ||| its word.
 export
-getState : State t -> Heap.Op Heap t
+getState : State t -> Ordo.Op Ordo t
 getState (MkState i AnAddress) = do
   rt <- Memory.runtimeArea
   w <- Memory.loadAt rt (8 * i)
-  Heap.pure (Raw.fromWord w)
+  Ordo.pure (Raw.fromWord w)
 getState (MkState i ACount) = do
   rt <- Memory.runtimeArea
   Memory.loadAt rt (8 * i)
 
 export
-setState : State t -> t -> Heap.Op Heap ()
+setState : State t -> t -> Ordo.Op Ordo ()
 setState (MkState i AnAddress) v = do
   rt <- Memory.runtimeArea
   Memory.storeAt rt (8 * i) (Raw.rawWord v)
@@ -119,10 +119,10 @@ setState (MkState i ACount) v = do
 
 ||| The address of the scratch bytes, raw memory, since they hold no object.
 export
-scratchArea : Heap.Op Heap Raw
+scratchArea : Ordo.Op Ordo Raw
 scratchArea = do
   rt <- Memory.runtimeArea
-  Heap.pure (Raw.offset rt (8 * scratch))
+  Ordo.pure (Raw.offset rt (8 * scratch))
   where
     ||| The first of the two words, sixteen bytes, that a system call writes
     ||| into: getrlimit's answer.

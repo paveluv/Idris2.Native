@@ -4,7 +4,7 @@
 ||| the ports as data and never needs their types, so this is the runtime's.
 module Native.Runtime.PortTy
 
-import Native.Runtime.Heap
+import Native.Runtime.Ordo
 import Native.Runtime.Raw
 
 import Native.Flat.Uniform as Flat
@@ -58,7 +58,7 @@ PortTy addr p =
     result s a (Just c) = carried s a c
 
     arrows : (0 s : HeapObj.Shape) -> (0 a : Type) -> List Port.Carrier -> Type
-    arrows s a [] = Heap.Op Heap (result s a p.gives)
+    arrows s a [] = Ordo.Op Ordo (result s a p.gives)
     arrows s a (c :: cs) = carried s a c -> arrows s a cs
 
 ||| The Idris type of an `%extern` of the port: no extern carries an

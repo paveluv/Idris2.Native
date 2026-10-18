@@ -1,21 +1,28 @@
-||| The token every operation on memory threads, and the shape of those
-||| operations.
+||| The token every operation of the runtime threads (`Ordo`), and the shape
+||| of those operations.
+|||
+||| The name is made up, from the Latin for order, sequence: what the token
+||| does. It orders every effect of the machine, not the collector's heap's
+||| alone: the heap, raw memory (the per-thread areas, the system's
+||| arguments and environment, the memory outside the heap the allocator
+||| gives), the pinned registers, and the system's services. "Heap" means
+||| the collector's memory only.
 |||
 ||| The runtime has no monad and no `IO`. An operation takes the token
-||| `Heap`, linearly, and returns it with its value, so the operations of a
+||| `Ordo`, linearly, and returns it with its value, so the operations of a
 ||| routine form one sequence by data dependence: none can be dropped,
-||| duplicated or reordered against another. `Heap` has one constructor and
+||| duplicated or reordered against another. `Ordo` has one constructor and
 ||| no fields, so it takes no register: the ordering costs nothing at run
 ||| time. `do` works over the inline bind below, which unfolds into the
 ||| chain of `let`s it stands for.
-module Native.Runtime.Heap
+module Native.Runtime.Ordo
 
 %default total
 
 ||| The token.
 public export
-data Heap : Type where
-  MkHeap : Heap
+data Ordo : Type where
+  MkOrdo : Ordo
 
 ||| What an operation returns: the token, linearly, and its value.
 public export

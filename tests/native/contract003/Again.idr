@@ -6,7 +6,7 @@ module Main
 
 import Native.HeapObj.Shape
 import Native.Port
-import Native.Runtime.Heap
+import Native.Runtime.Ordo
 import Native.Runtime.PortTy
 import Native.Service
 

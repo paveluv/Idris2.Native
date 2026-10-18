@@ -16,7 +16,7 @@ import public Native.Port
 import public Native.Runtime.PortTy
 import public Native.Service
 
-import Native.Runtime.Heap
+import Native.Runtime.Ordo
 import Native.Runtime.Raw
 
 %hide Prelude.Interfaces.(>>=)
@@ -36,7 +36,7 @@ import Native.Runtime.Raw
 
 ||| End the process with the status.
 export %inline
-osExit : (status : Bits64) -> Heap.Op Heap ()
+osExit : (status : Bits64) -> Ordo.Op Ordo ()
 osExit = service__exit
 
 ||| The standard handles: the output and the errors.
@@ -47,43 +47,43 @@ stderr = 2
 
 ||| Write `bytes` at the address to a standard handle; the bytes written.
 export %inline
-osWrite : (handle : Bits64) -> (address : Raw) -> (bytes : Bits64) -> Heap.Op Heap Bits64
+osWrite : (handle : Bits64) -> (address : Raw) -> (bytes : Bits64) -> Ordo.Op Ordo Bits64
 osWrite = service__write
 
 ||| Reserve `bytes` of address space, readable by nothing and with no memory
 ||| committed to it; its address, the null one if the system has none.
 export %inline
-osReserve : (bytes : Bits64) -> Heap.Op Heap Raw
+osReserve : (bytes : Bits64) -> Ordo.Op Ordo Raw
 osReserve = service__reserve
 
 ||| Make `bytes` of reserved whole pages from the address readable,
 ||| writable and zero; 1 on success.
 export %inline
-osCommit : (address : Raw) -> (bytes : Bits64) -> Heap.Op Heap Bits64
+osCommit : (address : Raw) -> (bytes : Bits64) -> Ordo.Op Ordo Bits64
 osCommit = service__commit
 
 ||| Give `bytes` of committed whole pages from the address back to the
 ||| system, and reserve them again.
 export %inline
-osRelease : (address : Raw) -> (bytes : Bits64) -> Heap.Op Heap ()
+osRelease : (address : Raw) -> (bytes : Bits64) -> Ordo.Op Ordo ()
 osRelease = service__release
 
 ||| The most bytes the process's stack may grow to; 0 if the system does
 ||| not say.
 export %inline
-osStackLimit : Heap.Op Heap Bits64
+osStackLimit : Ordo.Op Ordo Bits64
 osStackLimit = service__stackLimit
 
 ||| The system's page: the bytes it commits and releases memory by.
 export %inline
-osPageBytes : Heap.Op Heap Bits64
+osPageBytes : Ordo.Op Ordo Bits64
 osPageBytes = service__pageBytes
 
 ||| Write all `bytes` at the address to a standard handle, in as many writes
 ||| as it takes; a write that fails ends it, as nothing more would go.
 export covering
-osWriteAll : (handle : Bits64) -> (address : Raw) -> (bytes : Bits64) -> Heap.Op Heap ()
+osWriteAll : (handle : Bits64) -> (address : Raw) -> (bytes : Bits64) -> Ordo.Op Ordo ()
 osWriteAll h a n =
-  if n == 0 then Heap.pure () else do
+  if n == 0 then Ordo.pure () else do
     w <- osWrite h a n
-    if w == 0 then Heap.pure () else osWriteAll h (Raw.offset a w) (n - w)
+    if w == 0 then Ordo.pure () else osWriteAll h (Raw.offset a w) (n - w)

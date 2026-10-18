@@ -6,8 +6,8 @@ module Native.Runtime.System
 -- which use it, so it is loaded wherever this module is)
 import public Native.Runtime.OS
 
-import Native.Runtime.Heap
 import Native.Runtime.Memory
+import Native.Runtime.Ordo
 import Native.Runtime.PortTy
 -- lint: allow import-unused: the flat translation judges the port's raw address, which
 -- it reduces only where `Native.Runtime.Raw` is imported
@@ -25,7 +25,7 @@ import Native.Routine
 %cg native flat Runtime.System.exit
 ||| `idris_exit`: ends the process with the status.
 export
-exit : (status : Bits64) -> Heap.Op Heap ()
+exit : (status : Bits64) -> Ordo.Op Ordo ()
 exit = OS.osExit
 
 %cg native flat Runtime.System.crash

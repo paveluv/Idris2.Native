@@ -16,8 +16,8 @@
 module Native.Support.Environment
 
 import Native.Runtime.Alloc.System
-import Native.Runtime.Heap as Runtime
 import Native.Runtime.Memory
+import Native.Runtime.Ordo as Runtime
 import Native.Runtime.Raw
 import Native.Runtime.State
 
@@ -29,79 +29,79 @@ import Native.Runtime.State
 
 ||| The address of entry `n`, a word; 0 past the last.
 export covering
-entryAt : (n : Bits64) -> Runtime.Heap.Op Runtime.Heap Bits64
+entryAt : (n : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
 entryAt n = do
   arr <- Runtime.State.getState Runtime.State.environArray
   if Runtime.Raw.isNull arr then Runtime.Memory.environmentEntry n else do
     count <- Runtime.State.getState Runtime.State.environCount
-    if n >= count then Runtime.Heap.pure 0 else Runtime.Memory.loadAt arr (8 * n)
+    if n >= count then Runtime.Ordo.pure 0 else Runtime.Memory.loadAt arr (8 * n)
 
 ||| The index of the first entry of the name, if there is one.
 export covering
-find : (name : Raw) -> (len : Bits64) -> Runtime.Heap.Op Runtime.Heap (Maybe Bits64)
+find : (name : Raw) -> (len : Bits64) -> Runtime.Ordo.Op Runtime.Ordo (Maybe Bits64)
 find name len = go 0
   where
     ||| Whether the entry at `e` holds the name's `len` bytes, then `=`.
     covering
-    holds : (name : Raw) -> (len, e : Bits64) -> Runtime.Heap.Op Runtime.Heap Bool
+    holds : (name : Raw) -> (len, e : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bool
     holds name len e = go 0
       where
         covering
-        go : Bits64 -> Runtime.Heap.Op Runtime.Heap Bool
+        go : Bits64 -> Runtime.Ordo.Op Runtime.Ordo Bool
         go i = do
           b <- Runtime.Memory.loadByteAt (Runtime.Memory.foreignBytes e) i
-          if i == len then Runtime.Heap.pure (b == 0x3D) else do
+          if i == len then Runtime.Ordo.pure (b == 0x3D) else do
             c <- Runtime.Memory.loadByteAt name i
-            if b /= c then Runtime.Heap.pure False else go (i + 1)
+            if b /= c then Runtime.Ordo.pure False else go (i + 1)
 
     covering
-    go : Bits64 -> Runtime.Heap.Op Runtime.Heap (Maybe Bits64)
+    go : Bits64 -> Runtime.Ordo.Op Runtime.Ordo (Maybe Bits64)
     go n = do
       e <- entryAt n
-      if e == 0 then Runtime.Heap.pure Nothing else do
+      if e == 0 then Runtime.Ordo.pure Nothing else do
         found <- holds name len e
-        if found then Runtime.Heap.pure (Just n) else go (n + 1)
+        if found then Runtime.Ordo.pure (Just n) else go (n + 1)
 
 ||| Whether a name can be a variable's: not empty, and without `=` or a
 ||| zero byte, which would end it in an entry, as the C library's `setenv`
 ||| refuses.
 covering
-validName : (name : Raw) -> (len : Bits64) -> Runtime.Heap.Op Runtime.Heap Bool
-validName name len = if len == 0 then Runtime.Heap.pure False else go 0
+validName : (name : Raw) -> (len : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bool
+validName name len = if len == 0 then Runtime.Ordo.pure False else go 0
   where
     covering
-    go : Bits64 -> Runtime.Heap.Op Runtime.Heap Bool
-    go i = if i >= len then Runtime.Heap.pure True else do
+    go : Bits64 -> Runtime.Ordo.Op Runtime.Ordo Bool
+    go i = if i >= len then Runtime.Ordo.pure True else do
       c <- Runtime.Memory.loadByteAt name i
-      if c == 0x3D || c == 0 then Runtime.Heap.pure False else go (i + 1)
+      if c == 0x3D || c == 0 then Runtime.Ordo.pure False else go (i + 1)
 
 ||| The environment made the runtime's own, if it is not yet: the system's
 ||| entries copied into an array with room for more. Whether there was the
 ||| memory for it.
 covering
-own : Runtime.Heap.Op Runtime.Heap Bool
+own : Runtime.Ordo.Op Runtime.Ordo Bool
 own = do
   arr <- Runtime.State.getState Runtime.State.environArray
-  if not (Runtime.Raw.isNull arr) then Runtime.Heap.pure True else do
+  if not (Runtime.Raw.isNull arr) then Runtime.Ordo.pure True else do
     count <- counted 0
     let room = count + 16
     a <- Runtime.Alloc.System.allocateBlock (8 * room)
-    if a == 0 then Runtime.Heap.pure False else do
+    if a == 0 then Runtime.Ordo.pure False else do
       copyEntries a 0 count
       Runtime.State.setState Runtime.State.environArray (Runtime.Memory.foreignBytes a)
       Runtime.State.setState Runtime.State.environCount count
       Runtime.State.setState Runtime.State.environCapacity room
-      Runtime.Heap.pure True
+      Runtime.Ordo.pure True
   where
     covering
-    counted : Bits64 -> Runtime.Heap.Op Runtime.Heap Bits64
+    counted : Bits64 -> Runtime.Ordo.Op Runtime.Ordo Bits64
     counted n = do
       e <- Runtime.Memory.environmentEntry n
-      if e == 0 then Runtime.Heap.pure n else counted (n + 1)
+      if e == 0 then Runtime.Ordo.pure n else counted (n + 1)
 
     covering
-    copyEntries : (to, i, n : Bits64) -> Runtime.Heap.Op Runtime.Heap ()
-    copyEntries to i n = if i >= n then Runtime.Heap.pure () else do
+    copyEntries : (to, i, n : Bits64) -> Runtime.Ordo.Op Runtime.Ordo ()
+    copyEntries to i n = if i >= n then Runtime.Ordo.pure () else do
       e <- Runtime.Memory.environmentEntry i
       Runtime.Memory.storeAt (Runtime.Memory.foreignBytes to) (8 * i) e
       copyEntries to (i + 1) n
@@ -111,47 +111,47 @@ own = do
 ||| that cannot be a variable's (`validName`) or when there is no memory.
 export covering
 set : (name : Raw) -> (nameLen : Bits64) -> (value : Raw) -> (valueLen : Bits64) -> (overwrite : Bool) ->
-      Runtime.Heap.Op Runtime.Heap Bool
+      Runtime.Ordo.Op Runtime.Ordo Bool
 set name nl value vl overwrite = do
   valid <- validName name nl
-  if not valid then Runtime.Heap.pure False else do
+  if not valid then Runtime.Ordo.pure False else do
     found <- find name nl
     case found of
       Just i =>
-        if not overwrite then Runtime.Heap.pure True else do
+        if not overwrite then Runtime.Ordo.pure True else do
           ok <- own
-          e <- if ok then newEntry name nl value vl else Runtime.Heap.pure 0
-          if e == 0 then Runtime.Heap.pure False else do
+          e <- if ok then newEntry name nl value vl else Runtime.Ordo.pure 0
+          if e == 0 then Runtime.Ordo.pure False else do
             arr <- Runtime.State.getState Runtime.State.environArray
             Runtime.Memory.storeAt arr (8 * i) e
-            Runtime.Heap.pure True
+            Runtime.Ordo.pure True
       Nothing => do
         ok <- own
-        e <- if ok then newEntry name nl value vl else Runtime.Heap.pure 0
-        if e == 0 then Runtime.Heap.pure False else append e
+        e <- if ok then newEntry name nl value vl else Runtime.Ordo.pure 0
+        if e == 0 then Runtime.Ordo.pure False else append e
   where
     ||| A new entry, `NAME=value` and a zero byte, in memory outside the heap:
     ||| its address, 0 if there is no memory for it.
     covering
-    newEntry : (name : Raw) -> (nameLen : Bits64) -> (value : Raw) -> (valueLen : Bits64) -> Runtime.Heap.Op Runtime.Heap Bits64
+    newEntry : (name : Raw) -> (nameLen : Bits64) -> (value : Raw) -> (valueLen : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
     newEntry name nl value vl = do
       e <- Runtime.Alloc.System.allocateBlock (nl + vl + 2)
-      if e == 0 then Runtime.Heap.pure 0 else do
+      if e == 0 then Runtime.Ordo.pure 0 else do
         copyBytes name e 0 nl
         Runtime.Memory.storeByteAt (Runtime.Memory.foreignBytes e) nl 0x3D
         copyBytes value e (nl + 1) vl
         Runtime.Memory.storeByteAt (Runtime.Memory.foreignBytes e) (nl + 1 + vl) 0
-        Runtime.Heap.pure e
+        Runtime.Ordo.pure e
       where
         ||| `count` bytes copied from raw memory to the block at `to`, from its
         ||| byte `at`.
         covering
-        copyBytes : (from : Raw) -> (to, at, count : Bits64) -> Runtime.Heap.Op Runtime.Heap ()
+        copyBytes : (from : Raw) -> (to, at, count : Bits64) -> Runtime.Ordo.Op Runtime.Ordo ()
         copyBytes from to at n = go 0
           where
             covering
-            go : Bits64 -> Runtime.Heap.Op Runtime.Heap ()
-            go i = if i >= n then Runtime.Heap.pure () else do
+            go : Bits64 -> Runtime.Ordo.Op Runtime.Ordo ()
+            go i = if i >= n then Runtime.Ordo.pure () else do
               c <- Runtime.Memory.loadByteAt from i
               Runtime.Memory.storeByteAt (Runtime.Memory.foreignBytes to) (at + i) c
               go (i + 1)
@@ -159,7 +159,7 @@ set name nl value vl overwrite = do
     ||| An entry put last in the runtime's array, which grows when it is full:
     ||| whether there was the memory for it.
     covering
-    append : (e : Bits64) -> Runtime.Heap.Op Runtime.Heap Bool
+    append : (e : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bool
     append e = do
       arr <- Runtime.State.getState Runtime.State.environArray
       count <- Runtime.State.getState Runtime.State.environCount
@@ -168,10 +168,10 @@ set name nl value vl overwrite = do
          then do
            Runtime.Memory.storeAt arr (8 * count) e
            Runtime.State.setState Runtime.State.environCount (count + 1)
-           Runtime.Heap.pure True
+           Runtime.Ordo.pure True
          else do
            a <- Runtime.Alloc.System.allocateBlock (16 * room)
-           if a == 0 then Runtime.Heap.pure False else do
+           if a == 0 then Runtime.Ordo.pure False else do
              copyWords arr a 0 count
              Runtime.Alloc.System.freeBlock (Runtime.Raw.rawWord arr)
              Runtime.State.setState Runtime.State.environArray (Runtime.Memory.foreignBytes a)
@@ -179,8 +179,8 @@ set name nl value vl overwrite = do
              append e
       where
         covering
-        copyWords : (from : Raw) -> (to, i, n : Bits64) -> Runtime.Heap.Op Runtime.Heap ()
-        copyWords from to i n = if i >= n then Runtime.Heap.pure () else do
+        copyWords : (from : Raw) -> (to, i, n : Bits64) -> Runtime.Ordo.Op Runtime.Ordo ()
+        copyWords from to i n = if i >= n then Runtime.Ordo.pure () else do
           w <- Runtime.Memory.loadAt from (8 * i)
           Runtime.Memory.storeAt (Runtime.Memory.foreignBytes to) (8 * i) w
           copyWords from to (i + 1) n
@@ -188,20 +188,20 @@ set name nl value vl overwrite = do
 ||| `unsetenv`: every entry of the name removed, the last entry moved into
 ||| each one's place; whether the name can be a variable's.
 export covering
-unset : (name : Raw) -> (nameLen : Bits64) -> Runtime.Heap.Op Runtime.Heap Bool
+unset : (name : Raw) -> (nameLen : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bool
 unset name nl = do
   valid <- validName name nl
-  if not valid then Runtime.Heap.pure False else go
+  if not valid then Runtime.Ordo.pure False else go
   where
     covering
-    go : Runtime.Heap.Op Runtime.Heap Bool
+    go : Runtime.Ordo.Op Runtime.Ordo Bool
     go = do
       found <- find name nl
       case found of
-        Nothing => Runtime.Heap.pure True
+        Nothing => Runtime.Ordo.pure True
         Just i => do
           ok <- own
-          if not ok then Runtime.Heap.pure False else do
+          if not ok then Runtime.Ordo.pure False else do
             arr <- Runtime.State.getState Runtime.State.environArray
             count <- Runtime.State.getState Runtime.State.environCount
             last <- Runtime.Memory.loadAt arr (8 * (count - 1))

@@ -25,8 +25,9 @@ import Native.Runtime.Alloc.Arena
 import Native.Runtime.Alloc.Chunks
 import Native.Runtime.Alloc.Config
 import Native.Runtime.Alloc.Pages
+
 import Native.Runtime.Bits
-import Native.Runtime.Heap
+import Native.Runtime.Ordo
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
@@ -42,7 +43,7 @@ record SizeClasses c where
   chunks : c
 
 ||| A count of the control block, raised or lowered by one.
-bumpCount : Pages h => (arena, word : Bits64) -> (up : Bool) -> Heap.Op h ()
+bumpCount : Pages h => (arena, word : Bits64) -> (up : Bool) -> Ordo.Op h ()
 bumpCount a w up = do
   n <- field a w
   setField a w (if up then n + 1 else n - 1)
@@ -61,24 +62,24 @@ Pages h => Chunks h c => Allocator h (SizeClasses c) where
       then do
         let k = classOf cf bytes
         first <- field a (availHead cf k)
-        g <- if first /= 0 then Heap.pure first else newSlab s k
-        if g == 0 then Heap.pure 0 else takeBlock cf a (g - 1) k
+        g <- if first /= 0 then Ordo.pure first else newSlab s k
+        if g == 0 then Ordo.pure 0 else takeBlock cf a (g - 1) k
       else do
         let o = chunkOrder cf bytes
-        if o > maxOrder cf then Heap.pure 0 else do
+        if o > maxOrder cf then Ordo.pure 0 else do
           addr <- takeChunk s.chunks o
-          if addr == 0 then Heap.pure 0 else do
+          if addr == 0 then Ordo.pure 0 else do
             g <- granuleOf cf a addr
             setEntry a g kind largeKind
             setEntry a g order o
             markInside a g 1 (1 `shiftL` o)
-            Heap.pure addr
+            Ordo.pure addr
     where
       ||| The entries of a chunk's granules after its head marked as inside it.
       covering
-      markInside : (arena, head, i, count : Bits64) -> Heap.Op h ()
+      markInside : (arena, head, i, count : Bits64) -> Ordo.Op h ()
       markInside a g i n =
-        if i >= n then Heap.pure () else do
+        if i >= n then Ordo.pure () else do
           setEntry a (g + i) kind insideKind
           setEntry a (g + i) order g
           markInside a g (i + 1) n
@@ -86,13 +87,13 @@ Pages h => Chunks h c => Allocator h (SizeClasses c) where
       ||| A new slab of the class, empty, first in the class's list: its granule
       ||| plus one, 0 if there is no memory for it.
       covering
-      newSlab : SizeClasses c -> (cls : Bits64) -> Heap.Op h Bits64
+      newSlab : SizeClasses c -> (cls : Bits64) -> Ordo.Op h Bits64
       newSlab s k = do
         let cf = s.config
             a = s.arena
             o = slabOrder cf k
         addr <- takeChunk s.chunks o
-        if addr == 0 then Heap.pure 0 else do
+        if addr == 0 then Ordo.pure 0 else do
           g <- granuleOf cf a addr
           setEntry a g kind slabKind
           setEntry a g order o
@@ -104,12 +105,12 @@ Pages h => Chunks h c => Allocator h (SizeClasses c) where
           push a (availHead cf k) g
           bumpCount a (slabCount cf k) True
           bumpCount a (emptyCount cf k) True
-          Heap.pure (g + 1)
+          Ordo.pure (g + 1)
 
       ||| A block of the slab at the granule, of class `k`: one given back if
       ||| there is one, else the next never used. A slab left with no block to
       ||| hand out leaves its class's list.
-      takeBlock : Config -> (arena, granule, cls : Bits64) -> Heap.Op h Bits64
+      takeBlock : Config -> (arena, granule, cls : Bits64) -> Ordo.Op h Bits64
       takeBlock cf a g k = do
         base <- granuleAddress cf a g
         o <- entry a g order
@@ -122,25 +123,25 @@ Pages h => Chunks h c => Allocator h (SizeClasses c) where
           then do
             n <- load fl 0
             setEntry a g freeList n
-            Heap.pure fl
+            Ordo.pure fl
           else do
             setEntry a g bump (b + size)
-            Heap.pure b
+            Ordo.pure b
         setEntry a g used (u + 1)
-        if u == 0 then bumpCount a (emptyCount cf k) False else Heap.pure ()
+        if u == 0 then bumpCount a (emptyCount cf k) False else Ordo.pure ()
         fl' <- entry a g freeList
         b' <- entry a g bump
-        if noRoom cf fl' b' size end then remove a (availHead cf k) g else Heap.pure ()
-        Heap.pure block
+        if noRoom cf fl' b' size end then remove a (availHead cf k) g else Ordo.pure ()
+        Ordo.pure block
   free s addr =
-    if addr == 0 then Heap.pure () else do
+    if addr == 0 then Ordo.pure () else do
       let cf = s.config
           a = s.arena
       ours <- owns a addr
       if not ours then notGiven else do
         g0 <- granuleOf cf a addr
         k0 <- entry a g0 kind
-        g <- if k0 == insideKind then entry a g0 order else Heap.pure g0
+        g <- if k0 == insideKind then entry a g0 order else Ordo.pure g0
         k <- entry a g kind
         if k == slabKind then giveBlock s g addr else
           if k /= largeKind then notGiven else do
@@ -150,15 +151,15 @@ Pages h => Chunks h c => Allocator h (SizeClasses c) where
     where
       ||| The end of a `free` of an address the allocator did not give, or gave
       ||| and has back already.
-      notGiven : Heap.Op h ()
-      notGiven = Heap.crashOp "idris: free of an address the allocator did not give"
+      notGiven : Ordo.Op h ()
+      notGiven = Ordo.crashOp "idris: free of an address the allocator did not give"
 
       ||| A block given back to the slab at the granule, after `free` checked it
       ||| starts a block below the bump. A slab that had no block to hand out
       ||| joins its class's list again; one left empty is counted, and its chunk
       ||| given back when the class has too many empty slabs.
       covering
-      giveBlock : SizeClasses c -> (granule, addr : Bits64) -> Heap.Op h ()
+      giveBlock : SizeClasses c -> (granule, addr : Bits64) -> Ordo.Op h ()
       giveBlock s g addr = do
         let cf = s.config
             a = s.arena
@@ -171,15 +172,15 @@ Pages h => Chunks h c => Allocator h (SizeClasses c) where
         let size = classBytes cf k
             end = base + chunkBytes cf o
         if u == 0 || addr >= b || (addr - base) `mod` size /= 0 then notGiven else do
-          if noRoom cf fl b size end then push a (availHead cf k) g else Heap.pure ()
+          if noRoom cf fl b size end then push a (availHead cf k) g else Ordo.pure ()
           store addr 0 fl
           setEntry a g freeList addr
           setEntry a g used (u - 1)
-          if u /= 1 then Heap.pure () else do
+          if u /= 1 then Ordo.pure () else do
             bumpCount a (emptyCount cf k) True
             e <- field a (emptyCount cf k)
             n <- field a (slabCount cf k)
-            if not (quarter cf e n) then Heap.pure () else do
+            if not (quarter cf e n) then Ordo.pure () else do
               remove a (availHead cf k) g
               bumpCount a (slabCount cf k) False
               bumpCount a (emptyCount cf k) False

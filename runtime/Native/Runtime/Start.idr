@@ -5,8 +5,8 @@
 module Native.Runtime.Start
 
 import Native.Runtime.Bits
-import Native.Runtime.Heap
 import Native.Runtime.Memory
+import Native.Runtime.Ordo
 import Native.Runtime.OS
 import Native.Runtime.PortTy
 import Native.Runtime.Raw
@@ -79,8 +79,8 @@ start entry window = do
     ||| halving to 64 MiB, so that only the system, or a limit the user set on
     ||| the process's address space, bounds the heap. Its address and size.
     covering
-    reserveSpace : (bytes : Bits64) -> Heap.Op Heap (Raw, Bits64)
+    reserveSpace : (bytes : Bits64) -> Ordo.Op Ordo (Raw, Bits64)
     reserveSpace bytes =
-      if bytes < 67108864 then Heap.crashOp "idris: cannot reserve memory" else do
+      if bytes < 67108864 then Ordo.crashOp "idris: cannot reserve memory" else do
         a <- Memory.reserveMemory bytes
-        if Raw.isNull a then reserveSpace (Bits.shiftR bytes 1) else Heap.pure (a, bytes)
+        if Raw.isNull a then reserveSpace (Bits.shiftR bytes 1) else Ordo.pure (a, bytes)

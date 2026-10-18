@@ -30,7 +30,7 @@ fault() {
 fault "start of three words" Start.idr -e 's/^start entry window = do/start entry window _ = do/'
 fault "crash by allocSlow's port" System.idr \
   -e 's/^crash : PortTy Memory.Addr (Routine.port Routine.Crash)$/crash : PortTy Memory.Addr (Routine.port Routine.AllocSlow)/'
-fault "allocSlow giving its raw memory" Space.idr -e 's/^  Heap.pure (Memory.objectAt a)$/  Heap.pure a/'
+fault "allocSlow giving its raw memory" Space.idr -e 's/^  Ordo.pure (Memory.objectAt a)$/  Ordo.pure a/'
 fault "reserve by commit's port" OS/LinuxX86_64.idr \
   -e 's/^reserve : PortTy Memory.Addr (Service.port Service.Reserve)$/reserve : PortTy Memory.Addr (Service.port Service.Commit)/'
 rm -rf build/broken

@@ -9,8 +9,8 @@
 -- is taken apart into registers by its shape, and the result put back
 -- together.
 
-record Heap where
-  constructor MkHeap
+record Ordo where
+  constructor MkOrdo
 
 -- A record of four fields: an object. In registers, its fields in turn: a
 -- word, a double, none for the token, a word for the `Bool`'s tag.
@@ -18,7 +18,7 @@ record Mixed where
   constructor MkMixed
   count : Bits8
   scale : Double
-  token : Heap
+  token : Ordo
   flag : Bool
 
 -- A newtype: its field. Ordinary code holds a `Meters` as its `Double`.

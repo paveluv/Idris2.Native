@@ -4,7 +4,7 @@
 module Native.Support.Foreign.PrimIO
 
 import Native.Flat.Uniform as Flat
-import Native.Runtime.Heap as Runtime
+import Native.Runtime.Ordo as Runtime
 -- lint: allow import-unused: the flat check reaches through ptrWord's body, which reads raw memory from an object
 import Native.Runtime.Raw as Runtime
 -- lint: allow import-unused: the flat check reaches through ptrWord's body, which reads raw memory from an object
@@ -21,9 +21,9 @@ import Native.Support.Ptr
 ||| 1 for the null pointer, 0 for any other.
 export
 prim__nullAnyPtr : Flat.Uniform AnyPtr -> Int
-prim__nullAnyPtr p = let (Runtime.MkHeap # r) = nullOp p Runtime.MkHeap in r
+prim__nullAnyPtr p = let (Runtime.MkOrdo # r) = nullOp p Runtime.MkOrdo in r
   where
-    nullOp : Flat.Uniform AnyPtr -> Runtime.Heap.Op Runtime.Heap Int
+    nullOp : Flat.Uniform AnyPtr -> Runtime.Ordo.Op Runtime.Ordo Int
     nullOp p = do
       w <- Ptr.ptrWord p
-      if w == 0 then Runtime.Heap.pure 1 else Runtime.Heap.pure 0
+      if w == 0 then Runtime.Ordo.pure 1 else Runtime.Ordo.pure 0

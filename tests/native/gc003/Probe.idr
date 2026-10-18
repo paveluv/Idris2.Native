@@ -20,8 +20,8 @@ module Probe
 import Native.Flat.Uniform
 import Native.HeapObj.Shape
 import Native.Runtime.Bits
-import Native.Runtime.Heap
 import Native.Runtime.Memory
+import Native.Runtime.Ordo
 import Native.Runtime.Raw
 import Native.Runtime.Space
 import Native.Runtime.State
@@ -40,7 +40,7 @@ import Native.Types.Kind
 ||| Prelude's, called directly, and `stringObject` opens its result, the
 ||| `Uniform String`, to the object, whose first word is the
 ||| header with the length in bytes.
-look : Uniform (List String) -> Op Heap (Bits64, Bits64, Bool)
+look : Uniform (List String) -> Op Ordo (Bits64, Bits64, Bool)
 look xs = do
   before <- getState collections
   big <- stringObject (fastConcat xs)
@@ -56,5 +56,5 @@ look xs = do
 ||| unemptied.
 export
 probe : Uniform (List String) -> Bits64
-probe xs = let (MkHeap # (before, during, empty)) = look xs MkHeap in
+probe xs = let (MkOrdo # (before, during, empty)) = look xs MkOrdo in
            if before == during && empty then during + 1 else 0

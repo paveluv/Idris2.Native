@@ -4,8 +4,8 @@
 -- forms at static arguments only, so none.
 
 -- A token: one constructor and no fields, so no registers.
-record Heap where
-  constructor MkHeap
+record Ordo where
+  constructor MkOrdo
 
 -- A record takes its fields' registers in turn: a word for `count`, a
 -- double for `scale`, none for `token`, and a word for `flag`, whose
@@ -14,7 +14,7 @@ record Mixed where
   constructor MkMixed
   count : Bits8
   scale : Double
-  token : Heap
+  token : Ordo
   flag : Bool
 
 -- A word for the constructor's tag, then each constructor's fields in turn,
@@ -30,8 +30,8 @@ word _ = 'a'
 
 -- A double takes a double register, and the token result none.
 %cg native flat Main.double
-double : Double -> Heap
-double _ = MkHeap
+double : Double -> Ordo
+double _ = MkOrdo
 
 -- As if written with the registers as arguments and results:
 -- `Bits8 -> Double -> Bool -> (Bits64, Bits64, Bits64)`, the triple three

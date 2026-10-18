@@ -28,8 +28,9 @@ module Native.Runtime.Alloc.Arena
 
 import Native.Runtime.Alloc.Config
 import Native.Runtime.Alloc.Pages
+
 import Native.Runtime.Bits
-import Native.Runtime.Heap
+import Native.Runtime.Ordo
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
@@ -71,11 +72,11 @@ emptyCount c k = slabCount c k + classCount c
 
 ||| A word of the control block, and storing one.
 export
-field : Pages h => (arena, i : Bits64) -> Heap.Op h Bits64
+field : Pages h => (arena, i : Bits64) -> Ordo.Op h Bits64
 field a i = load a (8 * i)
 
 export
-setField : Pages h => (arena, i, value : Bits64) -> Heap.Op h ()
+setField : Pages h => (arena, i, value : Bits64) -> Ordo.Op h ()
 setField a i v = store a (8 * i) v
 
 ------------------------------------------------------------------------------
@@ -108,84 +109,84 @@ entryShift = 6
 
 ||| Word `i` of the granule's entry, and storing one.
 export
-entry : Pages h => (arena, granule, i : Bits64) -> Heap.Op h Bits64
+entry : Pages h => (arena, granule, i : Bits64) -> Ordo.Op h Bits64
 entry a g i = do
   p <- field a pagemap
   load (p + (g `shiftL` entryShift)) (8 * i)
 
 export
-setEntry : Pages h => (arena, granule, i, value : Bits64) -> Heap.Op h ()
+setEntry : Pages h => (arena, granule, i, value : Bits64) -> Ordo.Op h ()
 setEntry a g i v = do
   p <- field a pagemap
   store (p + (g `shiftL` entryShift)) (8 * i) v
 
 ||| The granule an address of the region is in, and a granule's address.
 export
-granuleOf : Pages h => Config -> (arena, addr : Bits64) -> Heap.Op h Bits64
+granuleOf : Pages h => Config -> (arena, addr : Bits64) -> Ordo.Op h Bits64
 granuleOf c a addr = do
   r <- field a regionStart
-  Heap.pure ((addr - r) `shiftR` c.granuleShift)
+  Ordo.pure ((addr - r) `shiftR` c.granuleShift)
 
 export
-granuleAddress : Pages h => Config -> (arena, granule : Bits64) -> Heap.Op h Bits64
+granuleAddress : Pages h => Config -> (arena, granule : Bits64) -> Ordo.Op h Bits64
 granuleAddress c a g = do
   r <- field a regionStart
-  Heap.pure (r + (g `shiftL` c.granuleShift))
+  Ordo.pure (r + (g `shiftL` c.granuleShift))
 
 ||| Whether an address is in what the arena took of its region: only there
 ||| has it ever given memory.
 export
-owns : Pages h => (arena, addr : Bits64) -> Heap.Op h Bool
+owns : Pages h => (arena, addr : Bits64) -> Ordo.Op h Bool
 owns a addr = do
   r <- field a regionStart
   t <- field a taken
-  Heap.pure (r <= addr && addr < t)
+  Ordo.pure (r <= addr && addr < t)
 
 ------------------------------------------------------------------------------
 -- Lists through the pagemap
 
 ||| A granule put first in the list whose head is the control block's word.
 export
-push : Pages h => (arena, headWord, granule : Bits64) -> Heap.Op h ()
+push : Pages h => (arena, headWord, granule : Bits64) -> Ordo.Op h ()
 push a hw g = do
   first <- field a hw
   setEntry a g next first
   setEntry a g prev 0
-  if first == 0 then Heap.pure () else setEntry a (first - 1) prev (g + 1)
+  if first == 0 then Ordo.pure () else setEntry a (first - 1) prev (g + 1)
   setField a hw (g + 1)
 
 ||| A granule taken out of the list whose head is the control block's word.
 export
-remove : Pages h => (arena, headWord, granule : Bits64) -> Heap.Op h ()
+remove : Pages h => (arena, headWord, granule : Bits64) -> Ordo.Op h ()
 remove a hw g = do
   n <- entry a g next
   p <- entry a g prev
   if p == 0 then setField a hw n else setEntry a (p - 1) next n
-  if n == 0 then Heap.pure () else setEntry a (n - 1) prev p
+  if n == 0 then Ordo.pure () else setEntry a (n - 1) prev p
 
 ------------------------------------------------------------------------------
 -- Making an arena, and taking its region
 
 ||| `bytes` rounded up to whole pages.
-pages : Pages h => (bytes : Bits64) -> Heap.Op h Bits64
+pages : Pages h => (bytes : Bits64) -> Ordo.Op h Bits64
 pages n = do
   page <- pageBytes
-  Heap.pure ((n + (page - 1)) .&. (0 - page))
+  Ordo.pure ((n + (page - 1)) .&. (0 - page))
 
 ||| A new arena of the configuration: its reservation made, its control
 ||| block committed; its address, 0 if the system has not the address space
 ||| or the memory.
 export
-newArena : Pages h => Config -> Heap.Op h Bits64
+newArena : Pages h => Config -> Ordo.Op h Bits64
 newArena c = do
   control <- pages (controlBytes c)
   entries <- pages ((1 `shiftL` (c.regionShift - c.granuleShift)) `shiftL` entryShift)
   let region = 1 `shiftL` c.regionShift
       align = 1 `shiftL` c.maxChunkShift
   base <- reserve (control + entries + region + align)
-  if base == 0 then Heap.pure 0 else do
+  if base == 0 then Ordo.pure 0 else do
     ok <- commit base control
-    if not ok then Heap.pure 0 else do
+    if not ok then Ordo.pure 0 else do
       let start = (base + control + entries + (align - 1)) .&. (0 - align)
       setField base mark arenaMark
       setField base regionStart start
@@ -193,7 +194,7 @@ newArena c = do
       setField base taken start
       setField base pagemap (base + control)
       setField base pagemapCommitted (base + control)
-      Heap.pure base
+      Ordo.pure base
   where
     ||| The bytes of the control block.
     controlBytes : Config -> Bits64
@@ -201,27 +202,27 @@ newArena c = do
 
 ||| Whether the address is an arena's, by its mark.
 export
-isArena : Pages h => (arena : Bits64) -> Heap.Op h Bool
+isArena : Pages h => (arena : Bits64) -> Ordo.Op h Bool
 isArena a = do
   m <- field a mark
-  Heap.pure (m == arenaMark)
+  Ordo.pure (m == arenaMark)
 
 ||| A largest chunk taken from the region, with the pagemap's entries for
 ||| it committed: its granule; nothing when the region or the memory is out.
 export
-carve : Pages h => Config -> (arena : Bits64) -> Heap.Op h (Maybe Bits64)
+carve : Pages h => Config -> (arena : Bits64) -> Ordo.Op h (Maybe Bits64)
 carve c a = do
   t <- field a taken
   e <- field a regionEnd
   let size = 1 `shiftL` c.maxChunkShift
-  if t + size > e then Heap.pure Nothing else do
+  if t + size > e then Ordo.pure Nothing else do
     g <- granuleOf c a t
     p <- field a pagemap
     pc <- field a pagemapCommitted
     let needed = p + ((g + (1 `shiftL` maxOrder c)) `shiftL` entryShift)
-    want <- if needed <= pc then Heap.pure 0 else pages (needed - pc)
-    ok <- if want == 0 then Heap.pure True else commit pc want
-    if not ok then Heap.pure Nothing else do
+    want <- if needed <= pc then Ordo.pure 0 else pages (needed - pc)
+    ok <- if want == 0 then Ordo.pure True else commit pc want
+    if not ok then Ordo.pure Nothing else do
       setField a pagemapCommitted (pc + want)
       setField a taken (t + size)
-      Heap.pure (Just g)
+      Ordo.pure (Just g)
