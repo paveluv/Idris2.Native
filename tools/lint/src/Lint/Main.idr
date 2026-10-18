@@ -48,8 +48,9 @@
 ||| on its line or in the lines above it up to a blank line: a suppression
 ||| covers its paragraph from where it stands. Of a rule that asks why at
 ||| each use (`ResolvedRules.oneUseRules`), it covers only the first finding
-||| from where it stands, so that each use has a reason of its own. A
-||| suppression without a
+||| from where it stands, so that each use has a reason of its own; of a
+||| rule no suppression lifts (`ResolvedRules.unsuppressibleRules`), it is a
+||| finding itself. A suppression without a
 ||| reason, of no rule, or that suppresses nothing, is a finding itself. A
 ||| module is left out of a component of the score by another comment,
 ||| `-- lint: exclude <component>: <reason>` (`Exclusion`).
@@ -242,6 +243,7 @@ main = do
             covers : Suppression -> Finding -> Bool
             covers s fi =
               fi.rule == s.rule && fi.line >= s.line && fi.line <= s.through
+              && not (s.rule `elem` unsuppressibleRules)
               && (not (s.rule `elem` oneUseRules) || Just (fi.line, fi.col) == firstFrom s)
               where
                 -- the first finding of the rule in the suppression's paragraph
@@ -253,6 +255,7 @@ main = do
             check fs s =
               let at = MkFinding "suppression" f.path s.line s.col s.rule in
               if not (s.rule `elem` ruleNames ++ resolvedRuleNames) then [at ("no rule `" ++ s.rule ++ "`")]
+              else if s.rule `elem` unsuppressibleRules then [at ("`" ++ s.rule ++ "` is not to be suppressed: change what it reports")]
               else if s.reason == "" then [at ("a suppression of `" ++ s.rule ++ "` says why")]
               else if not ran && (s.rule `elem` resolvedRuleNames) then []
               else if not (any (\fi => fi.path == f.path && covers s fi) fs) then [at ("the suppression of `" ++ s.rule ++ "` suppresses nothing")]

@@ -77,18 +77,12 @@ export
 foreignArena : State Raw
 foreignArena = address 12
 
-||| The process's environment, once the program changed it
-||| (`Support.Environment`): the array of its entries' addresses, null
-||| while the environment is the one the system gave; its entries; and the
-||| entries it has room for.
+||| The array of the environment's blocks (`Alloc.Blocks.environment`),
+||| null while the environment is the one the system gave. Only the
+||| allocator's sealed modules read or write it. Words 14 and 15 are free.
 export
 environArray : State Raw
 environArray = address 13
-
-export
-environCount, environCapacity : State Bits64
-environCount = count 14
-environCapacity = count 15
 
 ||| Why the last OS service that failed did, by the reason's code
 ||| (`Native.Failure`); 0 until one fails. Each service that fails sets it,

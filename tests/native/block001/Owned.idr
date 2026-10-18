@@ -18,9 +18,15 @@
 -- `do` keeps a block linear across its steps because the token's bind uses
 -- each of its operands once. A choice between two uses is a `case`: the
 -- branches of `if` are lazy, and so might run any number of times.
+--
+-- An array of owned blocks (`Blocks`) takes a block in and gives one out
+-- the same way: `push` uses the block up, or gives it back to `none` when
+-- there is no memory; `replace` and `removeAt` give the block they take out
+-- to a function, which has to use it as any block.
 module Owned
 
 import Native.Runtime.Alloc.Block
+import Native.Runtime.Alloc.Blocks
 import Native.Runtime.Memory
 import Native.Runtime.Ordo
 
@@ -79,6 +85,37 @@ failing "b is not accessible in this context"
     free b'
     free b''
     pure 0)
+
+-- a block put in the array, or freed if it cannot be
+kept : Op Ordo Bool
+kept = allocate 64 (pure False) (\b =>
+  push environment b
+    (\b' => do
+      free b'
+      pure False)
+    (pure True))
+
+-- the block an array gives back, freed
+swapped : Op Ordo ()
+swapped = allocate 64 (pure ()) (\b =>
+  replace environment 0 b (\old => free old))
+
+failing "There are 0 uses of linear name old"
+  -- the block `replace` gives back is dropped
+  lost : Op Ordo ()
+  lost = allocate 64 (pure ()) (\b =>
+    replace environment 0 b (\old => pure ()))
+
+failing "There are 0 uses of linear name b'"
+  -- the block `push` gives back when there is no memory is dropped
+  unkept : Op Ordo ()
+  unkept = allocate 64 (pure ()) (\b =>
+    push environment b (\b' => pure ()) (pure ()))
+
+failing "There are 0 uses of linear name old"
+  -- the block `removeAt` takes out is dropped
+  removed : Op Ordo ()
+  removed = removeAt environment 0 (\old => pure ())
 
 failing "MkBlock is private"
   -- a block cannot be made but by `allocate`

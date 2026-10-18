@@ -1,11 +1,13 @@
 ./Frame.idr:7:1 import-unused: `Canvas` is imported, and of what it makes visible only `Shape` is used, which the module imports directly
 ./Gallery.idr:5:1 import-indirect: `Shape` is used (`Shape`, `Circle`) only through `Canvas`: import it
-./Lease.idr:31:52 sealed-allocator: `releaseBlock` leaves the linear blocks of `Native.Runtime.Alloc.Block`: say why it is sound
-./Lease.idr:44:15 sealed-allocator: `adoptBlock` leaves the linear blocks of `Native.Runtime.Alloc.Block`: say why it is sound
-./Lease.idr:48:26 sealed-allocator: `adoptBlock` leaves the linear blocks of `Native.Runtime.Alloc.Block`: say why it is sound
-./Lease.idr:52:7 sealed-allocator: `allocateBlock` leaves the linear blocks of `Native.Runtime.Alloc.Block`: say why it is sound
 ./Mode.idr:9:1 public-unneeded: `Mode`'s constructors are used only in its module: `export` keeps them there
 ./Mode.idr:20:1 public-unneeded: no other module uses `slower`: its body need not be public
+./Native/Support/Lease.idr:34:58 sealed-allocator: `releaseBlock` leaves the linear blocks of `Native.Runtime.Alloc.Block`: say why it is sound
+./Native/Support/Lease.idr:47:15 sealed-allocator: `adoptBlock` leaves the linear blocks of `Native.Runtime.Alloc.Block`: say why it is sound
+./Native/Support/Lease.idr:51:32 sealed-allocator: `adoptBlock` leaves the linear blocks of `Native.Runtime.Alloc.Block`: say why it is sound
+./Native/Support/Lease.idr:56:3 suppression: `sealed-boundary` is not to be suppressed: change what it reports
+./Native/Support/Lease.idr:57:3 sealed-boundary: `releaseBlock` leaves the linear blocks of `Native.Runtime.Alloc.Block` outside `base`'s foreign surface, the `prim__` functions of `Native.Support`: keep the block linear
+./Native/Support/Lease.idr:61:7 sealed-boundary: `allocateBlock` leaves the linear blocks of `Native.Runtime.Alloc.Block` outside `base`'s foreign surface, the `prim__` functions of `Native.Support`: keep the block linear
 ./Page.idr:1:1 raw-maker: `Page` makes a raw address from a word, which only the modules that keep addresses as words do
 ./Report.idr:6:1 import-indirect: `Shape` is used (`Show Shape`) only through `Canvas`: import it
 ./Shape.idr:22:1 generic-export: `pow2` is exported from `Shape`, a module about its type, and refers to nothing of ours: a generic helper, private to the module or in a module of helpers
@@ -19,4 +21,5 @@
           1  JoinAll.flatten: 0 grown at an end with `++`, 1 joined by a left fold
           1  JoinAll.foldAll: 1 grown at an end with `++`, 0 joined by a left fold
           1  JoinAll.go: 1 grown at an end with `++`, 0 joined by a left fold
+./Native/Support/Lease.idr:56:3 suppression: `sealed-boundary` is not to be suppressed: change what it reports
 ./Spare.idr:1:1 resolution: the TTC of `Spare` is older than its source: build it first

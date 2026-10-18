@@ -12,6 +12,7 @@ modules =
     Native.Runtime.Alloc.Allocator,
     Native.Runtime.Alloc.Arena,
     Native.Runtime.Alloc.Block,
+    Native.Runtime.Alloc.Blocks,
     Native.Runtime.Alloc.Chunks,
     Native.Runtime.Alloc.Config,
     Native.Runtime.Alloc.Pages,

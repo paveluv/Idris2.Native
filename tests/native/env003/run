@@ -1,0 +1,6 @@
+. ../../testutils.sh
+
+# One variable set a million times under a limit of 32 MiB of data: the
+# replaced entries are freed, so the memory stays bounded.
+idris2 --cg native -o churn Churn.idr > /dev/null
+(ulimit -d 32768; ./build/exec/churn)

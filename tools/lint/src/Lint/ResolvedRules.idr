@@ -11,6 +11,7 @@ module Lint.ResolvedRules
 import Lint.Finding
 import Lint.Graph
 import Lint.Precision
+import Lint.Refactor.Span
 import Lint.Resolution
 import Lint.Rules
 import Lint.Separation
@@ -96,7 +97,7 @@ modulesOf fms r =
 ||| it is.
 export
 resolvedRuleNames : List String
-resolvedRuleNames = ["import-unused", "import-indirect", "generic-export", "public-unneeded", "raw-maker", "sealed-allocator"]
+resolvedRuleNames = ["import-unused", "import-indirect", "generic-export", "public-unneeded", "raw-maker", "sealed-allocator", "sealed-boundary"]
 
 ||| The rules whose suppression covers one use, the first after it: each
 ||| use is to say why it is sound by itself.
@@ -104,39 +105,72 @@ export
 oneUseRules : List String
 oneUseRules = ["sealed-allocator"]
 
+||| The rules no suppression lifts: what they report is to be changed.
+export
+unsuppressibleRules : List String
+unsuppressibleRules = ["sealed-boundary"]
+
 ||| The rules over the program resolved.
 export
 resolvedRules : List (SourceFile, List Declared, Mentions) -> (programNames : SortedSet String) -> Resolution -> List Finding
 resolvedRules fms programNames r =
   joined [ importUnused m ++ importIndirect r m ++ genericExport m | m <- modulesOf fms r ]
-  ++ joined [ publicUnneeded f ds ++ rawMaker f ++ sealedAllocator f ms | (f, ds, ms) <- fms ]
+  ++ joined [ publicUnneeded f ds ++ rawMaker f ++ sealedAllocator f ds ms | (f, ds, ms) <- fms ]
   where
     ||| `sealed-allocator`: outside the allocator's modules
     ||| (`Native.Runtime.Alloc.`), a use of any of their names but the
-    ||| linear blocks' (`Alloc.Block`): the allocator's own functions, which
+    ||| linear blocks' (`Alloc.Block`) and their arrays'
+    ||| (`Alloc.Blocks`): the allocator's own functions, which
     ||| take and give addresses as words, and the two that turn a block into
     ||| a word and back. Each is a place the types no longer check that a
     ||| block is freed once, so each is to say why it is sound. Every
     ||| mention of such a name in the file is reported, where it is written.
-    sealedAllocator : SourceFile -> Mentions -> List Finding
-    sealedAllocator f ms =
+    |||
+    ||| Only `base`'s foreign surface forces such a place, so one is allowed
+    ||| only there: in a `prim__` function of the support tier
+    ||| (`Native.Support.`), which implements one of `base`'s, its reason
+    ||| naming what of `base` forces it. Anywhere else it is reported as
+    ||| `sealed-boundary`, which no suppression lifts.
+    sealedAllocator : SourceFile -> List Declared -> Mentions -> List Finding
+    sealedAllocator f ds ms =
       let m = show f.mod.moduleNS in
       if isPrefixOf "Native.Runtime.Alloc." m then [] else
         let sealed = the (SortedSet String) (fromList
               [ u.name | rm <- r.modules, rm.path == f.path, u <- rm.uses, leaves u ])
-        in [ finding f "sealed-allocator" fc (nameRoot n)
-               ("`" ++ nameRoot n ++ "` leaves the linear blocks of `Native.Runtime.Alloc.Block`: say why it is sound")
-           | (fc, n) <- ms.refs, contains (nameRoot n) sealed ]
+        in [ report fc (nameRoot n) | (fc, n) <- ms.refs, contains (nameRoot n) sealed ]
       where
+        ||| Whether a place is in a `prim__` function of the support tier.
+        atBoundary : FC -> Bool
+        atBoundary fc =
+          isPrefixOf "Native.Support." (show f.mod.moduleNS)
+          && any (\d => any (isPrefixOf "prim__") d.defines && inside d.decl.fc fc) ds
+          where
+            inside : FC -> FC -> Bool
+            inside outer inner = case (bounds outer, bounds inner) of
+              (Just (s, e), Just (s', e')) => s <= s' && e' <= e
+              _ => False
+
+        ||| A use reported where it is written, by whether it is at `base`'s
+        ||| foreign surface.
+        report : FC -> String -> Finding
+        report fc n =
+          if atBoundary fc
+             then finding f "sealed-allocator" fc n
+                    ("`" ++ n ++ "` leaves the linear blocks of `Native.Runtime.Alloc.Block`: say why it is sound")
+             else finding f "sealed-boundary" fc n
+                    ("`" ++ n ++ "` leaves the linear blocks of `Native.Runtime.Alloc.Block` outside `base`'s foreign surface, the `prim__` functions of `Native.Support`: keep the block linear")
+
         ||| What the blocks' module gives that the types check.
         linear : List String
         linear = ["Block", "Addressed", "MkAddressed", "allocate", "address", "free"]
 
         ||| Whether a use is of the allocator's modules, and not of the
-        ||| blocks that the types check.
+        ||| blocks that the types check, nor of the arrays of them, which take
+        ||| and give blocks only linearly.
         leaves : Use -> Bool
         leaves u = isPrefixOf "Native.Runtime.Alloc." u.definer
                    && not (u.definer == "Native.Runtime.Alloc.Block" && any (== u.name) linear)
+                   && u.definer /= "Native.Runtime.Alloc.Blocks"
 
     ||| `raw-maker`: a raw address made from a word (`Raw.fromWord`) outside
     ||| the modules that keep addresses as words or are given them so: the

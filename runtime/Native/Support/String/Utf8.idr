@@ -34,6 +34,8 @@ import Native.Primitive.DoubleBits
 import Native.Runtime.Alloc.Allocator
 import Native.Runtime.Alloc.Arena
 import Native.Runtime.Alloc.Block
+-- lint: allow import-unused: the flat check reaches through the environment's bodies, which keep its entries in an array of blocks
+import Native.Runtime.Alloc.Blocks
 import Native.Runtime.Alloc.Chunks
 import Native.Runtime.Alloc.Config
 import Native.Runtime.Alloc.Pages
