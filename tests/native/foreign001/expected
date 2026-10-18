@@ -144,8 +144,6 @@ missing  System.Term.prim__getTermCols
 missing  System.Term.prim__getTermLines
 missing  System.Term.prim__setupTerm
 missing  System.prim__enableRawMode
-missing  System.prim__getArg
-missing  System.prim__getArgCount
 missing  System.prim__getEnv
 missing  System.prim__getEnvPair
 missing  System.prim__getPID
@@ -162,4 +160,6 @@ runtime  Prelude.Types.fastConcat
 runtime  Prelude.Types.fastPack
 runtime  Prelude.Types.fastUnpack
 runtime  System.prim__exit
-6 by the runtime, 3 lowered inline, 155 missing
+runtime  System.prim__getArg
+runtime  System.prim__getArgCount
+8 by the runtime, 3 lowered inline, 153 missing

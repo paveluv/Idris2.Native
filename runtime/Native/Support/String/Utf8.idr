@@ -645,6 +645,44 @@ prim__putStr str w = let (Runtime.MkHeap # ()) = putOp str Runtime.MkHeap in MkI
       h <- headerOf s
       Runtime.OS.osWriteAll Runtime.OS.stdout (Obj.objectBytes s 8) (bytesOf h)
 
+%cg native flat Support.String.Utf8.prim__getArg
+||| `getArg`: argument `n` of the program, its name argument 0, its bytes as
+||| the system gave them; the empty string for an `n` it has no argument for.
+export covering
+prim__getArg : Int -> PrimIO (Flat.Uniform String)
+prim__getArg n w = let (Runtime.MkHeap # r) = argOp Runtime.MkHeap in MkIORes r w
+  where
+    -- the bytes up to the zero byte that ends them
+    covering
+    zeroAt : Runtime.Raw -> Bits64 -> Runtime.Heap.Op Runtime.Heap Bits64
+    zeroAt p i = do
+      b <- Runtime.Memory.loadByteAt p i
+      if b == 0 then Runtime.Heap.pure i else zeroAt p (i + 1)
+
+    -- the bytes copied, and the OR of them, whose top bit says whether any
+    -- is not ASCII
+    covering
+    copy : Runtime.Raw -> Obj Types.Kind.STRING -> (i, end, seen : Bits64) -> Runtime.Heap.Op Runtime.Heap Bits64
+    copy p s i end seen = if i >= end then Runtime.Heap.pure seen else do
+      b <- Runtime.Memory.loadByteAt p i
+      setByte s i b
+      copy p s (i + 1) end (seen .|. b)
+
+    covering
+    argOp : Runtime.Heap.Op Runtime.Heap (Flat.Uniform String)
+    argOp = do
+      count <- Runtime.Memory.argumentCount
+      if n < 0 || cast n >= count
+         then do
+           s <- newString 0
+           finish s True 0
+         else do
+           p <- Runtime.Memory.argumentBytes (cast n)
+           len <- zeroAt p 0
+           s <- newString len
+           seen <- copy p s 0 len 0
+           finish s (seen < 0x80) len
+
 ------------------------------------------------------------------------------
 -- Text as numbers
 

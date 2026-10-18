@@ -186,6 +186,29 @@ export %inline
 runtimeArea : Heap.Op Heap Raw
 runtimeArea = intrinsic__runtimeArea
 
+||| The program's arguments, as the system put them at the stack pointer of
+||| the program's entry, which `ARGV` holds: their count, and argument `n`'s
+||| bytes, ended by a zero byte.
+export
+argumentCount : Heap.Op Heap Bits64
+argumentCount = do
+  argv <- argvArea
+  entry <- loadAt argv 0
+  loadAt (Raw.fromWord entry) 0
+
+export
+argumentBytes : (n : Bits64) -> Heap.Op Heap Raw
+argumentBytes n = do
+  argv <- argvArea
+  entry <- loadAt argv 0
+  p <- loadAt (Raw.fromWord entry) (8 + 8 * n)
+  pure (Raw.fromWord p)
+
+||| The byte at raw memory plus a byte offset.
+export %inline
+loadByteAt : Raw -> (offset : Bits64) -> Heap.Op Heap Bits64
+loadByteAt = intrinsic__load8
+
 ------------------------------------------------------------------------------
 -- Values as ordinary code holds them, and the objects they point to
 

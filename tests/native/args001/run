@@ -1,0 +1,6 @@
+. ../../testutils.sh
+
+# The arguments of a native program: none, then several.
+idris2 --cg native -o args Args.idr > /dev/null
+./build/exec/args
+./build/exec/args one "two words" "" é

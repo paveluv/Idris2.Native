@@ -27,10 +27,12 @@ export
 foreignFunctions : Types.Enc -> List (Name, Name)
 foreignFunctions enc =
   [ mirrored (NS (mkNamespace "System") (UN (Basic "prim__exit")))
+  , mirrored (NS (mkNamespace "System") (UN (Basic "prim__getArgCount")))
   , mirrored (NS (mkNamespace "Prelude.IO") (UN (Basic "prim__putChar"))) ]
   ++ maybe [] (\ns => [ (NS (mkNamespace m) (UN (Basic f)), NS ns (UN (Basic f)))
                       | (m, f) <- [ ("Prelude.Types", "fastPack"), ("Prelude.Types", "fastUnpack")
-                                  , ("Prelude.Types", "fastConcat"), ("Prelude.IO", "prim__putStr") ] ])
+                                  , ("Prelude.Types", "fastConcat"), ("Prelude.IO", "prim__putStr")
+                                  , ("System", "prim__getArg") ] ])
            (RuntimeModule.stringModule enc.string)
   where
     mirrored : Name -> (Name, Name)
