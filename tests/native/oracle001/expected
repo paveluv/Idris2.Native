@@ -6,6 +6,7 @@ Count: agree
 Exit: agree
 Hello: agree
 Interface: agree
+NumbersText: agree
 Show: agree
 StatusArray: agree
 StatusCase: agree
@@ -25,4 +26,4 @@ StatusStrings: agree
 StatusWide: agree
 Strings: agree
 TailCall: agree
-27 programs: 26 agree, 1 unsupported, 0 mismatch, 0 error, 0 timeout
+28 programs: 27 agree, 1 unsupported, 0 mismatch, 0 error, 0 timeout

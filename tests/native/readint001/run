@@ -1,0 +1,5 @@
+. ../../testutils.sh
+
+# Reading the integer types from strings, natively.
+idris2 --cg native -o readint ReadInt.idr > /dev/null
+./build/exec/readint

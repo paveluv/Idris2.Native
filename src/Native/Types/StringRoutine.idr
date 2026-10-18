@@ -36,6 +36,10 @@ data StringRoutine
   | ||| The double a string is: the nearest to its decimal, 0.0 where it is
     ||| none.
     ReadDouble
+  | ||| The integer a string is, truncated toward zero, modulo 2^64: what each
+    ||| cast from a string to an integer type of 64 bits or fewer wraps to its
+    ||| width; 0 where it is none.
+    ReadWord
 
 ||| Whether two string routines are the same one: how the code generator
 ||| finds the function that is one.
@@ -54,6 +58,7 @@ Eq StringRoutine where
   ShowUnsigned == ShowUnsigned = True
   ShowDouble == ShowDouble = True
   ReadDouble == ReadDouble = True
+  ReadWord == ReadWord = True
   _ == _ = False
 
 ||| Each string routine's arrow: what its arguments and its result carry.
@@ -72,12 +77,13 @@ port ShowSigned = MkPort [Port.Signed] (Just (Port.ValueOf String))
 port ShowUnsigned = MkPort [Port.Word] (Just (Port.ValueOf String))
 port ShowDouble = MkPort [Port.Dbl] (Just (Port.ValueOf String))
 port ReadDouble = MkPort [Port.ValueOf String] (Just Port.Dbl)
+port ReadWord = MkPort [Port.ValueOf String] (Just Port.Word)
 
 ||| Every string routine, once, which the code generator pairs with its own
 ||| copy, element by element.
 public export
 allStringRoutines : List StringRoutine
-allStringRoutines = [Length, Head, Tail, Index, Cons, Append, Reverse, Substr, Compare, ShowSigned, ShowUnsigned, ShowDouble, ReadDouble]
+allStringRoutines = [Length, Head, Tail, Index, Cons, Append, Reverse, Substr, Compare, ShowSigned, ShowUnsigned, ShowDouble, ReadDouble, ReadWord]
 
 ||| The list holds every string routine.
 complete : (r : StringRoutine) -> Elem r StringRoutine.allStringRoutines
@@ -94,3 +100,4 @@ complete ShowSigned = %search
 complete ShowUnsigned = %search
 complete ShowDouble = %search
 complete ReadDouble = %search
+complete ReadWord = %search

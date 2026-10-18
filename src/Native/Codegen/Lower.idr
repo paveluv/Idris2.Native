@@ -884,6 +884,18 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                 [c] <- strings Types.StringRoutine.Cons [w, empty]
                 pure (set env r c)
               else set env r <$> decimal wf (get env x)
+            -- a string as the integer it reads as, wrapped to the width as a cast
+            -- from Integer is
+            (Nothing, Just wt) =>
+              if from /= StringType || to == CharType
+                 then TermIR.Build.unsupported ("the cast from " ++ show from ++ " to " ++ show to)
+                 else do
+                   [w] <- strings Types.StringRoutine.ReadWord [get env x]
+                   c <- case wt of
+                     Narrow n s => narrowVal n s w
+                     Wide _ => wideVal w
+                     Unbounded => TermIR.Build.unsupported "an Integer read from a string, beyond what the runtime's Integer holds yet"
+                   pure (set env r c)
             -- a double as its shortest decimal text, and a string as a double
             (Nothing, Nothing) =>
               if from == DoubleType && to == StringType then do

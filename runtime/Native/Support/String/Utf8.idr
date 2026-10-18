@@ -657,6 +657,44 @@ record Scan where
   end, digits, whole, lead, significant, w : Bits64
   point : Bool
 
+%cg native flat Support.String.Utf8.readWord
+||| The integer a string is, modulo 2^64, which each cast from a string to an
+||| integer type wraps to its width, as Idris's casts from `Integer` wrap.
+||| Idris does not say what text these casts read, and its code generators'
+||| read different texts, so this reads the text every one of them reads: a
+||| sign, `+` or `-`, digits with at most one point among them and at least
+||| one digit; its value the decimal's, truncated toward zero (12.7 is 12,
+||| -12.7 is -12). Any other text is 0, what each gives for the empty string.
+|||
+||| Chez reads more, any number of its own (1e3 as 1000, 1/2 as 0), and reads
+||| a decimal with a point as a double first, losing its digits beyond the
+||| 17th; C's `atoi`, which Idris's RefC code generator reads every width
+||| by, reads 32 bits, and leading spaces and trailing text. Neither is
+||| read here: an exponent, a space or any other character is no integer.
+export covering
+readWord : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.ReadWord)
+readWord u = do
+  s <- stringObject u
+  h <- headerOf s
+  let n = bytesOf h
+  if n == 0 then Runtime.Heap.pure 0 else do
+    c0 <- byteAt s 0
+    let negative = c0 == 45
+    digits s n (if negative || c0 == 43 then 1 else 0) 0 False False negative
+  where
+    -- the digits from byte `i`, the whole part's value `v` so far, modulo
+    -- 2^64; the fraction's digits are read and dropped
+    covering
+    digits : Obj Types.Kind.STRING -> (n, i, v : Bits64) -> (any, point, negative : Bool) -> Runtime.Heap.Op Runtime.Heap Bits64
+    digits s n i v any point negative =
+      if i >= n then Runtime.Heap.pure (if not any then 0 else if negative then 0 - v else v) else do
+        b <- byteAt s i
+        if b == 46 && not point
+           then digits s n (i + 1) v any True negative
+           else if b >= 48 && b <= 57
+             then digits s n (i + 1) (if point then v else v * 10 + (b - 48)) True point negative
+             else Runtime.Heap.pure 0
+
 %cg native flat Support.String.Utf8.readDouble
 ||| The double a string is. Idris does not say what text its cast reads,
 ||| and its code generators' casts read different texts (Chez's
