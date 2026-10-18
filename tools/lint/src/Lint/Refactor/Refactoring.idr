@@ -15,7 +15,12 @@
 ||| Parsing is all the linter itself can ask of a change. A run may be given
 ||| a check besides, a command that type checks a file, and a change any
 ||| touched file fails it after is undone too: the type checker is the
-||| judge of what a planner could only reason about.
+||| judge of what a planner could only reason about. A check costs seconds,
+||| so a refactoring whose changes the planner judges is run to its fixed
+||| point first and checked once, on every file it touched; only when one
+||| fails is everything put back and the run made again, a check after
+||| each change. One whose changes only the type checker can judge
+||| (`needsCheck`) is checked change by change from the start.
 module Lint.Refactor.Refactoring
 
 import Lint.Refactor.Change
@@ -89,22 +94,35 @@ record Report where
   changed : List String
   stays : List (String, String)
 
+||| The files a change touches, as they were before it: `Nothing` for a file
+||| it creates.
+Saved : Type
+Saved = SortedMap String (Maybe String)
+
+||| A run to a fixed point: the candidates changed and those that stay,
+||| what the files it touched were before it, and each change made with
+||| what its files were before it, the latest first.
+record Run where
+  constructor MkRun
+  changed : List String
+  stays : List (String, String)
+  saved : Saved
+  made : List (String, Saved, Change)
+
 ||| The refactoring run over the file at the path to a fixed point: each
 ||| ready candidate changed, or recorded as staying, until none is left. A
 ||| candidate that comes back after its change stays, so the run ends. The
 ||| `check`, if any, is a shell command with `{}` where a file's path goes,
 ||| which succeeds on a file that checks. A wide refactoring's `project`
 ||| may be kept between calls; `changed` says the files no longer are what
-||| it was read from.
+||| it was read from. A dry run prints its changes at the end, those of the
+||| run that stood.
 export
 refactor : (dryRun : Bool) -> (check : Maybe String) -> Refactoring -> (project : IO Project) -> (changed : IO ()) -> (path : String) -> IO Report
-refactor dryRun check r project changedFiles path = loop [] [] empty
+refactor dryRun check r project changedFiles path = case check of
+  Just cmd => if r.needsCheck then loop check [] [] empty [] >>= finish else checkedOnce cmd
+  Nothing => loop Nothing [] [] empty [] >>= finish
   where
-    ||| The files a change touches, as they were before it: `Nothing` for a file
-    ||| it creates.
-    Saved : Type
-    Saved = SortedMap String (Maybe String)
-
     -- the directory a file is in, and the directories down to it,
     -- made where they are missing
     directoryOf : String -> String
@@ -124,16 +142,44 @@ refactor dryRun check r project changedFiles path = loop [] [] empty
       Just t => do ignore (createDirectories (directoryOf p)); ignore (writeFile p t)
       Nothing => ignore (removeFile p)
 
-    finish : List String -> List (String, String) -> Saved -> IO Report
-    finish changed stays saved = do
-      when dryRun $ restore saved
-      pure (MkReport path (reverse changed) (reverse stays))
+    ||| A change as a dry run prints it: each edit, with the text it replaces.
+    printChange : Saved -> Change -> IO ()
+    printChange saved ch = do
+      for_ ch.edits $ \(p, es) => do
+        putStrLn ("  " ++ p)
+        let old = fromMaybe "" (join (lookup p saved))
+        for_ es $ \e => traverse_ (putStrLn . ("    " ++)) (describe old e)
+      for_ ch.created $ \(p, _) => putStrLn ("  created " ++ p)
+      for_ ch.removed $ \p => putStrLn ("  removed " ++ p)
+
+    finish : Run -> IO Report
+    finish run = do
+      when dryRun $ do
+        for_ (reverse run.made) $ \(label, before, ch) => do
+          putStrLn (r.name ++ ": " ++ label)
+          printChange before ch
+        restore run.saved
+      pure (MkReport path (reverse run.changed) (reverse run.stays))
+
+    withPath : String -> String -> String
+    withPath p cmd = case break (== '{') (unpack cmd) of
+      (before, '{' :: '}' :: after) => pack before ++ p ++ withPath p (pack after)
+      (before, c :: after) => pack (before ++ [c]) ++ withPath p (pack after)
+      (before, []) => pack before
+
+    ||| The first of the files the check fails on, if any.
+    failsOn : (cmd : String) -> List String -> IO (Maybe String)
+    failsOn _ [] = pure Nothing
+    failsOn cmd (p :: more) = do
+      0 <- system (withPath p cmd)
+        | _ => pure (Just p)
+      failsOn cmd more
 
     ||| A change made: each file edited and each created, what each was kept,
-    ||| and every touched file parsed, and checked, again; or, with everything
-    ||| put back, why it could not be made.
-    makeChange : Change -> IO (Either String Saved)
-    makeChange ch = do
+    ||| and every touched file parsed, and checked if there is a check,
+    ||| again; or, with everything put back, why it could not be made.
+    makeChange : (check : Maybe String) -> Change -> IO (Either String Saved)
+    makeChange check ch = do
       Right saved <- editAll empty ch.edits
         | Left (why, saved) => do restore saved; pure (Left why)
       Right created <- createAll saved ch.created
@@ -201,55 +247,46 @@ refactor dryRun check r project changedFiles path = loop [] [] empty
         unchecked : List String -> IO (Maybe String)
         unchecked ps = case check of
           Nothing => pure Nothing
-          Just cmd => go cmd ps
-          where
-            withPath : String -> String -> String
-            withPath p cmd = case break (== '{') (unpack cmd) of
-              (before, '{' :: '}' :: after) => pack before ++ p ++ withPath p (pack after)
-              (before, c :: after) => pack (before ++ [c]) ++ withPath p (pack after)
-              (before, []) => pack before
+          Just cmd => map (\p => "the change leaves " ++ p ++ " not checking") <$> failsOn cmd ps
 
-            go : String -> List String -> IO (Maybe String)
-            go _ [] = pure Nothing
-            go cmd (p :: more) = do
-              0 <- system (withPath p cmd)
-                | _ => pure (Just ("the change leaves " ++ p ++ " not checking"))
-              go cmd more
-
-    ||| A change as a dry run prints it: each edit, with the text it replaces.
-    printChange : Saved -> Change -> IO ()
-    printChange saved ch = do
-      for_ ch.edits $ \(p, es) => do
-        putStrLn ("  " ++ p)
-        let old = fromMaybe "" (join (lookup p saved))
-        for_ es $ \e => traverse_ (putStrLn . ("    " ++)) (describe old e)
-      for_ ch.created $ \(p, _) => putStrLn ("  created " ++ p)
-      for_ ch.removed $ \p => putStrLn ("  removed " ++ p)
-
-    loop : List String -> List (String, String) -> Saved -> IO Report
-    loop changed stays saved = do
+    ||| The run from where it is to a fixed point, each change checked by
+    ||| `check`, if one is given.
+    loop : (check : Maybe String) -> List String -> List (String, String) -> Saved -> List (String, Saved, Change) -> IO Run
+    loop check changed stays saved made = do
       -- a change of another file's may have removed this one
       True <- exists path
-        | False => finish changed stays saved
+        | False => pure (MkRun changed stays saved made)
       Right s <- load path
-        | Left e => finish changed (("the file", "it does not parse: " ++ e) :: stays) saved
+        | Left e => pure (MkRun changed (("the file", "it does not parse: " ++ e) :: stays) saved made)
       others <- if r.wide then project else pure (MkProject [] [] Nothing [])
       let left = filter (\c => not (c.label `elem` map fst stays)) (r.candidates others s)
       case left of
-        [] => finish changed stays saved
+        [] => pure (MkRun changed stays saved made)
         (c :: _) =>
-          if c.label `elem` changed then loop changed ((c.label, "it comes back after its change") :: stays) saved else
+          if c.label `elem` changed then loop check changed ((c.label, "it comes back after its change") :: stays) saved made else
           case c.plan of
-            Left why => loop changed ((c.label, why) :: stays) saved
+            Left why => loop check changed ((c.label, why) :: stays) saved made
             Right ch => do
-              made <- makeChange ch
-              case made of
-                Left why => loop changed ((c.label, why) :: stays) saved
+              result <- makeChange check ch
+              case result of
+                Left why => loop check changed ((c.label, why) :: stays) saved made
                 Right before => do
                   changedFiles
-                  when dryRun $ do
-                    putStrLn (r.name ++ ": " ++ c.label)
-                    printChange before ch
                   -- what a file was before the run is kept, not what it
                   -- was before this change
-                  loop (c.label :: changed) stays (mergeLeft saved before)
+                  loop check (c.label :: changed) stays (mergeLeft saved before) ((c.label, before, ch) :: made)
+
+    ||| The run made unchecked, then every file it touched checked once, with
+    ||| all its changes; made again, a check after each change, if one fails.
+    checkedOnce : (cmd : String) -> IO Report
+    checkedOnce cmd = do
+      unchecked <- loop Nothing [] [] empty []
+      -- the Idris files the run touched that are there after it
+      there <- traverse (\p => (p,) <$> exists p) (filter (isSuffixOf ".idr") (keys unchecked.saved))
+      let touched = map fst (filter snd there)
+      Nothing <- failsOn cmd touched
+        | Just _ => do
+            restore unchecked.saved
+            changedFiles
+            loop (Just cmd) [] [] empty [] >>= finish
+      finish unchecked
