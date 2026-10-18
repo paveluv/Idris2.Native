@@ -31,53 +31,6 @@ Semigroup Refs where
 Monoid Refs where
   neutral = MkRefs [] [] []
 
-||| The names an operand refers to: a static's.
-opnd : Opnd enc -> Refs
-opnd (StaticRef n) = MkRefs [] [n] []
-opnd _ = neutral
-
-opnds : List (Opnd enc) -> Refs
-opnds = concatMap opnd
-
-||| The names an instruction refers to.
-instr : Instr enc -> Refs
-instr (CodeAddr _ f) = MkRefs [f] [] []
-instr (StaticAddr _ s) = MkRefs [] [s] []
-instr (TableAddr _ t) = MkRefs [] [] [t]
-instr (Arith _ _ x y) = opnds [x, y]
-instr (Mul128 _ _ x y) = opnds [x, y]
-instr (ArithOv _ _ x y _) = opnds [x, y]
-instr (Cmp _ _ x y) = opnds [x, y]
-instr (AllocObj _ _ fields _) = opnds fields
-instr (AllocSized _ _ _ fill _) = maybe neutral opnd fill
-instr (DirectCall f xs _ _ _) = MkRefs [f] [] [] <+> opnds xs
-instr (SetPinned _ x) = opnd x
-instr (SystemCall _ xs) = opnds xs
-instr _ = neutral
-
-||| The names a terminator refers to.
-terminator : Terminator enc -> Refs
-terminator (Branch _ x y _ _) = opnds [x, y]
-terminator (Call f xs _) = MkRefs [f] [] [] <+> opnds xs
-terminator (TailCall f xs) = MkRefs [f] [] [] <+> opnds xs
-terminator (Return x) = opnd x
-terminator (Enter _ xs) = opnds xs
-terminator (Ret xs) = opnds xs
-terminator _ = neutral
-
-||| The names a function refers to.
-function : Function enc -> Refs
-function f = concatMap (\b => concatMap instr b.body <+> terminator b.term) f.blocks
-
-||| The names a static refers to: the code and the statics its fields hold.
-static : Static enc -> Refs
-static s = concatMap field s.fields
-  where
-    field : SField -> Refs
-    field (SCode f) = MkRefs [f] [] []
-    field (SRef t) = MkRefs [] [t] []
-    field _ = neutral
-
 ||| The program with only the functions and statics its entry and the
 ||| functions of `roots` reach, in their order, and the tables they read. A
 ||| name that is no function or static of the program is left for the
@@ -92,6 +45,53 @@ reach roots p =
   in ({ functions := filter (\f => contains f.name cs) p.functions
       , statics := filter (\s => contains s.sym ss) p.statics } p, Data.SortedSet.toList ts)
   where
+    ||| The names a function refers to.
+    function : Function enc'' -> Refs
+    function f = concatMap (\b => concatMap instr b.body <+> terminator b.term) f.blocks
+      where
+        ||| The names an operand refers to: a static's.
+        opnd : Opnd enc' -> Refs
+        opnd (StaticRef n) = MkRefs [] [n] []
+        opnd _ = neutral
+
+        opnds : List (Opnd enc') -> Refs
+        opnds = concatMap opnd
+
+        ||| The names an instruction refers to.
+        instr : Instr enc' -> Refs
+        instr (CodeAddr _ f) = MkRefs [f] [] []
+        instr (StaticAddr _ s) = MkRefs [] [s] []
+        instr (TableAddr _ t) = MkRefs [] [] [t]
+        instr (Arith _ _ x y) = opnds [x, y]
+        instr (Mul128 _ _ x y) = opnds [x, y]
+        instr (ArithOv _ _ x y _) = opnds [x, y]
+        instr (Cmp _ _ x y) = opnds [x, y]
+        instr (AllocObj _ _ fields _) = opnds fields
+        instr (AllocSized _ _ _ fill _) = maybe neutral opnd fill
+        instr (DirectCall f xs _ _ _) = MkRefs [f] [] [] <+> opnds xs
+        instr (SetPinned _ x) = opnd x
+        instr (SystemCall _ xs) = opnds xs
+        instr _ = neutral
+
+        ||| The names a terminator refers to.
+        terminator : Terminator enc' -> Refs
+        terminator (Branch _ x y _ _) = opnds [x, y]
+        terminator (Call f xs _) = MkRefs [f] [] [] <+> opnds xs
+        terminator (TailCall f xs) = MkRefs [f] [] [] <+> opnds xs
+        terminator (Return x) = opnd x
+        terminator (Enter _ xs) = opnds xs
+        terminator (Ret xs) = opnds xs
+        terminator _ = neutral
+
+    ||| The names a static refers to: the code and the statics its fields hold.
+    static : Static enc' -> Refs
+    static s = concatMap field s.fields
+      where
+        field : SField -> Refs
+        field (SCode f) = MkRefs [f] [] []
+        field (SRef t) = MkRefs [] [t] []
+        field _ = neutral
+
     -- the names still to follow, and those reached; each name is followed
     -- once, so the fuel, every function and static once, is enough
     go : SortedMap Name (Function enc) -> SortedMap Name (Static enc) -> Refs ->
