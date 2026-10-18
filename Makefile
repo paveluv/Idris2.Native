@@ -25,6 +25,8 @@
 #                   under each component; `offenders=20` lists more
 #   make scaling    the backend's phases against the size of the program;
 #                   `sizes="64 128"` chooses the sizes
+#   make selfhost   idris2-native compiled by itself, what it could not
+#                   lower, and how far the result gets (tests/selfhost)
 #
 # The submodule is never edited: building it writes only files that it
 # ignores.
@@ -39,7 +41,7 @@ threads ?= $(shell nproc 2>/dev/null || echo 1)
 # after uses the pinned Idris 2's, in the prefix.
 WITH_PREFIX := IDRIS2_PREFIX=$(PREFIX)
 
-.PHONY: all upstream native release linter testbin test lint gate health check-source scaling clean
+.PHONY: all upstream native release linter testbin test lint gate health check-source scaling selfhost clean
 
 all: native
 
@@ -101,7 +103,7 @@ gate:
 # rules over what the modules use read the TTCs of their build, so the
 # product is built first.
 lint: native linter
-	$(WITH_PREFIX) $(LINTER) --resolved --minimum 80 src runtime --unscored tools/lint/src --programs tests/native tests/flat tests/Main.idr
+	$(WITH_PREFIX) $(LINTER) --resolved --minimum 80 src runtime --unscored tools/lint/src --programs tests/native tests/flat tests/selfhost tests/Main.idr
 
 # The architectural health, each component with the offenders that cost it
 # most: what to change to raise it.
@@ -127,6 +129,13 @@ check-source:
 # chooses the sizes.
 scaling: native
 	cd tests/scaling && $(WITH_PREFIX) sh ./scaling.sh $(TARGET) $(sizes)
+
+# Where self-hosting stands: idris2-native compiled natively by itself into
+# build/selfhost, the census of its abort stubs by construct, and the ladder
+# of tasks the result is run on, up to the first it fails
+# (tests/selfhost/selfhost.sh). On demand, not part of the gate.
+selfhost: native
+	$(WITH_PREFIX) sh tests/selfhost/selfhost.sh $(TARGET) $(CURDIR)/build/selfhost
 
 clean:
 	$(RM) -r build runtime/build tools/lint/build tests/build tests/failures
