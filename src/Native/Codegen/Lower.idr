@@ -1538,8 +1538,11 @@ lowerProgram enc platform realised forms shapes tables vmdefs = do
     ||| the result may name statics the lowering does not use, which costs only
     ||| their bytes.
     staticsOf : List VMInst -> SortedMap Name StaticPlan
-    staticsOf body = snd (go body (empty, empty))
+    staticsOf body = snd (go body (empty, note (Str "") empty))
       where
+        -- the empty string, which the lowering makes a character's string
+        -- from (`Cons` onto it), whether the body names it or not; an image
+        -- leaves out a static nothing reaches
         plan : Constant -> Maybe (Name, StaticPlan)
         plan k = case intConst k of
           Just (Wide _, v) => let p = patternValue v in
@@ -1578,7 +1581,10 @@ lowerProgram enc platform realised forms shapes tables vmdefs = do
                  Nothing => (known, foldl (flip note) ss folded)
           -- lint: allow trust-escape: VMCode nests its instruction lists in tuples, which totality checking does not see through
           one (CASE _ alts d) acc = assert_total (maybe id go d (foldl (\a, alt => go (snd alt) a) acc alts))
-          one (CONSTCASE _ alts d) acc = assert_total (maybe id go d (foldl (\a, alt => go (snd alt) a) acc alts))
+          -- a constant case compares with each alternative's constant, so a string
+          -- among them needs its static as any constant does
+          one (CONSTCASE _ alts d) acc =
+            assert_total (maybe id go d (foldl (\(known, ss), alt => go (snd alt) (known, note (fst alt) ss)) acc alts))
           one _ acc = acc
 
     bodyStatics : (Name, VMDef) -> Maybe (SortedMap Name StaticPlan)

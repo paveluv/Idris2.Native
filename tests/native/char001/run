@@ -1,0 +1,5 @@
+. ../../testutils.sh
+
+# Characters as strings, natively.
+idris2 --cg native -o char Char.idr > /dev/null
+./build/exec/char
