@@ -187,7 +187,7 @@ export
 encodeHeader : {k : Kind} -> Header enc k -> Int64
 encodeHeader h = signed (cast (fixedWord k) + sum (map part (parts h)))
   where
-    part : (HeaderPart k', Nat) -> Integer
+    part : (HeaderPart k, Nat) -> Integer
     part (p, v) = (cast v `mod` prim__shl_Integer 1 (cast (snd (place p)))) * prim__shl_Integer 1 (cast (fst (place p)))
 
     signed : Integer -> Int64
@@ -211,7 +211,7 @@ decodeHeader enc w = do
     u : Integer
     u = unsigned w
 
-    get : HeaderPart k' -> Nat
+    get : HeaderPart k -> Nat
     get p = cast ((u `div` prim__shl_Integer 1 (cast (fst (place p)))) `mod` prim__shl_Integer 1 (cast (snd (place p))))
 
     -- A sign-magnitude program's BIGNUM header, matched on the record so

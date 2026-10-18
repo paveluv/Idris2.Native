@@ -183,7 +183,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
       Render : Types.Enc -> Type -> Type
       Render enc = StateT (RS enc) (Either String)
 
-      failWith : String -> Render enc' a
+      failWith : String -> Render enc a
       failWith = lift . Left
 
       staticBytes : LocatedIR.Static enc -> Render enc (List Bits8)
@@ -201,7 +201,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
       emit : Asm.Instr -> Render enc' ()
       emit i = modify { text $= (:< i) }
 
-      emits : List Asm.Instr -> Render enc' ()
+      emits : List Asm.Instr -> Render enc ()
       emits = traverse_ emit
 
       sym : Linkage.Sym -> Asm.Label
@@ -265,7 +265,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                 pure (c.resume, (vals ++ raws, HeapObj.LayoutWord.layoutWord (cast (length vals)) (cast (length raws))))
 
           ||| Record that the code uses at least these areas.
-          uses : Linkage.Areas -> Render enc' ()
+          uses : Linkage.Areas -> Render enc ()
           uses a = modify { areas $= Linkage.Areas.maxAreas a }
 
           ||| The register's slot, recorded as used.
@@ -379,10 +379,10 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                                           emits [Asm.Lea Asm.RCX (Asm.MRip l ptag),
                                                                  Asm.Alu Asm.CMP Asm.RAX Asm.RCX]
 
-          coldEmit : Asm.Instr -> Render enc' ()
+          coldEmit : Asm.Instr -> Render enc ()
           coldEmit i = modify { cold $= (:< i) }
 
-          fresh : Render enc' Asm.Label
+          fresh : Render enc Asm.Label
           fresh = do
             s <- get
             put ({ nextLabel := S s.nextLabel } s)

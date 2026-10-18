@@ -666,7 +666,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
             No _ => Nothing
           _ => Nothing
 
-        set : Env v' -> Reg -> TermIR.Opnd v' IRCommon.Ty.Val -> Env v'
+        set : Env v -> Reg -> TermIR.Opnd v IRCommon.Ty.Val -> Env v
         set env r x = maybe env (\k => insert k (x, Nothing) env) (key r)
 
         extPrim : Env v -> Reg -> Name -> List Reg -> B (Env v)
@@ -859,7 +859,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
               Left ok => TermIR.Build.switch x cs other
               Right _ => TermIR.Build.unsupported "a case with repeated constants"
 
-        setKnown : Env v' -> Reg -> TermIR.Opnd v' IRCommon.Ty.Val -> Constant -> Env v'
+        setKnown : Env v -> Reg -> TermIR.Opnd v IRCommon.Ty.Val -> Constant -> Env v
         setKnown env r x c = maybe env (\k => insert k (x, Just c) env) (key r)
 
         ||| A constant: an integer is an immediate when it is a fixnum, and the
@@ -1404,11 +1404,11 @@ program forms shapes realised tables entry es rs =
                      [TermIR.Def.Defined (TermIR.Body.Unsupported "a program with two definitions of one name")] []
                        (TermIR.Program.MkEntry TermIR.Var.here) IRCommon.ConIds.noConIds)
   where
-    refsOf : (d : TermIR.Decls enc') -> Refs enc' d
+    refsOf : (d : TermIR.Decls enc) -> Refs enc d
     refsOf d = MkRefs (fromList [(s.name, (s ** v)) | (s ** v) <- TermIR.Var.enumerate d.sigs])
                       (fromList [(s.sym, (s ** v)) | (s ** v) <- TermIR.Var.enumerate d.statics]) realised
 
-    staticDefs : (d : TermIR.Decls enc) -> (rs : List (s' ** ({0 d' : TermIR.Decls enc} -> TermIR.StaticDef d' s'))) ->
+    staticDefs : (d : TermIR.Decls enc) -> (rs : List (s ** ({0 d' : TermIR.Decls enc} -> TermIR.StaticDef d' s))) ->
                  All (TermIR.StaticDef d) (map DPair.fst rs)
     staticDefs d [] = []
     staticDefs d ((_ ** def) :: rs) = def :: staticDefs d rs
@@ -1418,8 +1418,8 @@ program forms shapes realised tables entry es rs =
     mainSig = TermIR.MkSig mainExpression IRCommon.Conv.CPS [] False
 
     ||| The declarations: the entry first, the other functions, the statics.
-    declsOf : (es : List (TermIR.Sig enc', Plan)) ->
-              (rs : List (s' ** ({0 d : TermIR.Decls enc'} -> TermIR.StaticDef d s'))) -> TermIR.Decls enc'
+    declsOf : (es : List (TermIR.Sig enc, Plan)) ->
+              (rs : List (s ** ({0 d : TermIR.Decls enc} -> TermIR.StaticDef d s))) -> TermIR.Decls enc
     declsOf es rs = TermIR.MkDecls (mainSig :: map Builtin.fst es) (map DPair.fst rs)
 
 ||| Whether a value of the C type is held as a flat value of the skeleton:
@@ -1644,7 +1644,7 @@ lowerProgram enc platform realised forms shapes tables vmdefs = do
         ||| it. Its words name nothing, so it is defined for any declarations.
         -- A big constant's static: a header of its sign and words.
         bigStatic : Name -> Integer -> (sh : Types.BignumEnc.SignInHeader enc.bignum) -> (ws : List Int64) ->
-                    Maybe (s' ** ({0 d : TermIR.Decls enc} -> TermIR.StaticDef d s'))
+                    Maybe (s ** ({0 d : TermIR.Decls enc} -> TermIR.StaticDef d s))
         bigStatic n v sh ws =
           case choose (TermIR.FieldTys.wellFormed (Types.Header.BignumH {enc} @{sh} (v < 0) (length ws))) of
           Left ok =>

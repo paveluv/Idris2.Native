@@ -479,10 +479,10 @@ mergeClauses = fileRefactoring "merge-clauses"
     -- the user, or methods of it if it is an implementation
     targetsOf : Subject -> (Declared, Declared) -> List Candidate
     targetsOf s (h, u) = case u.decl.val of
-      PDef cls => if usedBy cls >= 2 then [MkCandidate (labelOf u) (plan s u cls (claimType s u))] else []
+      PDef cls => if usedBy cls >= 2 then [candidate (labelOf u) (plan s u cls (claimType s u))] else []
       PImplementation _ _ _ _ _ _ _ _ _ (Just body) =>
         mapMaybe (\d => case d.val of
-                          PDef cls => if usedBy cls >= 2 then Just (MkCandidate (fastConcat (definesOf d) ++ " of " ++ labelOf u) (plan s u cls Nothing)) else Nothing
+                          PDef cls => if usedBy cls >= 2 then Just (candidate (fastConcat (definesOf d) ++ " of " ++ labelOf u) (plan s u cls Nothing)) else Nothing
                           _ => Nothing) (foldr (\d, rest => byFunction d ++ rest) [] body)
       _ => []
       where

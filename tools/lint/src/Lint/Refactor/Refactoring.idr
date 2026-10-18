@@ -49,12 +49,21 @@ import System.File.ReadWrite
 %default covering
 
 ||| One thing a refactoring may change: what it is about, for the report,
-||| and its change, or why it stays as it is.
+||| and its change, or why it stays as it is; and, for a change the planner
+||| cannot judge, the one it would rather make (`preferred`), which only
+||| the type checker can judge: with a check it is tried first, the change
+||| made if it fails; without one it is never made.
 public export
 record Candidate where
   constructor MkCandidate
   label : String
   plan : Either String Change
+  preferred : Maybe Change
+
+||| A candidate with no preferred change.
+export
+candidate : (label : String) -> Either String Change -> Candidate
+candidate l p = MkCandidate l p Nothing
 
 ||| What a declaration is called in a report: the names it defines, or,
 ||| for one that defines none, such as an implementation, where it is.
@@ -120,8 +129,8 @@ record Run where
 export
 refactor : (dryRun : Bool) -> (check : Maybe String) -> Refactoring -> (project : IO Project) -> (changed : IO ()) -> (path : String) -> IO Report
 refactor dryRun check r project changedFiles path = case check of
-  Just cmd => if r.needsCheck then loop check [] [] empty [] >>= finish else checkedOnce cmd
-  Nothing => loop Nothing [] [] empty [] >>= finish
+  Just cmd => if r.needsCheck then loop True check [] [] empty [] >>= finish else checkedOnce cmd
+  Nothing => loop False Nothing [] [] empty [] >>= finish
   where
     -- the directory a file is in, and the directories down to it,
     -- made where they are missing
@@ -250,9 +259,11 @@ refactor dryRun check r project changedFiles path = case check of
           Just cmd => map (\p => "the change leaves " ++ p ++ " not checking") <$> failsOn cmd ps
 
     ||| The run from where it is to a fixed point, each change checked by
-    ||| `check`, if one is given.
-    loop : (check : Maybe String) -> List String -> List (String, String) -> Saved -> List (String, Saved, Change) -> IO Run
-    loop check changed stays saved made = do
+    ||| `check`, if one is given. `checked` says that a check judges the run,
+    ||| now or once it is over, so that a candidate's preferred change may be
+    ||| made: under a check, the change made when it fails.
+    loop : (checked : Bool) -> (check : Maybe String) -> List String -> List (String, String) -> Saved -> List (String, Saved, Change) -> IO Run
+    loop checked check changed stays saved made = do
       -- a change of another file's may have removed this one
       True <- exists path
         | False => pure (MkRun changed stays saved made)
@@ -263,24 +274,34 @@ refactor dryRun check r project changedFiles path = case check of
       case left of
         [] => pure (MkRun changed stays saved made)
         (c :: _) =>
-          if c.label `elem` changed then loop check changed ((c.label, "it comes back after its change") :: stays) saved made else
+          if c.label `elem` changed then loop checked check changed ((c.label, "it comes back after its change") :: stays) saved made else
           case c.plan of
-            Left why => loop check changed ((c.label, why) :: stays) saved made
+            Left why => loop checked check changed ((c.label, why) :: stays) saved made
             Right ch => do
-              result <- makeChange check ch
+              result <- attempt (if checked then c.preferred else Nothing) ch
               case result of
-                Left why => loop check changed ((c.label, why) :: stays) saved made
-                Right before => do
+                Left why => loop checked check changed ((c.label, why) :: stays) saved made
+                Right (before, ch') => do
                   changedFiles
                   -- what a file was before the run is kept, not what it
                   -- was before this change
-                  loop check (c.label :: changed) stays (mergeLeft saved before) ((c.label, before, ch) :: made)
+                  loop checked check (c.label :: changed) stays (mergeLeft saved before) ((c.label, before, ch') :: made)
+      where
+        -- the preferred change if there is one and it checks, else the
+        -- change; what the files were before it, and the change made
+        attempt : Maybe Change -> Change -> IO (Either String (Saved, Change))
+        attempt (Just p) ch = do
+          tried <- makeChange check p
+          case tried of
+            Right before => pure (Right (before, p))
+            Left _ => map (\b => (b, ch)) <$> makeChange check ch
+        attempt Nothing ch = map (\b => (b, ch)) <$> makeChange check ch
 
     ||| The run made unchecked, then every file it touched checked once, with
     ||| all its changes; made again, a check after each change, if one fails.
     checkedOnce : (cmd : String) -> IO Report
     checkedOnce cmd = do
-      unchecked <- loop Nothing [] [] empty []
+      unchecked <- loop True Nothing [] [] empty []
       -- the Idris files the run touched that are there after it
       there <- traverse (\p => (p,) <$> exists p) (filter (isSuffixOf ".idr") (keys unchecked.saved))
       let touched = map fst (filter snd there)
@@ -288,5 +309,5 @@ refactor dryRun check r project changedFiles path = case check of
         | Just _ => do
             restore unchecked.saved
             changedFiles
-            loop (Just cmd) [] [] empty [] >>= finish
+            loop True (Just cmd) [] [] empty [] >>= finish
       finish unchecked

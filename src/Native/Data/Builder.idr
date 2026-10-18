@@ -114,7 +114,7 @@ uncons b = unconsWithin (nodes b) b
   where
     -- uncons's walk down the left spine, each step a node: past an empty part,
     -- or turning a join on the left to the right
-    unconsWithin : (fuel : Nat) -> Builder a' -> Maybe (a', Builder a')
+    unconsWithin : (fuel : Nat) -> Builder a -> Maybe (a, Builder a)
     unconsWithin _ (Piece (x :: xs)) = Just (x, piece xs)
     unconsWithin (S k) (Append _ Empty r) = unconsWithin k r
     unconsWithin (S k) (Append _ (Piece []) r) = unconsWithin k r

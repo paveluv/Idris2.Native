@@ -19,6 +19,7 @@ module Lint.Refactor.ScopeHelpers
 
 import Lint.Refactor.Binders
 import Lint.Refactor.Change
+import Lint.Refactor.Constraints
 import Lint.Refactor.Edit
 import Lint.Refactor.Extent
 import Lint.Refactor.Free
@@ -32,7 +33,9 @@ import Lint.Refactor.Where
 import Core.FC
 import Core.Name
 import Core.WithData
+import Data.Either
 import Data.List
+import Data.List1
 import Data.Maybe
 import Data.SortedMap
 import Data.SortedSet
@@ -58,19 +61,39 @@ scopeHelpers = fileRefactoring "scope-helpers"
     globalsOf s = fromList (foldr (\d, rest => d.defines ++ rest) [] s.declared)
 
     ||| The change that moves a helper into the clause of its user that uses it,
-    ||| or why it stays.
-    plan : Subject -> (helper, user : Declared) -> Either String Change
+    ||| or why it stays; and the one to prefer, if it differs: the helper at
+    ||| its user's own type variables, not renamed, and without the
+    ||| constraints its user has, which only the type checker can judge,
+    ||| since the helper may be used at other types than its user's.
+    plan : Subject -> (helper, user : Declared) -> Either String (Change, Maybe Change)
     plan s h u = do
       (cls, aroundUser) <- clausesOf s u
       cl <- clauseUsing cls
       extent <- extentOf s h
       (aroundBlock, lifted, userBlock, ownBlock) <- placement extent cl
       let values = union (boundOf cl) (union aroundBlock (whereNames cl))
+          own = maybe empty (.names) ownBlock
       noCapture values aroundUser
-      (text, calls) <- adjust cl (union values aroundUser) lifted userBlock (maybe empty (.names) ownBlock) extent
+      (text, calls) <- adjust cl (union values aroundUser) lifted userBlock own extent
       insert <- intoWhere (linesOf s) cl h.defines (helperFree s h) extent.column text
-      pure (inFile s.file.path ([insert, cut (linesOf s) extent] ++ calls))
+      let safe = inFile s.file.path ([insert, cut (linesOf s) extent] ++ calls)
+          preferred = do
+            (text', calls') <- eitherToMaybe (adjust cl values lifted userBlock own extent)
+            if text' == text then Nothing else do
+              insert' <- eitherToMaybe (intoWhere (linesOf s) cl h.defines (helperFree s h) extent.column text')
+              Just (inFile s.file.path ([insert', cut (linesOf s) extent] ++ calls'))
+      pure (safe, preferred)
       where
+        -- the constraints the user has, as written: its claim's, or its
+        -- implementation's
+        userConstraints : List String
+        userConstraints = case u.decl.val of
+          PImplementation _ _ _ _ cs _ _ _ _ _ => foldr (\c, rest => writtenAs (linesOf s) (snd c) ++ rest) [] cs
+          _ => foldr (\d, rest => case d.decl.val of
+                                     PClaim c => if any (`elem` u.defines) d.defines
+                                                   then constraintsOf (linesOf s) c.type.val.type ++ rest else rest
+                                     _ => rest) [] s.declared
+
         -- the one clause of the user that uses the helper
         clauseUsing : List PClause -> Either String PClause
         clauseUsing cls = case filter (\cl => any (\n => contains n (inClause cl)) h.defines) cls of
@@ -126,7 +149,8 @@ scopeHelpers = fileRefactoring "scope-helpers"
               binders' = map (\(n, to, ps) => (n, to, filter (\p => not (p `elem` ownShort)) ps)) binders
               ownEdits = map (\(p, _, (n, to)) => nameEdit p n to) own
           renamed <- maybe (Left "its renames overlap") Right (apply (foldr (\r, rest => renameEdits r ++ rest) ownEdits (renames ++ binders')) s.text)
-          claimed <- claimAdjusted (lines renamed) (autosAround userBlock) (map (\(n, _, _) => n) every)
+          claimed' <- claimAdjusted (lines renamed) (autosAround userBlock) (map (\(n, _, _) => n) every)
+          let claimed = withoutShared (map (\(n, _, _) => n) every) claimed'
           let (cs, ce) = lineSpan h.decl.fc
               userEdits = map (\(p, short, (n, to)) => nameEdit p n (if short then to ++ " = " ++ n else to))
                               (foldr (\b, rest => calls [cl] b ++ rest) [] binders)
@@ -162,6 +186,19 @@ scopeHelpers = fileRefactoring "scope-helpers"
             claimType c = case c.decl.val of
               PClaim cd => Just cd.type.val.type
               _ => Nothing
+
+            -- the claim's lines without each constraint the user has as
+            -- written, unless it names a variable renamed: search finds the
+            -- user's
+            withoutShared : (renamed : List String) -> List String -> List String
+            withoutShared renamed ls =
+              let theirs = map tidy userConstraints
+                  mine = maybe [] (constraintsOf (linesOf s)) (claimType h)
+                  dropped = List.filter (\w => elem (tidy w) theirs && not (any (\n => elem n renamed) (identifiers w))) mine
+              in lines (foldl (\t, w => withoutConstraint w t) (joinBy "\n" ls) dropped)
+              where
+                identifiers : String -> List String
+                identifiers w = Data.List1.forget (Data.String.split (\ch => not (isAlphaNum ch || ch == '_' || ch == '\'')) w)
 
             -- a name not bound where the helper goes, nor used by it, nor the
             -- module's: the name with primes
@@ -344,4 +381,8 @@ scopeHelpers = fileRefactoring "scope-helpers"
       let pairs = fst (helpers s.declared)
           users = foldr (\p, rest => (snd p).defines ++ rest) [] pairs
           ready = filter (\p => not (any (`elem` users) (fst p).defines)) pairs
-      in map (\p => MkCandidate (labelOf (fst p)) (plan s (fst p) (snd p))) ready
+      in map (\p => offer (labelOf (fst p)) (plan s (fst p) (snd p))) ready
+      where
+        offer : String -> Either String (Change, Maybe Change) -> Candidate
+        offer l (Left why) = candidate l (Left why)
+        offer l (Right (safe, preferred)) = MkCandidate l (Right safe) preferred

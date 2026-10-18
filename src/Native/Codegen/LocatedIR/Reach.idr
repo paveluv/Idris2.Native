@@ -46,7 +46,7 @@ reach roots p =
       , statics := filter (\s => contains s.sym ss) p.statics } p, Data.SortedSet.toList ts)
   where
     ||| The names a function refers to.
-    function : Function enc'' -> Refs
+    function : Function enc -> Refs
     function f = concatMap (\b => concatMap instr b.body <+> terminator b.term) f.blocks
       where
         ||| The names an operand refers to: a static's.
@@ -58,7 +58,7 @@ reach roots p =
         opnds = concatMap opnd
 
         ||| The names an instruction refers to.
-        instr : Instr enc' -> Refs
+        instr : Instr enc -> Refs
         instr (CodeAddr _ f) = MkRefs [f] [] []
         instr (StaticAddr _ s) = MkRefs [] [s] []
         instr (TableAddr _ t) = MkRefs [] [] [t]
@@ -74,7 +74,7 @@ reach roots p =
         instr _ = neutral
 
         ||| The names a terminator refers to.
-        terminator : Terminator enc' -> Refs
+        terminator : Terminator enc -> Refs
         terminator (Branch _ x y _ _) = opnds [x, y]
         terminator (Call f xs _) = MkRefs [f] [] [] <+> opnds xs
         terminator (TailCall f xs) = MkRefs [f] [] [] <+> opnds xs
@@ -84,7 +84,7 @@ reach roots p =
         terminator _ = neutral
 
     ||| The names a static refers to: the code and the statics its fields hold.
-    static : Static enc' -> Refs
+    static : Static enc -> Refs
     static s = concatMap field s.fields
       where
         field : SField -> Refs

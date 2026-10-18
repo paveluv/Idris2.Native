@@ -140,5 +140,5 @@ joinModules args =
     candidates : Project -> Subject -> List Candidate
     candidates p s = case args of
       (into :: sources@(first :: _ :: _)) =>
-        if nameOf s == first then [MkCandidate ("join " ++ joinBy ", " sources ++ " into " ++ into) (plan p into sources)] else []
+        if nameOf s == first then [candidate ("join " ++ joinBy ", " sources ++ " into " ++ into) (plan p into sources)] else []
       _ => []

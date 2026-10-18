@@ -113,7 +113,7 @@ splitModule args =
       (into :: names@(_ :: _)) =>
         let cs = conceptsOf s.file s.declared in
         if all (\n => any (\c => c.name == n) cs) names
-          then [MkCandidate ("split " ++ joinBy ", " names ++ " into " ++ into) (plan p s into names cs)]
+          then [candidate ("split " ++ joinBy ", " names ++ " into " ++ into) (plan p s into names cs)]
           else []
       _ => []
       where

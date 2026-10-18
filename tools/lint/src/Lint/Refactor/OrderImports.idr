@@ -76,4 +76,4 @@ orderImports = fileRefactoring "order-imports" "put each file's imports in order
     candidates s =
       let ls = linesOf s
           ordered = orderedImports s.file ls
-      in if ordered == ls then [] else [MkCandidate "imports" (Right (inFile s.file.path [replaceAll s.text (unlines ordered)]))]
+      in if ordered == ls then [] else [candidate "imports" (Right (inFile s.file.path [replaceAll s.text (unlines ordered)]))]

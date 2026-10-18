@@ -54,5 +54,5 @@ removeUnused = fileRefactoring "remove-unused" "delete each private function at 
 
     candidates : Subject -> List Candidate
     candidates s =
-      map (\f => MkCandidate (labelOf f) (map (\e => inFile s.file.path [cut (linesOf s) e]) (extentOf s f)))
+      map (\f => candidate (labelOf f) (map (\e => inFile s.file.path [cut (linesOf s) e]) (extentOf s f)))
           (filter (\f => privateAtTop f && not (unnamedUse f) && not (any (uses f) s.declared)) s.declared)

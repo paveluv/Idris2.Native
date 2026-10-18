@@ -5,7 +5,7 @@
 # the file parsed again, the candidates asked for anew.
 rm -rf work
 mkdir work
-cp Moves.idr Stays.idr Merges.idr Unused.idr Imports.idr work
+cp Moves.idr Stays.idr Merges.idr Shared.idr Primed.idr Unused.idr Imports.idr work
 cd work
 lint=../../../../tools/lint/build/exec/idris2-native-lint
 
@@ -24,16 +24,26 @@ $lint --refactor scope-helpers Moves.idr Stays.idr
 $lint --refactor merge-clauses --check 'idris2 --check {} > /dev/null 2>&1' Merges.idr
 $lint --refactor scope-helpers Merges.idr
 
+# Helpers with their users' type variables: without a check each moves
+# kept general, its variable renamed (shown by a dry run); with one, as it
+# is where that checks.
+$lint --refactor scope-helpers --dry-run Shared.idr
+$lint --refactor scope-helpers --check 'idris2 --check {} > /dev/null 2>&1' Shared.idr
+
+# Local functions primed already, given their users' names back where that
+# checks: `unprime` runs only with a check.
+$lint --refactor unprime --check 'idris2 --check {} > /dev/null 2>&1' Primed.idr
+
 # What `remove-unused` and `order-imports` change.
 $lint --refactor remove-unused Unused.idr
 $lint --refactor order-imports Imports.idr
-for f in Moves.idr Stays.idr Merges.idr Unused.idr Imports.idr; do
+for f in Moves.idr Stays.idr Merges.idr Shared.idr Primed.idr Unused.idr Imports.idr; do
   echo "--- $f"
   cat $f
 done
 
 # What a refactoring writes still checks: it is the same program.
-for f in Moves.idr Stays.idr Merges.idr Unused.idr Imports.idr; do
+for f in Moves.idr Stays.idr Merges.idr Shared.idr Primed.idr Unused.idr Imports.idr; do
   idris2 --check $f > /dev/null && echo "$f checks"
 done
 cd ..

@@ -30,7 +30,7 @@ pruneImports = MkRefactoring "prune-imports" "remove each private import a file 
   where
     candidates : Subject -> List Candidate
     candidates s =
-      [ MkCandidate ("import " ++ show i.path) (Right (inFile s.file.path [removal s (fst (lineSpan i.loc))]))
+      [ candidate ("import " ++ show i.path) (Right (inFile s.file.path [removal s (fst (lineSpan i.loc))]))
       | i <- s.file.mod.imports, not i.reexport ]
       where
         -- the import's line, and a blank line after it if one is before it:

@@ -325,5 +325,5 @@ reflowLines args =
     candidates : Subject -> List Candidate
     candidates s = case wide s of
       [] => []
-      ws => MkCandidate ("lines wider than " ++ show limit) (Right (inFile s.file.path [ replaceLines i i ps | (i, _, ps) <- ws ]))
-            :: [ MkCandidate ("`" ++ trim l ++ "`") (Right (inFile s.file.path [replaceLines i i ps])) | (i, l, ps) <- ws ]
+      ws => candidate ("lines wider than " ++ show limit) (Right (inFile s.file.path [ replaceLines i i ps | (i, _, ps) <- ws ]))
+            :: [ candidate ("`" ++ trim l ++ "`") (Right (inFile s.file.path [replaceLines i i ps])) | (i, l, ps) <- ws ]

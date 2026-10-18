@@ -153,7 +153,7 @@ qualifyNames =
 
     candidates : Project -> Subject -> List Candidate
     candidates p s = case p.resolution of
-      Nothing => [MkCandidate "names" (Left "the modules' uses cannot be resolved: build them first")]
+      Nothing => [candidate "names" (Left "the modules' uses cannot be resolved: build them first")]
       Just r =>
         let is = importedIn p s
             uses = [ (u.definer, u.name) | rm <- r.modules, rm.name == show s.file.mod.moduleNS, u <- rm.uses, not u.searched ]
@@ -164,4 +164,4 @@ qualifyNames =
             imports = joined (map (importEdits s uses) is)
             named = nubBy (\a, b => a.from == b.from) (bare ++ requalified ++ imports)
             edits = named ++ realigned s.text named
-        in if null edits then [] else [MkCandidate "names" (Right (inFile s.file.path edits))]
+        in if null edits then [] else [candidate "names" (Right (inFile s.file.path edits))]

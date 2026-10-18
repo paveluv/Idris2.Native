@@ -38,7 +38,7 @@ functionPieces f =
     regs rs = "[" ++ joinBy ", " (map show rs) ++ "]"
 
     -- A block's text, a line a piece.
-    blockPieces : Block enc''' -> Data.Builder String
+    blockPieces : Block enc -> Data.Builder String
     blockPieces b =
       Data.Builder.single ("  " ++ show b.label ++ (if null b.params then "" else " " ++ regs b.params) ++ ":\n")
       <+> concatMap (\i => Data.Builder.single ("    " ++ instr i ++ "\n")) b.body
@@ -59,7 +59,7 @@ functionPieces f =
         rel IRCommon.Op.GtU = ">u"
         rel IRCommon.Op.GeU = ">=u"
 
-        instr : Instr enc'' -> String
+        instr : Instr enc -> String
         instr instr' = case instr' of
           Instr.Const d c => show d ++ " := Const " ++ show c
           Instr.FConst d c => show d ++ " := FConst " ++ show c
@@ -107,16 +107,16 @@ functionPieces f =
           Instr.Comment s => "-- " ++ s
           where
             -- The registers an instruction defines, before its `:=`.
-            assigned : List (Reg enc') -> String
+            assigned : List (Reg enc) -> String
             assigned [] = ""
             assigned ds = joinBy ", " (map show ds) ++ " := "
 
             -- `w`: the access's width, the unit of the index.
-            mem : Nat -> Mem enc' -> String
+            mem : Nat -> Mem enc -> String
             mem w m = "[" ++ show m.base ++ maybe "" (\i => " + " ++ show i ++ "*" ++ show w) m.index
                         ++ " + " ++ show m.offset ++ "]"
 
-        term : Terminator enc'' -> String
+        term : Terminator enc -> String
         term terminator = case terminator of
           Terminator.Jump l => "Jump " ++ show l
           Terminator.IfFixnums rs y n => "IfFixnums " ++ regs rs ++ " " ++ show y ++ " " ++ show n
@@ -135,7 +135,7 @@ functionPieces f =
           Terminator.Crash s => "Crash " ++ show s
           Terminator.Unsupported s => "Unsupported " ++ show s
           where
-            cont : Cont enc' -> String
+            cont : Cont enc -> String
             cont c = "resume " ++ show c.resume ++ " live " ++ regs c.live
 
 ||| One function: its name, convention, parameters and blocks.

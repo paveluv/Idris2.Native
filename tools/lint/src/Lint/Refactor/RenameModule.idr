@@ -124,6 +124,6 @@ renameModule args =
     candidates : Project -> Subject -> List Candidate
     candidates p s = case args of
       [old, new] => case renamed old new (nameOf s) of
-        Just m => [MkCandidate ("rename " ++ nameOf s ++ " to " ++ m) (plan p s (nameOf s) m)]
+        Just m => [candidate ("rename " ++ nameOf s ++ " to " ++ m) (plan p s (nameOf s) m)]
         Nothing => []
       _ => []

@@ -69,6 +69,7 @@ import Lint.Refactor.RenameModule
 import Lint.Refactor.ScopeHelpers
 import Lint.Refactor.SplitModule
 import Lint.Refactor.Subject
+import Lint.Refactor.Unprime
 import Lint.Resolution
 import Lint.ResolvedRules
 import Lint.Rules
@@ -280,7 +281,7 @@ main = do
     ||| those that take them read: `split-module` the module to make and the
     ||| concepts to move to it.
     refactorings : List String -> List Refactoring
-    refactorings args = [inlineAlias args, joinModules args, mergeClauses, orderImports, pruneImports, qualifyNames, reflowLines args, removeUnused, renameModule args, scopeHelpers, splitModule args]
+    refactorings args = [inlineAlias args, joinModules args, mergeClauses, orderImports, pruneImports, qualifyNames, reflowLines args, removeUnused, renameModule args, scopeHelpers, splitModule args, unprime]
 
     ||| The files under a run's roots listed and parsed once, and again only
     ||| after a change, which may have moved one: a wide refactoring asks

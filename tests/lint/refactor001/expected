@@ -95,6 +95,38 @@ Merges.idr: 3 changed, 2 stay
 Merges.idr: 3 changed, 2 stay
   `square` stays: 2 clauses of `area` use it
   `pick` stays: 2 clauses of `headOr` use it
+scope-helpers: twice
+  Shared.idr
+    @@ line 21
+    +   where
+    +     -- Used only at its user's `a`: moved as it is, without `Sized a =>`,
+    +     -- which search finds in its user's.
+    +     twice : Sized a' => a' -> Nat
+    +     twice x = size x + size x
+    @@ line 13
+    - -- Used only at its user's `a`: moved as it is, without `Sized a =>`,
+    - -- which search finds in its user's.
+    - twice : Sized a => a -> Nat
+    - twice x = size x + size x
+    -
+scope-helpers: one
+  Shared.idr
+    @@ line 30
+    +   where
+    +     -- Used at its user's `a` and at its `b`: kept general where it goes, as
+    +     -- `Sized a' => a' -> Nat`.
+    +     one : Sized a' => a' -> Nat
+    +     one x = size x
+    @@ line 22
+    - -- Used at its user's `a` and at its `b`: kept general where it goes, as
+    - -- `Sized a' => a' -> Nat`.
+    - one : Sized a => a -> Nat
+    - one x = size x
+    -
+Shared.idr: 2 changed, 0 stay
+Shared.idr: 2 changed, 0 stay
+Primed.idr: 1 changed, 1 stay
+  `the variables of the claim at line 27` stays: the change leaves Primed.idr not checking
 Unused.idr: 1 changed, 0 stay
 Imports.idr: 1 changed, 0 stay
 --- Moves.idr
@@ -307,6 +339,65 @@ export
 headOr : (n : Nat) -> Vect n a -> a -> a
 headOr (S k) (x :: _) _ = pick x
 headOr Z [] d = pick d
+--- Shared.idr
+||| Helpers whose type variables have the names of their users' own, so
+||| that moved into their users they could mean the users' or stay their
+||| own. Which one only the type checker can judge: with a check, a helper
+||| is moved as it is first, its constraint gone where its user has it, and
+||| kept general, its variable renamed, only if that does not check.
+module Shared
+
+%default total
+
+interface Sized a where
+  size : a -> Nat
+
+export
+total2 : Sized a => a -> a -> Nat
+total2 x y = twice x + twice y
+  where
+    -- Used only at its user's `a`: moved as it is, without `Sized a =>`,
+    -- which search finds in its user's.
+    twice : a -> Nat
+    twice x = size x + size x
+
+export
+both : Sized a => Sized b => a -> b -> Nat
+both x y = one x + one y
+  where
+    -- Used at its user's `a` and at its `b`: kept general where it goes, as
+    -- `Sized a' => a' -> Nat`.
+    one : Sized a' => a' -> Nat
+    one x = size x
+--- Primed.idr
+||| Local functions with primed type variables, as `scope-helpers` moves
+||| them without a check: each kept as general as it was. `unprime` gives a
+||| variable back the name of its user's where that checks: there the
+||| function is used only at its user's types, and its constraint, which
+||| then repeats its user's, goes too.
+module Primed
+
+%default total
+
+interface Sized a where
+  size : a -> Nat
+
+-- Used only at its user's `a`: `twice : a -> Nat` once unprimed.
+export
+total2 : Sized a => a -> a -> Nat
+total2 x y = twice x + twice y
+  where
+    twice : a -> Nat
+    twice x = size x + size x
+
+-- Used at its user's `a` and at its `b`: stays general, as it does not
+-- check at `a` alone.
+export
+both : Sized a => Sized b => a -> b -> Nat
+both x y = one x + one y
+  where
+    one : Sized a' => a' -> Nat
+    one x = size x
 --- Unused.idr
 ||| What `remove-unused` takes out: the private functions nothing uses.
 module Unused
@@ -344,5 +435,7 @@ joined = fastConcat . intersperse ", " . map trim . catMaybes . map Just
 Moves.idr checks
 Stays.idr checks
 Merges.idr checks
+Shared.idr checks
+Primed.idr checks
 Unused.idr checks
 Imports.idr checks

@@ -364,11 +364,11 @@ toBody ls dl pl ctx dc pc body = case body of
   PCrash s => Just (Body.Crash s)
   PUnsupported s => Just (Body.Unsupported s)
   where
-    label : (ls : List (List (IRCommon.Ty enc'))) -> (dl : Nat) -> (0 _ : dl = length ls) -> LLvl ps ->
+    label : (ls : List (List (IRCommon.Ty enc))) -> (dl : Nat) -> (0 _ : dl = length ls) -> LLvl ps ->
             Maybe (Var ls ps)
     label ls dl _ (MkLLvl n) = if n < dl then Var.varAt (minus dl (S n)) ps ls else Nothing
 
-    opnd : (ctx : List (IRCommon.Ty enc'')) -> (dc : Nat) -> (0 _ : dc = length ctx) -> Opnd Lvl t ->
+    opnd : (ctx : List (IRCommon.Ty enc)) -> (dc : Nat) -> (0 _ : dc = length ctx) -> Opnd Lvl t ->
            Maybe (Opnd (Var ctx) t)
     opnd ctx dc pc (Opnd.V x) = Opnd.V <$> var ctx dc pc x
       where
@@ -388,7 +388,7 @@ toBody ls dl pl ctx dc pc body = case body of
     plusLength : {ts, ctx' : List a} -> dc' = length ctx' -> length ts + dc' = length (ts ++ ctx')
     plusLength Refl = sym (appendLength ts ctx')
       where
-        appendLength : (xs, ys : List a') -> length (xs ++ ys) = length xs + length ys
+        appendLength : (xs, ys : List a) -> length (xs ++ ys) = length xs + length ys
         appendLength [] ys = Refl
         appendLength (x :: xs) ys = cong S (appendLength xs ys)
 

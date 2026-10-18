@@ -215,6 +215,6 @@ inlineAlias args =
         (base :: rest@(_ :: _)) =>
           let m = joinBy "." (reverse rest) in
           if nameOf s == m && any (\d => base `elem` d.defines) s.declared
-            then [MkCandidate ("inline " ++ full) (plan p s m base)] else []
+            then [candidate ("inline " ++ full) (plan p s m base)] else []
         _ => []
       _ => []
