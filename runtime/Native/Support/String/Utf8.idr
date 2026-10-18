@@ -24,39 +24,24 @@
 ||| string.
 module Native.Support.String.Utf8
 
--- lint: allow import-unused: the flat check reaches through withSystemPath's body, which records a failure by its code
-import Native.Failure
 import Native.Flat.Uniform as Flat
 import Native.HeapObj.Shape as HeapObj
 import Native.Port
 import Native.Primitive.DoubleBits
--- lint: allow import-unused: the flat check reaches through the environment's bodies, which allocate outside the heap
-import Native.Runtime.Alloc.Allocator
-import Native.Runtime.Alloc.Arena
-import Native.Runtime.Alloc.Block
--- lint: allow import-unused: the flat check reaches through the environment's bodies, which keep its entries in an array of blocks
-import Native.Runtime.Alloc.Blocks
-import Native.Runtime.Alloc.Chunks
-import Native.Runtime.Alloc.Config
-import Native.Runtime.Alloc.Pages
-import Native.Runtime.Alloc.SizeClasses
-import Native.Runtime.Alloc.System
 import Native.Runtime.Bits
 import Native.Runtime.Memory
 import Native.Runtime.Ordo as Runtime
-import Native.Runtime.OS
 import Native.Runtime.PortTy as Runtime
 import Native.Runtime.Raw as Runtime
+-- lint: allow import-unused: the flat check reaches through Obj's allocate and constructors, which allocate on the heap
 import Native.Runtime.Space
 import Native.Support.CodePoint
 import Native.Support.Double.Between
 import Native.Support.Double.Limbs
 import Native.Support.Double.Nearest
 import Native.Support.Double.Shortest
-import Native.Support.Environment
 import Native.Support.Obj
-import Native.Support.Path
-import Native.Support.Ptr
+-- lint: allow import-unused: the flat check reaches through Obj's constructor views, which compare constructor ids
 import Native.Types.ConstructorId
 import Native.Types.Header
 import Native.Types.Kind
@@ -626,224 +611,55 @@ showDouble x =
           writeDigits s bytes magnitude
           finish s True bytes
 
-%cg native flat Support.String.Utf8.prim__putStr
-||| `putStr`: the string's bytes written to the standard output, all of
-||| them. Nothing is buffered, so nothing waits to be flushed.
-export covering
-prim__putStr : Flat.Uniform String -> PrimIO ()
-prim__putStr str w = let (Runtime.MkOrdo # ()) = putOp str Runtime.MkOrdo in MkIORes () w
-  where
-    covering
-    putOp : Flat.Uniform String -> Runtime.Ordo.Op Runtime.Ordo ()
-    putOp str = do
-      s <- stringObject str
-      h <- headerOf s
-      Runtime.OS.osWriteAll Runtime.OS.stdout (Obj.objectBytes s 0) (bytesOf h)
+------------------------------------------------------------------------------
+-- The system's text: UTF-8, as a string's bytes are
 
-||| The string of the bytes at raw memory up to the zero byte that ends
-||| them, copied into a new string: the system's text, an argument or an
-||| environment entry, as the system gave it.
-covering
-zeroEnded : Runtime.Raw -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform String)
-zeroEnded p = do
-  len <- zeroAt 0
+%cg native flat Support.String.Utf8.textBytes
+||| How many of the system's bytes a string's text takes: its own bytes,
+||| which are UTF-8, as the system's text is.
+export
+textBytes : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.TextBytes)
+textBytes str = do
+  s <- stringObject str
+  h <- headerOf s
+  Runtime.Ordo.pure (bytesOf h)
+
+%cg native flat Support.String.Utf8.textAddress
+||| Where a string's own bytes are, which are the system's text: valid
+||| until the next collection, which no runtime primitive makes.
+export
+textAddress : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.TextAddress)
+textAddress str = do
+  s <- stringObject str
+  Runtime.Ordo.pure (Obj.objectBytes s 0)
+
+%cg native flat Support.String.Utf8.copyText
+||| A string's bytes copied to the address.
+export covering
+copyText : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.CopyText)
+copyText str to = do
+  s <- stringObject str
+  h <- headerOf s
+  Runtime.Memory.copyRaw (Obj.objectBytes s 0) to (bytesOf h)
+
+%cg native flat Support.String.Utf8.ofText
+||| A new string of the `len` bytes of UTF-8 at the address, as the system
+||| gave them, copied, ASCII if none has its top bit set.
+export covering
+ofText : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.OfText)
+ofText p len = do
   s <- newString len
-  seen <- copy s 0 len 0
+  seen <- copy s 0 0
   finish s (seen < 0x80) len
   where
-    -- the bytes up to the zero byte that ends them
-    covering
-    zeroAt : Bits64 -> Runtime.Ordo.Op Runtime.Ordo Bits64
-    zeroAt i = do
-      b <- Runtime.Memory.loadByteAt p i
-      if b == 0 then Runtime.Ordo.pure i else zeroAt (i + 1)
-
     -- the bytes copied, and the OR of them, whose top bit says whether any
     -- is not ASCII
     covering
-    copy : Obj Types.Kind.STRING -> (i, end, seen : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
-    copy s i end seen = if i >= end then Runtime.Ordo.pure seen else do
+    copy : Obj Types.Kind.STRING -> (i, seen : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
+    copy s i seen = if i >= len then Runtime.Ordo.pure seen else do
       b <- Runtime.Memory.loadByteAt p i
       setByte s i b
-      copy s (i + 1) end (seen .|. b)
-
-%cg native flat Support.String.Utf8.prim__getArg
-||| `getArg`: argument `n` of the program, its name argument 0, its bytes as
-||| the system gave them; the empty string for an `n` it has no argument for.
-export covering
-prim__getArg : Int -> PrimIO (Flat.Uniform String)
-prim__getArg n w = let (Runtime.MkOrdo # r) = argOp Runtime.MkOrdo in MkIORes r w
-  where
-    covering
-    argOp : Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform String)
-    argOp = do
-      count <- Runtime.Memory.argumentCount
-      if n < 0 || cast n >= count
-         then do
-           s <- newString 0
-           finish s True 0
-         else do
-           p <- Runtime.Memory.argumentBytes (cast n)
-           zeroEnded p
-
-%cg native flat Support.String.Utf8.prim__getEnv
-||| `getEnv`: the value of the environment's variable of the name
-||| (`Support.Environment`), the bytes after the first entry that holds the
-||| name and `=`, copied into a string given as the pointer (`Support.Ptr`),
-||| which `base` reads at once; the null pointer for a name no entry has.
-||| As the C library's `getenv`, which the other code generators call, the
-||| name is compared byte by byte, whatever it holds.
-export covering
-prim__getEnv : Flat.Uniform String -> PrimIO (Flat.Uniform (Ptr String))
-prim__getEnv name w = let (Runtime.MkOrdo # r) = envOp name Runtime.MkOrdo in MkIORes r w
-  where
-    covering
-    envOp : Flat.Uniform String -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform (Ptr String))
-    envOp name = do
-      s <- stringObject name
-      h <- headerOf s
-      found <- Environment.find (Obj.objectBytes s 0) (bytesOf h)
-      case found of
-        Nothing => Ptr.nullPtr
-        Just i => do
-          e <- Environment.entryAt i
-          v <- zeroEnded (Runtime.Memory.foreignBytes (e + bytesOf h + 1))
-          Ptr.stringPtr v
-
-%cg native flat Support.String.Utf8.prim__getEnvPair
-||| `getEnvironment`'s entry `n` of the environment (`Support.Environment`):
-||| its bytes, `NAME=value`, copied into a string given as the pointer
-||| (`Support.Ptr`); the null pointer past the last.
-export covering
-prim__getEnvPair : Int -> PrimIO (Flat.Uniform (Ptr String))
-prim__getEnvPair n w = let (Runtime.MkOrdo # r) = pairOp n Runtime.MkOrdo in MkIORes r w
-  where
-    covering
-    pairOp : Int -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform (Ptr String))
-    pairOp n = if n < 0 then Ptr.nullPtr else do
-      e <- Environment.entryAt (cast n)
-      if e == 0 then Ptr.nullPtr else do
-        v <- zeroEnded (Runtime.Memory.foreignBytes e)
-        Ptr.stringPtr v
-
-%cg native flat Support.String.Utf8.prim__setEnv
-||| `setEnv`: the environment's variable of the name set to the value,
-||| unless it is set and `overwrite` is 0 (`Support.Environment.set`); 0
-||| when it is, -1 when it is not, as the C library's `setenv` answers: for
-||| an empty name, one with `=` or a zero byte, or no memory.
-export covering
-prim__setEnv : Flat.Uniform String -> Flat.Uniform String -> Int -> PrimIO Int
-prim__setEnv name value overwrite w = let (Runtime.MkOrdo # r) = setOp name value Runtime.MkOrdo in MkIORes r w
-  where
-    covering
-    setOp : Flat.Uniform String -> Flat.Uniform String -> Runtime.Ordo.Op Runtime.Ordo Int
-    setOp name value = do
-      n <- stringObject name
-      nh <- headerOf n
-      v <- stringObject value
-      vh <- headerOf v
-      ok <- Environment.set (Obj.objectBytes n 0) (bytesOf nh) (Obj.objectBytes v 0) (bytesOf vh) (overwrite /= 0)
-      if ok then Runtime.Ordo.pure 0 else Runtime.Ordo.pure (-1)
-
-%cg native flat Support.String.Utf8.prim__unsetEnv
-||| `unsetEnv`: every entry of the name removed from the environment
-||| (`Support.Environment.unset`); 0, or -1 for a name that cannot be a
-||| variable's, as the C library's `unsetenv` answers.
-export covering
-prim__unsetEnv : Flat.Uniform String -> PrimIO Int
-prim__unsetEnv name w = let (Runtime.MkOrdo # r) = unsetOp name Runtime.MkOrdo in MkIORes r w
-  where
-    covering
-    unsetOp : Flat.Uniform String -> Runtime.Ordo.Op Runtime.Ordo Int
-    unsetOp name = do
-      n <- stringObject name
-      nh <- headerOf n
-      ok <- Environment.unset (Obj.objectBytes n 0) (bytesOf nh)
-      if ok then Runtime.Ordo.pure 0 else Runtime.Ordo.pure (-1)
-
-||| An OS service of a path, called with the string's bytes as the system
-||| takes a path (`Support.Path`), the copy freed after: 0 when it succeeds,
-||| -1 when it fails or there is no memory for the copy, as the C library's
-||| calls answer.
-%inline covering
-withPath : (Runtime.Raw -> Runtime.Ordo.Op Runtime.Ordo Bits64) -> Flat.Uniform String -> Runtime.Ordo.Op Runtime.Ordo Int
-withPath service path = do
-  s <- stringObject path
-  h <- headerOf s
-  Path.withSystemPath (Obj.objectBytes s 0) (bytesOf h) (Runtime.Ordo.pure (-1)) (\p => do
-    ok <- service p
-    Runtime.Ordo.pure (if ok == 1 then 0 else -1))
-
-%cg native flat Support.String.Utf8.prim__changeDir
-||| `changeDir`: the directory of the path made the current one; 0 when it
-||| is, -1 when it is not, as the C library's `chdir` answers.
-export covering
-prim__changeDir : Flat.Uniform String -> PrimIO Int
-prim__changeDir path w = let (Runtime.MkOrdo # r) = withPath Runtime.OS.osChangeDirectory path Runtime.MkOrdo in MkIORes r w
-
-%cg native flat Support.String.Utf8.prim__createDir
-||| `createDir`: a directory made at the path; 0 when it is, -1 when it is
-||| not, as the C library's `mkdir` answers, the reason the last failure.
-export covering
-prim__createDir : Flat.Uniform String -> PrimIO Int
-prim__createDir path w = let (Runtime.MkOrdo # r) = withPath Runtime.OS.osCreateDirectory path Runtime.MkOrdo in MkIORes r w
-
-%cg native flat Support.String.Utf8.prim__removeDir
-||| `removeDir`: the empty directory at the path removed, if it can be, the
-||| reason the last failure if not.
-export covering
-prim__removeDir : Flat.Uniform String -> PrimIO ()
-prim__removeDir path w = let (Runtime.MkOrdo # _) = withPath Runtime.OS.osRemoveDirectory path Runtime.MkOrdo in MkIORes () w
-
-%cg native flat Support.String.Utf8.prim__getString
-||| `getString`: the string a pointer is, if it is one of the heap
-||| (`Support.Ptr`), itself; else the zero-ended bytes it points to, copied;
-||| the empty string for the null pointer, which the C library would read
-||| through.
-export covering
-prim__getString : Flat.Uniform (Ptr String) -> Flat.Uniform String
-prim__getString p = let (Runtime.MkOrdo # r) = getOp Runtime.MkOrdo in r
-  where
-    covering
-    getOp : Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform String)
-    getOp = do
-      target <- Ptr.pointee p
-      case target of
-        HeapString s => Obj.objectValue s
-        Address a =>
-          if Runtime.Raw.isNull a
-             then do
-               s <- newString 0
-               finish s True 0
-             else zeroEnded a
-
-%cg native flat Support.String.Utf8.prim__currentDir
-||| `currentDir`: the current directory's path, as the system writes it,
-||| zero-ended, into a block outside the heap of `pathBytes`, copied into a
-||| string given as the pointer (`Support.Ptr`), the block freed; the null
-||| pointer if there is no memory, or the path is longer than the block, as
-||| the C support's buffer is.
-export covering
-prim__currentDir : PrimIO (Flat.Uniform (Ptr String))
-prim__currentDir w = let (Runtime.MkOrdo # r) = currentOp Runtime.MkOrdo in MkIORes r w
-  where
-    ||| The most bytes of a path, its zero byte one: Linux's `PATH_MAX`.
-    pathBytes : Bits64
-    pathBytes = 4096
-
-    covering
-    currentOp : Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform (Ptr String))
-    currentOp = Runtime.Alloc.Block.allocate pathBytes (Ptr.nullPtr) (\b => do
-      let MkAddressed p b' = Runtime.Alloc.Block.address b
-      ok <- Runtime.OS.osCurrentDirectory p pathBytes
-      case ok == 1 of
-        True => do
-          s <- zeroEnded p
-          Runtime.Alloc.Block.free b'
-          Ptr.stringPtr s
-        False => do
-          Runtime.Alloc.Block.free b'
-          Ptr.nullPtr)
+      copy s (i + 1) (seen .|. b)
 
 ------------------------------------------------------------------------------
 -- Text as numbers

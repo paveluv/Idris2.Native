@@ -43,11 +43,12 @@ modules =
     Native.Support.Foreign.Prelude.IO,
     Native.Support.Foreign.PrimIO,
     Native.Support.Foreign.System,
+    Native.Support.Foreign.System.Directory,
     Native.Support.Foreign.System.Errno,
     Native.Support.Foreign.System.FFI,
     Native.Support.Foreign.System.File.Error,
     Native.Support.Foreign.System.Term,
     Native.Support.Obj,
-    Native.Support.Path,
     Native.Support.Ptr,
-    Native.Support.String.Utf8
+    Native.Support.String.Utf8,
+    Native.Support.Text

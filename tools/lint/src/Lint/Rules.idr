@@ -562,7 +562,8 @@ fileRules f ms ds =
     ||| it belongs to, so a reader knows from its name what kind of entry it
     ||| is: `intrinsic__` for an inline extern, whose type is an intrinsic's
     ||| port (`Native.Intrinsic`), `service__` for an OS service's
-    ||| (`Native.Service`). `prim__` stays Idris's primitives' and the
+    ||| (`Native.Service`), `string__` for a string routine's
+    ||| (`Native.Types.StringRoutine`). `prim__` stays Idris's primitives' and the
     ||| libraries' foreign functions', which the support tier implements by
     ||| their own names.
     externName : SourceFile -> List Declared -> Mentions -> List Finding
@@ -588,6 +589,7 @@ fileRules f ms ds =
 
         named : String -> List String -> Bool
         named n ns = (isPrefixOf "intrinsic__" n && portOf "Intrinsic" ns) || (isPrefixOf "service__" n && portOf "Service" ns)
+                     || (isPrefixOf "string__" n && portOf "StringRoutine" ns)
 
         one : Declared -> List Finding
         one d = case d.decl.val of
@@ -595,7 +597,7 @@ fileRules f ms ds =
             if not (any isExtern c.opts) then []
             else [ finding f "extern-name" d.decl.fc n
                      ("`" ++ n ++ "` is an extern of the runtime: it is named by its contract, `intrinsic__` for an "
-                      ++ "intrinsic's port, `service__` for a service's")
+                      ++ "intrinsic's port, `service__` for a service's, `string__` for a string routine's")
                  | n <- d.defines, not (named n (written d.decl.fc)) ]
           _ => []
 

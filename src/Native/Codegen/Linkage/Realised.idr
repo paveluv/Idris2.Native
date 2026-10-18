@@ -17,7 +17,9 @@
 |||
 ||| The routines are found the same way (`Native.Routine`), each a function
 ||| `PortTy addr (port c)` of the runtime, and the string routines
-||| (`Native.Types.StringRoutine`) in the string encoding's module.
+||| (`Native.Types.StringRoutine`) in the string encoding's module. The
+||| string routines the runtime's own code calls each have an extern, as a
+||| service does, paired with the encoding's function by their constructor.
 |||
 ||| The backend's primitives are found the same way (`Native.Primitive`),
 ||| each a definition `FunctionTy (signature c)` of a module of
@@ -46,6 +48,7 @@ import Core.TT.Primitive
 import Core.TT.Term
 import Core.Value
 import Data.List
+import Data.Maybe
 import Data.SortedMap
 import Data.Zippable
 import Native.Codegen.Platform
@@ -73,7 +76,9 @@ record Realised where
   integers : Maybe (List (Name, Types.IntegerRoutine))
   ||| Each inline extern, with the intrinsic it is.
   externs : SortedMap Name Intrinsic
-  ||| Each OS service's extern, with the platform's function for it.
+  ||| Each extern bound to a function the program's choices pick: each OS
+  ||| service's, with the platform's function for it, and each of the
+  ||| string encoding's (`StringRoutine`'s text), with the encoding's.
   services : SortedMap Name Name
   ||| Each of the backend's primitives the context defines, with the
   ||| primitive it is.
@@ -218,13 +223,16 @@ realise platform enc = do
     | Left e => pure (Left ("the runtime's OS services: " ++ e))
   Right serviceFunctions <- entries True "Native.Service" "allServices" Service.allServices [portTy] (inModule platformNs)
     | Left e => pure (Left ("the platform's OS services: " ++ e))
+  Right textExterns <- entries False "Native.Types.StringRoutine" "allStringRoutines" Types.StringRoutine.allStringRoutines [externTy] isExtern
+    | Left e => pure (Left ("the runtime's externs of the string encoding: " ++ e))
   Right prims <- primitives
     | Left e => pure (Left ("the backend's primitives: " ++ e))
   ts <- tables
   let [] = mapMaybe (\(n, r) => maybe (Just n) (const Nothing) r) ts
     | (n :: _) => pure (Left ("the table " ++ show n ++ " has a range that does not reduce to two Ints"))
   let externs = fromList [ (n, i) | (n, _, i) <- intrinsics ]
-      services = fromList [ (x, f) | (x, c, _) <- serviceExterns, (f, c', _) <- serviceFunctions, c == c' ]
+      services = fromList ([ (x, f) | (x, c, _) <- serviceExterns, (f, c', _) <- serviceFunctions, c == c' ]
+                           ++ [ (x, f) | (x, c, _) <- textExterns, (f, c', _) <- fromMaybe [] ss', c == c' ])
   pure (Right (MkRealised (pairs rs) (map pairs ss') (map pairs is') externs services (fromList (pairs prims))
                            (fromList (mapMaybe (\(n, r) => (n,) <$> r) ts))))
   where

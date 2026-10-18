@@ -12,7 +12,7 @@
 ||| so the runtime frees what the C library has to keep for good.
 |||
 ||| Names and values come as bytes and counts, so that this module reads no
-||| string: the string module (`Support.String.Utf8`) gives them.
+||| string: the system's text of a string (`Support.Text`) gives them.
 module Native.Support.Environment
 
 import Native.Runtime.Alloc.Block

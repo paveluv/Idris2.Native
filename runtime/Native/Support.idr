@@ -20,6 +20,7 @@ module Native.Support
 import public Native.Support.Foreign.Prelude.IO
 import public Native.Support.Foreign.PrimIO
 import public Native.Support.Foreign.System
+import public Native.Support.Foreign.System.Directory
 import public Native.Support.Foreign.System.Errno
 import public Native.Support.Foreign.System.FFI
 import public Native.Support.Foreign.System.File.Error
