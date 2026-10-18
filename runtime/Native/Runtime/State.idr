@@ -77,6 +77,19 @@ export
 foreignArena : State Raw
 foreignArena = address 12
 
+||| The process's environment, once the program changed it
+||| (`Support.Environment`): the array of its entries' addresses, null
+||| while the environment is the one the system gave; its entries; and the
+||| entries it has room for.
+export
+environArray : State Raw
+environArray = address 13
+
+export
+environCount, environCapacity : State Bits64
+environCount = count 14
+environCapacity = count 15
+
 ||| The first of the `n` words of the state from its word `i`, all of which
 ||| the area holds: a run of raw words.
 public export

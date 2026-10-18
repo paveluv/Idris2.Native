@@ -231,10 +231,15 @@ export %inline
 foreignBytes : (word : Bits64) -> Raw
 foreignBytes = Raw.fromWord
 
-||| The byte at raw memory plus a byte offset.
+||| The byte at raw memory plus a byte offset, and storing one, the low
+||| byte of the word.
 export %inline
 loadByteAt : Raw -> (offset : Bits64) -> Heap.Op Heap Bits64
 loadByteAt = intrinsic__load8
+
+export %inline
+storeByteAt : Raw -> (offset, value : Bits64) -> Heap.Op Heap ()
+storeByteAt = intrinsic__store8
 
 ------------------------------------------------------------------------------
 -- Values as ordinary code holds them, and the objects they point to

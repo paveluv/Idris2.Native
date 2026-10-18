@@ -1,0 +1,6 @@
+. ../../testutils.sh
+
+# Changing a native program's environment: set, overwrite, keep, refuse,
+# unset, many in a row, and the whole of it listed.
+idris2 --cg native -o setenv SetEnv.idr > /dev/null
+env -i IDR=one IDR_KEEP=k ./build/exec/setenv

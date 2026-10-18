@@ -28,6 +28,14 @@ import Native.Flat.Uniform as Flat
 import Native.HeapObj.Shape as HeapObj
 import Native.Port
 import Native.Primitive.DoubleBits
+-- lint: allow import-unused: the flat check reaches through the environment's bodies, which allocate outside the heap
+import Native.Runtime.Alloc.Allocator
+import Native.Runtime.Alloc.Arena
+import Native.Runtime.Alloc.Chunks
+import Native.Runtime.Alloc.Config
+import Native.Runtime.Alloc.Pages
+import Native.Runtime.Alloc.SizeClasses
+import Native.Runtime.Alloc.System
 import Native.Runtime.Bits
 import Native.Runtime.Heap as Runtime
 import Native.Runtime.Memory
@@ -40,6 +48,7 @@ import Native.Support.Double.Between
 import Native.Support.Double.Limbs
 import Native.Support.Double.Nearest
 import Native.Support.Double.Shortest
+import Native.Support.Environment
 import Native.Support.Obj
 import Native.Support.Ptr
 import Native.Types.Header
@@ -693,40 +702,61 @@ prim__getArg n w = let (Runtime.MkHeap # r) = argOp Runtime.MkHeap in MkIORes r 
            zeroEnded p
 
 %cg native flat Support.String.Utf8.prim__getEnv
-||| `getEnv`: the value of the environment's variable of the name, as a
-||| pointer to its bytes in the environment the system gave, the bytes
-||| after the first entry that begins with the name and `=`; the null
-||| pointer for a name no entry has. As the C library's `getenv`, which the
-||| other code generators call, the name is compared byte by byte, whatever
-||| it holds.
+||| `getEnv`: the value of the environment's variable of the name
+||| (`Support.Environment`), as a pointer to its bytes, after the first entry
+||| that holds the name and `=`; the null pointer for a name no entry has.
+||| As the C library's `getenv`, which the other code generators call, the
+||| name is compared byte by byte, whatever it holds.
 export covering
 prim__getEnv : Flat.Uniform String -> PrimIO (Flat.Uniform (Ptr String))
-prim__getEnv name w = let (Runtime.MkHeap # r) = envOp Runtime.MkHeap in MkIORes r w
+prim__getEnv name w = let (Runtime.MkHeap # r) = envOp name Runtime.MkHeap in MkIORes r w
   where
-    -- whether the entry at `e` begins with the name's bytes, from `i` on,
-    -- then `=`
     covering
-    named : Obj Types.Kind.STRING -> (e, i, len : Bits64) -> Runtime.Heap.Op Runtime.Heap Bool
-    named s e i len = do
-      b <- Runtime.Memory.loadByteAt (Runtime.Memory.foreignBytes e) i
-      if i == len then Runtime.Heap.pure (b == 0x3D) else do
-        c <- byteAt s i
-        if b /= c then Runtime.Heap.pure False else named s e (i + 1) len
-
-    covering
-    search : Obj Types.Kind.STRING -> (n, len : Bits64) -> Runtime.Heap.Op Runtime.Heap (Flat.Uniform (Ptr String))
-    search s n len = do
-      e <- Runtime.Memory.environmentEntry n
-      if e == 0 then Ptr.newPtr 0 else do
-        found <- named s e 0 len
-        if found then Ptr.newPtr (e + len + 1) else search s (n + 1) len
-
-    covering
-    envOp : Runtime.Heap.Op Runtime.Heap (Flat.Uniform (Ptr String))
-    envOp = do
+    envOp : Flat.Uniform String -> Runtime.Heap.Op Runtime.Heap (Flat.Uniform (Ptr String))
+    envOp name = do
       s <- stringObject name
       h <- headerOf s
-      search s 0 (bytesOf h)
+      found <- Environment.find (Obj.objectBytes s 8) (bytesOf h)
+      case found of
+        Nothing => Ptr.newPtr 0
+        Just i => do
+          e <- Environment.entryAt i
+          Ptr.newPtr (e + bytesOf h + 1)
+
+%cg native flat Support.String.Utf8.prim__setEnv
+||| `setEnv`: the environment's variable of the name set to the value,
+||| unless it is set and `overwrite` is 0 (`Support.Environment.set`); 0
+||| when it is, -1 when it is not, as the C library's `setenv` answers: for
+||| an empty name, one with `=` or a zero byte, or no memory.
+export covering
+prim__setEnv : Flat.Uniform String -> Flat.Uniform String -> Int -> PrimIO Int
+prim__setEnv name value overwrite w = let (Runtime.MkHeap # r) = setOp name value Runtime.MkHeap in MkIORes r w
+  where
+    covering
+    setOp : Flat.Uniform String -> Flat.Uniform String -> Runtime.Heap.Op Runtime.Heap Int
+    setOp name value = do
+      n <- stringObject name
+      nh <- headerOf n
+      v <- stringObject value
+      vh <- headerOf v
+      ok <- Environment.set (Obj.objectBytes n 8) (bytesOf nh) (Obj.objectBytes v 8) (bytesOf vh) (overwrite /= 0)
+      if ok then Runtime.Heap.pure 0 else Runtime.Heap.pure (-1)
+
+%cg native flat Support.String.Utf8.prim__unsetEnv
+||| `unsetEnv`: every entry of the name removed from the environment
+||| (`Support.Environment.unset`); 0, or -1 for a name that cannot be a
+||| variable's, as the C library's `unsetenv` answers.
+export covering
+prim__unsetEnv : Flat.Uniform String -> PrimIO Int
+prim__unsetEnv name w = let (Runtime.MkHeap # r) = unsetOp name Runtime.MkHeap in MkIORes r w
+  where
+    covering
+    unsetOp : Flat.Uniform String -> Runtime.Heap.Op Runtime.Heap Int
+    unsetOp name = do
+      n <- stringObject name
+      nh <- headerOf n
+      ok <- Environment.unset (Obj.objectBytes n 8) (bytesOf nh)
+      if ok then Runtime.Heap.pure 0 else Runtime.Heap.pure (-1)
 
 %cg native flat Support.String.Utf8.prim__getString
 ||| `getString`: the string a pointer to zero-ended bytes points to, copied;

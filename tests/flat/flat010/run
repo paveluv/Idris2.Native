@@ -1,11 +1,12 @@
 . ../../testutils.sh
 
+# The copies are made under build/, where the linter, which may run beside
+# the tests, does not look.
+mkdir -p build/copies
 idris2 --cg flat-oracle -o names Names.idr
-sed -e 's/^%cg native flat swap$/%cg native flat Main.swap/' -e '/^%cg native flat missing$/d' Names.idr > Qualified.idr
-idris2 --cg flat-oracle --exec main Qualified.idr
-rm -f Qualified.idr
+sed -e 's/^%cg native flat swap$/%cg native flat Main.swap/' -e '/^%cg native flat missing$/d' Names.idr > build/copies/Qualified.idr
+(cd build/copies && idris2 --cg flat-oracle --exec main Qualified.idr)
 idris2 --check Twice.idr
-sed -e '/^%cg native flat f Twice.f$/d' -e 's/f "x"/1/' -e 's/^module Twice/module Operator/' -e 's/Twice[.](+!)/Operator.(+!)/' Twice.idr > Operator.idr
-idris2 --cg flat-oracle --directive dump-flat=flat.txt --exec main Operator.idr
-cat flat.txt
-rm -f flat.txt Operator.idr
+sed -e '/^%cg native flat f Twice.f$/d' -e 's/f "x"/1/' -e 's/^module Twice/module Operator/' -e 's/Twice[.](+!)/Operator.(+!)/' Twice.idr > build/copies/Operator.idr
+(cd build/copies && idris2 --cg flat-oracle --directive dump-flat=flat.txt --exec main Operator.idr)
+cat build/copies/flat.txt

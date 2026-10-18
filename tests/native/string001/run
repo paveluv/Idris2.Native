@@ -2,7 +2,10 @@
 
 # The string primitives outside a string end the program: the head and the
 # tail of "", and indices 3 and -1 of "abc" and 5 of "héllo", which is five
-# characters in six bytes. Each line replaces `probe`'s body.
+# characters in six bytes. Each line replaces `probe`'s body, in a copy
+# under build/, where the linter, which may run beside the tests, does not
+# look.
+mkdir -p build/cases
 n=0
 for body in 'prim__strHead (str "") == '"'z'" \
             'prim__strTail (str "") == "z"' \
@@ -10,9 +13,8 @@ for body in 'prim__strHead (str "") == '"'z'" \
             'prim__strIndex (str "abc") (-1) == '"'z'" \
             'prim__strIndex (str "héllo") 5 == '"'z'"; do
   n=$((n + 1))
-  sed -e "s/^probe = .*   -- each program replaces this line\$/probe = $body/" Main.idr > Case$n.idr
-  idris2 --cg native -o case$n Case$n.idr > /dev/null
-  ./build/exec/case$n 2>&1
+  sed -e "s/^probe = .*   -- each program replaces this line\$/probe = $body/" Main.idr > build/cases/Case$n.idr
+  (cd build/cases && idris2 --cg native -o case$n Case$n.idr > /dev/null)
+  ./build/cases/build/exec/case$n 2>&1
   echo "status: $?"
-  rm -f Case$n.idr
 done

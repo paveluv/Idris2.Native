@@ -5,8 +5,10 @@
 idris2 --cg native -p idris2-native-runtime -p idris2-native --directive nursery=4096 -o free Main.idr > /dev/null
 ./build/exec/free 2>&1
 echo "status: $?"
-sed -e 's/^  pure ()   -- the limited program sets its limit here$/  setHeapLimit 262144/' Main.idr > Limited.idr
-idris2 --cg native -p idris2-native-runtime -p idris2-native --directive nursery=4096 -o limited Limited.idr > /dev/null
-./build/exec/limited 2>&1
+# The copy is made under build/, where the linter, which may run beside the
+# tests, does not look.
+mkdir -p build/copies
+sed -e 's/^  pure ()   -- the limited program sets its limit here$/  setHeapLimit 262144/' Main.idr > build/copies/Limited.idr
+(cd build/copies && idris2 --cg native -p idris2-native-runtime -p idris2-native --directive nursery=4096 -o limited Limited.idr > /dev/null)
+./build/copies/build/exec/limited 2>&1
 echo "status: $?"
-rm -f Limited.idr

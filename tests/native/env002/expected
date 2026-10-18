@@ -1,0 +1,20 @@
+IDR: Just "one"
+True
+IDR_NEW: Just "fresh"
+True
+IDR: Just "replaced"
+True
+IDR: Just "replaced"
+False
+False
+True
+IDR_KEEP: Nothing
+True
+IDR_MANY_0: Just "0"
+IDR_MANY_39: Just "1521"
+42 entries
+IDR=replaced
+IDR_NEW=fresh
+IDR_MANY_39=1521
+IDR_MANY_38=1444
+IDR_MANY_37=1369

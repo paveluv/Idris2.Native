@@ -140,14 +140,11 @@ missing  System.Term.prim__getTermCols
 missing  System.Term.prim__getTermLines
 missing  System.Term.prim__setupTerm
 missing  System.prim__enableRawMode
-missing  System.prim__getEnvPair
 missing  System.prim__getPID
 missing  System.prim__resetRawMode
-missing  System.prim__setEnv
 missing  System.prim__sleep
 missing  System.prim__system
 missing  System.prim__time
-missing  System.prim__unsetEnv
 missing  System.prim__usleep
 runtime  Prelude.IO.prim__getString
 runtime  Prelude.IO.prim__putChar
@@ -162,4 +159,7 @@ runtime  System.prim__exit
 runtime  System.prim__getArg
 runtime  System.prim__getArgCount
 runtime  System.prim__getEnv
-13 by the runtime, 6 lowered inline, 145 missing
+runtime  System.prim__getEnvPair
+runtime  System.prim__setEnv
+runtime  System.prim__unsetEnv
+16 by the runtime, 6 lowered inline, 142 missing
