@@ -6,10 +6,21 @@
 #                   bootstrapping it (once, and after moving the pin)
 #   make            build idris2-native, install its modules as the package
 #                   `idris2-native`, and build with it the runtime, the
-#                   package `idris2-native-runtime`, into build/prefix
+#                   package `idris2-native-runtime`, into build/prefix; each
+#                   only when its sources changed since
 #   make test       run the tests; `only=native/term001` runs some
 #   make lint       the product's code against the linter's rules
 #                   (tools/lint), and its architectural health
+#   make gate       what a change must pass: the tests and the lint, run at
+#                   once, after one build
+#   make release    idris2-native compiled as one whole program, into
+#                   build/release/exec: what to measure compile times with
+#
+# The build of idris2-native is incremental: each module is compiled to its
+# own Chez object as it is checked, and the executable links them, so a
+# change rebuilds what it changed, in seconds. The executable runs slower
+# than one compiled as one whole program, since Chez cannot inline across
+# the objects; `make release` builds that one, for measurements.
 #   make health     the architectural health with what costs it most,
 #                   under each component; `offenders=20` lists more
 #   make scaling    the backend's phases against the size of the program;
@@ -28,20 +39,35 @@ threads ?= $(shell nproc 2>/dev/null || echo 1)
 # after uses the pinned Idris 2's, in the prefix.
 WITH_PREFIX := IDRIS2_PREFIX=$(PREFIX)
 
-.PHONY: all upstream native linter testbin test lint health check-source scaling clean
+.PHONY: all upstream native release linter testbin test lint gate health check-source scaling clean
 
 all: native
 
+# The API package is built incrementally, as the libraries are, so that
+# idris2-native's incremental build links its objects.
 upstream:
 	$(MAKE) -C Idris2 PREFIX=$(PREFIX)
 	$(MAKE) -C Idris2 install PREFIX=$(PREFIX)
-	$(WITH_PREFIX) $(MAKE) -C Idris2 install-api PREFIX=$(PREFIX) IDRIS2_BOOT=$(UPSTREAM_IDRIS2)
+	$(WITH_PREFIX) IDRIS2_INC_CGS=chez $(MAKE) -C Idris2 install-api PREFIX=$(PREFIX) IDRIS2_BOOT=$(UPSTREAM_IDRIS2)
+
+# What a build depends on: its sources, and the pinned Idris it is built by.
+NATIVE_SOURCES := $(shell find src -name '*.idr') idris2-native.ipkg
+RUNTIME_SOURCES := $(shell find runtime/Native -name '*.idr') runtime/idris2-native-runtime.ipkg
+
+native: build/runtime.stamp
+
+build/native.stamp: $(NATIVE_SOURCES) $(UPSTREAM_IDRIS2)
+	$(WITH_PREFIX) IDRIS2_INC_CGS=chez $(UPSTREAM_IDRIS2) --install idris2-native.ipkg
+	touch $@
 
 # The runtime is built by idris2-native itself, so that its flat functions
 # are checked as its modules are built.
-native:
-	$(WITH_PREFIX) $(UPSTREAM_IDRIS2) --install idris2-native.ipkg
+build/runtime.stamp: build/native.stamp $(RUNTIME_SOURCES)
 	cd runtime && $(WITH_PREFIX) $(TARGET) --install idris2-native-runtime.ipkg
+	touch $@
+
+release:
+	$(WITH_PREFIX) $(UPSTREAM_IDRIS2) --build-dir build/release --output-dir build/release/exec --build idris2-native.ipkg
 
 # The linter is an Idris program of its own, on the API of the pinned Idris.
 LINTER := $(CURDIR)/tools/lint/build/exec/idris2-native-lint
@@ -55,6 +81,11 @@ testbin:
 test: native linter testbin
 	cd tests && $(WITH_PREFIX) NAME_VERSION=$(NAME_VERSION) ./build/exec/runtests $(TARGET) \
 	  --timing --failure-file failures --threads $(threads) --only "$(only)" < /dev/null
+
+# The tests and the lint at once, after one build: the lint reads the
+# build's TTCs and runs nothing the tests do.
+gate:
+	$(MAKE) --no-print-directory --output-sync=target -j2 test lint
 
 # Findings with their positions, then the health score; fails on a finding
 # or a score under the gate's minimum. The rules over what the modules use

@@ -28,6 +28,23 @@
 #   --subject-directive D   pass `--directive D` to the subject
 #   --oracle-directive D    pass `--directive D` to the oracle
 #   --timeout SECONDS       per run, when `timeout` is available (default 60)
+#   --separate              compile each program on its own, as a program of
+#                           its own, rather than all of them in one (also
+#                           ORACLE_SEPARATE=1)
+#
+# By default the programs are compiled together, once under each code
+# generator: each becomes a module P<name>, its directives' `Main.` its
+# own, its `main` exported as `run`, and a driver `Main` runs the one its first
+# argument names. Each still runs as a process of its own, with its own
+# output and exit status, so a program that ends early, or reaches what
+# the native backend does not lower, ends only its own run; a program that
+# does not compile fails the whole compilation, and every program reports
+# that error. vmcode-interp runs `main` without arguments, so under it the
+# programs are compiled separately.
+#
+# The compilations and runs go on in parallel, ORACLE_JOBS of them at a
+# time (default 16), each in its own work directory; the report is written
+# after them all, in the order the programs are given.
 #
 # A program is a `module Main`; its behaviour is its standard output and its
 # exit status. The native backend does not lower output yet, so the programs
@@ -65,6 +82,7 @@ oracle=chez
 subject_dirs=""
 oracle_dirs=""
 limit=60
+separate=${ORACLE_SEPARATE:-0}
 
 while [ $# -gt 0 ]; do
   case $1 in
@@ -76,6 +94,7 @@ while [ $# -gt 0 ]; do
     --subject-directive) subject_dirs="$subject_dirs --directive $2"; shift 2 ;;
     --oracle-directive) oracle_dirs="$oracle_dirs --directive $2"; shift 2 ;;
     --timeout) limit=$2; shift 2 ;;
+    --separate) separate=1; shift ;;
     --) shift; break ;;
     -*) echo "oracle.sh: unknown option $1" >&2; exit 2 ;;
     *) break ;;
@@ -118,21 +137,100 @@ side() {
   )
 }
 
+# combined CG DIRECTIVES DIR PROGRAM...: the programs as modules of one
+# driver in DIR, compiled under CG. Leaves DIR/log, and DIR/status: "compile"
+# if compilation failed, else empty.
+combined() {
+  cg=$1 dirs=$2 dir=$3
+  shift 3
+  mkdir -p "$dir"
+  {
+    echo "module Main"
+    echo "import System"
+    for src in "$@"; do echo "import P$(basename "$src" .idr)"; done
+    # a program may be partial, so the driver is
+    echo "partial"
+    echo "main : IO ()"
+    echo "main = do"
+    echo "  args <- getArgs"
+    echo "  case args of"
+    for src in "$@"; do
+      p=$(basename "$src" .idr)
+      echo "    [_, \"$p\"] => P$p.run"
+    done
+    echo "    _ => putStrLn \"oracle: no such program\""
+  } > "$dir/Main.idr"
+  for src in "$@"; do
+    p=$(basename "$src" .idr)
+    sed -e "s/^module Main\$/module P$p/" -e "/^%cg/s/Main\./P$p./g" -e "s/^main : IO ()\$/export\nrun : IO ()/" -e "s/^main\b/run/" \
+      "$src" > "$dir/P$p.idr"
+  done
+  (
+    cd "$dir" || exit 1
+    # shellcheck disable=SC2086
+    "$idris2" $flags --cg "$cg" $dirs Main.idr -o prog > log 2>&1
+    if grep -q '^Error:' log || [ ! -x build/exec/prog ]; then echo compile > status; else : > status; fi
+  )
+}
+
+# run DIR NAME WORK: the program NAME of the driver compiled in DIR, run with
+# WORK as the directory it runs in, leaving WORK/out, WORK/err and
+# WORK/status as `side` does; WORK/log the compilation's.
+run() {
+  dir=$1 name=$2 work=$3
+  cp "$dir/log" "$work/log"
+  if [ "$(cat "$dir/status")" = compile ]; then echo compile > "$work/status"; return; fi
+  (
+    cd "$work" || exit 1
+    limited "$dir/build/exec/prog" "$name" > out 2> err
+    echo $? > status
+  )
+}
+
 first_error() {
   grep -m 1 '^Error:' "$1" | cut -c 1-160
 }
 
 n=0 agree=0 unsupported=0 mismatch=0 errors=0 timeouts=0
 
+if [ "$oracle" = vmcode-interp ] || [ "$subject" = vmcode-interp ]; then separate=1; fi
+
+# Both sides of every program, ORACLE_JOBS at a time: each compilation or run
+# is a job in the background, and a full batch is waited for before the next
+# starts.
+jobs=${ORACLE_JOBS:-16}
+running=0
+if [ "$separate" = 0 ]; then
+  rm -rf build/oracle/combined
+  combined "$oracle" "$oracle_dirs" "$PWD/build/oracle/combined/oracle" "$@" &
+  combined "$subject" "$subject_dirs" "$PWD/build/oracle/combined/subject" "$@" &
+  wait
+fi
 for src in "$@"; do
   name=$(basename "$src" .idr)
   work=build/oracle/$name
   rm -rf "$work"
   mkdir -p "$work/oracle" "$work/subject"
-  cp "$src" "$work/oracle/Main.idr"
-  cp "$src" "$work/subject/Main.idr"
-  side "$oracle" "$oracle_dirs" "$work/oracle"
-  side "$subject" "$subject_dirs" "$work/subject"
+  if [ "$separate" = 0 ]; then
+    run "$PWD/build/oracle/combined/oracle" "$name" "$work/oracle" &
+    run "$PWD/build/oracle/combined/subject" "$name" "$work/subject" &
+  else
+    cp "$src" "$work/oracle/Main.idr"
+    cp "$src" "$work/subject/Main.idr"
+    side "$oracle" "$oracle_dirs" "$work/oracle" &
+    side "$subject" "$subject_dirs" "$work/subject" &
+  fi
+  running=$((running + 2))
+  if [ "$running" -ge "$jobs" ]; then
+    wait
+    running=0
+  fi
+done
+wait
+
+for src in "$@"; do
+  name=$(basename "$src" .idr)
+  work=build/oracle/$name
   os=$(cat "$work/oracle/status")
   ss=$(cat "$work/subject/status")
   n=$((n + 1))

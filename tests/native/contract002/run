@@ -15,14 +15,17 @@
 #   registers alone would let it through, both being one word;
 # * the platform's `reserve` is declared by `commit`'s port: its body, which
 #   gives an address, does not fit that port, which gives a word.
+# The copy is made under build/, which the linter and git leave alone, so
+# that a lint run at the same time as the tests does not read it.
 fault() {
-  rm -rf broken
-  cp -r ../../../runtime broken
-  rm -rf broken/build
+  rm -rf build/broken
+  mkdir -p build
+  cp -r ../../../runtime build/broken
+  rm -rf build/broken/build
   what=$1; file=$2; shift 2
-  sed -i "$@" broken/Native/Runtime/$file
+  sed -i "$@" build/broken/Native/Runtime/$file
   echo "$what:"
-  (cd broken && idris2 --build idris2-native-runtime.ipkg 2>&1) | sed -n '/^Error/,/^$/p' | grep "^Error\|^Mismatch" | head -2
+  (cd build/broken && idris2 --build idris2-native-runtime.ipkg 2>&1) | sed -n '/^Error/,/^$/p' | grep "^Error\|^Mismatch" | head -2
 }
 fault "start of three words" Start.idr -e 's/^start entry window = do/start entry window _ = do/'
 fault "crash by allocSlow's port" System.idr \
@@ -30,4 +33,4 @@ fault "crash by allocSlow's port" System.idr \
 fault "allocSlow giving its raw memory" Space.idr -e 's/^  Heap.pure (Memory.objectAt a)$/  Heap.pure a/'
 fault "reserve by commit's port" OS/LinuxX86_64.idr \
   -e 's/^reserve : PortTy Memory.Addr (Service.port Service.Reserve)$/reserve : PortTy Memory.Addr (Service.port Service.Commit)/'
-rm -rf broken
+rm -rf build/broken
