@@ -884,13 +884,19 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                 [c] <- strings Types.StringRoutine.Cons [w, empty]
                 pure (set env r c)
               else set env r <$> decimal wf (get env x)
-            -- a double as its shortest decimal text
+            -- a double as its shortest decimal text, and a string as a double
             (Nothing, Nothing) =>
               if from == DoubleType && to == StringType then do
                 p <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr Types.Kind.DOUBLE (get env x))
                 f <- TermIR.Build.emit1 (TermIR.Instr.Load IRCommon.Ty.F64 (TermIR.MkMem (TermIR.Mem.AtPtr p) Nothing 8))
                 [t] <- strings Types.StringRoutine.ShowDouble [f]
                 pure (set env r t)
+              -- a string as the double it reads as
+              else if from == StringType && to == DoubleType then do
+                [f] <- strings Types.StringRoutine.ReadDouble [get env x]
+                p <- TermIR.Build.emit1 (TermIR.Instr.AllocObj Types.Header.DoubleH [f])
+                d <- TermIR.Build.emit1 (TermIR.Instr.WidenPtr p)
+                pure (set env r d)
               else TermIR.Build.unsupported ("the cast from " ++ show from ++ " to " ++ show to)
             _ => TermIR.Build.unsupported ("the cast from " ++ show from ++ " to " ++ show to)
           (BelieveMe, [_, _, x]) => pure (set env r (get env x))

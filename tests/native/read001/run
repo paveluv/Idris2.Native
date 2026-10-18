@@ -1,0 +1,5 @@
+. ../../testutils.sh
+
+# Reading doubles, natively: each text's double as its bits.
+idris2 --cg native -p idris2-native-runtime -p idris2-native -o read Read.idr > /dev/null
+./build/exec/read

@@ -36,6 +36,9 @@ import Native.Runtime.PortTy as Runtime
 import Native.Runtime.Raw as Runtime
 import Native.Runtime.Space
 import Native.Support.CodePoint
+import Native.Support.Double.Between
+import Native.Support.Double.Limbs
+import Native.Support.Double.Nearest
 import Native.Support.Double.Shortest
 import Native.Support.Obj
 import Native.Types.Header
@@ -641,3 +644,182 @@ prim__putStr str w = let (Runtime.MkHeap # ()) = putOp str Runtime.MkHeap in MkI
       s <- stringObject str
       h <- headerOf s
       Runtime.OS.osWriteAll Runtime.OS.stdout (Obj.objectBytes s 8) (bytesOf h)
+
+------------------------------------------------------------------------------
+-- Text as numbers
+
+||| What a decimal's digits are, as a scan from its first digit finds them:
+||| the byte after them, how many digits there are, how many before the
+||| point, how many zeros lead the first nonzero one, how many are from it
+||| on, the first 19 of those as a word, and whether there was a point.
+record Scan where
+  constructor MkScan
+  end, digits, whole, lead, significant, w : Bits64
+  point : Bool
+
+%cg native flat Support.String.Utf8.readDouble
+||| The double a string is. Idris does not say what text its cast reads,
+||| and its code generators' casts read different texts (Chez's
+||| `string->number`, C's `strtod`, JavaScript's `Number`), so this reads
+||| the text every one of them reads, as IEEE 754 reads a decimal, and the
+||| text `showDouble` writes, so that a double reads back as itself:
+|||
+||| * a decimal: a sign, `+` or `-`, digits with at most one point among
+|||   them and at least one digit, and an exponent, `e` or `E`, a sign and
+|||   digits; rounded to the nearest double, ties to even, its sign kept,
+|||   -0 as -0.0;
+||| * `+inf.0`, `-inf.0` and `+nan.0`, as `showDouble` writes them.
+|||
+||| Any other text is 0.0, what each code generator gives for the empty
+||| string. Chez reads more: R6RS's exponent markers s, f, d and l, a
+||| mantissa width (`1.5|53`), ratios (`1/2`), `-nan.0`; and reads -0, an
+||| exact integer there, as 0.0. None of those is the others', and this
+||| reads none of them.
+|||
+||| A decimal of at most 19 significant digits is rounded by them alone
+||| (`Nearest.nearest`); a longer one by its first 19, unless those and the
+||| 19 raised by one round to two doubles, where it is decided exactly
+||| (`Between.between`).
+export covering
+readDouble : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.ReadDouble)
+readDouble u = do
+  s <- stringObject u
+  h <- headerOf s
+  let n = bytesOf h
+  if n == 0 then Runtime.Heap.pure 0.0 else do
+    c0 <- byteAt s 0
+    let negative = c0 == 45
+        signed = negative || c0 == 43
+        i0 : Bits64 = if signed then 1 else 0
+        sign : Bits64 = if negative then 0x8000000000000000 else 0
+    special <- if signed && n == 6 then word5 s 1 else Runtime.Heap.pure 0
+    -- inf.0 after a sign, nan.0 after a plus
+    if special == 0x302E666E69
+       then Runtime.Heap.pure (bitsDouble (sign .|. 0x7FF0000000000000))
+       else if special == 0x302E6E616E && not negative
+         then Runtime.Heap.pure (bitsDouble 0x7FF8000000000000)
+         else decimalValue s n i0 sign
+  where
+    ||| What `exponent` gives for a marker without digits after it.
+    badExponent : Int
+    badExponent = 0x7FFFFFFF
+
+    ||| Five bytes from `i`, the first lowest.
+    covering
+    word5 : Obj Types.Kind.STRING -> Bits64 -> Runtime.Heap.Op Runtime.Heap Bits64
+    word5 s i = do
+      b0 <- byteAt s i
+      b1 <- byteAt s (i + 1)
+      b2 <- byteAt s (i + 2)
+      b3 <- byteAt s (i + 3)
+      b4 <- byteAt s (i + 4)
+      Runtime.Heap.pure (b0 .|. (b1 `shiftL` 8) .|. (b2 `shiftL` 16) .|. (b3 `shiftL` 24) .|. (b4 `shiftL` 32))
+
+    ||| The decimal digits of a number from byte `i` to the first that is no
+    ||| digit: whether there is one, the value, at most 100000, past which any
+    ||| exponent is as good, and the byte after them.
+    covering
+    scanNumber : Obj Types.Kind.STRING -> (n, i : Bits64) -> Runtime.Heap.Op Runtime.Heap (Bool, Int, Bits64)
+    scanNumber s n i = go i False 0
+      where
+        covering
+        go : Bits64 -> Bool -> Int -> Runtime.Heap.Op Runtime.Heap (Bool, Int, Bits64)
+        go j any v = if j >= n then Runtime.Heap.pure (any, v, j) else do
+          b <- byteAt s j
+          if b < 48 || b > 57
+             then Runtime.Heap.pure (any, v, j)
+             else go (j + 1) True (if v >= 100000 then v else v * 10 + cast (b - 48))
+
+    ||| An exponent at byte `i`: whether there is a marker, the exponent
+    ||| (`badExponent` if no digit follows the marker and its sign), and the
+    ||| byte after it.
+    covering
+    exponent : Obj Types.Kind.STRING -> (n, i : Bits64) -> Runtime.Heap.Op Runtime.Heap (Bool, Int, Bits64)
+    exponent s n i = if i >= n then Runtime.Heap.pure (False, 0, i) else do
+      b <- byteAt s i
+      -- e or E
+      if b /= 101 && b /= 69
+         then Runtime.Heap.pure (False, 0, i)
+         else do
+           c <- if i + 1 < n then byteAt s (i + 1) else Runtime.Heap.pure 0
+           let minus = c == 45
+               start = if minus || c == 43 then i + 2 else i + 1
+           (any, v, j) <- scanNumber s n start
+           Runtime.Heap.pure (True, if not any then badExponent else if minus then negate v else v, j)
+
+    ||| The digits from byte `i`, with at most one point among them.
+    covering
+    scanDigits : Obj Types.Kind.STRING -> (n, i : Bits64) -> Scan -> Runtime.Heap.Op Runtime.Heap Scan
+    scanDigits s n i (MkScan end digits whole lead sig w point) =
+      if i >= n then Runtime.Heap.pure (MkScan end digits whole lead sig w point) else do
+        b <- byteAt s i
+        if b == 46 && not point
+           then scanDigits s n (i + 1) (MkScan (i + 1) digits whole lead sig w True)
+           else if b < 48 || b > 57
+             then Runtime.Heap.pure (MkScan end digits whole lead sig w point)
+             else
+               let d = b - 48
+                   whole' = if point then whole else whole + 1
+               in if sig == 0 && d == 0
+                     then scanDigits s n (i + 1) (MkScan (i + 1) (digits + 1) whole' (lead + 1) sig w point)
+                     else scanDigits s n (i + 1)
+                            (MkScan (i + 1) (digits + 1) whole' lead (sig + 1) (if sig < 19 then w * 10 + d else w) point)
+
+    ||| The digits of a decimal as a number in limbs, from its first nonzero
+    ||| one, at most `most` of them, and whether a nonzero digit follows those.
+    covering
+    gatherDigits : Obj Types.Kind.STRING -> (from, end, lead, most : Bits64) -> Limbs -> Runtime.Heap.Op Runtime.Heap Bool
+    gatherDigits s from end lead most d = go from lead 0 0 0 False
+      where
+        -- the digits are taken 19 at a time into a word, each word then added
+        -- in times 10 to the power of its digits
+        covering
+        flush : (chunk, digits : Bits64) -> Runtime.Heap.Op Runtime.Heap ()
+        flush chunk 0 = Runtime.Heap.pure ()
+        flush chunk digits = mulAdd d (power digits) chunk
+          where
+            power : Bits64 -> Bits64
+            power 0 = 1
+            -- lint: allow trust-escape: j is positive here, so j - 1 is smaller
+            power j = 10 * power (assert_smaller j (j - 1))
+
+        covering
+        go : (i, skip, taken, chunk, inChunk : Bits64) -> (sticky : Bool) -> Runtime.Heap.Op Runtime.Heap Bool
+        go i skip taken chunk inChunk sticky =
+          if i >= end then do flush chunk inChunk; Runtime.Heap.pure sticky else do
+            b <- byteAt s i
+            let v = b - 48
+            if b == 46
+               then go (i + 1) skip taken chunk inChunk sticky
+               else if skip > 0
+                 then go (i + 1) (skip - 1) taken chunk inChunk sticky
+                 else if taken >= most
+                   then go (i + 1) 0 taken chunk inChunk (sticky || v /= 0)
+                   else if inChunk == 19
+                     then do
+                       flush chunk inChunk
+                       go (i + 1) 0 (taken + 1) v 1 sticky
+                     else go (i + 1) 0 (taken + 1) (chunk * 10 + v) (inChunk + 1) sticky
+
+    ||| A decimal from byte `i0`, its sign's bit `sign`.
+    covering
+    decimalValue : Obj Types.Kind.STRING -> (n, i0, sign : Bits64) -> Runtime.Heap.Op Runtime.Heap Double
+    decimalValue s n i0 sign = do
+      sc <- scanDigits s n i0 (MkScan i0 0 0 0 0 0 False)
+      (hasExponent, e, j) <- exponent s n sc.end
+      let invalid = sc.digits == 0 || j /= n || (hasExponent && e == badExponent)
+      if invalid then Runtime.Heap.pure 0.0 else
+        if sc.significant == 0
+           then Runtime.Heap.pure (bitsDouble sign)
+           else do
+             let k = if sc.significant > 19 then 19 else sc.significant
+                 q = e + cast sc.whole - cast sc.lead - cast k
+                 b = nearest sc.w q
+             bits <- if sc.significant <= 19 || b == nearest (sc.w + 1) q
+                        then Runtime.Heap.pure b
+                        else do
+                          d <- newLimbs
+                          sticky <- gatherDigits s i0 sc.end sc.lead 769 d
+                          let kept = if sc.significant > 769 then 769 else sc.significant
+                          between d sticky (e + cast sc.whole - cast sc.lead - cast kept) b
+             Runtime.Heap.pure (bitsDouble (bits .|. sign))
