@@ -43,6 +43,7 @@ import Native.Flat.Exp
 import Native.HeapObj.ValEnc
 import Native.Intrinsic
 import Native.Port
+import Native.Primitive
 import Native.Routine
 import Native.Types.BignumEnc
 import Native.Types.Enc
@@ -65,7 +66,7 @@ realised : Realised
 realised =
   MkRealised [(runtimeStart, Start), (runtimeAllocSlow, AllocSlow), (runtimeAllocMutable, AllocMutable),
               (runtimeCrash, Crash)]
-             Nothing Nothing empty empty
+             Nothing Nothing empty empty empty
 
 word : String -> FlatVar
 word s = MkFlatVar (UN (Basic s)) (SPrim Bits64Type) [Word]

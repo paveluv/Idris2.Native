@@ -9,6 +9,7 @@ import Core.Context
 import Core.Context.Context
 import Core.Core
 import Core.FC
+import Core.Name
 import Core.TT.Term
 import Idris.Syntax
 
@@ -21,9 +22,12 @@ import Idris.Syntax
 ||| treating the code generator in use as incremental as soon as an imported
 ||| module, such as the Prelude, was built without it, which would turn the
 ||| check off under `--cg native` and rebuild every module each time.
+|||
+||| The backend's primitives are the code generator's to name
+||| (`primitives`), by their types.
 export
-codegenFlatCheck : Codegen
-codegenFlatCheck = MkCG compileExpr executeExpr (Just check) Nothing
+codegenFlatCheck : (primitives : Ref Ctxt Defs -> Core (List Name)) -> Codegen
+codegenFlatCheck primitives = MkCG compileExpr executeExpr (Just check) Nothing
   where
     nothing : Core a
     nothing = throw (GenericMsg EmptyFC "flat-check only checks modules as they are built; it compiles nothing")
@@ -36,5 +40,5 @@ codegenFlatCheck = MkCG compileExpr executeExpr (Just check) Nothing
 
     check : Ref Ctxt Defs -> Ref Syn SyntaxInfo -> (sourceFile : String) -> Core (Maybe (String, List String))
     check c s sourceFile
-        = do Marked.checkModule sourceFile
+        = do Marked.checkModule primitives sourceFile
              pure (Just (sourceFile, []))

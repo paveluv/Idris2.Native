@@ -65,6 +65,7 @@ import Native.Flat.Exp as Flat
 import Native.HeapObj.ValEnc
 import Native.Intrinsic
 import Native.Port
+import Native.Primitive
 import Native.Types.Enc as Types
 import Native.Types.Kind
 
@@ -305,8 +306,9 @@ data Held = Narrower IRCommon.Op.SubWord Bool | Whole Bool
 
 ||| What the lowering of a form knows of the program: the forms it may call,
 ||| the shapes of the data types, the OS services' externs, each bound to the
-||| function that implements it on the platform, and the inline externs,
-||| each with the intrinsic it is.
+||| function that implements it on the platform, the inline externs, each
+||| with the intrinsic it is, and the backend's primitives, each with the
+||| primitive it is.
 public export
 record Forms (enc : Types.Enc) (d : TermIR.Decls enc) where
   constructor MkForms
@@ -314,6 +316,7 @@ record Forms (enc : Types.Enc) (d : TermIR.Decls enc) where
   shapes : Flat.Exp.Shapes
   services : SortedMap Name Name
   externs : SortedMap Name Intrinsic
+  primitives : SortedMap Name Primitive
 
 ||| Each variable in scope: its type's skeleton and its value.
 Env : (enc : Types.Enc) -> (IRCommon.Ty enc -> Type) -> Type
@@ -374,7 +377,15 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
                      maybe
                        (TermIR.Build.unsupported ("the OS service " ++ show n ++ ", whose result is not its type's"))
                            (\rs => pure (sk, MkValue lay rs)) (regsAs lay x)
-                   Nothing => TermIR.Build.unsupported ("the primitive " ++ show n ++ " in a flat form")
+                   Nothing => case lookup n pr.primitives of
+                     -- one of the backend's: its instructions
+                     Just p => do
+                       xs <- traverse (\a => snd <$> expr env a) args
+                       x <- primitive n p (concatValues xs)
+                       maybe
+                         (TermIR.Build.unsupported ("the primitive " ++ show n ++ ", whose result is not its type's"))
+                             (\rs => pure (sk, MkValue lay rs)) (regsAs lay x)
+                     Nothing => TermIR.Build.unsupported ("the primitive " ++ show n ++ " in a flat form")
                  Just i => do
                    xs <- traverse (\a => snd <$> expr env a) args
                    x <- inlineExtern n i (concatValues xs)
@@ -417,6 +428,14 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
         constant k = case (Flat.ConstType.constType k, constWord k) of
           (Just t, Just w) => pure (wordVal t (TermIR.Opnd.W w))
           _ => TermIR.Build.unsupported ("the constant " ++ show k ++ " in a flat form")
+
+        ||| A primitive's instructions, from its arguments' registers, which are
+        ||| its signature's, into its results'.
+        primitive : Name -> Primitive -> Value enc v -> B (Value enc v)
+        primitive n Primitive.Mul128 (MkValue [Flat.Exp.Word, Flat.Exp.Word] [x, y]) = do
+          [h, l] <- TermIR.Build.emit (TermIR.Instr.Mul128 x y)
+          pure (MkValue [Flat.Exp.Word, Flat.Exp.Word] [TermIR.Opnd.V h, TermIR.Opnd.V l])
+        primitive n _ _ = TermIR.Build.unsupported ("the primitive " ++ show n ++ " on registers other than its signature's")
 
         ||| An inline extern's instructions, from its arguments' registers, which
         ||| are its port's: the intrinsic's expansion (`Linkage.Expansion`), which

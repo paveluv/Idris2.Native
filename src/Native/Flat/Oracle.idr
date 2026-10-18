@@ -17,6 +17,7 @@ import Compiler.Scheme.Chez
 import Core.Context
 import Core.Context.Context
 import Core.Core
+import Core.Name
 import Core.Options
 import Core.TT.Term
 import Data.List1
@@ -35,14 +36,14 @@ dumpFlatFile (d :: ds) = case forget (split (== '=') d) of
   _ => dumpFlatFile ds
 
 export
-codegenFlatOracle : Codegen
-codegenFlatOracle = MkCG compileExpr executeExpr Nothing Nothing
+codegenFlatOracle : (primitives : Ref Ctxt Defs -> Core (List Name)) -> Codegen
+codegenFlatOracle primitives = MkCG compileExpr executeExpr Nothing Nothing
   where
     -- The program's flat forms, used in place of their functions' ordinary
     -- forms: whether there are, or errors have been reported already.
     useForms : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} -> Core Bool
     useForms
-        = do Just forms <- Marked.markedForms (pure ())
+        = do Just forms <- Marked.markedForms primitives (pure ())
                | Nothing => pure False
              whenJust (dumpFlatFile !(getDirectives (Other "flat-oracle"))) $ \f => Translate.dumpFlat f forms
              Translate.useFlatForms forms

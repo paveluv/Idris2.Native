@@ -1,0 +1,8 @@
+. ../../testutils.sh
+
+# The primitive on both code generators: the same program, compiled by the
+# native one and by Chez, prints the same.
+idris2 --cg native -p idris2-native-runtime -p idris2-native -o mul-native Mul.idr > /dev/null
+./build/exec/mul-native
+idris2 --cg chez -p idris2-native-runtime -p idris2-native -o mul-chez Mul.idr > /dev/null
+./build/exec/mul-chez

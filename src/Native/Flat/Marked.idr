@@ -7,7 +7,9 @@
 |||     %cg native flat sumTo Main.classify
 |||
 ||| Each name is written as in the program, qualified as far as it takes to
-||| name one function. The translation (`Flat.Translate`) runs twice: as each
+||| name one function. The backend's primitives (`Native.Primitive` says
+||| what they are) are the code generator's to name, by their types: a call
+||| of one is the primitive's, and its form applies it. The translation (`Flat.Translate`) runs twice: as each
 ||| module is built, by the incremental code generator `flat-check`, which
 ||| reports a function that is not flat as an error of the module, at the
 ||| term at fault; and when a program is compiled, which makes the forms, and
@@ -119,13 +121,14 @@ reportedMark = "flat-errors-reported"
 ||| ambiguous with one of theirs.
 export
 markedForms : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} ->
-              (load : Core ()) -> Core (Maybe (NameMap Exp.FlatDef))
-markedForms load
+              (primitives : Ref Ctxt Defs -> Core (List Name)) -> (load : Core ()) -> Core (Maybe (NameMap Exp.FlatDef))
+markedForms primitives load
     = do own <- getDirectives markingCG
          marked <- Translate.flatNames own
          load
          loaded <- Translate.flatNames (filter (\d => not (elem d own)) !(getDirectives markingCG))
-         (forms, errs) <- Translate.flatForms (fst marked ++ fst loaded)
+         prims <- primitives c
+         (forms, errs) <- Translate.flatForms prims (fst marked ++ fst loaded ++ prims)
          let nameErrs = snd marked ++ snd loaded
          session <- getSession
          if not (null errs) && elem reportedMark session.directives
@@ -142,12 +145,12 @@ markedForms load
 ||| program, since a directive does not say which module wrote it.
 export
 checkModule : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} ->
-              (sourceFile : String) -> Core ()
-checkModule sourceFile
+              (primitives : Ref Ctxt Defs -> Core (List Name)) -> (sourceFile : String) -> Core ()
+checkModule primitives sourceFile
     = do here <- ctxtPathToNS sourceFile
          marked <- Translate.flatNames !(getDirectives markingCG)
          mine <- filterM (definedIn here) (fst marked)
-         (_, errs) <- Translate.flatForms mine
+         (_, errs) <- Translate.flatForms !(primitives c) mine
          unless (null errs) $ setSession ({ directives $= (reportedMark ::) } !getSession)
          report errs
   where

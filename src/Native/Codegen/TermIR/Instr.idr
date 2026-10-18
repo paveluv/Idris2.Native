@@ -60,6 +60,8 @@ data Instr : Decls enc -> Bool -> (var : IRCommon.Ty enc -> Type) -> List (IRCom
   ||| Integer arithmetic on two `W64`s or two `Fix`es; on `Fix`es the
   ||| producer guarantees the result is a fixnum.
   Arith : {auto 0 int : IsInt t} -> IRCommon.Op.ArithOp -> Opnd var t -> Opnd var t -> Instr d m var [t]
+  ||| The 128-bit product of two words: its high word, then its low word.
+  Mul128 : Opnd var IRCommon.Ty.W64 -> Opnd var IRCommon.Ty.W64 -> Instr d m var [IRCommon.Ty.W64, IRCommon.Ty.W64]
   Unary : IRCommon.Op.UnOp -> Opnd var IRCommon.Ty.W64 -> Instr d m var [IRCommon.Ty.W64]
   ||| Narrow a word to the width, then extend it back, signed or not.
   Ext : IRCommon.Op.SubWord -> (signed : Bool) -> Opnd var IRCommon.Ty.W64 -> Instr d m var [IRCommon.Ty.W64]
@@ -131,6 +133,7 @@ traverseInstr g (CodeAddr r) = pure (CodeAddr r)
 traverseInstr g (StaticAddr r) = pure (StaticAddr r)
 traverseInstr g (AreaAddr a) = pure (AreaAddr a)
 traverseInstr g (Arith {int} o x y) = [| (\x', y' => Arith {int} o x' y') (g x) (g y) |]
+traverseInstr g (Mul128 x y) = [| Mul128 (g x) (g y) |]
 traverseInstr g (Unary o x) = Unary o <$> g x
 traverseInstr g (Ext w s x) = Ext w s <$> g x
 traverseInstr g (FArith o x y) = [| FArith (pure o) (g x) (g y) |]

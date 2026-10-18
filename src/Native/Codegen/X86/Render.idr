@@ -640,6 +640,13 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                     IRCommon.Ty.Fix {fx} => fixArith o x y Nothing
                                     _ => wordArith o x y Nothing
                                   store d Asm.RAX
+                -- `mul` multiplies rax by its operand into rdx:rax, the high word in rdx
+                LocatedIR.Instr.Mul128 h l x y => do
+                                  load Asm.RAX x
+                                  load Asm.RCX y
+                                  emit (Asm.Mul Asm.RCX)
+                                  store h Asm.RDX
+                                  store l Asm.RAX
                 LocatedIR.Instr.Unary o d x => do
                                   loadReg Asm.RAX x
                                   emit (case o of IRCommon.Op.Negate => Asm.Neg Asm.RAX

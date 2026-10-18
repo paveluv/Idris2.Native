@@ -64,6 +64,7 @@ import Native.HeapObj.Shape
 import Native.HeapObj.ValEnc
 import Native.Intrinsic
 import Native.Port
+import Native.Primitive
 import Native.Routine
 import Native.Types.BignumEnc
 import Native.Types.Enc
@@ -108,7 +109,7 @@ realised : Realised
 realised =
   MkRealised [(runtimeStart, Start), (runtimeAllocSlow, AllocSlow), (runtimeAllocMutable, AllocMutable),
               (runtimeCrash, Crash)]
-             Nothing Nothing empty empty
+             Nothing Nothing empty empty empty
 
 Run : Decls TestEnc
 Run = MkDecls

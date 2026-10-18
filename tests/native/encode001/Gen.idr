@@ -87,7 +87,7 @@ groupA =
   ++ [Imul d s | d <- regs, s <- regs]
   ++ [ImulI d s i | d <- regs, s <- regs, i <- [1, -1, 127, -128, 128, 1000, 2147483647]]
   ++ [Cqo]
-  ++ [Idiv r | r <- regs] ++ [DivU r | r <- regs] ++ [Neg r | r <- regs] ++ [Not r | r <- regs]
+  ++ [Idiv r | r <- regs] ++ [DivU r | r <- regs] ++ [Mul r | r <- regs] ++ [Neg r | r <- regs] ++ [Not r | r <- regs]
   ++ [ShiftI op r n | op <- shifts, r <- regs, n <- shiftCounts]
   ++ [ShiftCl op r | op <- shifts, r <- regs]
   ++ [JmpR r | r <- regs] ++ [CallR r | r <- regs] ++ [JmpM m | m <- mems]

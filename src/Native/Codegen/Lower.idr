@@ -1341,7 +1341,7 @@ program forms shapes realised entry es rs =
       (declsOf es rs ** TermIR.MkProgram
                      (defs (declsOf es rs) (refsOf (declsOf es rs))
                        (LowerFlat.MkForms (LowerFlat.callees (declsOf es rs) forms) shapes realised.services
-                         realised.externs)
+                         realised.externs realised.primitives)
                            ((mainSig, entry) :: es))
                      (staticDefs (declsOf es rs) rs) (TermIR.Program.MkEntry TermIR.Var.here) IRCommon.ConIds.noConIds)
     Right _ =>

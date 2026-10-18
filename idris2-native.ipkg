@@ -90,6 +90,8 @@ modules =
     Native.HeapObj.ValEnc,
     Native.Intrinsic,
     Native.Port,
+    Native.Primitive,
+    Native.Primitive.Mul128,
     Native.Routine,
     Native.Service,
     Native.Types.BignumEnc,

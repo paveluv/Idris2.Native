@@ -67,6 +67,7 @@ functionPieces f =
           Instr.StaticAddr d s => show d ++ " := StaticAddr " ++ show s
           Instr.AreaAddr d _ => show d ++ " := AreaAddr"
           Instr.Arith o d x y => show d ++ " := " ++ show o ++ " " ++ ops [x, y]
+          Instr.Mul128 h l x y => show h ++ ", " ++ show l ++ " := Mul128 " ++ ops [x, y]
           i@(Instr.Unary _ d x) => show d ++ " := " ++ Instr.instrName i ++ " " ++ show x
           Instr.ArithOv o d x y l => show d ++ " := " ++ show o ++ "Ov " ++ ops [x, y] ++ " overflow " ++ show l
           Instr.Ext _ s d x => show d ++ " := Ext" ++ (if s then "S " else "Z ") ++ show x

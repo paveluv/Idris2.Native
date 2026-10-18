@@ -124,12 +124,13 @@ record Copy where
   key : List (Maybe ClosedTerm)
   form : Name
 
-||| The translation's state: a counter for the names it makes, the forms
-||| being made, which count as made, the static values that names stand
-||| for, the forms made, the copies made, and the problem the translation
-||| stopped at, which `fail` records.
+||| The translation's state: the primitives, a counter for the names it
+||| makes, the forms being made, which count as made, the static values that
+||| names stand for, the forms made, the copies made, and the problem the
+||| translation stopped at, which `fail` records.
 record FlatState where
   constructor MkFlatState
+  primitives : List Name
   nextName : Int
   making : List Name
   statics : NameMap Static
@@ -577,7 +578,9 @@ mutual
       constantOf _ = Nothing
 
 -- Make the flat form of `n`, a flat function, if its signature is ground.
--- A generic one has flat forms at static arguments only.
+-- A generic one has flat forms at static arguments only. A primitive's form
+-- is the primitive applied to its parameters, so that ordinary code calls it
+-- as it calls any flat function; its body is not translated.
 root : {auto c : Ref Ctxt Defs} -> {auto s : Ref FlatSt FlatState} ->
        Name -> Core ()
 root n
@@ -586,10 +589,15 @@ root n
            | Nothing => pure ()
          fn <- toFullNames n
          sig <- signature (type gdef)
-         Just (params, res) <- groundSignature sig
+         Just (params, (rsk, rl)) <- groundSignature sig
            | Nothing => pure ()
-         let tr = MkTr fn [<] (location gdef) [] empty
-         makeForm tr (location gdef) fn fn gdef (sigPending sig.parts) params res
+         if fn `elem` primitives !(get FlatSt)
+            then let fc = location gdef
+                     vs = map fst params
+                     body = Exp.FPrim fc fn rsk rl (map (\v => Exp.FVar fc v.name) vs)
+                 in update FlatSt { forms $= insert fn (Exp.MkFlatDef fn vs rsk rl body fc) }
+            else let tr = MkTr fn [<] (location gdef) [] empty
+                 in makeForm tr (location gdef) fn fn gdef (sigPending sig.parts) params (rsk, rl)
   where
     signature : ClosedTerm -> Core Signature
     signature ty
@@ -649,6 +657,19 @@ root n
         pending : SigPart -> Pending
         pending (SigArg _ v) = PArg (Ref EmptyFC Bound v)
         pending SigUnwrap = PUnwrap
+
+    -- How many arguments a definition's type takes, erased ones included: how
+    -- many a call of a primitive the directives mark takes.
+    typeArity : GlobalDef -> Core Nat
+    typeArity gdef
+        = do defs <- get Ctxt
+             go !(nf defs Env.empty (type gdef))
+      where
+        go : ClosedNF -> Core Nat
+        go (NBind fc _ (Pi {}) sc)
+            = do defs <- get Ctxt
+                 S <$> go !(sc defs (toClosure defaultOpts Env.empty (Erased fc Placeholder)))
+        go _ = pure Z
 
     ||| Make the flat form `form` of `fn`, its case tree applied to `parts`,
     ||| unless it is made or being made: `fn`'s own, or a copy of it.
@@ -863,7 +884,9 @@ root n
                                   ExternDef ar => primitive tr fc fn gdef ar ps
                                   ForeignDef ar _ => primitive tr fc fn gdef ar ps
                                   PMDef _ targs ct _ _ =>
-                                    if unfoldable tr fn gdef
+                                    if fn `elem` primitives !(get FlatSt)
+                                       then primitive tr fc fn gdef !(typeArity gdef) ps
+                                    else if unfoldable tr fn gdef
                                        then unfold tr fc fn gdef ct ps
                                        else demand tr fc fn gdef ps
                                   _ => fail tr fc (Problem.Unhandled ("The reference to " ++ show fn))
@@ -928,7 +951,8 @@ root n
                                         else fail tr fc (Problem.Unhandled "A coercion between layouts")
                             believe _ _ = fail tr fc (Problem.Unhandled "A coercion of another arity")
 
-                        -- An `%extern` or `%foreign` primitive.
+                        -- An `%extern` or `%foreign` primitive, or one of the backend's: a
+                        -- definition its directive marks, whose body the translation leaves.
                         primitive : Tr -> FC -> Name -> GlobalDef -> (arity : Nat) -> List Pending -> Core Exp
                         primitive tr fc fn gdef arity ps
                             = do Just (args, rest) <- pure (takeArgs arity ps)
@@ -1420,11 +1444,14 @@ flatNames directives
 ||| The flat forms of the flat functions given, and of the ground functions
 ||| they call, with the errors of those that have none: a signature that is
 ||| not flat, or a body. A function that fails leaves no forms behind, of its
-||| own or of its callees.
+||| own or of its callees. A call of one of the backend's primitives, which
+||| the code generator names (`primitives`), is the primitive's, and each
+||| primitive given has the form that applies it.
 export
-flatForms : {auto c : Ref Ctxt Defs} -> List Name -> Core (NameMap Exp.FlatDef, List Problem.FlatError)
-flatForms ns
-    = do s <- newRef FlatSt (MkFlatState 0 [] empty empty [] Nothing)
+flatForms : {auto c : Ref Ctxt Defs} -> (primitives : List Name) -> List Name ->
+            Core (NameMap Exp.FlatDef, List Problem.FlatError)
+flatForms primitives ns
+    = do s <- newRef FlatSt (MkFlatState primitives 0 [] empty empty [] Nothing)
          errs <- catMaybes <$> traverse tryRoot ns
          pure ((forms !(get FlatSt)), errs)
   where
@@ -1696,8 +1723,8 @@ useFlatForms forms = traverse_ use (toList forms)
         go (Exp.FCrash _ _) = neutral
         go (Exp.FNone _) = neutral
 
-    use : (Name, Exp.FlatDef) -> Core ()
-    use (n, d)
+    useForm : Name -> Exp.FlatDef -> Core ()
+    useForm n d
         = do defs <- get Ctxt
              cd <- forget d
              gdef <- case !(lookupCtxtExact n (gamma defs)) of
@@ -1708,6 +1735,12 @@ useFlatForms forms = traverse_ use (toList forms)
              ignore $ addDef n ({ compexpr := Just cd
                                 , namedcompexpr := Just (forgetDef cd)
                                 , refersToRuntimeM := Just refs } gdef)
+
+    -- A primitive's form applies the primitive, so its body stays the
+    -- function's, which the primitive's calls call.
+    use : (Name, Exp.FlatDef) -> Core ()
+    use (n, d@(Exp.MkFlatDef _ _ _ _ (Exp.FPrim _ p _ _ _) _)) = if p == n then pure () else useForm n d
+    use (n, d) = useForm n d
 
 ||| Write the flat forms to `file`, each followed by the shapes of the data
 ||| types it takes and returns.

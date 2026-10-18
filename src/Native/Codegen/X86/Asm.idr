@@ -348,6 +348,8 @@ data Instr : Type where
   Cqo    : Instr
   Idiv   : Reg64 -> Instr
   DivU   : Reg64 -> Instr
+  ||| rdx:rax := rax * the register, unsigned.
+  Mul    : Reg64 -> Instr
   Neg    : Reg64 -> Instr
   Not    : Reg64 -> Instr
   ShiftI : ShiftOp -> Reg64 -> Bits8 -> Instr
@@ -414,6 +416,7 @@ Show Instr where
     Cqo => "cqo"
     Idiv r => "idiv " ++ show r
     DivU r => "div " ++ show r
+    Mul r => "mul " ++ show r
     Neg r => "neg " ++ show r
     Not r => "not " ++ show r
     ShiftI op r n => show op ++ " " ++ show r ++ ", " ++ show (cast {to = Nat} n)

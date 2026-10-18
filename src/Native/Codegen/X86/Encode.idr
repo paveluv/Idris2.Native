@@ -68,6 +68,7 @@ encodeRaw pc rel instr = case instr of
   Asm.Cqo => [0x48, 0x99]
   Asm.Idiv r => form [] True [0xF7] 7 (Left r) 0 False []
   Asm.DivU r => form [] True [0xF7] 6 (Left r) 0 False []
+  Asm.Mul r => form [] True [0xF7] 4 (Left r) 0 False []
   Asm.Neg r => form [] True [0xF7] 3 (Left r) 0 False []
   Asm.Not r => form [] True [0xF7] 2 (Left r) 0 False []
   Asm.ShiftI op r n => form [] True [0xC1] (Asm.shiftDigit op) (Left r) 0 False [n]

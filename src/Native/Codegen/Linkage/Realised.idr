@@ -19,6 +19,11 @@
 ||| `PortTy addr (port c)` of the runtime, and the string routines
 ||| (`Native.Types.StringRoutine`) in the string encoding's module.
 |||
+||| The backend's primitives are found the same way (`Native.Primitive`),
+||| each a definition `FunctionTy (signature c)` of a module of
+||| `Native.Primitive`, at most one of each: a program that imports none
+||| uses none.
+|||
 ||| Part of what generated code, the runtime and the linker agree on
 ||| (`Native.Codegen.Linkage.Routine` says what it is).
 module Native.Codegen.Linkage.Realised
@@ -39,6 +44,7 @@ import Data.SortedMap
 import Data.Zippable
 import Native.Codegen.Platform
 import Native.Intrinsic
+import Native.Primitive
 import Native.Routine
 import Native.Service
 import Native.Types.Enc as Types
@@ -63,42 +69,129 @@ record Realised where
   externs : SortedMap Name Intrinsic
   ||| Each OS service's extern, with the platform's function for it.
   services : SortedMap Name Name
+  ||| Each of the backend's primitives the context defines, with the
+  ||| primitive it is.
+  primitives : SortedMap Name Primitive
+
+||| A definition of the root of a module.
+in' : Namespace -> String -> Name
+in' ns n = NS ns (UN (Basic n))
+
+||| The definitions the context keeps whose type is the port of a
+||| constructor of a contract's enumeration, `f (port c)` or `f addr (port
+||| c)` for a head `f` of `heads`, or its signature, `f (signature c)`,
+||| each with its constructor's name and the code generator's own
+||| constructor; exactly one of each if `required`, else at most one, or
+||| which have none or more. The constructors are the enumeration's list's
+||| (`listName`, in the module `contract`): its term in the context and the
+||| code generator's copy of it (`own`) are one declaration, so their
+||| elements pair up whatever the order. A context without the list has
+||| none of them, which only an enumeration not `required` may.
+entries : {auto c : Ref Ctxt Defs} -> (required : Bool) -> (contract, listName : String) -> (own : List a) -> (heads : List Name) ->
+          (keep : Name -> GlobalDef -> Bool) -> Core (Either String (List (Name, Name, a)))
+entries required contract listName own heads keep = do
+  defs <- get Ctxt
+  Just lg <- lookupCtxtExact (in' ns listName) (gamma defs)
+    | Nothing => pure (if required then Left ("the runtime has no " ++ show (in' ns listName)) else Right [])
+  listed <- case definition lg of
+    PMDef _ _ (STerm _ tm) _ _ => elements <$> toFullNames tm
+    _ => pure []
+  let byConstructor = fromList (zip listed own)
+  found <- catMaybes <$> traverse (entry defs byConstructor) !(allNames (gamma defs))
+  let problems = mapMaybe (\c => case length (filter (\(_, c', _) => c' == c) found) of
+                                    1 => Nothing
+                                    0 => if required then Just (show c ++ " has none") else Nothing
+                                    k => Just (show c ++ " has " ++ show k)) listed
+  pure (if null problems then Right found else Left (concat (intersperse "; " problems)))
+  where
+    ns : Namespace
+    ns = mkNamespace contract
+
+    -- the elements of a list's term, `(::) {a} x xs` down to `Nil`
+    elements : Term vars -> List Name
+    elements tm = case getFnArgs tm of
+      (Ref _ _ _, [_, Ref _ _ x, rest]) => x :: elements rest
+      _ => []
+
+    -- the constructor a type is the port of, if it is one
+    portOf : Term vars -> Maybe Name
+    portOf ty = case getFnArgs ty of
+      (Ref _ _ f, args) =>
+        if not (f `elem` heads) then Nothing
+        else case reverse args of
+          (arg :: _) => case getFnArgs arg of
+            (Ref _ _ p, [Ref _ _ c]) =>
+              if p == in' ns "port" || p == in' ns "signature" then Just c else Nothing
+            _ => Nothing
+          [] => Nothing
+      _ => Nothing
+
+    -- a definition of the port of a constructor, with it
+    entry : Defs -> SortedMap Name a -> Name -> Core (Maybe (Name, Name, a))
+    entry defs byConstructor n = do
+      Just g <- lookupCtxtExact n (gamma defs)
+        | Nothing => pure Nothing
+      n' <- toFullNames n
+      if not (keep n' g) then pure Nothing else do
+        ty <- toFullNames (type g)
+        pure $ do
+          c <- portOf ty
+          i <- lookup c byConstructor
+          pure (n', c, i)
+
+||| The backend's primitives the context defines (`Native.Primitive`), each
+||| by its type, `FunctionTy (signature c)`, in a module of
+||| `Native.Primitive`: at most one of each.
+primitives : {auto c : Ref Ctxt Defs} -> Core (Either String (List (Name, Name, Primitive)))
+primitives = entries False "Native.Primitive" "allPrimitives" Primitive.allPrimitives [functionTy] inPrimitive
+  where
+    functionTy : Name
+    functionTy = in' (mkNamespace "Native.Primitive") "FunctionTy"
+
+    inPrimitive : Name -> GlobalDef -> Bool
+    inPrimitive (NS ns _) _ = ns /= mkNamespace "Native.Primitive" && isParentOf (mkNamespace "Native.Primitive") ns
+    inPrimitive _ _ = False
+
+||| The names of the backend's primitives the context defines, for the flat
+||| translation, which takes a call of one as the primitive's; none where
+||| there are two of one, which `realise` reports.
+export
+primitiveNames : Ref Ctxt Defs -> Core (List Name)
+primitiveNames c = either (const []) (map (\(n, _, _) => n)) <$> primitives
 
 ||| The contract as the loaded runtime realises it, for the platform and the
 ||| encodings, or what is missing.
 export
 realise : {auto c : Ref Ctxt Defs} -> Platform -> Types.Enc -> Core (Either String Realised)
 realise platform enc = do
-  Right rs <- entries "Native.Routine" "allRoutines" Routine.allRoutines [portTy] runtimeOwn
+  Right rs <- entries True "Native.Routine" "allRoutines" Routine.allRoutines [portTy] runtimeOwn
     | Left e => pure (Left ("the runtime's routines: " ++ e))
   ss <- case RuntimeModule.stringModule enc.string of
-    Just ns => map (map Just) (entries "Native.Types.StringRoutine" "allStringRoutines"
+    Just ns => map (map Just) (entries True "Native.Types.StringRoutine" "allStringRoutines"
                                  Types.StringRoutine.allStringRoutines [portTy] (inModule ns))
     Nothing => pure (Right Nothing)
   let Right ss' = ss
     | Left e => pure (Left ("the string encoding's routines: " ++ e))
   is <- case RuntimeModule.bignumModule enc.bignum of
-    Just ns => map (map Just) (entries "Native.Types.IntegerRoutine" "allIntegerRoutines"
+    Just ns => map (map Just) (entries True "Native.Types.IntegerRoutine" "allIntegerRoutines"
                                  Types.IntegerRoutine.allIntegerRoutines [portTy] (inModule ns))
     Nothing => pure (Right Nothing)
   let Right is' = is
     | Left e => pure (Left ("the bignum encoding's routines: " ++ e))
   Just platformNs <- pure (OSService.platformModule platform)
     | Nothing => pure (Left ("the platform " ++ show platform ++ " has no OS services"))
-  Right intrinsics <- entries "Native.Intrinsic" "allIntrinsics" Intrinsic.allIntrinsics [externTy] isExtern
+  Right intrinsics <- entries True "Native.Intrinsic" "allIntrinsics" Intrinsic.allIntrinsics [externTy] isExtern
     | Left e => pure (Left ("the runtime's inline externs: " ++ e))
-  Right serviceExterns <- entries "Native.Service" "allServices" Service.allServices [externTy] isExtern
+  Right serviceExterns <- entries True "Native.Service" "allServices" Service.allServices [externTy] isExtern
     | Left e => pure (Left ("the runtime's OS services: " ++ e))
-  Right serviceFunctions <- entries "Native.Service" "allServices" Service.allServices [portTy] (inModule platformNs)
+  Right serviceFunctions <- entries True "Native.Service" "allServices" Service.allServices [portTy] (inModule platformNs)
     | Left e => pure (Left ("the platform's OS services: " ++ e))
+  Right prims <- primitives
+    | Left e => pure (Left ("the backend's primitives: " ++ e))
   let externs = fromList [ (n, i) | (n, _, i) <- intrinsics ]
       services = fromList [ (x, f) | (x, c, _) <- serviceExterns, (f, c', _) <- serviceFunctions, c == c' ]
-  pure (Right (MkRealised (pairs rs) (map pairs ss') (map pairs is') externs services))
+  pure (Right (MkRealised (pairs rs) (map pairs ss') (map pairs is') externs services (fromList (pairs prims))))
   where
-    ||| A definition of the root of a module.
-    in' : Namespace -> String -> Name
-    in' ns n = NS ns (UN (Basic n))
-
     externTy, portTy : Name
     externTy = in' (RuntimeModule.runtimeModule "PortTy") "ExternTy"
     portTy = in' (RuntimeModule.runtimeModule "PortTy") "PortTy"
@@ -119,62 +212,3 @@ realise platform enc = do
     -- each entry's definition, with the code generator's constructor
     pairs : List (Name, Name, a) -> List (Name, a)
     pairs es = [ (n, x) | (n, _, x) <- es ]
-
-    ||| The definitions the context keeps whose type is the port of a
-    ||| constructor of a contract's enumeration, `f (port c)` or `f addr (port
-    ||| c)` for a head `f` of `heads`, each with its constructor's name and the
-    ||| code generator's own constructor; exactly one of each, or which have
-    ||| none or more. The constructors are the enumeration's list's
-    ||| (`listName`, in the module `contract`): its term in the context and the
-    ||| code generator's copy of it (`own`) are one declaration, so their
-    ||| elements pair up whatever the order.
-    entries : (contract, listName : String) -> (own : List a) -> (heads : List Name) ->
-              (keep : Name -> GlobalDef -> Bool) -> Core (Either String (List (Name, Name, a)))
-    entries contract listName own heads keep = do
-      defs <- get Ctxt
-      Just lg <- lookupCtxtExact (in' ns listName) (gamma defs)
-        | Nothing => pure (Left ("the runtime has no " ++ show (in' ns listName)))
-      listed <- case definition lg of
-        PMDef _ _ (STerm _ tm) _ _ => elements <$> toFullNames tm
-        _ => pure []
-      let byConstructor = fromList (zip listed own)
-      found <- catMaybes <$> traverse (entry defs byConstructor) !(allNames (gamma defs))
-      let problems = mapMaybe (\c => case length (filter (\(_, c', _) => c' == c) found) of
-                                        1 => Nothing
-                                        0 => Just (show c ++ " has none")
-                                        k => Just (show c ++ " has " ++ show k)) listed
-      pure (if null problems then Right found else Left (concat (intersperse "; " problems)))
-      where
-        ns : Namespace
-        ns = mkNamespace contract
-
-        -- the elements of a list's term, `(::) {a} x xs` down to `Nil`
-        elements : Term vars -> List Name
-        elements tm = case getFnArgs tm of
-          (Ref _ _ _, [_, Ref _ _ x, rest]) => x :: elements rest
-          _ => []
-
-        -- the constructor a type is the port of, if it is one
-        portOf : Term vars -> Maybe Name
-        portOf ty = case getFnArgs ty of
-          (Ref _ _ f, args) =>
-            if not (f `elem` heads) then Nothing
-            else case reverse args of
-              (arg :: _) => case getFnArgs arg of
-                (Ref _ _ p, [Ref _ _ c]) => if p == in' ns "port" then Just c else Nothing
-                _ => Nothing
-              [] => Nothing
-          _ => Nothing
-
-        -- a definition of the port of a constructor, with it
-        entry : Defs -> SortedMap Name a -> Name -> Core (Maybe (Name, Name, a))
-        entry defs byConstructor n = do
-          Just g <- lookupCtxtExact n (gamma defs)
-            | Nothing => pure Nothing
-          n' <- toFullNames n
-          if not (keep n' g) then pure Nothing else do
-            ty <- toFullNames (type g)
-            pure $ do
-              c <- portOf ty
-              i <- lookup c byConstructor
-              pure (n', c, i)

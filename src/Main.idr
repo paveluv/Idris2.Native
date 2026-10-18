@@ -16,6 +16,7 @@ import Compiler.Scheme.Chez
 import Data.List1
 import Data.String
 import Idris.Driver
+import Native.Codegen.Linkage.Realised
 import Native.Codegen.Native
 import Native.Flat.Check
 import Native.Flat.Oracle
@@ -29,8 +30,8 @@ main = do
   ignore (setEnv "IDRIS2_INC_CGS" (incremental cgs) True)
   mainWithCodegens [ ("chez", codegenChez)
                    , ("native", Native.Codegen.Native.codegenNative)
-                   , ("flat-oracle", Native.Flat.Oracle.codegenFlatOracle)
-                   , ("flat-check", Native.Flat.Check.codegenFlatCheck) ]
+                   , ("flat-oracle", Native.Flat.Oracle.codegenFlatOracle Native.Codegen.Linkage.Realised.primitiveNames)
+                   , ("flat-check", Native.Flat.Check.codegenFlatCheck Native.Codegen.Linkage.Realised.primitiveNames) ]
   where
     ||| The incremental code generators the environment names, and `flat-check`.
     incremental : Maybe String -> String

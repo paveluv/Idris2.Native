@@ -58,6 +58,7 @@ import Native.Data.Distinct
 import Native.HeapObj.ValEnc
 import Native.Intrinsic
 import Native.Port
+import Native.Primitive
 import Native.Routine
 import Native.Types.BignumEnc
 import Native.Types.Enc
@@ -116,7 +117,7 @@ realised : Realised
 realised =
   MkRealised [(runtimeStart, Start), (runtimeAllocSlow, AllocSlow), (runtimeAllocMutable, AllocMutable),
               (runtimeCrash, Crash)]
-             Nothing Nothing empty empty
+             Nothing Nothing empty empty empty
 
 D : Decls TestEnc
 D = MkDecls [ MkSig (nm "main") CPS [] False

@@ -124,7 +124,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
       Right settings <- parseSettings <$> getDirectives Flat.Marked.markingCG
         | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
       Just table <- phase "the runtime loaded"
-        (Flat.Marked.markedForms (loadRuntime settings.platform settings.encodings))
+        (Flat.Marked.markedForms Linkage.Realised.primitiveNames (loadRuntime settings.platform settings.encodings))
         | Nothing => pure Nothing
       Right realised <- phase "the contract realised" (Linkage.Realised.realise settings.platform settings.encodings)
         | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
