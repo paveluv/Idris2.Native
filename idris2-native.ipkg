@@ -105,6 +105,7 @@ modules =
     Native.Types.Header,
     Native.Types.IntegerRoutine,
     Native.Types.Kind,
+    Native.Types.Represents,
     Native.Types.StringEnc,
     Native.Types.StringRoutine
 

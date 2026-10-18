@@ -16,4 +16,5 @@ modules =
     Shape,
     Shapes,
     Spare,
+    Values,
     Viewer

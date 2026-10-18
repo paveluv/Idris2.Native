@@ -263,6 +263,11 @@ copyRaw from to n = go 0
 ||| knows the type, says the shape. These never test the word. The
 ||| conversions between a value and its object's address are this module's,
 ||| so these are not inlined.
+|||
+||| These and the conversions below take a value of any type for what the
+||| caller says: outside the core, only the support tier's door
+||| (`Support.Obj`) uses them, with the evidence of the representation
+||| contract (`Types.Represents`), which the linter checks.
 export
 valueObject : Flat.Uniform a -> Ordo.Op Ordo (Addr s)
 valueObject v = do
@@ -275,6 +280,17 @@ objectValue : Addr s -> Ordo.Op Ordo (Flat.Uniform a)
 objectValue a = do
   tag <- pointerTag
   intrinsic__wordValue (a.word + tag)
+
+||| A field's word as the value it holds, and a value's word, to store in a
+||| field: ordinary code holds a value as one word, in a field or not, a
+||| fixnum or an object's address with the pointer tag.
+export
+fieldValue : (word : Bits64) -> Ordo.Op Ordo (Flat.Uniform a)
+fieldValue w = intrinsic__wordValue w
+
+export
+valueWord : Flat.Uniform a -> Ordo.Op Ordo Bits64
+valueWord v = intrinsic__valueWord v
 
 ||| The address of the object a pointer word in a field points to, and the
 ||| pointer word of an address, to store in a field.

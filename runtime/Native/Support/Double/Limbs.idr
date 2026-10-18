@@ -18,8 +18,6 @@ import public Native.Types.Kind
 import Native.HeapObj.Shape as HeapObj
 import Native.Runtime.Bits
 import Native.Runtime.Ordo as Runtime
-import Native.Runtime.Raw as Runtime
-import Native.Runtime.Space
 import Native.Types.Header
 
 %hide Prelude.Interfaces.(>>=)
@@ -56,11 +54,7 @@ setLimb x i v = Obj.store64 x (16 + 8 * i) v
 export
 newLimbs : Runtime.Ordo.Op Runtime.Ordo Limbs
 newLimbs = do
-  let bytes = 8 * (1 + capacity)
-      header = Types.Header.fixedWord Types.Kind.BUFFER + Types.Header.partBits Types.Header.BufferBytes bytes
-  a <- Runtime.Space.allocate (8 * HeapObj.Shape.objectWordsOf header)
-  let x = Obj.objectAt {k = Types.Kind.BUFFER} a
-  Obj.store64 x 0 header
+  x <- Obj.allocate Types.Kind.BUFFER (Types.Header.partBits Types.Header.BufferBytes (8 * (1 + capacity)))
   setCount x 0
   Runtime.Ordo.pure x
 

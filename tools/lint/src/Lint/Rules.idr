@@ -554,7 +554,7 @@ export
 fileRules : SourceFile -> Mentions -> List Declared -> List Finding
 fileRules f ms ds =
   importOrder f ++ publicImport f ++ defaultTotality f ++ elabReflection f ms
-  ++ trustEscape f ms ++ citesPlan f ++ todo f ++ headerComment f
+  ++ trustEscape f ms ++ casts f ms ++ citesPlan f ++ todo f ++ headerComment f
   ++ implementationAdjacent f ds ++ moduleType f ds
   ++ recordConstructor f ds ++ externName f ds ms
   where
@@ -693,6 +693,19 @@ fileRules f ms ds =
                         else Nothing
           _ => Nothing
 
+    ||| `cast`: a use of `believe_me` or `really_believe_me`, which takes a value
+    ||| of one type for one of another, whatever the two are. No suppression
+    ||| lifts it: what a value is, the representation contract states
+    ||| (`Types.Represents`), and the conversions ask its evidence.
+    casts : SourceFile -> Mentions -> List Finding
+    casts f ms =
+      [ finding f "cast" fc (nameRoot n) ("`" ++ nameRoot n ++ "` takes a value for what it may not be: give the evidence that it is")
+      | (fc, n) <- ms.refs, nameRoot n `elem` believed ]
+      where
+        ||| The functions that take a value for one of any type.
+        believed : List String
+        believed = ["believe_me", "really_believe_me"]
+
     ||| `trust-escape`: a use of one of `escapes`, each to be suppressed with its
     ||| reason.
     trustEscape : SourceFile -> Mentions -> List Finding
@@ -703,7 +716,12 @@ fileRules f ms ds =
         ||| The functions that leave what the typechecker proves: each use says why
         ||| it is sound.
         escapes : List String
-        escapes = ["assert_total", "assert_smaller", "believe_me", "really_believe_me", "idris_crash", "unsafePerformIO"]
+        escapes = ["assert_total", "assert_smaller", "idris_crash", "unsafePerformIO"]
+
+||| The rules no suppression lifts: what they report is to be changed.
+export
+unsuppressibleRules : List String
+unsuppressibleRules = ["cast", "sealed-boundary", "sealed-values"]
 
 ||| The names of the rules over the text, those over the graph included;
 ||| `ResolvedRules.resolvedRuleNames` are the others.
@@ -711,5 +729,5 @@ export
 ruleNames : List String
 ruleNames =
   [ "import-order", "public-import", "default-totality", "elab-reflection"
-  , "trust-escape", "cites-plan", "todo", "header-comment", "implementation-adjacent"
+  , "trust-escape", "cast", "cites-plan", "todo", "header-comment", "implementation-adjacent"
   , "layering", "syscall", "import-alias", "record-constructor", "module-type", "extern-name" ]

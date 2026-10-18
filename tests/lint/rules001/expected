@@ -2,6 +2,9 @@
 ./Aliased.idr:8:1 import-alias: `Shared.One.Item` imported as `Wrong`: an alias is the qualifier of its key type, `Shared.One`
 ./Aliased.idr:16:8 import-alias: `Wrong.item` is written otherwise than its module's path from here: `Shared.One.Item.item`
 ./Aliased.idr:16:21 import-alias: `One.Piece.piece` is written otherwise than its module's path from here: `Spare.One.Piece.piece`
+./Casts.idr:9:11 cast: `believe_me` takes a value for what it may not be: give the evidence that it is
+./Casts.idr:11:1 suppression: `cast` is not to be suppressed: change what it reports
+./Casts.idr:13:11 cast: `really_believe_me` takes a value for what it may not be: give the evidence that it is
 ./Cites.idr:2:1 cites-plan: cites `IL-001`: the code states what it needs
 ./Cites.idr:7:1 cites-plan: cites `PQ-123`: the code states what it needs
 ./Cites.idr:7:1 cites-plan: cites `docs/design-cites.md`: the code states what it needs

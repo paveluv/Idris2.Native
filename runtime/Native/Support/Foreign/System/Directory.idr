@@ -31,8 +31,8 @@ import Native.Support.Obj
 import Native.Support.Ptr
 -- lint: allow import-unused: the flat check reaches through newPtr's body, which writes the pointer's header
 import Native.Types.Header
--- lint: allow import-unused: the flat check reaches through newPtr's body, which writes the pointer's header
 import Native.Types.Kind
+import Native.Types.Represents
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)

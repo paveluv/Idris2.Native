@@ -49,7 +49,7 @@
 ||| covers its paragraph from where it stands. Of a rule that asks why at
 ||| each use (`ResolvedRules.oneUseRules`), it covers only the first finding
 ||| from where it stands, so that each use has a reason of its own; of a
-||| rule no suppression lifts (`ResolvedRules.unsuppressibleRules`), it is a
+||| rule no suppression lifts (`Rules.unsuppressibleRules`), it is a
 ||| finding itself. A suppression without a
 ||| reason, of no rule, or that suppresses nothing, is a finding itself. A
 ||| module is left out of a component of the score by another comment,

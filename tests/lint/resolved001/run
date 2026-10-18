@@ -8,7 +8,9 @@
 # a module it does not use, and `Frame` one that gives it only what it
 # imports directly; `Shape` exports a generic helper;
 # `Page` makes a raw address from a word; `Native.Support.Lease` leaves
-# the allocator's linear blocks, at base's foreign surface and outside it.
+# the allocator's linear blocks, at base's foreign surface and outside it;
+# `Values` converts a value through the core's conversion, not the support
+# tier's door.
 # Then the score's components that the resolution measures, and the
 # accumulation with what costs it: `JoinAll` accumulates lists in each
 # shape, the superlinear ones counted against it.

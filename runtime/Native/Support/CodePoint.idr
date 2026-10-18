@@ -12,6 +12,7 @@ import public Native.Runtime.Bits
 
 import Native.Support.Obj
 
+import Native.HeapObj.Shape as HeapObj
 import Native.Runtime.Ordo as Runtime
 import Native.Types.Kind as Types
 
@@ -34,7 +35,7 @@ utf8Length b = if b < 0x80 then 1 else if b < 0xE0 then 2 else if b < 0xF0 then 
 ||| The code point whose lead byte is at the address plus the offset, the
 ||| bytes after it its sequence's, trusted to be well formed.
 export
-decodeUtf8 : Obj k -> (offset : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
+decodeUtf8 : {auto 0 raw : Types.Kind.shapeOf k = Just HeapObj.Shape.RAW} -> Obj k -> (offset : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
 decodeUtf8 a i = do
   b0 <- Obj.load8 a i
   if b0 < 0x80 then Runtime.Ordo.pure b0 else
@@ -70,7 +71,7 @@ utf8Word c =
 ||| The code point `c` written at the address plus the offset, its
 ||| `utf8Bytes c` bytes.
 export
-encodeUtf8 : Obj k -> (offset, c : Bits64) -> Runtime.Ordo.Op Runtime.Ordo ()
+encodeUtf8 : {auto 0 raw : Types.Kind.shapeOf k = Just HeapObj.Shape.RAW} -> Obj k -> (offset, c : Bits64) -> Runtime.Ordo.Op Runtime.Ordo ()
 encodeUtf8 a j c =
   let w = utf8Word c in
   if c < 0x80 then Obj.store8 a j w

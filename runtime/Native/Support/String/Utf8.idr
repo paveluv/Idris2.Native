@@ -59,6 +59,7 @@ import Native.Support.Path
 import Native.Support.Ptr
 import Native.Types.Header
 import Native.Types.Kind
+import Native.Types.Represents
 import Native.Types.StringRoutine
 
 %hide Prelude.Interfaces.(>>=)
@@ -77,13 +78,6 @@ bytesOf = Types.Header.readPart Types.Header.StringBytes
 asciiOf : (header : Bits64) -> Bool
 asciiOf h = Types.Header.readPart Types.Header.StringAscii h == 1
 
-||| The header of a string of `bytes`.
-headerFor : (ascii : Bool) -> (bytes : Bits64) -> Bits64
-headerFor ascii bytes =
-  Types.Header.fixedWord Types.Kind.STRING
-    + Types.Header.partBits Types.Header.StringAscii (if ascii then 1 else 0)
-    + Types.Header.partBits Types.Header.StringBytes bytes
-
 ||| The object a string is: a string is always an object.
 export
 stringObject : Flat.Uniform String -> Runtime.Ordo.Op Runtime.Ordo (Obj Types.Kind.STRING)
@@ -93,23 +87,22 @@ stringObject s = Obj.valueObject s
 headerOf : Obj Types.Kind.STRING -> Runtime.Ordo.Op Runtime.Ordo Bits64
 headerOf s = Obj.load64 s 0
 
+||| A string's header but its fixed word: whether it is ASCII, and its
+||| bytes.
+partsFor : (ascii : Bool) -> (bytes : Bits64) -> Bits64
+partsFor ascii bytes =
+  Types.Header.partBits Types.Header.StringAscii (if ascii then 1 else 0)
+    + Types.Header.partBits Types.Header.StringBytes bytes
+
 ||| A new string of `bytes`, its header saying it is ASCII until `finish`
 ||| sets it, its bytes still to be written, its padding zero.
 newString : (bytes : Bits64) -> Runtime.Ordo.Op Runtime.Ordo (Obj Types.Kind.STRING)
-newString bytes = do
-  let header = headerFor True bytes
-      words = HeapObj.Shape.objectWordsOf header
-  a <- Runtime.Space.allocate (8 * words)
-  let s = Obj.objectAt {k = Types.Kind.STRING} a
-  Obj.store64 s 0 header
-  if words == 1 then Runtime.Ordo.pure s else do
-    Obj.store64 s (8 * (words - 1)) 0
-    Runtime.Ordo.pure s
+newString bytes = Obj.allocate Types.Kind.STRING (partsFor True bytes)
 
 ||| A new string's header set, and the string as ordinary code holds it.
 finish : Obj Types.Kind.STRING -> (ascii : Bool) -> (bytes : Bits64) -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform String)
 finish s ascii bytes = do
-  Obj.store64 s 0 (headerFor ascii bytes)
+  Obj.store64 s 0 (Types.Header.fixedWord Types.Kind.STRING + partsFor ascii bytes)
   Obj.objectValue s
 
 ||| The byte at `i`, and storing one.
@@ -328,15 +321,9 @@ compare x y = do
 
 ------------------------------------------------------------------------------
 -- Lists of characters and of strings: `prelude`'s `fastPack`, `fastUnpack`
--- and `fastConcat`. A list is a `CON` object: `[]` of constructor id 0 and
--- no fields, often the static one; `(::)` of id 1, its head then its tail.
--- A character in a field is its fixnum, a string or a list a pointer.
-
-||| Whether a list's cell is `[]`.
-isNil : Obj Types.Kind.CON -> Runtime.Ordo.Op Runtime.Ordo Bool
-isNil cell = do
-  h <- Obj.load64 cell 0
-  Runtime.Ordo.pure (Types.Header.readPart Types.Header.ConId h == 0)
+-- and `fastConcat`, through the view of a list's constructors that the
+-- representation contract gives (`Types.Represents`: `[]` and `(::)`, its
+-- head then its tail, a character a fixnum).
 
 %cg native flat Support.String.Utf8.fastPack
 ||| `fastPack`: a list of characters as a string.
@@ -348,40 +335,43 @@ fastPack xs = let (Runtime.MkOrdo # r) = packOp xs Runtime.MkOrdo in r
     covering
     packOp : Flat.Uniform (List Char) -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform String)
     packOp xs = do
-      cell <- Obj.valueObject {k = Types.Kind.CON} xs
-      (n, seen) <- packMeasure cell 0 0
+      (n, seen) <- packMeasure xs 0 0
       s <- newString n
-      packWrite cell s 0
+      packWrite xs s 0
       finish s (seen < 0x80) n
       where
         ||| The bytes the characters of a list take, and the OR of their code
         ||| points. Ends: the list is finite, each step one cell on.
         covering
-        packMeasure : Obj Types.Kind.CON -> (bytes, seen : Bits64) -> Runtime.Ordo.Op Runtime.Ordo (Bits64, Bits64)
-        packMeasure cell bytes seen = do
-          end <- isNil cell
-          if end then Runtime.Ordo.pure (bytes, seen) else do
-            c <- Obj.load64 cell 8
-            t <- Obj.load64 cell 16
-            next <- Obj.fieldObject {k = Types.Kind.CON} t
-            let ch = Runtime.Memory.fixnumOf c
-            packMeasure next (bytes + charBytes ch) (seen .|. ch)
+        packMeasure : Flat.Uniform (List Char) -> (bytes, seen : Bits64) -> Runtime.Ordo.Op Runtime.Ordo (Bits64, Bits64)
+        packMeasure xs bytes seen = do
+          cell <- Obj.asCon {t = List Char} 1 xs
+          case cell of
+            Nothing => Runtime.Ordo.pure (bytes, seen)
+            Just c => do
+              h <- Obj.field {f = Char} 0 c
+              ch <- Obj.immediate h
+              t <- Obj.field {f = List Char} 1 c
+              packMeasure t (bytes + charBytes ch) (seen .|. ch)
 
         ||| The characters of a list written from `j`. Ends: as `packMeasure`.
         covering
-        packWrite : Obj Types.Kind.CON -> Obj Types.Kind.STRING -> (j : Bits64) -> Runtime.Ordo.Op Runtime.Ordo ()
-        packWrite cell s j = do
-          end <- isNil cell
-          if end then Runtime.Ordo.pure () else do
-            c <- Obj.load64 cell 8
-            t <- Obj.load64 cell 16
-            next <- Obj.fieldObject {k = Types.Kind.CON} t
-            let ch = Runtime.Memory.fixnumOf c
-            encodeAt s j ch
-            packWrite next s (j + charBytes ch)
+        packWrite : Flat.Uniform (List Char) -> Obj Types.Kind.STRING -> (j : Bits64) -> Runtime.Ordo.Op Runtime.Ordo ()
+        packWrite xs s j = do
+          cell <- Obj.asCon {t = List Char} 1 xs
+          case cell of
+            Nothing => Runtime.Ordo.pure ()
+            Just c => do
+              h <- Obj.field {f = Char} 0 c
+              ch <- Obj.immediate h
+              t <- Obj.field {f = List Char} 1 c
+              encodeAt s j ch
+              packWrite t s (j + charBytes ch)
 
 %cg native flat Support.String.Utf8.fastUnpack
-||| `fastUnpack`: a string as a list of characters.
+||| `fastUnpack`: a string as a list of characters, made from its last
+||| character back, so that each cell is made whole, its tail the list of the
+||| characters after it.
 export covering
 fastUnpack : Flat.Uniform String -> Flat.Uniform (List Char)
 fastUnpack str = let (Runtime.MkOrdo # r) = unpackOp str Runtime.MkOrdo in r
@@ -392,39 +382,27 @@ fastUnpack str = let (Runtime.MkOrdo # r) = unpackOp str Runtime.MkOrdo in r
     unpackOp str = do
       s <- stringObject str
       h <- headerOf s
-      n <- if asciiOf h then Runtime.Ordo.pure (bytesOf h) else countChars s 0 (bytesOf h) 0
-      block <- Runtime.Space.allocate (8 + 24 * n)
-      Obj.store64 (Obj.objectAt {k = Types.Kind.CON} block) 0 nilHeader
-      unpackFill s 0 0 n block
-      Obj.objectValue (Obj.objectAt {k = Types.Kind.CON} (if n == 0 then block else Runtime.Raw.offset block 8))
+      nil <- Obj.con0 {t = List Char} 0
+      build s (bytesOf h) nil
       where
-        ||| The header of a list's `[]`.
-        nilHeader : Bits64
-        nilHeader = Types.Header.fixedWord Types.Kind.CON
-
-        ||| The cells of a list of `n` characters, one block: `[]` first, then each
-        ||| `(::)`, 24 bytes, its tail the next, the last's tail the `[]`. Fills the
-        ||| `k`th cell on from byte `i` of the string. Ends: `k` climbs to `n`.
+        ||| Where the character that ends before byte `j` starts: the first
+        ||| byte back that is not a continuation byte, `10xxxxxx`.
         covering
-        unpackFill : Obj Types.Kind.STRING -> (i, k, n : Bits64) -> (block : Raw) -> Runtime.Ordo.Op Runtime.Ordo ()
-        unpackFill s i k n block =
-          if k >= n then Runtime.Ordo.pure () else do
-            c <- decodeAt s i
-            b <- byteAt s i
-            let cell = Obj.objectAt {k = Types.Kind.CON} (Runtime.Raw.offset block (8 + 24 * k))
-            Obj.store64 cell 0 consHeader
-            w <- Runtime.Memory.fixnumWord c
-            Obj.store64 cell 8 w
-            tail <- Obj.fieldPointer
-              (Obj.objectAt {k = Types.Kind.CON} (if k + 1 == n then block else Runtime.Raw.offset block (8 + 24 * (k + 1))))
-            Obj.store64 cell 16 tail
-            unpackFill s (i + seqLength b) (k + 1) n block
-          where
-            ||| The header of a list's `(::)`.
-            consHeader : Bits64
-            consHeader = Types.Header.fixedWord Types.Kind.CON
-              + Types.Header.partBits Types.Header.ConId 1
-              + Types.Header.partBits Types.Header.ConArity 2
+        startBefore : Obj Types.Kind.STRING -> (j : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
+        startBefore s j = do
+          b <- byteAt s (j - 1)
+          if (b .&. 0xC0) == 0x80 && j > 1 then startBefore s (j - 1) else Runtime.Ordo.pure (j - 1)
+
+        ||| The characters before byte `j` put in front of the list. Ends: `j`
+        ||| falls to 0.
+        covering
+        build : Obj Types.Kind.STRING -> (j : Bits64) -> Flat.Uniform (List Char) -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform (List Char))
+        build s j rest = if j == 0 then Runtime.Ordo.pure rest else do
+          i <- startBefore s j
+          c <- decodeAt s i
+          ch <- Obj.ofImmediate {t = Char} c
+          cell <- Obj.con2 {t = List Char} 1 ch rest
+          build s i cell
 
 %cg native flat Support.String.Utf8.fastConcat
 ||| `fastConcat`: a list of strings as one.
@@ -436,40 +414,41 @@ fastConcat xs = let (Runtime.MkOrdo # r) = concatOp xs Runtime.MkOrdo in r
     covering
     concatOp : Flat.Uniform (List String) -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform String)
     concatOp xs = do
-      cell <- Obj.valueObject {k = Types.Kind.CON} xs
-      (n, ascii) <- concatMeasure cell 0 True
+      (n, ascii) <- concatMeasure xs 0 True
       r <- newString n
-      concatWrite cell r 0
+      concatWrite xs r 0
       finish r ascii n
       where
         ||| The bytes of a list of strings, and whether all are ASCII. Ends: the list
         ||| is finite.
         covering
-        concatMeasure : Obj Types.Kind.CON -> (bytes : Bits64) -> (ascii : Bool) ->
+        concatMeasure : Flat.Uniform (List String) -> (bytes : Bits64) -> (ascii : Bool) ->
                         Runtime.Ordo.Op Runtime.Ordo (Bits64, Bool)
-        concatMeasure cell bytes ascii = do
-          end <- isNil cell
-          if end then Runtime.Ordo.pure (bytes, ascii) else do
-            w <- Obj.load64 cell 8
-            t <- Obj.load64 cell 16
-            s <- Obj.fieldObject {k = Types.Kind.STRING} w
-            h <- headerOf s
-            next <- Obj.fieldObject {k = Types.Kind.CON} t
-            concatMeasure next (bytes + bytesOf h) (ascii && asciiOf h)
+        concatMeasure xs bytes ascii = do
+          cell <- Obj.asCon {t = List String} 1 xs
+          case cell of
+            Nothing => Runtime.Ordo.pure (bytes, ascii)
+            Just c => do
+              v <- Obj.field {f = String} 0 c
+              s <- stringObject v
+              h <- headerOf s
+              t <- Obj.field {f = List String} 1 c
+              concatMeasure t (bytes + bytesOf h) (ascii && asciiOf h)
 
         ||| The strings of a list copied from `j`. Ends: as `concatMeasure`.
         covering
-        concatWrite : Obj Types.Kind.CON -> Obj Types.Kind.STRING -> (j : Bits64) -> Runtime.Ordo.Op Runtime.Ordo ()
-        concatWrite cell r j = do
-          end <- isNil cell
-          if end then Runtime.Ordo.pure () else do
-            w <- Obj.load64 cell 8
-            t <- Obj.load64 cell 16
-            s <- Obj.fieldObject {k = Types.Kind.STRING} w
-            h <- headerOf s
-            _ <- copyBytes s 0 r j (bytesOf h) 0
-            next <- Obj.fieldObject {k = Types.Kind.CON} t
-            concatWrite next r (j + bytesOf h)
+        concatWrite : Flat.Uniform (List String) -> Obj Types.Kind.STRING -> (j : Bits64) -> Runtime.Ordo.Op Runtime.Ordo ()
+        concatWrite xs r j = do
+          cell <- Obj.asCon {t = List String} 1 xs
+          case cell of
+            Nothing => Runtime.Ordo.pure ()
+            Just c => do
+              v <- Obj.field {f = String} 0 c
+              s <- stringObject v
+              h <- headerOf s
+              _ <- copyBytes s 0 r j (bytesOf h) 0
+              t <- Obj.field {f = List String} 1 c
+              concatWrite t r (j + bytesOf h)
 
 ------------------------------------------------------------------------------
 -- Numbers as text

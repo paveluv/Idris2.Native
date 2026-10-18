@@ -32,6 +32,7 @@ import Native.Support.Obj
 import Native.Support.Ptr
 import Native.Types.Header
 import Native.Types.Kind
+import Native.Types.Represents
 
 %default total
 

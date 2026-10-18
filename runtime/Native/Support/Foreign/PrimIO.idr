@@ -10,6 +10,7 @@ import Native.Runtime.Raw as Runtime
 -- lint: allow import-unused: the flat check reaches through ptrWord's body, which reads raw memory from an object
 import Native.Support.Obj
 import Native.Support.Ptr
+import Native.Types.Represents
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)

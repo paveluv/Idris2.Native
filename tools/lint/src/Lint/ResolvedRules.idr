@@ -97,7 +97,7 @@ modulesOf fms r =
 ||| it is.
 export
 resolvedRuleNames : List String
-resolvedRuleNames = ["import-unused", "import-indirect", "generic-export", "public-unneeded", "raw-maker", "sealed-allocator", "sealed-boundary"]
+resolvedRuleNames = ["import-unused", "import-indirect", "generic-export", "public-unneeded", "raw-maker", "sealed-allocator", "sealed-boundary", "sealed-values"]
 
 ||| The rules whose suppression covers one use, the first after it: each
 ||| use is to say why it is sound by itself.
@@ -105,18 +105,34 @@ export
 oneUseRules : List String
 oneUseRules = ["sealed-allocator"]
 
-||| The rules no suppression lifts: what they report is to be changed.
-export
-unsuppressibleRules : List String
-unsuppressibleRules = ["sealed-boundary"]
-
 ||| The rules over the program resolved.
 export
 resolvedRules : List (SourceFile, List Declared, Mentions) -> (programNames : SortedSet String) -> Resolution -> List Finding
 resolvedRules fms programNames r =
   joined [ importUnused m ++ importIndirect r m ++ genericExport m | m <- modulesOf fms r ]
-  ++ joined [ publicUnneeded f ds ++ rawMaker f ++ sealedAllocator f ds ms | (f, ds, ms) <- fms ]
+  ++ joined [ publicUnneeded f ds ++ rawMaker f ++ sealedAllocator f ds ms ++ sealedValues f ms | (f, ds, ms) <- fms ]
   where
+    ||| `sealed-values`: outside the runtime's core (`Native.Runtime.`), a use
+    ||| of the core's conversions between values, fields and objects
+    ||| (`Memory`), which take a value of any type for what the caller says,
+    ||| but in the support tier's door (`Native.Support.Obj`), which asks the
+    ||| representation contract's evidence for each. No suppression lifts
+    ||| it: the door is the way.
+    sealedValues : SourceFile -> Mentions -> List Finding
+    sealedValues f ms =
+      let m = show f.mod.moduleNS in
+      if isPrefixOf "Native.Runtime." m || m == "Native.Support.Obj" then [] else
+        let used = the (SortedSet String) (fromList
+              [ u.name | rm <- r.modules, rm.path == f.path, u <- rm.uses
+                       , u.definer == "Native.Runtime.Memory", any (== u.name) conversions ])
+        in [ finding f "sealed-values" fc (nameRoot n)
+               ("`" ++ nameRoot n ++ "` takes a value for what the caller says: convert through `Native.Support.Obj`, with the representation contract's evidence")
+           | (fc, n) <- ms.refs, contains (nameRoot n) used ]
+      where
+        ||| The core's conversions that take any type.
+        conversions : List String
+        conversions = ["valueObject", "objectValue", "fieldObject", "fieldPointer", "fieldValue", "valueWord", "objectAt"]
+
     ||| `sealed-allocator`: outside the allocator's modules
     ||| (`Native.Runtime.Alloc.`), a use of any of their names but the
     ||| linear blocks' (`Alloc.Block`) and their arrays'

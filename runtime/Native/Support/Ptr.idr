@@ -12,10 +12,8 @@ import Native.Support.Obj
 import Native.Flat.Uniform as Flat
 import Native.HeapObj.Shape as HeapObj
 import Native.Runtime.Ordo as Runtime
-import Native.Runtime.Raw as Runtime
-import Native.Runtime.Space
-import Native.Types.Header
 import Native.Types.Kind
+import Native.Types.Represents
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
@@ -25,17 +23,15 @@ import Native.Types.Kind
 
 ||| A new pointer of the word, as ordinary code holds it.
 export %inline
-newPtr : (word : Bits64) -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform a)
+newPtr : {auto 0 rep : Represents Types.Kind.PTR a} -> (word : Bits64) -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform a)
 newPtr word = do
-  a <- Runtime.Space.allocate 16
-  let p = Obj.objectAt {k = Types.Kind.PTR} a
-  Obj.store64 p 0 (Types.Header.fixedWord Types.Kind.PTR)
+  p <- Obj.allocate Types.Kind.PTR 0
   Obj.store64 p 8 word
   Obj.objectValue p
 
 ||| The word a pointer holds: its address, 0 for the null pointer.
 export %inline
-ptrWord : Flat.Uniform a -> Runtime.Ordo.Op Runtime.Ordo Bits64
+ptrWord : {auto 0 only : Only Types.Kind.PTR a} -> Flat.Uniform a -> Runtime.Ordo.Op Runtime.Ordo Bits64
 ptrWord v = do
   p <- Obj.valueObject {k = Types.Kind.PTR} v
   Obj.load64 p 8
