@@ -1,7 +1,0 @@
-. ../../testutils.sh
-
-# The warnings, which `--warnings` prints and which fail nothing: a module
-# named after a symbol it defines, and one named after nothing it defines;
-# a name defined twice that meets where it is written without a namespace,
-# and one that meets only where each is written with it.
-../../../tools/lint/build/exec/idris2-native-lint --warnings .

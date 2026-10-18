@@ -43,8 +43,6 @@ record SourceFile where
   comments : List SourceComment
   ||| The lines with nothing on them, in order.
   blankLines : List Int
-  ||| How many lines the file has.
-  lineCount : Nat
 
 ||| The file at the path, parsed, or what stopped the parse.
 export
@@ -61,7 +59,7 @@ parse path = do
           docs = case lexTo (pred (const False)) text of
                    Left _ => the (List SourceComment) []
                    Right (_, toks) => mapMaybe docComment toks
-      pure (Right (MkSourceFile path m (sortBy (\a, b => compare (a.line, a.col) (b.line, b.col)) (plain ++ docs)) (blank 0 ls) (length ls)))
+      pure (Right (MkSourceFile path m (sortBy (\a, b => compare (a.line, a.col) (b.line, b.col)) (plain ++ docs)) (blank 0 ls)))
   where
     ||| The text between two positions of a file given as its lines.
     slice : List String -> (start, end : (Int, Int)) -> String

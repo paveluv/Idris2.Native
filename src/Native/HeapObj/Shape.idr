@@ -68,7 +68,7 @@ idWidth = 4
 
 ||| The id in bits 0..3 of a forwarding header: the new address, 8-aligned,
 ||| in the rest of the word.
-public export
+export
 forwardingId : Bits64
 forwardingId = 15
 

@@ -117,10 +117,3 @@ gcVisible : Ty enc -> Bool
 gcVisible Val = True
 gcVisible (PtrTo _) = True
 gcVisible _ = False
-
-||| Whether the type refines `Val`: the types `Narrow` makes and `Widen` takes.
-public export
-refinesVal : Ty enc -> Bool
-refinesVal Fix = True
-refinesVal (PtrTo _) = True
-refinesVal _ = False

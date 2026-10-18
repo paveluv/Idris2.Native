@@ -1,5 +1,5 @@
-||| A second place where the two `speak`s meet without a namespace: a name
-||| is reported with every module where it meets, so that each can qualify
+||| A second place where the two `speak`s meet without a namespace: the name's
+||| offender lists every module where it meets, so that each can qualify
 ||| one at once.
 module Pets
 

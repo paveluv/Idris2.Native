@@ -96,7 +96,7 @@ modulesOf fms r =
 export
 resolvedRules : List (SourceFile, List Declared, Mentions) -> (programNames : SortedSet String) -> Resolution -> List Finding
 resolvedRules fms programNames r =
-  joined [ importUnused m ++ importIndirect r m ++ listAccumulation m ++ genericExport m | m <- modulesOf fms r ]
+  joined [ importUnused m ++ importIndirect r m ++ genericExport m | m <- modulesOf fms r ]
   ++ joined [ publicUnneeded f ds ++ rawMaker f | (f, ds, _) <- fms ]
   where
     ||| `raw-maker`: a raw address made from a word (`Raw.fromWord`) outside
@@ -116,7 +116,7 @@ resolvedRules fms programNames r =
         makers : List String
         makers = ["Native.Runtime.Raw", "Native.Runtime.Memory", "Native.Runtime.State", "Native.Runtime.Space"]
 
-    ||| `public-unneeded`, a warning: a `public export` that only its module
+    ||| `public-unneeded`: a `public export` that only its module
     ||| needs public. A data type whose constructors no other module uses
     ||| (resolved) and no program writes could be `export`, the type kept and
     ||| its constructors not; a function or constant no other module uses
@@ -201,29 +201,6 @@ resolvedRules fms programNames r =
                 how = maybe "without importing it" (\i => "only through `" ++ show i.path ++ "`") via
             in Just (finding m.file "import-indirect" (maybe EmptyFC (.loc) via) u
                        ("`" ++ u ++ "` is used (" ++ names ++ ") " ++ how ++ ": import it"))
-
-    ||| `list-accumulation`, a warning: a definition that grows a list at its
-    ||| end with `++`, copying what it has grown at every step, where a
-    ||| `SnocList` grows in constant time; or joins lists by a left fold, which
-    ||| copies what it has joined at every step, where `joinMap` (a `Builder`)
-    ||| joins in linear time.
-    listAccumulation : Linted -> List Finding
-    listAccumulation m =
-      [ MkFinding "list-accumulation" m.file.path a.line a.col a.subject (message a)
-      | a <- m.resolved.accumulations, a.atEnd + a.leftFolds > 0 ]
-      where
-        times : Nat -> String
-        times 1 = "once"
-        times 2 = "twice"
-        times k = show k ++ " times"
-
-        message : Accumulations -> String
-        message a =
-          let atEnd = if a.atEnd == 0 then [] else
-                        ["grows a list at its end with `++` " ++ times a.atEnd ++ ": a `SnocList` grows there in constant time (`:<`, `<><`)"]
-              folds = if a.leftFolds == 0 then [] else
-                        ["joins lists by a left fold " ++ times a.leftFolds ++ ": `joinMap` joins them in linear time"]
-          in "`" ++ a.subject ++ "` " ++ fastConcat (intersperse "; " (atEnd ++ folds))
 
     ||| `generic-export`: in a module named after a type it defines,
     ||| an exported function whose type and body refer to nothing of ours, its

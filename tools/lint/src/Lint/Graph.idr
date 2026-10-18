@@ -273,39 +273,6 @@ meetings fds =
                                        insert n (union ds defs, insert m ms) a)
                acc (SortedMap.toList byName)
 
-||| `same-name`, a warning: one name, two meanings, written bare in a module
-||| that sees both. Modules may define the same names; where they meet, a
-||| module writes one qualified, importing its module as its group
-||| (`import Native.Codegen.LocatedIR.Instr as LocatedIR`, `LocatedIR.Load`).
-||| Each definition is reported, with the others and where they meet.
-export
-sameName : List (SourceFile, List Declared) -> List Finding
-sameName fds = joined (map report (meetings fds))
-  where
-    at : String -> String -> Maybe (SourceFile, Declared)
-    at m n = case find (\fd => moduleOf (fst fd) == m) fds of
-      Nothing => Nothing
-      Just (f, ds) => map (f,) (find (\d => (n `elem` d.defines) || (n `elem` d.visible)) ds)
-
-    start : FC -> (Int, Int)
-    start (MkFC _ s _) = s
-    start (MkVirtualFC _ s _) = s
-    start EmptyFC = (0, 0)
-
-    report : Meeting -> List Finding
-    report mt = mapMaybe one mt.definers
-      where
-        one : String -> Maybe Finding
-        one d = case at d mt.name of
-          Nothing => Nothing
-          Just (f, decl) =>
-            let (l, c) = start decl.decl.fc
-                others = filter (/= d) mt.definers
-            in Just (MkFinding "same-name" f.path l c mt.name
-                      ("`" ++ mt.name ++ "` is also defined in " ++ fastConcat (intersperse ", " (map (\o => "`" ++ o ++ "`") others))
-                       ++ "; they meet bare in " ++ listed mt.inModules
-                       ++ (case mt.inModules of [_] => ", which qualifies"; _ => ", each of which qualifies") ++ " one by its group"))
-
 ------------------------------------------------------------------------------
 -- Health
 

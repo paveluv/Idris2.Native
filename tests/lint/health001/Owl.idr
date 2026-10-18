@@ -1,5 +1,5 @@
 ||| An owl, which hoots; so does a bat (`Bat`). The two `hoot`s meet in
-||| `Night`, which writes each with its namespace: not reported.
+||| `Night`, which writes each with its namespace: not counted against the uniqueness.
 module Owl
 
 %default total

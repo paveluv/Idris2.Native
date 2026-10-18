@@ -1,4 +1,3 @@
--- lint: allow module-name: six small types of one kind, the IRs' operations, named after the kind
 ||| The operations of the IRs: on integers (`ArithOp`, `UnOp`), on doubles
 ||| (`FOp`), between the two (`ConvOp`), the comparison relations (`Rel`),
 ||| and the narrow widths of loads, stores and extensions (`SubWord`).

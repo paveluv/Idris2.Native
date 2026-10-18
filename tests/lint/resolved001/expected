@@ -1,8 +1,5 @@
 ./Frame.idr:7:1 import-unused: `Canvas` is imported, and of what it makes visible only `Shape` is used, which the module imports directly
 ./Gallery.idr:5:1 import-indirect: `Shape` is used (`Shape`, `Circle`) only through `Canvas`: import it
-./JoinAll.idr:18:5 list-accumulation: `go` grows a list at its end with `++` once: a `SnocList` grows there in constant time (`:<`, `<><`)
-./JoinAll.idr:22:1 list-accumulation: `foldAll` grows a list at its end with `++` once: a `SnocList` grows there in constant time (`:<`, `<><`)
-./JoinAll.idr:47:1 list-accumulation: `flatten` joins lists by a left fold once: `joinMap` joins them in linear time
 ./Mode.idr:9:1 public-unneeded: `Mode`'s constructors are used only in its module: `export` keeps them there
 ./Mode.idr:20:1 public-unneeded: no other module uses `slower`: its body need not be public
 ./Page.idr:1:1 raw-maker: `Page` makes a raw address from a word, which only the modules that keep addresses as words do
@@ -13,5 +10,9 @@
 ./Viewer.idr:8:1 import-indirect: `Shape` is used (`Square`, `Shape`) only through `Shapes`: import it
     directness     86  modules used that are imported directly: 25 of 29
     leanness       83  private imports needed: 10 of 12
+  efficiency       40
     accumulation   40  accumulations in a snoc-list or a builder: 2 of 5
+          1  JoinAll.flatten: 0 grown at an end with `++`, 1 joined by a left fold
+          1  JoinAll.foldAll: 1 grown at an end with `++`, 0 joined by a left fold
+          1  JoinAll.go: 1 grown at an end with `++`, 0 joined by a left fold
 ./Spare.idr:1:1 resolution: the TTC of `Spare` is older than its source: build it first

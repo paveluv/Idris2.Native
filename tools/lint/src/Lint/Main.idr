@@ -1,7 +1,7 @@
 ||| `idris2-native-lint`: the rules of the product's code, checked on Idris's
 ||| own parse of each file.
 |||
-|||   idris2-native-lint [--golden | --fix | --warnings] [--health [--minimum N] [--offenders N]] [--helpers] [--refactor NAME [--arg VALUE]... [--dry-run] [--check COMMAND]] [--resolved] PATH... [--programs PATH...]
+|||   idris2-native-lint [--golden | --fix] [--health [--minimum N] [--offenders N]] [--helpers] [--refactor NAME [--arg VALUE]... [--dry-run] [--check COMMAND]] [--resolved] PATH... [--programs PATH...]
 |||
 ||| Each path is a `.idr` file or a directory, walked for `.idr` files, its
 ||| `build` directories left out. The paths after `--programs` are programs
@@ -31,9 +31,8 @@
 ||| changes only the type checker can judge runs only with `--check`
 ||| (`prune-imports`). `--fix`
 ||| puts each file's imports in order first: the refactoring
-||| `order-imports`, the one rule the linter fixes by itself. A rule's findings are errors or, for advice, warnings:
-||| `--warnings` prints those too, and they fail nothing. The exit status is
-||| 1 when there are errors or the score is too low.
+||| `order-imports`, the one rule the linter fixes by itself. The exit status
+||| is 1 when there are findings or the score is too low.
 |||
 ||| `--resolved` adds the rules over what the modules use, resolved from the
 ||| TTCs their build wrote (`Lint.Resolution`), and the components of the
@@ -111,7 +110,6 @@ record Request where
   constructor MkRequest
   golden : Bool
   fix : Bool
-  warnings : Bool
   health : Bool
   minimum : Maybe Nat
   offenders : Nat
@@ -131,7 +129,7 @@ main = do
     | [] => exitWith (ExitFailure 2)
   let o = request args
   when (null o.paths && null o.programs) $ do
-    putStrLn "usage: idris2-native-lint [--golden | --fix | --warnings] [--health [--minimum N] [--offenders N]] [--helpers] [--refactor NAME [--arg VALUE]... [--dry-run] [--check COMMAND]] [--resolved] PATH... [--programs PATH...]"
+    putStrLn "usage: idris2-native-lint [--golden | --fix] [--health [--minimum N] [--offenders N]] [--helpers] [--refactor NAME [--arg VALUE]... [--dry-run] [--check COMMAND]] [--resolved] PATH... [--programs PATH...]"
     exitWith (ExitFailure 2)
   when o.fix $ runRefactoring True False Nothing orderImports (o.paths ++ o.programs)
   whenJust o.refactoring $ \n => do
@@ -174,19 +172,16 @@ main = do
       pms <- traverse (\f => mentions f.mod.decls) ps
       let programNames = the (SortedSet String) (fromList (joined (map (\m => map (nameRoot . snd) m.refs) pms)))
           findings = (failed ++ failedPrograms) ++ lint fdms ps programNames res
-      let errors = filter (not . isWarning . (.rule)) findings
-          shown = if o.warnings && not o.golden then findings else errors
-      traverse_ (putStrLn . if o.golden then withoutPosition else withPosition) shown
-      when (not (null errors) && not o.golden) $ exitWith (ExitFailure 1)
+      traverse_ (putStrLn . if o.golden then withoutPosition else withPosition) findings
+      when (not (null findings) && not o.golden) $ exitWith (ExitFailure 1)
   where
     request : List String -> Request
-    request = go (MkRequest False False False False Nothing 0 False False Nothing False Nothing [] [] [] False)
+    request = go (MkRequest False False False Nothing 0 False False Nothing False Nothing [] [] [] False)
       where
         go : Request -> List String -> Request
         go o [] = o
         go o ("--golden" :: as) = go ({ golden := True } o) as
         go o ("--fix" :: as) = go ({ fix := True } o) as
-        go o ("--warnings" :: as) = go ({ warnings := True } o) as
         go o ("--health" :: as) = go ({ health := True } o) as
         go o ("--minimum" :: n :: as) = go ({ minimum := Just (cast n) } o) as
         go o ("--resolved" :: as) = go ({ resolved := True } o) as
@@ -214,7 +209,7 @@ main = do
           ours = the (SortedSet String) (fromList (map (\f => show f.mod.moduleNS) fs))
           exportsOf = the (SortedMap String (List String)) (fromList [ (show f.mod.moduleNS, joined (map (.visible) ds)) | (f, ds) <- fds ])
           aliases = joined (map (\(f, _, ms) => importAlias exportsOf f ms.refs) fdms)
-          all = joined (map (\(f, ds, ms) => fileRules f ms ds) fdms) ++ joined (map programRules ps) ++ graphRules fs ++ sameName fds
+          all = joined (map (\(f, ds, ms) => fileRules f ms ds) fdms) ++ joined (map programRules ps) ++ graphRules fs
                 ++ aliases ++ joined (map exclusionRules fs) ++ resolved
       in sort (foldl (\acc, f => suppress f acc) all (fs ++ ps))
       where

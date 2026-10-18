@@ -111,10 +111,3 @@ erasedWord : ValEnc -> Int64
 erasedWord FixnumTag1 = 1
 erasedWord FixnumTag0 = 0
 erasedWord NoFixnums = 0
-
-||| Whether a word is a fixnum's.
-public export
-isFixnumWord : ValEnc -> Int64 -> Bool
-isFixnumWord FixnumTag1 w = mod (abs (the Integer (cast w))) 2 == 1
-isFixnumWord FixnumTag0 w = mod (abs (the Integer (cast w))) 2 == 0
-isFixnumWord NoFixnums _ = False

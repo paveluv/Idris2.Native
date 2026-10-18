@@ -426,9 +426,9 @@ adjacency ds =
                         || maybe False (\ip => any (`elem` names) (snd ip)) d.implementing
       in find (not . family) between
 
-||| `module-name`, a warning: a module is named after a key symbol it
-||| defines (a type, a function), so that a reader looking for `Enc` opens
-||| `Enc.idr`. A façade, which defines nothing, is exempt.
+||| Whether a module is named after a key symbol it defines (a type, a
+||| function), so that a reader looking for `Enc` opens `Enc.idr`: what the
+||| health score's names count. A façade, which defines nothing, is exempt.
 export
 namedAfterSymbol : SourceFile -> List Declared -> Bool
 namedAfterSymbol f ds =
@@ -555,7 +555,7 @@ fileRules : SourceFile -> Mentions -> List Declared -> List Finding
 fileRules f ms ds =
   importOrder f ++ publicImport f ++ defaultTotality f ++ elabReflection f ms
   ++ trustEscape f ms ++ citesPlan f ++ todo f ++ headerComment f
-  ++ implementationAdjacent f ds ++ moduleName' f ds ++ moduleType f ds ++ groupPrefix f ds ++ longFile f
+  ++ implementationAdjacent f ds ++ moduleType f ds
   ++ recordConstructor f ds ++ externName f ds ms
   where
     ||| `extern-name`: an `%extern` of the runtime is named by the contract
@@ -602,8 +602,9 @@ fileRules f ms ds =
     ||| `module-type`: a module whose name an exported type of it begins, as
     ||| a short name begins a long one (`Object` for `Obj`), and that is named
     ||| after nothing it defines exactly, is named after that type, its key
-    ||| symbol, as a reader looks it up. Unlike `module-name`, an error: the
-    ||| near name says which name it means.
+    ||| symbol, as a reader looks it up: the near name says which name it
+    ||| means. A module named after nothing it defines counts against the
+    ||| health score's names (`Graph.health`).
     moduleType : SourceFile -> List Declared -> List Finding
     moduleType f ds =
       if namedAfterSymbol f ds then [] else
@@ -633,21 +634,6 @@ fileRules f ms ds =
                     ("`" ++ nameRoot c.val ++ "` constructs `" ++ nameRoot n ++ "`: a record's constructor is `" ++ want ++ "`")]
           _ => []
 
-    ||| The lines a file may have before `long-file` reports it.
-    longLines : Nat
-    longLines = 256
-
-    ||| `long-file`, a warning: a file of more than `longLines` lines. A long
-    ||| file is a design to reconsider, its concepts and its helpers, not a
-    ||| text to cut mechanically: each is taken case by case.
-    longFile : SourceFile -> List Finding
-    longFile f =
-      if f.lineCount > longLines
-        then [finding f "long-file" f.mod.headerLoc (show f.mod.moduleNS)
-                ("`" ++ show f.mod.moduleNS ++ "` is " ++ show f.lineCount ++ " lines long, more than " ++ show longLines
-                 ++ ": a design to reconsider, its concepts and helpers, case by case")]
-        else []
-
     ||| `public-import`: a module imports what it uses, so a public import is for
     ||| a façade.
     publicImport : SourceFile -> List Finding
@@ -674,44 +660,6 @@ fileRules f ms ds =
           finding f "implementation-adjacent" a.impl.decl.fc (iface ++ " " ++ a.type)
             ("`" ++ iface ++ " " ++ a.type ++ "` stands apart from `" ++ a.type ++ "`: `" ++ intruderName d
              ++ "` is between them, neither one of its implementations nor something they use")
-
-    ||| `group-prefix`, a warning: a module's name, or a name it exports,
-    ||| begins with the name of its group as a word (`Flat.FlatExp`,
-    ||| `FlatDef` and `flatForms` under `Flat`). The group qualifies it
-    ||| already (`Flat.Def`), and the prefix only repeats it.
-    groupPrefix : SourceFile -> List Declared -> List Finding
-    groupPrefix f ds = case reverse (forget (split (== '.') (show f.mod.moduleNS))) of
-      (m :: g :: _) =>
-        (if spills g m then [finding f "group-prefix" f.mod.headerLoc m (message g m)] else [])
-        ++ [ finding f "group-prefix" d.decl.fc n (message g n) | d <- ds, n <- nub d.visible, spills g n ]
-      _ => []
-      where
-        -- whether a name begins with the group's as a word: the group's
-        -- letters, then a capital
-        spills : String -> String -> Bool
-        spills g n =
-          length n > length g && toLower (substr 0 (length g) n) == toLower g
-          && maybe False isUpper (index' (length g) (unpack n))
-          where
-            index' : Nat -> List Char -> Maybe Char
-            index' k cs = head' (drop k cs)
-
-        message : String -> String -> String
-        message g n = "`" ++ n ++ "` begins with its group's name, `" ++ g ++ "`, which qualifies it already: `"
-                      ++ g ++ "." ++ rest n (substr (length g) (length n) n) ++ "`"
-          where
-            -- the rest of the name, its first letter lower again if the
-            -- name's was
-            rest : String -> String -> String
-            rest n r = case (unpack n, unpack r) of
-              (c :: _, d :: ds) => if isLower c then pack (toLower d :: ds) else r
-              _ => r
-
-    moduleName' : SourceFile -> List Declared -> List Finding
-    moduleName' f ds =
-      if namedAfterSymbol f ds then [] else
-        [finding f "module-name" f.mod.headerLoc (show f.mod.moduleNS)
-           ("`" ++ show f.mod.moduleNS ++ "` is named after nothing it defines: a reader looks a symbol up by its module's name")]
 
     ||| `default-totality`: every module says how total its functions are by
     ||| default.
@@ -757,19 +705,12 @@ fileRules f ms ds =
         escapes : List String
         escapes = ["assert_total", "assert_smaller", "believe_me", "really_believe_me", "idris_crash", "unsafePerformIO"]
 
-||| How a finding of each rule counts: an error fails the gate, a warning
-||| is advice, printed when asked for.
-export
-isWarning : (rule : String) -> Bool
-isWarning rule = rule == "module-name" || rule == "same-name" || rule == "list-accumulation" || rule == "group-prefix"
-                 || rule == "public-unneeded" || rule == "long-file"
-
 ||| The names of every rule, those over the graph and over the resolution
 ||| included.
 export
 ruleNames : List String
 ruleNames =
   [ "import-order", "public-import", "default-totality", "elab-reflection"
-  , "trust-escape", "cites-plan", "todo", "header-comment", "implementation-adjacent", "module-name"
-  , "layering", "syscall", "same-name", "import-unused", "import-indirect", "list-accumulation", "generic-export"
-  , "import-alias", "group-prefix", "long-file", "public-unneeded", "record-constructor", "module-type", "raw-maker", "extern-name" ]
+  , "trust-escape", "cites-plan", "todo", "header-comment", "implementation-adjacent"
+  , "layering", "syscall", "import-unused", "import-indirect", "generic-export"
+  , "import-alias", "public-unneeded", "record-constructor", "module-type", "raw-maker", "extern-name" ]

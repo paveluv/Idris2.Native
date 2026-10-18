@@ -6,13 +6,15 @@
 # through `Canvas`'s re-export, and `Viewer` through a façade, and a
 # package's module through a package's re-export, all reported; `Spare` imports
 # a module it does not use, and `Frame` one that gives it only what it
-# imports directly; `JoinAll` accumulates lists in each shape, the
-# superlinear ones reported, a warning; `Shape` exports a generic helper;
+# imports directly; `Shape` exports a generic helper;
 # `Page` makes a raw address from a word.
-# Then the score's components that the resolution measures.
+# Then the score's components that the resolution measures, and the
+# accumulation with what costs it: `JoinAll` accumulates lists in each
+# shape, the superlinear ones counted against it.
 idris2 --build fixtures.ipkg > /dev/null
-../../../tools/lint/build/exec/idris2-native-lint --resolved --warnings .
-../../../tools/lint/build/exec/idris2-native-lint --resolved --health . | grep "directness\|leanness\|accumulation"
+../../../tools/lint/build/exec/idris2-native-lint --resolved .
+../../../tools/lint/build/exec/idris2-native-lint --resolved --health . | grep "directness\|leanness"
+../../../tools/lint/build/exec/idris2-native-lint --resolved --health --offenders 3 . | sed -n '/^  efficiency/,$p'
 
 # A source changed after its build: its TTC no longer says what it uses, so
 # nothing is resolved, and the finding says so.

@@ -1,5 +1,5 @@
 ||| What a module makes `public export` that only it needs public:
-||| `public-unneeded`, a warning.
+||| `public-unneeded`.
 module Mode
 
 import Data.Vect
