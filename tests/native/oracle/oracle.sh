@@ -57,7 +57,8 @@
 #   agree          the same standard output and exit status
 #   MISMATCH       they differ; the differences follow, indented
 #   unsupported    the native program reached a construct the backend does
-#                  not lower yet: exit status 70 and `idris: unsupported`
+#                  not lower yet: exit status 70 and `idris: unsupported: `,
+#                  then which construct and in which function
 #   oracle error   the oracle failed to compile the program or to run it; its
 #                  first error line follows. vmcode-interp reports a runtime
 #                  error on standard output with exit status 0, so a line
@@ -243,7 +244,7 @@ for src in "$@"; do
   elif [ "$ss" = compile ]; then
     echo "$name: subject error: $(first_error "$work/subject/log")"
     errors=$((errors + 1))
-  elif [ "$subject" = native ] && [ "$ss" = 70 ] && grep -q '^idris: unsupported$' "$work/subject/err"; then
+  elif [ "$subject" = native ] && [ "$ss" = 70 ] && grep -q '^idris: unsupported: ' "$work/subject/err"; then
     echo "$name: unsupported"
     unsupported=$((unsupported + 1))
   elif [ "$os" = 124 ] || [ "$ss" = 124 ]; then

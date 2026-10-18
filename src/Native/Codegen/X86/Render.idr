@@ -583,7 +583,13 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                    modify { rodata $= (:< (l, bytes)) }
                                    emits [Asm.Lea Asm.RDI (Asm.MRip l 0),
                                           Asm.MovRI Asm.RSI (cast (length bytes)), Asm.Jmp (sym Linkage.Sym.SymCrash)]
-            LocatedIR.Terminator.Unsupported _ => emit (Asm.Jmp (sym Linkage.Sym.SymUnsupported))
+            -- what is not lowered, and the function it stands in
+            LocatedIR.Terminator.Unsupported what => do
+                                   l <- fresh
+                                   let bytes = map (cast . ord) (unpack ("idris: unsupported: " ++ what ++ ", in " ++ show f.name ++ "\n"))
+                                   modify { rodata $= (:< (l, bytes)) }
+                                   emits [Asm.Lea Asm.RDI (Asm.MRip l 0),
+                                          Asm.MovRI Asm.RSI (cast (length bytes)), Asm.Jmp (sym Linkage.Sym.SymUnsupported)]
             LocatedIR.Terminator.Ret xs => do
               putValues res xs
               emits [Asm.AluI Asm.ADD Asm.RSP 8, Asm.Ret]

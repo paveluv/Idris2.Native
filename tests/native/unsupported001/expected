@@ -1,0 +1,3 @@
+Before the fork
+status: 70
+idris: unsupported: the foreign function Prelude.IO.prim__fork, in Prelude.IO.prim__fork

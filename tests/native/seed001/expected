@@ -1,7 +1,7 @@
-exit42: 8608 bytes
-unsupported: 8608 bytes
-alloc: 8608 bytes
+exit42: 8584 bytes
+unsupported: 8632 bytes
+alloc: 8584 bytes
 exit42 status: 42
 unsupported status: 70
-unsupported stderr: idris: unsupported
+unsupported stderr: idris: unsupported: a construct, in Main.main
 alloc status: 42

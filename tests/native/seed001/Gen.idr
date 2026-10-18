@@ -16,6 +16,7 @@ module Gen
 import Native.Codegen.ELF
 import Native.Codegen.Link
 import Native.Codegen.Linkage.Sym
+import Native.Codegen.Seed
 import Native.Codegen.X86.Asm
 import Native.Codegen.X86.Encode
 import Native.HeapObj.Shape
@@ -43,9 +44,15 @@ exitProg : List Instr
 exitProg = [Lbl (symLabel SymMain), MovRI RAX (fix 42), JmpM (MBase R12 0)]
 
 -- 2. main hits the abort stub, as a program does at the first construct
--- the backend does not lower: `idris: unsupported`, status 70.
+-- the backend does not lower, with the message that says which and where,
+-- as the rendering writes one into the read-only data: status 70.
+unsupportedMsg : List Bits8
+unsupportedMsg = map (cast . ord) (unpack "idris: unsupported: a construct, in Main.main\n")
+
 unsupportedProg : List Instr
-unsupportedProg = [Lbl (symLabel SymMain), Jmp (symLabel SymUnsupported)]
+unsupportedProg =
+  [ Lbl (symLabel SymMain)
+  , Lea RDI (MRip reservedLabels 0), MovRI RSI (cast (length unsupportedMsg)), Jmp (symLabel SymUnsupported) ]
 
 -- 3. A (3 words) via the slow path; B (8 MiB, larger than a window) via the
 -- slow path, filling its window exactly; C through the inline fast path (lea,
@@ -113,8 +120,8 @@ allocSlowByHand =
   , MovRR RDI RAX
   , Ret ]
 
-emit : String -> List Instr -> IO ()
-emit name prog = case link SeedEnc (prog ++ startByHand ++ allocSlowByHand ++ crashByHand) of
+emit : String -> List Instr -> List (Label, List Bits8) -> IO ()
+emit name prog rodata = case linkProgram SeedEnc windowBytes seedAreas (prog ++ startByHand ++ allocSlowByHand ++ crashByHand) rodata of
   Left missing => putStrLn (name ++ ": unresolved labels " ++ show missing)
   Right image => do
     Right () <- writeImage name image
@@ -123,6 +130,6 @@ emit name prog = case link SeedEnc (prog ++ startByHand ++ allocSlowByHand ++ cr
 
 main : IO ()
 main = do
-  emit "exit42" exitProg
-  emit "unsupported" unsupportedProg
-  emit "alloc" allocProg
+  emit "exit42" exitProg []
+  emit "unsupported" unsupportedProg [(reservedLabels, unsupportedMsg)]
+  emit "alloc" allocProg []

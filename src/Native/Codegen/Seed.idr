@@ -33,8 +33,7 @@ import Native.Types.Kind
 ------------------------------------------------------------------------------
 -- The routines
 
-msgUnsupported, msgStackOverflow : List Bits8
-msgUnsupported = map (cast . ord) (unpack "idris: unsupported\n")
+msgStackOverflow : List Bits8
 msgStackOverflow = map (cast . ord) (unpack "idris: stack overflow\n")
 
 ||| The seed's code, for allocation windows of the given size in bytes, under
@@ -102,15 +101,15 @@ seedText enc window = startText enc.val window ++ haltText enc.val ++ unsupporte
       , X86.Asm.MovRI X86.Asm.RDI 2, X86.Asm.MovRI X86.Asm.RAX sysWrite, X86.Asm.Syscall
       , X86.Asm.MovRI X86.Asm.RDI 1, X86.Asm.MovRI X86.Asm.RAX sysExitGroup, X86.Asm.Syscall ]
 
-    ||| `idris_unsupported`: the abort stub that every construct the backend does
-    ||| not lower yet jumps to (`Native.Codegen.Native`). Disappears when the
-    ||| lowering is complete.
+    ||| `idris_unsupported(rdi = message, rsi = length)`: the abort stub that
+    ||| every construct the backend does not lower yet jumps to
+    ||| (`Native.Codegen.Native`), with the message that says which construct,
+    ||| and where. Disappears when the lowering is complete.
     unsupportedText : List X86.Asm.Instr
     unsupportedText =
-      [ X86.Asm.Comment "idris_unsupported: message, exit 70"
+      [ X86.Asm.Comment "idris_unsupported(message, length): message, exit 70"
       , X86.Asm.Lbl (Linkage.Sym.symLabel Linkage.Sym.SymUnsupported)
-      , X86.Asm.Lea X86.Asm.RSI (X86.Asm.MRip (Linkage.Sym.symLabel Linkage.Sym.SymMsgUnsupported) 0),
-        X86.Asm.MovRI X86.Asm.RDX (cast (length msgUnsupported))
+      , X86.Asm.MovRR X86.Asm.RDX X86.Asm.RSI, X86.Asm.MovRR X86.Asm.RSI X86.Asm.RDI
       , X86.Asm.MovRI X86.Asm.RDI 2, X86.Asm.MovRI X86.Asm.RAX sysWrite, X86.Asm.Syscall
       , X86.Asm.MovRI X86.Asm.RDI (cast unsupportedStatus), X86.Asm.MovRI X86.Asm.RAX sysExitGroup, X86.Asm.Syscall ]
       where
@@ -258,12 +257,10 @@ seedRodata : (textLabels : SortedMap X86.Asm.Label Int) -> (List Bits8, List (Li
 seedRodata tl =
   let haltCode = fromMaybe 0 (lookup (Linkage.Sym.symLabel Linkage.Sym.SymHalt) tl)
       halt = Bytes.le64 (cast haltCode) ++ Bytes.le64 0            -- code, parent
-      m1 = Bytes.pad8 msgUnsupported
-      m3 = Bytes.pad8 msgStackOverflow
-  in ( halt ++ m1 ++ m3
+      m = Bytes.pad8 msgStackOverflow
+  in ( halt ++ m
      , [ (Linkage.Sym.SymHALT, 0)
-       , (Linkage.Sym.SymMsgUnsupported, cast (length halt))
-       , (Linkage.Sym.SymMsgStackOverflow, cast (length halt + length m1)) ] )
+       , (Linkage.Sym.SymMsgStackOverflow, cast (length halt)) ] )
 
 ||| What the seed's own code needs: `idris_apply`'s slow path roots the
 ||| closure and its argument. What it stages for a closure is the program's

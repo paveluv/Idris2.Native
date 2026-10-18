@@ -16,10 +16,9 @@ data Sym
   | SymMain            -- the program's entry under the heap lowering; the caller of `link` defines it
   | SymHalt            -- `idris_halt`: the code of the HALT continuation; result in rax -> exit_group
   | SymCrash           -- `idris_crash(msg, len)`: write to fd 2, exit_group(1)
-  | SymUnsupported     -- `idris_unsupported`: the abort stub for unlowered code; writes a message, exit_group(70)
+  | SymUnsupported     -- `idris_unsupported(msg, len)`: the abort stub for unlowered code; write to fd 2, exit_group(70)
   | SymAllocSlow       -- `idris_alloc_slow(n)`: the allocation slow path, the runtime's
   | SymHALT            -- rodata: the static HALT continuation, the bottom of every continuation chain
-  | SymMsgUnsupported  -- rodata
   | SymArgs            -- bss: ARGS, sized by `Areas`: arguments beyond the argument registers
   | SymRoots           -- bss: ROOTS, sized by `Areas`: the root buffer of the rooting stubs
   | SymNRoots          -- bss: NROOTS, 1 word: the entries of ROOTS in use
@@ -42,7 +41,6 @@ symLabel SymCrash = 3
 symLabel SymUnsupported = 4
 symLabel SymAllocSlow = 5
 symLabel SymHALT = 7
-symLabel SymMsgUnsupported = 8
 symLabel SymArgs = 10
 symLabel SymRoots = 11
 symLabel SymNRoots = 12
@@ -66,7 +64,6 @@ symName SymCrash = "idris_crash"
 symName SymUnsupported = "idris_unsupported"
 symName SymAllocSlow = "idris_alloc_slow"
 symName SymHALT = "HALT"
-symName SymMsgUnsupported = "msg_unsupported"
 symName SymArgs = "ARGS"
 symName SymRoots = "ROOTS"
 symName SymNRoots = "NROOTS"

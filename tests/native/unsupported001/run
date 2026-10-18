@@ -1,0 +1,9 @@
+. ../../testutils.sh
+
+# A program reaching a construct the backend does not lower: what it prints
+# before it, then the abort stub's message on standard error, which names
+# the construct and the function it is in, and the stub's status, 70.
+idris2 --cg native -o fork Fork.idr > /dev/null
+./build/exec/fork 2> fork.err; echo "status: $?"
+cat fork.err
+rm -f fork.err
