@@ -5,8 +5,7 @@
 ||| does. It orders every effect of the machine, not the collector's heap's
 ||| alone: the heap, raw memory (the per-thread areas, the system's
 ||| arguments and environment, the memory outside the heap the allocator
-||| gives), the pinned registers, and the system's services. "Heap" means
-||| the collector's memory only.
+||| gives), the pinned registers, and the system's services.
 |||
 ||| The runtime has no monad and no `IO`. An operation takes the token
 ||| `Ordo`, linearly, and returns it with its value, so the operations of a
