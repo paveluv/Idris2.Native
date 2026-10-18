@@ -227,7 +227,7 @@ main = do
             Just (Right r) => resolvedRules fdms programNames r
           ours = the (SortedSet String) (fromList (map (\f => show f.mod.moduleNS) fs))
           exportsOf = the (SortedMap String (List String)) (fromList [ (show f.mod.moduleNS, joined (map (.visible) ds)) | (f, ds) <- fds ])
-          aliases = joined (map (\(f, _, ms) => importAlias exportsOf f ms.refs) fdms)
+          aliases = joined (map (\(f, ds, ms) => importAlias exportsOf f ms.refs ++ selfQualified f (joined (map (.defines) ds)) ms.refs) fdms)
           all = joined (map (\(f, ds, ms) => fileRules f ms ds) fdms) ++ joined (map programRules ps) ++ graphRules fs
                 ++ aliases ++ joined (map exclusionRules fs) ++ resolved
       in sort (foldl (\acc, f => suppress ran f acc) all (fs ++ ps))

@@ -101,6 +101,7 @@ modules =
     Native.Service,
     Native.Table,
     Native.Types.BignumEnc,
+    Native.Types.ConstructorId,
     Native.Types.Enc,
     Native.Types.Header,
     Native.Types.IntegerRoutine,

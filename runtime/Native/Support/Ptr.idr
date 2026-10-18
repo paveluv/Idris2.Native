@@ -12,6 +12,7 @@ import Native.Support.Obj
 import Native.Flat.Uniform as Flat
 import Native.HeapObj.Shape as HeapObj
 import Native.Runtime.Ordo as Runtime
+import Native.Types.Header
 import Native.Types.Kind
 import Native.Types.Represents
 
@@ -25,8 +26,8 @@ import Native.Types.Represents
 export %inline
 newPtr : {auto 0 rep : Represents Types.Kind.PTR a} -> (word : Bits64) -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform a)
 newPtr word = do
-  p <- Obj.allocate Types.Kind.PTR 0
-  Obj.store64 p 8 word
+  p <- Obj.allocate Types.Kind.PTR Types.Header.noParts
+  Obj.store64 p 0 word
   Obj.objectValue p
 
 ||| The word a pointer holds: its address, 0 for the null pointer.
@@ -34,4 +35,4 @@ export %inline
 ptrWord : {auto 0 only : Only Types.Kind.PTR a} -> Flat.Uniform a -> Runtime.Ordo.Op Runtime.Ordo Bits64
 ptrWord v = do
   p <- Obj.valueObject {k = Types.Kind.PTR} v
-  Obj.load64 p 8
+  Obj.load64 p 0

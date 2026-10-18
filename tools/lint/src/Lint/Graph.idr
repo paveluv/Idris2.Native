@@ -9,6 +9,7 @@ module Lint.Graph
 
 import Lint.Finding
 import Lint.Qualifier
+import Lint.Refactor.Span
 import Lint.Rules
 import Lint.Source
 
@@ -200,6 +201,66 @@ importAlias exportsOf f refs =
                                ("`" ++ q ++ "." ++ n ++ "` is written otherwise than its module's path from here: `" ++ want ++ "`"))
         _ => Nothing
     written _ = Nothing
+
+||| `self-qualified`: a name the module defines written qualified by the
+||| module itself, its name or last parts of it, where the name bare would
+||| mean the same: a name that begins with a capital, anywhere; one that
+||| begins with a small letter, on a clause's right-hand side. In a type or
+||| a pattern, Idris takes a bare name of a small letter for a new variable,
+||| though a definition of it is in scope (`Represents.listCons` in
+||| `Native.Types.Represents`'s constructors' types is the definition, bare
+||| `listCons` a variable), so the qualifier is what names the definition.
+export
+selfQualified : SourceFile -> (defines : List String) -> List (FC, Name) -> List Finding
+selfQualified f defines refs = mapMaybe one refs
+  where
+    me : String
+    me = show f.mod.moduleNS
+
+    -- where each right-hand side of the file's clauses is
+    rhsOf : List PDecl -> List ((Int, Int), (Int, Int))
+    rhsOf ds = foldr (\d, rest => decl d.val ++ rest) [] ds
+      where
+        mutual
+          decl : PDeclNoFC -> List ((Int, Int), (Int, Int))
+          decl (PDef cs) = foldr (\c, rest => clause c ++ rest) [] cs
+          decl (PMutual ds) = rhsOf ds
+          decl (PNamespace _ ds) = rhsOf ds
+          decl (PParameters _ ds) = rhsOf ds
+          decl (PUsing _ ds) = rhsOf ds
+          decl (PFail _ ds) = rhsOf ds
+          decl (PInterface _ _ _ _ _ _ _ ds) = rhsOf ds
+          decl (PImplementation _ _ _ _ _ _ _ _ _ (Just ds)) = rhsOf ds
+          decl _ = []
+
+          clause : PClause -> List ((Int, Int), (Int, Int))
+          clause (MkPatClause _ _ rhs wh) = maybe [] (\b => [b]) (bounds (getPTermLoc rhs)) ++ rhsOf wh
+          clause (MkWithClause _ _ _ _ cs) = foldr (\c, rest => clause c ++ rest) [] cs
+          clause (MkImpossible _ _) = []
+
+    spans : List ((Int, Int), (Int, Int))
+    spans = rhsOf f.mod.decls
+
+    onRight : FC -> Bool
+    onRight fc = case bounds fc of
+      Just (s, e) => any (\(s', e') => s' <= s && e <= e') spans
+      Nothing => False
+
+    bareMeansIt : FC -> String -> Bool
+    bareMeansIt fc n = case unpack n of
+      (c :: _) => isUpper c || onRight fc
+      [] => False
+
+    one : (FC, Name) -> Maybe Finding
+    one (fc, NS ns (UN (Basic n))) =
+      let q = show ns in
+      if (q == me || isSuffixOf ("." ++ q) me) && any (== n) defines && bareMeansIt fc n
+         then case fc of
+                MkFC _ (l, c) _ => Just (MkFinding "self-qualified" f.path l c (q ++ "." ++ n)
+                                           ("`" ++ q ++ "." ++ n ++ "` is this module's own: write `" ++ n ++ "`"))
+                _ => Nothing
+         else Nothing
+    one _ = Nothing
 
 ||| Names listed for a detail, the first few.
 export

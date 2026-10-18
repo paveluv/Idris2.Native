@@ -1,6 +1,6 @@
 ||| Code points as UTF-8 (`utf8Bytes`, `encodeUtf8`, `decodeUtf8`): how many
 ||| bytes a code point takes, shortest form, and writing and reading one in
-||| memory, at an address plus an offset. The bytes of a string under UTF-8
+||| an object's payload, at an offset into it. The bytes of a string under UTF-8
 ||| are these, and so are those of the console and of files, whatever the
 ||| program's string encoding.
 module Native.Support.CodePoint
@@ -32,7 +32,7 @@ export
 utf8Length : (lead : Bits64) -> Bits64
 utf8Length b = if b < 0x80 then 1 else if b < 0xE0 then 2 else if b < 0xF0 then 3 else 4
 
-||| The code point whose lead byte is at the address plus the offset, the
+||| The code point whose lead byte is at the offset into the payload, the
 ||| bytes after it its sequence's, trusted to be well formed.
 export
 decodeUtf8 : {auto 0 raw : Types.Kind.shapeOf k = Just HeapObj.Shape.RAW} -> Obj k -> (offset : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
@@ -68,7 +68,7 @@ utf8Word c =
     (0xF0 .|. Runtime.Bits.shiftR c 18) .|. Runtime.Bits.shiftL (0x80 .|. Runtime.Bits.shiftR c 12 .&. 0x3F) 8
       .|. Runtime.Bits.shiftL (0x80 .|. Runtime.Bits.shiftR c 6 .&. 0x3F) 16 .|. Runtime.Bits.shiftL (0x80 .|. c .&. 0x3F) 24
 
-||| The code point `c` written at the address plus the offset, its
+||| The code point `c` written at the offset into the payload, its
 ||| `utf8Bytes c` bytes.
 export
 encodeUtf8 : {auto 0 raw : Types.Kind.shapeOf k = Just HeapObj.Shape.RAW} -> Obj k -> (offset, c : Bits64) -> Runtime.Ordo.Op Runtime.Ordo ()

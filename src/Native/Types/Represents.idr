@@ -15,6 +15,7 @@
 ||| and the runtime's support tier read.
 module Native.Types.Represents
 
+import Native.Types.ConstructorId
 import Native.Types.Kind
 
 %default total
@@ -38,24 +39,33 @@ data Represents : Kind -> Type -> Type where
   ||| A kind that holds every value of a type holds values of it.
   Sole : Only k a -> Represents k a
 
+||| The ids of `List`'s constructors, `[]` then `(::)`, as it declares them.
+export
+listNil, listCons : ConstructorId
+listNil = declared 0
+listCons = declared 1
+
 ||| Constructor `c` of the data type `t` is a `CON` of the id `c` and `n`
-||| fields, by the order of `t`'s declaration.
+||| fields: a count no code computes with, only the statement's, as the
+||| code generator's `ConH` has it. The ids are qualified in the constructors' types, here and
+||| below: there a bare `listCons` would be a new variable, and the
+||| statement one of every id.
 public export
-data ConOf : (t : Type) -> (c : Bits64) -> (n : Bits64) -> Type where
-  ListNil : ConOf (List a) 0 0
-  ListCons : ConOf (List a) 1 2
+data ConOf : (t : Type) -> (c : ConstructorId) -> (n : Nat) -> Type where
+  ListNil : ConOf (List a) Represents.listNil 0
+  ListCons : ConOf (List a) Represents.listCons 2
 
 ||| `c` is a constructor of `t`, of some number of fields: what a view of a
 ||| value as one of its constructors asks.
 public export
-data IsCon : (t : Type) -> (c : Bits64) -> Type where
-  HasArity : {0 n : Bits64} -> ConOf t c n -> IsCon t c
+data IsCon : (t : Type) -> (c : ConstructorId) -> Type where
+  HasArity : {0 n : Nat} -> ConOf t c n -> IsCon t c
 
 ||| Field `i` of constructor `c` of `t` holds a value of `f`.
 public export
-data FieldOf : (t : Type) -> (c : Bits64) -> (i : Bits64) -> (f : Type) -> Type where
-  ConsHead : FieldOf (List a) 1 0 a
-  ConsTail : FieldOf (List a) 1 1 (List a)
+data FieldOf : (t : Type) -> (c : ConstructorId) -> (i : Bits64) -> (f : Type) -> Type where
+  ConsHead : FieldOf (List a) Represents.listCons 0 a
+  ConsTail : FieldOf (List a) Represents.listCons 1 (List a)
 
 ||| Ordinary code holds every value of `t` as a fixnum, the integer it
 ||| stands for: never an object.

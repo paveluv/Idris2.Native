@@ -29,5 +29,7 @@
 ./Reflects.idr:7:1 elab-reflection: `%language ElabReflection`
 ./Reflects.idr:11:1 elab-reflection: `%macro` function
 ./Reflects.idr:15:1 elab-reflection: `%runElab` declaration
+./Self.idr:18:9 self-qualified: `Self.Colour` is this module's own: write `Colour`
+./Self.idr:23:8 self-qualified: `Self.base` is this module's own: write `base`
 ./Spare/One/Unsorted.idr:4:1 import-order: `Spare.One.Piece` comes here: the public imports first, then the module's own group's, then the others, each alphabetical
 ./Unordered.idr:5:1 import-order: `Data.List` comes here: the public imports first, then the module's own group's, then the others, each alphabetical

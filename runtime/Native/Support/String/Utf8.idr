@@ -57,6 +57,7 @@ import Native.Support.Environment
 import Native.Support.Obj
 import Native.Support.Path
 import Native.Support.Ptr
+import Native.Types.ConstructorId
 import Native.Types.Header
 import Native.Types.Kind
 import Native.Types.Represents
@@ -85,14 +86,13 @@ stringObject s = Obj.valueObject s
 
 ||| A string's header.
 headerOf : Obj Types.Kind.STRING -> Runtime.Ordo.Op Runtime.Ordo Bits64
-headerOf s = Obj.load64 s 0
+headerOf s = Obj.header s
 
-||| A string's header but its fixed word: whether it is ASCII, and its
-||| bytes.
-partsFor : (ascii : Bool) -> (bytes : Bits64) -> Bits64
+||| A string's header parts: whether it is ASCII, and its bytes.
+partsFor : (ascii : Bool) -> (bytes : Bits64) -> Types.Header.Parts Types.Kind.STRING
 partsFor ascii bytes =
-  Types.Header.partBits Types.Header.StringAscii (if ascii then 1 else 0)
-    + Types.Header.partBits Types.Header.StringBytes bytes
+  Types.Header.withPart Types.Header.StringAscii (if ascii then 1 else 0)
+    (Types.Header.withPart Types.Header.StringBytes bytes Types.Header.noParts)
 
 ||| A new string of `bytes`, its header saying it is ASCII until `finish`
 ||| sets it, its bytes still to be written, its padding zero.
@@ -102,15 +102,15 @@ newString bytes = Obj.allocate Types.Kind.STRING (partsFor True bytes)
 ||| A new string's header set, and the string as ordinary code holds it.
 finish : Obj Types.Kind.STRING -> (ascii : Bool) -> (bytes : Bits64) -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform String)
 finish s ascii bytes = do
-  Obj.store64 s 0 (Types.Header.fixedWord Types.Kind.STRING + partsFor ascii bytes)
+  Obj.setHeader s (partsFor ascii bytes)
   Obj.objectValue s
 
 ||| The byte at `i`, and storing one.
 byteAt : Obj Types.Kind.STRING -> (i : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
-byteAt s i = Obj.load8 s (8 + i)
+byteAt s i = Obj.load8 s i
 
 setByte : Obj Types.Kind.STRING -> (i, b : Bits64) -> Runtime.Ordo.Op Runtime.Ordo ()
-setByte s i b = Obj.store8 s (8 + i) b
+setByte s i b = Obj.store8 s i b
 
 ------------------------------------------------------------------------------
 -- UTF-8, at the string's bytes
@@ -125,11 +125,11 @@ charBytes = CodePoint.utf8Bytes
 
 ||| The character whose lead byte is at `i`.
 decodeAt : Obj Types.Kind.STRING -> (i : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
-decodeAt s i = CodePoint.decodeUtf8 s (8 + i)
+decodeAt s i = CodePoint.decodeUtf8 s i
 
 ||| The character `c` written at `j`, its `charBytes c` bytes.
 encodeAt : Obj Types.Kind.STRING -> (j, c : Bits64) -> Runtime.Ordo.Op Runtime.Ordo ()
-encodeAt s j c = CodePoint.encodeUtf8 s (8 + j) c
+encodeAt s j c = CodePoint.encodeUtf8 s j c
 
 ------------------------------------------------------------------------------
 -- Loops
@@ -345,7 +345,7 @@ fastPack xs = let (Runtime.MkOrdo # r) = packOp xs Runtime.MkOrdo in r
         covering
         packMeasure : Flat.Uniform (List Char) -> (bytes, seen : Bits64) -> Runtime.Ordo.Op Runtime.Ordo (Bits64, Bits64)
         packMeasure xs bytes seen = do
-          cell <- Obj.asCon {t = List Char} 1 xs
+          cell <- Obj.asCon {t = List Char} Types.Represents.listCons xs
           case cell of
             Nothing => Runtime.Ordo.pure (bytes, seen)
             Just c => do
@@ -358,7 +358,7 @@ fastPack xs = let (Runtime.MkOrdo # r) = packOp xs Runtime.MkOrdo in r
         covering
         packWrite : Flat.Uniform (List Char) -> Obj Types.Kind.STRING -> (j : Bits64) -> Runtime.Ordo.Op Runtime.Ordo ()
         packWrite xs s j = do
-          cell <- Obj.asCon {t = List Char} 1 xs
+          cell <- Obj.asCon {t = List Char} Types.Represents.listCons xs
           case cell of
             Nothing => Runtime.Ordo.pure ()
             Just c => do
@@ -382,7 +382,7 @@ fastUnpack str = let (Runtime.MkOrdo # r) = unpackOp str Runtime.MkOrdo in r
     unpackOp str = do
       s <- stringObject str
       h <- headerOf s
-      nil <- Obj.con0 {t = List Char} 0
+      nil <- Obj.con0 {t = List Char} Types.Represents.listNil
       build s (bytesOf h) nil
       where
         ||| Where the character that ends before byte `j` starts: the first
@@ -401,7 +401,7 @@ fastUnpack str = let (Runtime.MkOrdo # r) = unpackOp str Runtime.MkOrdo in r
           i <- startBefore s j
           c <- decodeAt s i
           ch <- Obj.ofImmediate {t = Char} c
-          cell <- Obj.con2 {t = List Char} 1 ch rest
+          cell <- Obj.con2 {t = List Char} Types.Represents.listCons ch rest
           build s i cell
 
 %cg native flat Support.String.Utf8.fastConcat
@@ -425,7 +425,7 @@ fastConcat xs = let (Runtime.MkOrdo # r) = concatOp xs Runtime.MkOrdo in r
         concatMeasure : Flat.Uniform (List String) -> (bytes : Bits64) -> (ascii : Bool) ->
                         Runtime.Ordo.Op Runtime.Ordo (Bits64, Bool)
         concatMeasure xs bytes ascii = do
-          cell <- Obj.asCon {t = List String} 1 xs
+          cell <- Obj.asCon {t = List String} Types.Represents.listCons xs
           case cell of
             Nothing => Runtime.Ordo.pure (bytes, ascii)
             Just c => do
@@ -439,7 +439,7 @@ fastConcat xs = let (Runtime.MkOrdo # r) = concatOp xs Runtime.MkOrdo in r
         covering
         concatWrite : Flat.Uniform (List String) -> Obj Types.Kind.STRING -> (j : Bits64) -> Runtime.Ordo.Op Runtime.Ordo ()
         concatWrite xs r j = do
-          cell <- Obj.asCon {t = List String} 1 xs
+          cell <- Obj.asCon {t = List String} Types.Represents.listCons xs
           case cell of
             Nothing => Runtime.Ordo.pure ()
             Just c => do
@@ -638,7 +638,7 @@ prim__putStr str w = let (Runtime.MkOrdo # ()) = putOp str Runtime.MkOrdo in MkI
     putOp str = do
       s <- stringObject str
       h <- headerOf s
-      Runtime.OS.osWriteAll Runtime.OS.stdout (Obj.objectBytes s 8) (bytesOf h)
+      Runtime.OS.osWriteAll Runtime.OS.stdout (Obj.objectBytes s 0) (bytesOf h)
 
 ||| The string of the bytes at raw memory up to the zero byte that ends
 ||| them, copied into a new string: the system's text, an argument or an
@@ -701,7 +701,7 @@ prim__getEnv name w = let (Runtime.MkOrdo # r) = envOp name Runtime.MkOrdo in Mk
     envOp name = do
       s <- stringObject name
       h <- headerOf s
-      found <- Environment.find (Obj.objectBytes s 8) (bytesOf h)
+      found <- Environment.find (Obj.objectBytes s 0) (bytesOf h)
       case found of
         Nothing => Ptr.newPtr 0
         Just i => do
@@ -724,7 +724,7 @@ prim__setEnv name value overwrite w = let (Runtime.MkOrdo # r) = setOp name valu
       nh <- headerOf n
       v <- stringObject value
       vh <- headerOf v
-      ok <- Environment.set (Obj.objectBytes n 8) (bytesOf nh) (Obj.objectBytes v 8) (bytesOf vh) (overwrite /= 0)
+      ok <- Environment.set (Obj.objectBytes n 0) (bytesOf nh) (Obj.objectBytes v 0) (bytesOf vh) (overwrite /= 0)
       if ok then Runtime.Ordo.pure 0 else Runtime.Ordo.pure (-1)
 
 %cg native flat Support.String.Utf8.prim__unsetEnv
@@ -740,7 +740,7 @@ prim__unsetEnv name w = let (Runtime.MkOrdo # r) = unsetOp name Runtime.MkOrdo i
     unsetOp name = do
       n <- stringObject name
       nh <- headerOf n
-      ok <- Environment.unset (Obj.objectBytes n 8) (bytesOf nh)
+      ok <- Environment.unset (Obj.objectBytes n 0) (bytesOf nh)
       if ok then Runtime.Ordo.pure 0 else Runtime.Ordo.pure (-1)
 
 ||| An OS service of a path, called with the string's bytes as the system
@@ -752,7 +752,7 @@ withPath : (Runtime.Raw -> Runtime.Ordo.Op Runtime.Ordo Bits64) -> Flat.Uniform 
 withPath service path = do
   s <- stringObject path
   h <- headerOf s
-  Path.withSystemPath (Obj.objectBytes s 8) (bytesOf h) (Runtime.Ordo.pure (-1)) (\p => do
+  Path.withSystemPath (Obj.objectBytes s 0) (bytesOf h) (Runtime.Ordo.pure (-1)) (\p => do
     ok <- service p
     Runtime.Ordo.pure (if ok == 1 then 0 else -1))
 

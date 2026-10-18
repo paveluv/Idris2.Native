@@ -160,9 +160,42 @@ readPart p h = prim__and_Bits64 (prim__shr_Bits64 h (fst (place p))) (prim__shl_
 
 ||| A part's value where it lives in a header word: the word to add to the
 ||| kind's `fixedWord` for it.
-public export %inline
+export %inline
 partBits : {0 k : Kind} -> HeaderPart k -> (value : Bits64) -> Bits64
 partBits p v = prim__shl_Bits64 v (fst (place p))
+
+||| A header's parts for an object of the kind `k`, as the runtime makes
+||| one: the word they add to the kind's `fixedWord`, and whether each fit
+||| its field (`place`), which a part too large for it would not, and would
+||| spill into the next. Made only part by part (`noParts`, `withPart`), so
+||| a part is of the kind's; an object is made, or its header written, only
+||| of parts that all fit (`Support.Obj`).
+export
+record Parts (0 k : Kind) where
+  constructor MkParts
+  word : Bits64
+  fit : Bool
+
+||| No parts: the header is the kind's `fixedWord`.
+export %inline
+noParts : Parts k
+noParts = MkParts 0 True
+
+||| The parts and one more, the value where `place` puts the part.
+export %inline
+withPart : {0 k : Kind} -> HeaderPart k -> (value : Bits64) -> Parts k -> Parts k
+withPart p v ps =
+  MkParts (ps.word + partBits p v) (ps.fit && v < prim__shl_Bits64 1 (snd (place p)))
+
+||| The header word of the parts, the kind's `fixedWord` with them, and
+||| whether they all fit.
+export %inline
+headerWord : (k : Kind) -> Parts k -> Bits64
+headerWord k ps = fixedWord k + ps.word
+
+export %inline
+allFit : Parts k -> Bool
+allFit ps = ps.fit
 
 ||| What adding one to a part adds to the header word: a closure with one
 ||| more argument filled is its header plus `partUnit ClosureFilled`.

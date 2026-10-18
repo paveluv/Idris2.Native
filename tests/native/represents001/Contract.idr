@@ -9,15 +9,15 @@
 --
 --     Only STRING String               -- every String is a STRING object
 --     Only CON (List a)                -- every list is a CON: [] or (::)
---     ConOf (List a) 1 2               -- (::) is constructor 1, of 2 fields
---     FieldOf (List a) 1 0 a           -- its field 0, the head, is an a
---     FieldOf (List a) 1 1 (List a)    -- its field 1, the tail, a list
+--     ConOf (List a) listCons 2        -- (::), declared second, has 2 fields
+--     FieldOf (List a) listCons 0 a    -- its field 0, the head, is an a
+--     FieldOf (List a) listCons 1 (List a)  -- its field 1, the tail, a list
 --     Immediate Char                   -- a Char is held as its code point
 --
 -- So `fastPack`'s walk down a list of characters reads, with each step
 -- checked:
 --
---     cell <- asCon 1 xs               -- Just the (::), or Nothing at []
+--     cell <- asCon listCons xs        -- Just the (::), or Nothing at []
 --     h <- field 0 cell                -- a Uniform Char
 --     c <- immediate h                 -- its code point
 --     t <- field 1 cell                -- a Uniform (List Char)
@@ -27,6 +27,7 @@ import Native.Flat.Uniform as Flat
 import Native.HeapObj.Shape
 import Native.Runtime.Ordo
 import Native.Support.Obj
+import Native.Types.ConstructorId
 import Native.Types.Kind
 import Native.Types.Represents
 
@@ -45,7 +46,7 @@ roundTrip s = do
 -- the code point of a list's first character, 0 for []
 firstChar : Flat.Uniform (List Char) -> Op Ordo Bits64
 firstChar xs = do
-  cell <- asCon {t = List Char} 1 xs
+  cell <- asCon {t = List Char} listCons xs
   case cell of
     Nothing => pure 0
     Just c => do
@@ -54,7 +55,7 @@ firstChar xs = do
 
 -- a character put in front of a list
 cons : Flat.Uniform Char -> Flat.Uniform (List Char) -> Op Ordo (Flat.Uniform (List Char))
-cons ch rest = con2 {t = List Char} 1 ch rest
+cons ch rest = con2 {t = List Char} listCons ch rest
 
 failing "Can't find an implementation for Only STRING Int"
   -- an Int is never a string's object
@@ -66,20 +67,20 @@ failing "Can't find an implementation for Represents STRING Int"
   stringAsInt : Obj STRING -> Op Ordo (Flat.Uniform Int)
   stringAsInt o = Obj.objectValue o
 
-failing "Can't find an implementation for FieldOf (List Char) 1 0 (List Char)"
+failing "Can't find an implementation for FieldOf (List Char) listCons 0 (List Char)"
   -- a list's head is a character, not its tail
-  tailForHead : Con (List Char) 1 -> Op Ordo (Flat.Uniform (List Char))
+  tailForHead : Con (List Char) listCons -> Op Ordo (Flat.Uniform (List Char))
   tailForHead c = field 0 c
 
-failing "Can't find an implementation for FieldOf (List Char) 1 0 (List Char)"
+failing "Can't find an implementation for FieldOf (List Char) listCons 0 (List Char)"
   -- a cell made with its fields the wrong way round
   swapped : Flat.Uniform Char -> Flat.Uniform (List Char) -> Op Ordo (Flat.Uniform (List Char))
-  swapped ch rest = con2 {t = List Char} 1 rest ch
+  swapped ch rest = con2 {t = List Char} listCons rest ch
 
-failing "Can't find an implementation for IsCon (List Char) 2"
-  -- a list has no constructor 2
-  noSuchCon : Flat.Uniform (List Char) -> Op Ordo (Maybe (Con (List Char) 2))
-  noSuchCon xs = asCon 2 xs
+failing "Can't find an implementation for IsCon (List Char) (declared 2)"
+  -- a list has no third constructor
+  noSuchCon : Flat.Uniform (List Char) -> Op Ordo (Maybe (Con (List Char) (declared 2)))
+  noSuchCon xs = asCon (declared 2) xs
 
 failing "Can't find an implementation for Immediate String"
   -- a string is an object, not a fixnum
@@ -93,6 +94,16 @@ failing "Can't find an implementation for shapeOf CON = Just RAW"
   cellWritten xs = do
     o <- Obj.valueObject {k = CON} xs
     Obj.store64 o 8 0
+
+failing "Can't find an implementation for Num ConstructorId"
+  -- a constructor's id is an identity: nothing computes one
+  nextCon : ConstructorId
+  nextCon = listCons + 1
+
+failing "Name Native.Types.ConstructorId.MkConstructorId is private"
+  -- nor is one made of a word
+  forgedId : ConstructorId
+  forgedId = MkConstructorId 7
 
 failing "Name Native.Support.Obj.MkObj is private"
   -- an object is not made of an address but by `allocate`

@@ -4,3 +4,4 @@ brokenCode: B and C both have the code "1"
 brokenDecode: C does not come back from its code
 gated Eq: Arch Conv IntegerRoutine Kind Lowering OS Platform Reg64 Rep Skeleton StringRoutine Ty ValEnc
 exempt Eq: Raw, a record of one word, compared as its word, whose constructor is the runtime's
+exempt Eq: ConstructorId, a record of one word, compared as its word, whose constructor is its module's

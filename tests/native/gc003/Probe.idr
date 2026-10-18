@@ -27,8 +27,10 @@ import Native.Runtime.Space
 import Native.Runtime.State
 import Native.Support.Obj
 import Native.Support.String.Utf8
+import Native.Types.ConstructorId
 import Native.Types.Header
 import Native.Types.Kind
+import Native.Types.Represents
 
 -- this module's `do` is the runtime's, over the token
 %hide Prelude.Interfaces.(>>=)
@@ -44,7 +46,7 @@ look : Uniform (List String) -> Op Ordo (Bits64, Bits64, Bool)
 look xs = do
   before <- getState collections
   big <- stringObject (fastConcat xs)
-  bytes <- Obj.load64 big 0
+  bytes <- Obj.header big
   during <- getState collections
   hp <- allocationPointer
   lim <- allocationLimit

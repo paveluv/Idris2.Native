@@ -730,4 +730,4 @@ ruleNames : List String
 ruleNames =
   [ "import-order", "public-import", "default-totality", "elab-reflection"
   , "trust-escape", "cast", "cites-plan", "todo", "header-comment", "implementation-adjacent"
-  , "layering", "syscall", "import-alias", "record-constructor", "module-type", "extern-name" ]
+  , "layering", "syscall", "import-alias", "self-qualified", "record-constructor", "module-type", "extern-name" ]

@@ -38,23 +38,23 @@ capacity = 96
 
 ||| The count of limbs in use, and setting it.
 count : Limbs -> Runtime.Ordo.Op Runtime.Ordo Bits64
-count x = Obj.load64 x 8
+count x = Obj.load64 x 0
 
 setCount : Limbs -> Bits64 -> Runtime.Ordo.Op Runtime.Ordo ()
-setCount x n = Obj.store64 x 8 n
+setCount x n = Obj.store64 x 0 n
 
 ||| Limb `i`, and setting it.
 limb : Limbs -> (i : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
-limb x i = Obj.load64 x (16 + 8 * i)
+limb x i = Obj.load64 x (8 + 8 * i)
 
 setLimb : Limbs -> (i, v : Bits64) -> Runtime.Ordo.Op Runtime.Ordo ()
-setLimb x i v = Obj.store64 x (16 + 8 * i) v
+setLimb x i v = Obj.store64 x (8 + 8 * i) v
 
 ||| A new number, zero.
 export
 newLimbs : Runtime.Ordo.Op Runtime.Ordo Limbs
 newLimbs = do
-  x <- Obj.allocate Types.Kind.BUFFER (Types.Header.partBits Types.Header.BufferBytes (8 * (1 + capacity)))
+  x <- Obj.allocate Types.Kind.BUFFER (Types.Header.withPart Types.Header.BufferBytes (8 * (1 + capacity)) Types.Header.noParts)
   setCount x 0
   Runtime.Ordo.pure x
 
