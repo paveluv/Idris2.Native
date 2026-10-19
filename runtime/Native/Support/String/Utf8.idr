@@ -81,7 +81,8 @@ newString : (bytes : Bits64) -> Runtime.Ordo.Op Runtime.Ordo (Obj Types.Kind.STR
 newString bytes = Obj.allocate Types.Kind.STRING (partsFor True bytes)
 
 ||| A new string's header set, and the string as ordinary code holds it.
-finish : Obj Types.Kind.STRING -> (ascii : Bool) -> (bytes : Bits64) -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform String)
+finish : Obj Types.Kind.STRING -> (ascii : Bool) -> (bytes : Bits64) ->
+         Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform String)
 finish s ascii bytes = do
   Obj.setHeader s (partsFor ascii bytes)
   Obj.objectValue s
@@ -118,7 +119,8 @@ encodeAt s j c = CodePoint.encodeUtf8 s j c
 ||| The characters from byte `i` to `end`: the bytes that are not a
 ||| continuation byte, `10xxxxxx`. Ends: `i` climbs to `end`.
 covering
-countChars : Obj Types.Kind.STRING -> (i, end, count : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
+countChars : Obj Types.Kind.STRING -> (i, end, count : Bits64) ->
+             Runtime.Ordo.Op Runtime.Ordo Bits64
 countChars s i end count =
   if i >= end then Runtime.Ordo.pure count else do
     b <- byteAt s i
@@ -154,7 +156,8 @@ copyBytes from i to j n seen =
 ||| The bytes from `from` to `to` of a string, as a new string: ASCII if the
 ||| string is, or if the bytes copied are.
 covering
-slice : Obj Types.Kind.STRING -> (header, from, to : Bits64) -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform String)
+slice : Obj Types.Kind.STRING -> (header, from, to : Bits64) ->
+        Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform String)
 slice s h from to = do
   let n = to - from
   r <- newString n
@@ -202,7 +205,8 @@ index str i = do
   s <- stringObject str
   h <- headerOf s
   off <- offsetOf s h i
-  if off >= bytesOf h then Runtime.Ordo.crashOp "idris: an index outside a string" else decodeAt s off
+  if off >= bytesOf h then Runtime.Ordo.crashOp "idris: an index outside a string"
+    else decodeAt s off
 
 %cg native flat Support.String.Utf8.cons
 ||| A character, then a string.
@@ -295,10 +299,12 @@ compare x y = do
     compareFrom : Obj Types.Kind.STRING -> Obj Types.Kind.STRING -> (i, na, nb : Bits64) ->
                   Runtime.Ordo.Op Runtime.Ordo Int
     compareFrom a b i na nb =
-      if i >= na || i >= nb then Runtime.Ordo.pure (if na < nb then -1 else if na > nb then 1 else 0) else do
+      if i >= na || i >= nb
+        then Runtime.Ordo.pure (if na < nb then -1 else if na > nb then 1 else 0) else do
         p <- byteAt a i
         q <- byteAt b i
-        if p < q then Runtime.Ordo.pure (-1) else if p > q then Runtime.Ordo.pure 1 else compareFrom a b (i + 1) na nb
+        if p < q then Runtime.Ordo.pure (-1) else if p > q then Runtime.Ordo.pure 1
+          else compareFrom a b (i + 1) na nb
 
 ------------------------------------------------------------------------------
 -- Lists of characters and of strings: `prelude`'s `fastPack`, `fastUnpack`
@@ -324,7 +330,8 @@ fastPack xs = let (Runtime.MkOrdo # r) = packOp xs Runtime.MkOrdo in r
         ||| The bytes the characters of a list take, and the OR of their code
         ||| points. Ends: the list is finite, each step one cell on.
         covering
-        packMeasure : Flat.Uniform (List Char) -> (bytes, seen : Bits64) -> Runtime.Ordo.Op Runtime.Ordo (Bits64, Bits64)
+        packMeasure : Flat.Uniform (List Char) -> (bytes, seen : Bits64) ->
+                      Runtime.Ordo.Op Runtime.Ordo (Bits64, Bits64)
         packMeasure xs bytes seen = do
           cell <- Obj.asCon {t = List Char} Types.Represents.listCons xs
           case cell of
@@ -337,7 +344,8 @@ fastPack xs = let (Runtime.MkOrdo # r) = packOp xs Runtime.MkOrdo in r
 
         ||| The characters of a list written from `j`. Ends: as `packMeasure`.
         covering
-        packWrite : Flat.Uniform (List Char) -> Obj Types.Kind.STRING -> (j : Bits64) -> Runtime.Ordo.Op Runtime.Ordo ()
+        packWrite : Flat.Uniform (List Char) -> Obj Types.Kind.STRING -> (j : Bits64) ->
+                    Runtime.Ordo.Op Runtime.Ordo ()
         packWrite xs s j = do
           cell <- Obj.asCon {t = List Char} Types.Represents.listCons xs
           case cell of
@@ -377,7 +385,8 @@ fastUnpack str = let (Runtime.MkOrdo # r) = unpackOp str Runtime.MkOrdo in r
         ||| The characters before byte `j` put in front of the list. Ends: `j`
         ||| falls to 0.
         covering
-        build : Obj Types.Kind.STRING -> (j : Bits64) -> Flat.Uniform (List Char) -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform (List Char))
+        build : Obj Types.Kind.STRING -> (j : Bits64) -> Flat.Uniform (List Char) ->
+                Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform (List Char))
         build s j rest = if j == 0 then Runtime.Ordo.pure rest else do
           i <- startBefore s j
           c <- decodeAt s i
@@ -418,7 +427,8 @@ fastConcat xs = let (Runtime.MkOrdo # r) = concatOp xs Runtime.MkOrdo in r
 
         ||| The strings of a list copied from `j`. Ends: as `concatMeasure`.
         covering
-        concatWrite : Flat.Uniform (List String) -> Obj Types.Kind.STRING -> (j : Bits64) -> Runtime.Ordo.Op Runtime.Ordo ()
+        concatWrite : Flat.Uniform (List String) -> Obj Types.Kind.STRING -> (j : Bits64) ->
+                      Runtime.Ordo.Op Runtime.Ordo ()
         concatWrite xs r j = do
           cell <- Obj.asCon {t = List String} Types.Represents.listCons xs
           case cell of
@@ -449,7 +459,8 @@ writeDigits s end n = do
 
 ||| A magnitude in decimal, after a `-` if it is negative: an ASCII string.
 covering
-decimal : (negative : Bool) -> (magnitude : Bits64) -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform String)
+decimal : (negative : Bool) -> (magnitude : Bits64) ->
+          Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform String)
 decimal negative m = do
   let sign = if negative then 1 else 0
       bytes = sign + decimalDigits m
@@ -462,13 +473,15 @@ decimal negative m = do
 ||| A signed word in decimal, as Chez writes it. The most negative word's
 ||| magnitude is its own pattern, unsigned.
 export covering
-showSigned : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.ShowSigned)
+showSigned : Runtime.PortTy Runtime.Memory.Addr
+             (Types.StringRoutine.port Types.StringRoutine.ShowSigned)
 showSigned n = if n < 0 then decimal True (cast {to = Bits64} (0 - n)) else decimal False (cast n)
 
 %cg native flat Support.String.Utf8.showUnsigned
 ||| A word, unsigned, in decimal.
 export covering
-showUnsigned : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.ShowUnsigned)
+showUnsigned : Runtime.PortTy Runtime.Memory.Addr
+               (Types.StringRoutine.port Types.StringRoutine.ShowUnsigned)
 showUnsigned = decimal False
 
 %cg native flat Support.String.Utf8.showDouble
@@ -479,7 +492,8 @@ showUnsigned = decimal False
 ||| one, where Chez takes the upper; and a subnormal double without the
 ||| `|n` that Chez writes after it, the bits of its significand.
 export covering
-showDouble : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.ShowDouble)
+showDouble : Runtime.PortTy Runtime.Memory.Addr
+             (Types.StringRoutine.port Types.StringRoutine.ShowDouble)
 showDouble x =
   let w = doubleBits x
       negative = w `shiftR` 63 == 1
@@ -487,7 +501,9 @@ showDouble x =
       f = w .&. 0xFFFFFFFFFFFFF
   in if be == 0x7FF
         -- +nan.0, -inf.0, +inf.0
-        then (if f /= 0 then packed 6 0x302E6E616E2B else if negative then packed 6 0x302E666E692D else packed 6 0x302E666E692B)
+        then
+          (if f /= 0 then packed 6 0x302E6E616E2B else if negative then packed 6 0x302E666E692D
+           else packed 6 0x302E666E692B)
      else if be == 0 && f == 0
         -- -0.0, 0.0
         then (if negative then packed 4 0x302E302D else packed 3 0x302E30)
@@ -532,7 +548,8 @@ showDouble x =
         ||| `count` digits of a word, leading zeros included, ending at byte
         ||| `end`.
         covering
-        writeFixed : Obj Types.Kind.STRING -> (end, count, v : Bits64) -> Runtime.Ordo.Op Runtime.Ordo ()
+        writeFixed : Obj Types.Kind.STRING -> (end, count, v : Bits64) ->
+                     Runtime.Ordo.Op Runtime.Ordo ()
         writeFixed s end 0 v = Runtime.Ordo.pure ()
         writeFixed s end count v = do
           setByte s (end - 1) (48 + v `mod` 10)
@@ -555,7 +572,8 @@ showDouble x =
           Runtime.Ordo.pure s
 
         covering
-        positional : (n : Bits64) -> (e : Int) -> (sign : Bits64) -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform String)
+        positional : (n : Bits64) -> (e : Int) -> (sign : Bits64) ->
+                     Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform String)
         positional n e sign =
           if e < 0 then do
             -- 0.001: the point, -e - 1 zeros, the digits
@@ -589,7 +607,8 @@ showDouble x =
               finish s True bytes
 
         covering
-        exponential : (n : Bits64) -> (e : Int) -> (sign : Bits64) -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform String)
+        exponential : (n : Bits64) -> (e : Int) -> (sign : Bits64) ->
+                      Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform String)
         exponential n e sign = do
           let rest = n - 1
               d = power rest
@@ -614,7 +633,8 @@ showDouble x =
 ||| How many of the system's bytes a string's text takes: its own bytes,
 ||| which are UTF-8, as the system's text is.
 export
-textBytes : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.TextBytes)
+textBytes : Runtime.PortTy Runtime.Memory.Addr
+            (Types.StringRoutine.port Types.StringRoutine.TextBytes)
 textBytes str = do
   s <- stringObject str
   h <- headerOf s
@@ -624,7 +644,8 @@ textBytes str = do
 ||| Where a string's own bytes are, which are the system's text: valid
 ||| until the next collection, which no runtime primitive makes.
 export
-textAddress : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.TextAddress)
+textAddress : Runtime.PortTy Runtime.Memory.Addr
+              (Types.StringRoutine.port Types.StringRoutine.TextAddress)
 textAddress str = do
   s <- stringObject str
   Runtime.Ordo.pure (Obj.objectBytes s 0)
@@ -632,7 +653,8 @@ textAddress str = do
 %cg native flat Support.String.Utf8.copyText
 ||| A string's bytes copied to the address.
 export covering
-copyText : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.CopyText)
+copyText : Runtime.PortTy Runtime.Memory.Addr
+           (Types.StringRoutine.port Types.StringRoutine.CopyText)
 copyText str to = do
   s <- stringObject str
   h <- headerOf s
@@ -684,7 +706,8 @@ record Scan where
 ||| by, reads 32 bits, and leading spaces and trailing text. Neither is
 ||| read here: an exponent, a space or any other character is no integer.
 export covering
-readWord : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.ReadWord)
+readWord : Runtime.PortTy Runtime.Memory.Addr
+           (Types.StringRoutine.port Types.StringRoutine.ReadWord)
 readWord u = do
   s <- stringObject u
   h <- headerOf s
@@ -697,9 +720,11 @@ readWord u = do
     -- the digits from byte `i`, the whole part's value `v` so far, modulo
     -- 2^64; the fraction's digits are read and dropped
     covering
-    digits : Obj Types.Kind.STRING -> (n, i, v : Bits64) -> (any, point, negative : Bool) -> Runtime.Ordo.Op Runtime.Ordo Bits64
+    digits : Obj Types.Kind.STRING -> (n, i, v : Bits64) -> (any, point, negative : Bool) ->
+             Runtime.Ordo.Op Runtime.Ordo Bits64
     digits s n i v any point negative =
-      if i >= n then Runtime.Ordo.pure (if not any then 0 else if negative then 0 - v else v) else do
+      if i >= n then Runtime.Ordo.pure (if not any then 0 else if negative then 0 - v else v)
+        else do
         b <- byteAt s i
         if b == 46 && not point
            then digits s n (i + 1) v any True negative
@@ -731,7 +756,8 @@ readWord u = do
 ||| 19 raised by one round to two doubles, where it is decided exactly
 ||| (`Between.between`).
 export covering
-readDouble : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.ReadDouble)
+readDouble : Runtime.PortTy Runtime.Memory.Addr
+             (Types.StringRoutine.port Types.StringRoutine.ReadDouble)
 readDouble u = do
   s <- stringObject u
   h <- headerOf s
@@ -763,13 +789,15 @@ readDouble u = do
       b2 <- byteAt s (i + 2)
       b3 <- byteAt s (i + 3)
       b4 <- byteAt s (i + 4)
-      Runtime.Ordo.pure (b0 .|. (b1 `shiftL` 8) .|. (b2 `shiftL` 16) .|. (b3 `shiftL` 24) .|. (b4 `shiftL` 32))
+      Runtime.Ordo.pure
+        (b0 .|. (b1 `shiftL` 8) .|. (b2 `shiftL` 16) .|. (b3 `shiftL` 24) .|. (b4 `shiftL` 32))
 
     ||| The decimal digits of a number from byte `i` to the first that is no
     ||| digit: whether there is one, the value, at most 100000, past which any
     ||| exponent is as good, and the byte after them.
     covering
-    scanNumber : Obj Types.Kind.STRING -> (n, i : Bits64) -> Runtime.Ordo.Op Runtime.Ordo (Bool, Int, Bits64)
+    scanNumber : Obj Types.Kind.STRING -> (n, i : Bits64) ->
+                 Runtime.Ordo.Op Runtime.Ordo (Bool, Int, Bits64)
     scanNumber s n i = go i False 0
       where
         covering
@@ -784,7 +812,8 @@ readDouble u = do
     ||| (`badExponent` if no digit follows the marker and its sign), and the
     ||| byte after it.
     covering
-    exponent : Obj Types.Kind.STRING -> (n, i : Bits64) -> Runtime.Ordo.Op Runtime.Ordo (Bool, Int, Bits64)
+    exponent : Obj Types.Kind.STRING -> (n, i : Bits64) ->
+               Runtime.Ordo.Op Runtime.Ordo (Bool, Int, Bits64)
     exponent s n i = if i >= n then Runtime.Ordo.pure (False, 0, i) else do
       b <- byteAt s i
       -- e or E
@@ -795,11 +824,13 @@ readDouble u = do
            let minus = c == 45
                start = if minus || c == 43 then i + 2 else i + 1
            (any, v, j) <- scanNumber s n start
-           Runtime.Ordo.pure (True, if not any then badExponent else if minus then negate v else v, j)
+           Runtime.Ordo.pure (True,
+                              if not any then badExponent else if minus then negate v else v, j)
 
     ||| The digits from byte `i`, with at most one point among them.
     covering
-    scanDigits : Obj Types.Kind.STRING -> (n, i : Bits64) -> Scan -> Runtime.Ordo.Op Runtime.Ordo Scan
+    scanDigits : Obj Types.Kind.STRING -> (n, i : Bits64) -> Scan ->
+                 Runtime.Ordo.Op Runtime.Ordo Scan
     scanDigits s n i (MkScan end digits whole lead sig w point) =
       if i >= n then Runtime.Ordo.pure (MkScan end digits whole lead sig w point) else do
         b <- byteAt s i
@@ -811,14 +842,17 @@ readDouble u = do
                let d = b - 48
                    whole' = if point then whole else whole + 1
                in if sig == 0 && d == 0
-                     then scanDigits s n (i + 1) (MkScan (i + 1) (digits + 1) whole' (lead + 1) sig w point)
+                     then scanDigits s n (i + 1)
+                       (MkScan (i + 1) (digits + 1) whole' (lead + 1) sig w point)
                      else scanDigits s n (i + 1)
-                            (MkScan (i + 1) (digits + 1) whole' lead (sig + 1) (if sig < 19 then w * 10 + d else w) point)
+                            (MkScan (i + 1) (digits + 1) whole' lead (sig + 1)
+                              (if sig < 19 then w * 10 + d else w) point)
 
     ||| The digits of a decimal as a number in limbs, from its first nonzero
     ||| one, at most `most` of them, and whether a nonzero digit follows those.
     covering
-    gatherDigits : Obj Types.Kind.STRING -> (from, end, lead, most : Bits64) -> Limbs -> Runtime.Ordo.Op Runtime.Ordo Bool
+    gatherDigits : Obj Types.Kind.STRING -> (from, end, lead, most : Bits64) -> Limbs ->
+                   Runtime.Ordo.Op Runtime.Ordo Bool
     gatherDigits s from end lead most d = go from lead 0 0 0 False
       where
         -- the digits are taken 19 at a time into a word, each word then added
@@ -834,7 +868,8 @@ readDouble u = do
             power j = 10 * power (assert_smaller j (j - 1))
 
         covering
-        go : (i, skip, taken, chunk, inChunk : Bits64) -> (sticky : Bool) -> Runtime.Ordo.Op Runtime.Ordo Bool
+        go : (i, skip, taken, chunk, inChunk : Bits64) -> (sticky : Bool) ->
+             Runtime.Ordo.Op Runtime.Ordo Bool
         go i skip taken chunk inChunk sticky =
           if i >= end then do flush chunk inChunk; Runtime.Ordo.pure sticky else do
             b <- byteAt s i
@@ -853,7 +888,8 @@ readDouble u = do
 
     ||| A decimal from byte `i0`, its sign's bit `sign`.
     covering
-    decimalValue : Obj Types.Kind.STRING -> (n, i0, sign : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Double
+    decimalValue : Obj Types.Kind.STRING -> (n, i0, sign : Bits64) ->
+                   Runtime.Ordo.Op Runtime.Ordo Double
     decimalValue s n i0 sign = do
       sc <- scanDigits s n i0 (MkScan i0 0 0 0 0 0 False)
       (hasExponent, e, j) <- exponent s n sc.end

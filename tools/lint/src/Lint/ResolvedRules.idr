@@ -69,7 +69,8 @@ record Linted where
 ||| Our modules, each with its file and what it writes.
 modulesOf : List (SourceFile, List Declared, Mentions) -> Resolution -> List Linted
 modulesOf fms r =
-  let byPath = the (SortedMap String ResolvedModule) (fromList (map (\rm => (rm.path, rm)) r.modules))
+  let byPath =
+        the (SortedMap String ResolvedModule) (fromList (map (\rm => (rm.path, rm)) r.modules))
   in mapMaybe (one byPath) fms
   where
     one : SortedMap String ResolvedModule -> (SourceFile, List Declared, Mentions) -> Maybe Linted
@@ -77,16 +78,26 @@ modulesOf fms r =
       Nothing => Nothing
       Just rm =>
         let written = the (SortedSet String) (fromList (map (\(_, n) => nameRoot n) ms.refs))
-            ws = foldl (\acc, u => if u.searched || contains u.name written then insert u.definer (u.name :: fromMaybe [] (lookup u.definer acc)) acc else acc)
+            ws =
+              foldl (\acc,
+                u => if u.searched || contains u.name written
+                  then insert u.definer (u.name :: fromMaybe [] (lookup u.definer acc)) acc
+                     else acc)
                        empty rm.uses
             used = the (SortedSet String) (fromList (map (.definer) rm.uses))
             reached = foldl Data.SortedSet.union empty
-                            (map (\(i, _) => if i == "Prelude" then visibleThrough r.importsOf (const True) i else singleton i) rm.imports)
+                            (map
+                              (\(i, _) => if i == "Prelude"
+                               then visibleThrough r.importsOf (const True) i else singleton i)
+                              rm.imports)
             direct = the (SortedSet String) (fromList (map (show . (.path)) f.mod.imports))
             usage : String -> Usage
-            usage p = case filter (\v => contains v used) (Prelude.toList (visibleThrough r.importsOf (const True) p)) of
+            usage p =
+              case filter (\v => contains v used)
+                (Prelude.toList (visibleThrough r.importsOf (const True) p)) of
               [] => Unused
-              vs => if any (\v => v == p || not (contains v direct)) vs then Needed else Redundant vs
+              vs => if any (\v => v == p || not (contains v direct)) vs then Needed
+                else Redundant vs
             privates = [ (i, usage (show i.path)) | i <- f.mod.imports, not i.reexport ]
         in Just (MkLinted f rm ws reached (typesOf ds) privates)
 
@@ -97,7 +108,9 @@ modulesOf fms r =
 ||| it is.
 export
 resolvedRuleNames : List String
-resolvedRuleNames = ["import-unused", "import-indirect", "generic-export", "public-unneeded", "raw-maker", "sealed-allocator", "sealed-boundary", "sealed-values"]
+resolvedRuleNames =
+  ["import-unused", "import-indirect", "generic-export", "public-unneeded", "raw-maker",
+   "sealed-allocator", "sealed-boundary", "sealed-values"]
 
 ||| The rules whose suppression covers one use, the first after it: each
 ||| use is to say why it is sound by itself.
@@ -107,10 +120,13 @@ oneUseRules = ["sealed-allocator"]
 
 ||| The rules over the program resolved.
 export
-resolvedRules : List (SourceFile, List Declared, Mentions) -> (programNames : SortedSet String) -> Resolution -> List Finding
+resolvedRules : List (SourceFile, List Declared, Mentions) -> (programNames : SortedSet String) ->
+                Resolution -> List Finding
 resolvedRules fms programNames r =
   joined [ importUnused m ++ importIndirect r m ++ genericExport m | m <- modulesOf fms r ]
-  ++ joined [ publicUnneeded f ds ++ rawMaker f ++ sealedAllocator f ds ms ++ sealedValues f ms | (f, ds, ms) <- fms ]
+  ++ joined
+    [ publicUnneeded f ds ++ rawMaker f ++ sealedAllocator f ds ms ++ sealedValues f ms
+     | (f, ds, ms) <- fms ]
   where
     ||| `sealed-values`: outside the runtime's core (`Native.Runtime.`), a use
     ||| of the core's conversions between values, fields and objects
@@ -126,12 +142,17 @@ resolvedRules fms programNames r =
               [ u.name | rm <- r.modules, rm.path == f.path, u <- rm.uses
                        , u.definer == "Native.Runtime.Memory", any (== u.name) conversions ])
         in [ finding f "sealed-values" fc (nameRoot n)
-               ("`" ++ nameRoot n ++ "` takes a value for what the caller says: convert through `Native.Support.Obj`, with the representation contract's evidence")
+               ("`" ++ nameRoot n
+                 ++
+                   ("` takes a value for what the caller says: convert through " ++
+                    "`Native.Support.Obj`, with the representation contract's evidence"))
            | (fc, n) <- ms.refs, contains (nameRoot n) used ]
       where
         ||| The core's conversions that take any type.
         conversions : List String
-        conversions = ["valueObject", "objectValue", "fieldObject", "fieldPointer", "fieldValue", "valueWord", "objectAt"]
+        conversions =
+          ["valueObject", "objectValue", "fieldObject", "fieldPointer", "fieldValue", "valueWord",
+           "objectAt"]
 
     ||| `sealed-allocator`: outside the allocator's modules
     ||| (`Native.Runtime.Alloc.`), a use of any of their names but the
@@ -172,9 +193,16 @@ resolvedRules fms programNames r =
         report fc n =
           if atBoundary fc
              then finding f "sealed-allocator" fc n
-                    ("`" ++ n ++ "` leaves the linear blocks of `Native.Runtime.Alloc.Block`: say why it is sound")
+                    ("`" ++ n
+                      ++
+                        ("` leaves the linear blocks of `Native.Runtime.Alloc.Block`: say why " ++
+                         "it is sound"))
              else finding f "sealed-boundary" fc n
-                    ("`" ++ n ++ "` leaves the linear blocks of `Native.Runtime.Alloc.Block` outside `base`'s foreign surface, the `prim__` functions of `Native.Support`: keep the block linear")
+                    ("`" ++ n
+                      ++
+                        ("` leaves the linear blocks of `Native.Runtime.Alloc.Block` outside " ++
+                         "`base`'s foreign surface, the `prim__` functions of `Native.Support`: " ++
+                         "keep the block linear"))
 
         ||| What the blocks' module gives that the types check.
         linear : List String
@@ -188,22 +216,29 @@ resolvedRules fms programNames r =
                    && not (u.definer == "Native.Runtime.Alloc.Block" && any (== u.name) linear)
                    && u.definer /= "Native.Runtime.Alloc.Blocks"
 
-    ||| `raw-maker`: a raw address made from a word (`Raw.fromWord`) outside
-    ||| the modules that keep addresses as words or are given them so: the
-    ||| memory module, the state, the spaces (the collector's interface holds
-    ||| addresses as words), the allocator's page source (`Pages` holds them
-    ||| so too) and the platforms (the system gives its results as words). Elsewhere a raw address comes from an operation that gives
-    ||| one, so a count is not taken for an address.
+    ||| `raw-maker`: a raw address made from a word (`Raw.fromWord`) outside the
+    ||| modules that keep addresses as words or are given them so: the memory
+    ||| module, the state, the spaces (the collector's interface holds addresses
+    ||| as words), the allocator's page source (`Pages` holds them so too) and the
+    ||| platforms (the system gives its results as words). Elsewhere a raw address
+    ||| comes from an operation that gives one, so a count is not taken for an
+    ||| address.
     rawMaker : SourceFile -> List Finding
     rawMaker f =
       let m = show f.mod.moduleNS in
       if elem m makers || isPrefixOf "Native.Runtime.OS." m then [] else
         [ finding f "raw-maker" f.mod.headerLoc u.name
-            ("`" ++ m ++ "` makes a raw address from a word, which only the modules that keep addresses as words do")
-        | rm <- r.modules, rm.name == m, u <- rm.uses, u.name == "fromWord", u.definer == "Native.Runtime.Raw" ]
+            ("`" ++ m
+              ++
+                ("` makes a raw address from a word, which only the modules that keep addresses " ++
+                 "as words do"))
+        | rm <- r.modules, rm.name == m, u <- rm.uses, u.name == "fromWord",
+          u.definer == "Native.Runtime.Raw" ]
       where
         makers : List String
-        makers = ["Native.Runtime.Raw", "Native.Runtime.Memory", "Native.Runtime.State", "Native.Runtime.Space", "Native.Runtime.Alloc.System"]
+        makers =
+          ["Native.Runtime.Raw", "Native.Runtime.Memory", "Native.Runtime.State",
+           "Native.Runtime.Space", "Native.Runtime.Alloc.System"]
 
     ||| `public-unneeded`: a `public export` that only its module
     ||| needs public. A data type whose constructors no other module uses
@@ -215,9 +250,12 @@ resolvedRules fms programNames r =
     publicUnneeded : SourceFile -> List Declared -> List Finding
     publicUnneeded f ds =
       let m = show f.mod.moduleNS
-          usedElsewhere = the (SortedSet String) (fromList [ u.name | rm <- r.modules, rm.name /= m, u <- rm.uses, u.definer == m ])
+          usedElsewhere =
+            the (SortedSet String)
+              (fromList [ u.name | rm <- r.modules, rm.name /= m, u <- rm.uses, u.definer == m ])
           publicNames = joined (map (.defines) (filter isPublicClaim ds))
-          inPublic = [ n | d <- ds, isPublicDecl publicNames d, n <- d.mentions, not (n `elem` d.defines) ]
+          inPublic =
+            [ n | d <- ds, isPublicDecl publicNames d, n <- d.mentions, not (n `elem` d.defines) ]
           needed = \n => contains n usedElsewhere || contains n programNames || (n `elem` inPublic)
       in joined (map (finding' needed) ds)
       where
@@ -241,14 +279,21 @@ resolvedRules fms programNames r =
         finding' : (String -> Bool) -> Declared -> List Finding
         finding' needed d = case d.decl.val of
           PData _ v _ (MkPData _ n _ _ cons@(_ :: _)) =>
-            let names = foldr (\c, rest => map (nameRoot . (.val) . snd) (List1.forget c.val.names) ++ rest) [] cons in
+            let names =
+                  foldr (\c,
+                    rest => map (nameRoot . (.val) . snd) (List1.forget c.val.names) ++ rest) []
+                      cons in
             if publicVisibility v && not (any needed names)
               then [finding f "public-unneeded" d.decl.fc (nameRoot n)
-                      ("`" ++ nameRoot n ++ "`'s constructors are used only in its module: `export` keeps them there")]
+                      ("`" ++ nameRoot n
+                        ++
+                        "`'s constructors are used only in its module: `export` keeps them there")]
               else []
           PClaim c =>
             if c.vis == Public && not (any needed d.defines)
-              then [ finding f "public-unneeded" d.decl.fc n ("no other module uses `" ++ n ++ "`: its body need not be public")
+              then
+                [ finding f "public-unneeded" d.decl.fc n
+                 ("no other module uses `" ++ n ++ "`: its body need not be public")
                    | n <- d.defines ]
               else []
           _ => []
@@ -280,14 +325,18 @@ resolvedRules fms programNames r =
     importIndirect r m = mapMaybe report (SortedMap.toList m.writtenUses)
       where
         through : String -> Maybe Import
-        through u = find (\i => contains u (visibleThrough r.importsOf (const True) (show i.path))) m.file.mod.imports
+        through u =
+          find (\i => contains u (visibleThrough r.importsOf (const True) (show i.path)))
+            m.file.mod.imports
 
         report : (String, List String) -> Maybe Finding
         report (u, ns) =
           if contains u m.reached then Nothing else
-            let names = fastConcat (intersperse ", " (map (\n => "`" ++ n ++ "`") (take 3 (nub ns))))
+            let names =
+                  fastConcat (intersperse ", " (map (\n => "`" ++ n ++ "`") (take 3 (nub ns))))
                 via = through u
-                how = maybe "without importing it" (\i => "only through `" ++ show i.path ++ "`") via
+                how =
+                  maybe "without importing it" (\i => "only through `" ++ show i.path ++ "`") via
             in Just (finding m.file "import-indirect" (maybe EmptyFC (.loc) via) u
                        ("`" ++ u ++ "` is used (" ++ names ++ ") " ++ how ++ ": import it"))
 
@@ -304,7 +353,10 @@ resolvedRules fms programNames r =
     genericExport m =
       if not aboutAType then [] else
         [ MkFinding "generic-export" m.file.path line col name
-            ("`" ++ name ++ "` is exported from `" ++ m.resolved.name ++ "`, a module about its type, and refers to nothing of ours: a generic helper, private to the module or in a module of helpers")
+            ("`" ++ name ++ "` is exported from `" ++ m.resolved.name
+              ++
+                ("`, a module about its type, and refers to nothing of ours: a generic helper, " ++
+                 "private to the module or in a module of helpers"))
         | (name, line, col) <- m.resolved.generics ]
       where
         -- whether the module is named after a type it defines
@@ -331,16 +383,24 @@ resolvedHealth fms r =
       unstructured = sum [ a.atEnd + a.leftFolds | m <- ms, a <- m.resolved.accumulations ]
       structured = sum [ a.structured | m <- ms, a <- m.resolved.accumulations ]
   in [ precision fds r, separation fds r
-     , MkComponent "structure" "directness" (percent (minus (length pairs) (length indirect)) (length pairs))
-         ("modules used that are imported directly: " ++ show (minus (length pairs) (length indirect)) ++ " of " ++ show (length pairs))
-         [ MkOffender m.resolved.name 1 ("uses `" ++ u ++ "` through another's re-export") | (m, u) <- indirect ]
-     , MkComponent "structure" "leanness" (percent (minus (length imports) (length unneeded)) (length imports))
-         ("private imports needed: " ++ show (minus (length imports) (length unneeded)) ++ " of " ++ show (length imports))
-         [ MkOffender m.resolved.name 1 ("imports `" ++ show i.path ++ "` and " ++ uses u) | (m, i, u) <- unneeded ]
+     , MkComponent "structure" "directness"
+       (percent (minus (length pairs) (length indirect)) (length pairs))
+         ("modules used that are imported directly: "
+           ++ show (minus (length pairs) (length indirect)) ++ " of " ++ show (length pairs))
+         [ MkOffender m.resolved.name 1 ("uses `" ++ u ++ "` through another's re-export")
+           | (m, u) <- indirect ]
+     , MkComponent "structure" "leanness"
+       (percent (minus (length imports) (length unneeded)) (length imports))
+         ("private imports needed: " ++ show (minus (length imports) (length unneeded)) ++ " of "
+           ++ show (length imports))
+         [ MkOffender m.resolved.name 1 ("imports `" ++ show i.path ++ "` and " ++ uses u)
+           | (m, i, u) <- unneeded ]
      , MkComponent "efficiency" "accumulation" (percent structured (structured + unstructured))
-         ("accumulations in a snoc-list or a builder: " ++ show structured ++ " of " ++ show (structured + unstructured))
+         ("accumulations in a snoc-list or a builder: " ++ show structured ++ " of "
+           ++ show (structured + unstructured))
          [ MkOffender (m.resolved.name ++ "." ++ a.subject) (a.atEnd + a.leftFolds)
-             (show a.atEnd ++ " grown at an end with `++`, " ++ show a.leftFolds ++ " joined by a left fold")
+             (show a.atEnd ++ " grown at an end with `++`, " ++ show a.leftFolds
+               ++ " joined by a left fold")
          | m <- ms, a <- m.resolved.accumulations, a.atEnd + a.leftFolds > 0 ] ]
   where
     needed : Usage -> Bool

@@ -45,8 +45,10 @@ distinction fds =
       classes = twinClasses importedTwice
       small = filter (\(m, _) => m `elem` members) smallMembers
       joinable = length (nub (joined classes ++ map fst small))
-  in MkComponent "structure" "distinction" (percent (minus (length members) joinable) (length members))
-       ("group members that stand apart from their siblings: " ++ show (minus (length members) joinable) ++ " of " ++ show (length members))
+  in MkComponent "structure" "distinction"
+    (percent (minus (length members) joinable) (length members))
+       ("group members that stand apart from their siblings: "
+         ++ show (minus (length members) joinable) ++ " of " ++ show (length members))
        (mapMaybe (groupOffender members classes small) (nub (map groupOf members)))
   where
     fs : List SourceFile
@@ -56,14 +58,17 @@ distinction fds =
     name f = show f.mod.moduleNS
 
 
-    addImporter : SortedMap String (List String) -> (String, String) -> SortedMap String (List String)
+    addImporter : SortedMap String (List String) -> (String, String) ->
+                  SortedMap String (List String)
     addImporter acc (i, m) = insert i (m :: fromMaybe [] (lookup i acc)) acc
 
     -- each of our modules two or more of ours import, with its importers
     importedTwice : List (String, List String)
     importedTwice =
       let ours = the (SortedSet String) (fromList (map name fs))
-          importersOf = foldl addImporter empty [ (show i.path, name f) | f <- fs, i <- f.mod.imports, contains (show i.path) ours ]
+          importersOf =
+            foldl addImporter empty
+              [ (show i.path, name f) | f <- fs, i <- f.mod.imports, contains (show i.path) ours ]
       in [ (m, sort (nub is)) | (m, is) <- SortedMap.toList importersOf, length (nub is) >= 2 ]
 
     ||| A module's group: its name without its last part.
@@ -75,7 +80,8 @@ distinction fds =
     -- the members of groups too small to stand alone, with their sizes
     smallMembers : List (String, Nat)
     smallMembers =
-      [ (name f, size) | (f, ds) <- fds, groupOf (name f) /= "", let size = sum (map (.size) (conceptsOf f ds)), size < pieceLines ]
+      [ (name f, size) | (f, ds) <- fds, groupOf (name f) /= "",
+        let size = sum (map (.size) (conceptsOf f ds)), size < pieceLines ]
 
     key : (String, List String) -> (String, List String)
     key (m, is) = (groupOf m, is)
@@ -89,7 +95,9 @@ distinction fds =
     -- the siblings with the same importers, two or more of them
     twinClasses : List (String, List String) -> List (List String)
     twinClasses imported =
-      filter (\c => length c >= 2) (map (map fst . List1.forget) (groupBy sameImporters (sortBy byGroupAndImporters (filter inGroup imported))))
+      filter (\c => length c >= 2)
+        (map (map fst . List1.forget)
+         (groupBy sameImporters (sortBy byGroupAndImporters (filter inGroup imported))))
       where
         inGroup : (String, List String) -> Bool
         inGroup (m, _) = groupOf m /= ""
@@ -101,11 +109,13 @@ distinction fds =
     together : List String -> String
     together c =
       let is = fromMaybe [] (head' c >>= \m => lookup m importedTwice) in
-      listed (map lastName c) ++ " by " ++ show (length is) ++ " modules: " ++ listed (take 3 is) ++ (if length is > 3 then ", ..." else "")
+      listed (map lastName c) ++ " by " ++ show (length is) ++ " modules: " ++ listed (take 3 is)
+        ++ (if length is > 3 then ", ..." else "")
 
     -- a group with members that could be joined: what share they are, and
     -- which, at four in five or more a candidate to collapse
-    groupOffender : List String -> List (List String) -> List (String, Nat) -> String -> Maybe Offender
+    groupOffender : List String -> List (List String) -> List (String, Nat) -> String ->
+                    Maybe Offender
     groupOffender members classes small g =
       let mine = filter (\c => maybe False (\m => groupOf m == g) (head' c)) classes
           tiny = filter (\(m, _) => groupOf m == g) small
@@ -114,10 +124,13 @@ distinction fds =
           share = percent (length joinable) size
       in if null joinable || size < 2 then Nothing else
            Just (MkOffender g (minus (length joinable) (length mine))
-                   (show (length joinable) ++ " of its " ++ show size ++ " members (" ++ show share ++ "%) could be joined"
+                   (show (length joinable) ++ " of its " ++ show size ++ " members (" ++ show share
+                     ++ "%) could be joined"
                     ++ (if share >= 80 then ", a candidate to collapse into one module" else "")
                     ++ ": " ++ fastConcat (intersperse "; " (map together mine ++ smallOnes tiny))))
       where
         smallOnes : List (String, Nat) -> List String
         smallOnes [] = []
-        smallOnes ts = ["too small to stand alone: " ++ joinBy ", " (map (\(m, n) => "`" ++ lastName m ++ "` (" ++ show n ++ " lines)") ts)]
+        smallOnes ts =
+          ["too small to stand alone: "
+           ++ joinBy ", " (map (\(m, n) => "`" ++ lastName m ++ "` (" ++ show n ++ " lines)") ts)]

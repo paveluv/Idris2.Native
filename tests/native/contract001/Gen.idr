@@ -64,7 +64,8 @@ runtimeCrash = NS (runtimeModule "System") (UN (Basic "crash"))
 
 realised : Realised
 realised =
-  MkRealised [(runtimeStart, Start), (runtimeAllocSlow, AllocSlow), (runtimeAllocMutable, AllocMutable),
+  MkRealised [(runtimeStart, Start),
+              (runtimeAllocSlow, AllocSlow), (runtimeAllocMutable, AllocMutable),
               (runtimeCrash, Crash)]
              Nothing Nothing empty empty empty empty
 
@@ -86,7 +87,9 @@ standIn _ = (SPrim Bits64Type, [Word])
 
 ||| A stand-in for every routine the runtime has, of its port's registers.
 standIns : List FlatDef
-standIns = [ form r.name (zipWith param [0 .. length r.params] r.params) (result r.results) (concatMap (snd . standIn) r.results)
+standIns =
+  [ form r.name (zipWith param [0 .. length r.params] r.params) (result r.results)
+   (concatMap (snd . standIn) r.results)
            | r <- routines {enc = TestEnc} realised ]
   where
     param : Nat -> Ty TestEnc -> FlatVar
@@ -115,7 +118,9 @@ check what forms = checkWith what forms []
 
 ||| `base`'s `System.prim__exit : Int -> PrimIO ()`, as VMCode has it.
 exitForeign : (Name, VMDef)
-exitForeign = (NS (mkNamespace "System") (UN (Basic "prim__exit")), MkVMForeign [] [CFInt, CFWorld] (CFIORes CFUnit))
+exitForeign =
+  (NS (mkNamespace "System") (UN (Basic "prim__exit")),
+   MkVMForeign [] [CFInt, CFWorld] (CFIORes CFUnit))
 
 ||| The runtime's implementation of it, taking the argument given.
 exitImplementation : Skeleton -> FlatDef
@@ -129,10 +134,13 @@ main = do
   check "as given" standIns
   check "no crash" (without runtimeCrash)
   -- allocSlow (bytes, kind : Bits64) : Bits64
-  check "allocSlow of two words" (replacing (form runtimeAllocSlow [word "bytes", word "kind"] (SPrim Bits64Type) [Word]))
+  check "allocSlow of two words"
+    (replacing (form runtimeAllocSlow [word "bytes", word "kind"] (SPrim Bits64Type) [Word]))
   -- crash (message, length : Bits64) : Bits64
-  check "crash with a result" (replacing (form runtimeCrash [word "message", word "length"] (SPrim Bits64Type) [Word]))
+  check "crash with a result"
+    (replacing (form runtimeCrash [word "message", word "length"] (SPrim Bits64Type) [Word]))
   -- prim__exit (status : Int) : PrimIO (), as base declares it
   checkWith "prim__exit as declared" (exitImplementation (SPrim IntType) :: standIns) [exitForeign]
   -- prim__exit (status : Bits64) : PrimIO ()
-  checkWith "prim__exit of a Bits64" (exitImplementation (SPrim Bits64Type) :: standIns) [exitForeign]
+  checkWith "prim__exit of a Bits64" (exitImplementation (SPrim Bits64Type) :: standIns)
+    [exitForeign]

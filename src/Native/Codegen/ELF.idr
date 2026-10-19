@@ -51,7 +51,8 @@ planLayout ts rs bs =
   let textOff   = pageSize
       rodataOff = Bytes.alignUp (textOff + ts) pageSize
       bssOff    = Bytes.alignUp (rodataOff + max rs 1) pageSize   -- always its own page
-  in MkLayout (imageBase + textOff) textOff (imageBase + rodataOff) rodataOff (imageBase + bssOff) bssOff
+  in MkLayout (imageBase + textOff) textOff (imageBase + rodataOff) rodataOff (imageBase + bssOff)
+    bssOff
 
 -- ELF64 structures -------------------------------------------------------
 
@@ -85,7 +86,8 @@ imageSize image = sum (map stretchSize image)
 ||| label). Section headers are not needed to run but let `readelf`/`objdump`
 ||| and debuggers see the regions.
 export
-elfImage : Platform.Arch -> Layout -> (text : SnocList Bits8) -> (rodata : SnocList Bits8) -> (bssSize : Int) ->
+elfImage : Platform.Arch -> Layout -> (text : SnocList Bits8) -> (rodata : SnocList Bits8) ->
+           (bssSize : Int) ->
            (entry : Int) -> Image
 elfImage m lay text rodata bssSize entry =
   let ts = Bytes.byteCount text
@@ -98,9 +100,12 @@ elfImage m lay text rodata bssSize entry =
              ++ programHeader pfR (rodataOff lay) (rodataBase lay) rs rs
              ++ programHeader (pfR + pfW) (bssOff lay) (bssBase lay) 0 bssSize
       sections = sectionHeader 0 shtNull 0 0 0 0 0
-              ++ sectionHeader nameText shtProgbits (shfAlloc + shfExec) (textBase lay) (textOff lay) ts 16
-              ++ sectionHeader nameRodata shtProgbits shfAlloc (rodataBase lay) (rodataOff lay) rs 16
-              ++ sectionHeader nameBss shtNobits (shfAlloc + shfWrite) (bssBase lay) (bssOff lay) bssSize 16
+              ++ sectionHeader nameText shtProgbits (shfAlloc + shfExec) (textBase lay)
+                (textOff lay) ts 16
+              ++ sectionHeader nameRodata shtProgbits shfAlloc (rodataBase lay) (rodataOff lay) rs
+                16
+              ++ sectionHeader nameBss shtNobits (shfAlloc + shfWrite) (bssBase lay) (bssOff lay)
+                bssSize 16
               ++ sectionHeader nameShstrtab shtStrtab 0 0 strOff strSize 1
   in [ Bytes headers
      , Zeros (cast (textOff lay - cast (length headers)))
@@ -133,15 +138,17 @@ elfImage m lay text rodata bssSize entry =
     u64 : Int -> List Bits8
     u64 = Bytes.le64 . cast
 
-    elfHeader : Platform.Arch -> (entry : Int) -> (shoff : Int) -> (phnum : Int) -> (shnum : Int) -> (shstrndx : Int) ->
+    elfHeader : Platform.Arch -> (entry : Int) -> (shoff : Int) -> (phnum : Int) -> (shnum : Int) ->
+                (shstrndx : Int) ->
                 List Bits8
     elfHeader m entry shoff phnum shnum shstrndx =
-         [0x7F, 0x45, 0x4C, 0x46, 2, 1, 1, 0] ++ Bytes.zeros 8     -- magic, 64-bit, little-endian, version, SysV ABI
+         [0x7F, 0x45, 0x4C, 0x46, 2, 1, 1, 0]
+           ++ Bytes.zeros 8     -- magic, 64-bit, little-endian, version, SysV ABI
       ++ u16 2                                               -- ET_EXEC
       ++ u16 (machineCode m)
       ++ u32 1                                               -- EV_CURRENT
       ++ u64 entry
-      ++ u64 ehsize                                          -- program headers follow the ELF header
+      ++ u64 ehsize                                    -- program headers follow the ELF header
       ++ u64 shoff
       ++ u32 0                                               -- flags
       ++ u16 ehsize ++ u16 phentsize ++ u16 phnum
@@ -160,17 +167,21 @@ elfImage m lay text rodata bssSize entry =
         u16 : Int -> List Bits8
         u16 = Bytes.le16
 
-    programHeader : (flags : Int) -> (off : Int) -> (vaddr : Int) -> (filesz : Int) -> (memsz : Int) -> List Bits8
+    programHeader : (flags : Int) -> (off : Int) -> (vaddr : Int) -> (filesz : Int) ->
+                    (memsz : Int) -> List Bits8
     programHeader flags off vaddr filesz memsz =
-      u32 ptLoad ++ u32 flags ++ u64 off ++ u64 vaddr ++ u64 vaddr ++ u64 filesz ++ u64 memsz ++ u64 pageSize
+      u32 ptLoad ++ u32 flags ++ u64 off ++ u64 vaddr ++ u64 vaddr ++ u64 filesz ++ u64 memsz
+        ++ u64 pageSize
       where
         ptLoad : Int
         ptLoad = 1
 
-    sectionHeader : (name : Int) -> (ty : Int) -> (flags : Int) -> (addr : Int) -> (off : Int) -> (size : Int) ->
+    sectionHeader : (name : Int) -> (ty : Int) -> (flags : Int) -> (addr : Int) -> (off : Int) ->
+                    (size : Int) ->
                     (align : Int) -> List Bits8
     sectionHeader name ty flags addr off size align =
-      u32 name ++ u32 ty ++ u64 flags ++ u64 addr ++ u64 off ++ u64 size ++ u32 0 ++ u32 0 ++ u64 align ++ u64 0
+      u32 name ++ u32 ty ++ u64 flags ++ u64 addr ++ u64 off ++ u64 size ++ u32 0 ++ u32 0
+        ++ u64 align ++ u64 0
 
     -- "\0.text\0.rodata\0.bss\0.shstrtab\0"
     shstrtab : List Bits8

@@ -46,7 +46,9 @@ prim__putStr str w = let (Runtime.MkOrdo # ()) = putOp str Runtime.MkOrdo in MkI
   where
     covering
     putOp : Flat.Uniform String -> Runtime.Ordo.Op Runtime.Ordo ()
-    putOp str = Text.withText str (Runtime.Ordo.pure ()) (\p, n => Runtime.OS.osWriteAll Runtime.OS.stdout p n)
+    putOp str =
+      Text.withText str (Runtime.Ordo.pure ())
+        (\p, n => Runtime.OS.osWriteAll Runtime.OS.stdout p n)
 
 %cg native flat Support.Foreign.Prelude.IO.prim__getString
 ||| `getString`: the string a pointer is, if it is one of the heap

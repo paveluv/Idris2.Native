@@ -79,7 +79,8 @@ port FromBits64 = MkPort [Port.Word] (Just (Port.ValueOf Integer))
 ||| own copy, element by element.
 public export
 allIntegerRoutines : List IntegerRoutine
-allIntegerRoutines = [Add, Sub, Mul, And, Or, Xor, Div, Mod, Shl, Shr, Neg, Compare, ToBits64, FromInt64, FromBits64]
+allIntegerRoutines =
+  [Add, Sub, Mul, And, Or, Xor, Div, Mod, Shl, Shr, Neg, Compare, ToBits64, FromInt64, FromBits64]
 
 ||| The list holds every `Integer` routine.
 complete : (r : IntegerRoutine) -> Elem r IntegerRoutine.allIntegerRoutines

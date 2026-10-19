@@ -28,6 +28,8 @@ record Mem {0 enc : Types.Enc} (var : IRCommon.Ty enc -> Type) where
   offset : Int
 
 public export
-traverseMem : Applicative f => ({0 t : IRCommon.Ty enc} -> Opnd v t -> f (Opnd w t)) -> Mem v -> f (Mem w)
-traverseMem g (MkMem (AtWord b) i o) = [| (\b', i' => MkMem (AtWord b') i' o) (g b) (traverse g i) |]
+traverseMem : Applicative f => ({0 t : IRCommon.Ty enc} -> Opnd v t -> f (Opnd w t)) -> Mem v ->
+              f (Mem w)
+traverseMem g (MkMem (AtWord b) i o) =
+  [| (\b', i' => MkMem (AtWord b') i' o) (g b) (traverse g i) |]
 traverseMem g (MkMem (AtPtr b) i o) = [| (\b', i' => MkMem (AtPtr b') i' o) (g b) (traverse g i) |]

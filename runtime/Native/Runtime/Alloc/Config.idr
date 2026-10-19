@@ -74,7 +74,8 @@ classOf c bytes =
   in if n <= linear then ((n - 1) `shiftR` c.minShift)
      else let v = n - 1
               b = highBit v
-          in steps c + (b - (c.minShift + c.stepShift)) * steps c + ((v `shiftR` (b - c.stepShift)) .&. (steps c - 1))
+          in steps c + (b - (c.minShift + c.stepShift)) * steps c
+            + ((v `shiftR` (b - c.stepShift)) .&. (steps c - 1))
 
 ||| The bytes of a class's blocks: the largest request of the class.
 export
@@ -99,7 +100,8 @@ classCount c = classOf c (smallBytes c) + 1
 ||| least; a large block, the chunk it fits in.
 export
 slabOrder : Config -> (cls : Bits64) -> Bits64
-slabOrder c k = let l = ceilLog2 (4 * classBytes c k) in if l <= c.granuleShift then 0 else l - c.granuleShift
+slabOrder c k = let l = ceilLog2 (4 * classBytes c k) in if l <= c.granuleShift then 0 else l
+  - c.granuleShift
 
 export
 chunkOrder : Config -> (bytes : Bits64) -> Bits64

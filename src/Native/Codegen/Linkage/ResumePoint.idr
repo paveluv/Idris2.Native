@@ -13,4 +13,5 @@ import Native.Codegen.X86.Asm
 ||| point and `idris_halt` need: pad to 8 mod 16, the word, the label.
 export
 resumePoint : X86.Asm.Label -> (layout : Integer) -> List X86.Asm.Instr
-resumePoint l w = [X86.Asm.Align 16, X86.Asm.Bytes (replicate 8 0xCC), X86.Asm.Quad w, X86.Asm.Lbl l]
+resumePoint l w =
+  [X86.Asm.Align 16, X86.Asm.Bytes (replicate 8 0xCC), X86.Asm.Quad w, X86.Asm.Lbl l]

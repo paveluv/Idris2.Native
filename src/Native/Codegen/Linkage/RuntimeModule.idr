@@ -47,7 +47,9 @@ supportModule = under supportRoot
 ||| Whether a namespace is the runtime library's, of either tier.
 public export
 inRuntime : Namespace -> Bool
-inRuntime ns = let s = show ns in any (\r => s == r || isPrefixOf (r ++ ".") s) [runtimeRoot, supportRoot]
+inRuntime ns = let s =
+                     show ns in any (\r => s == r || isPrefixOf (r ++ ".") s)
+                       [runtimeRoot, supportRoot]
 
 ||| The support tier's module that lays strings out under the encoding: the
 ||| one module of the runtime that reads a string's header or bytes. Every

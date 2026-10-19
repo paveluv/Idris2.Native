@@ -42,9 +42,15 @@ parameterBlocks text = foldr (\d, rest => here d ++ rest) []
     -- the names the block binds, and the variables its binders' types
     -- leave free, which the block binds implicitly
     namesOf : Either (List1 PlainBinder) (List1 PBinder) -> SortedSet String
-    namesOf (Left bs) = foldr (\b, rest => insert (nameRoot b.nameVal) (union (typeVariables empty b.val) rest)) empty (forget bs)
+    namesOf (Left bs) =
+      foldr (\b, rest => insert (nameRoot b.nameVal) (union (typeVariables empty b.val) rest)) empty
+        (forget bs)
     namesOf (Right bs) =
-      foldr (\b, rest => union (fromList (map (nameRoot . (.val)) (forget b.bind.names))) (union (typeVariables empty b.bind.type) rest)) empty (forget bs)
+      foldr (\b,
+        rest =>
+          union (fromList (map (nameRoot . (.val)) (forget b.bind.names)))
+             (union (typeVariables empty b.bind.type) rest))
+          empty (forget bs)
 
     -- the block's binders: the groups between the `parameters` keyword and
     -- its first declaration, with what is attached above that
@@ -68,7 +74,9 @@ parameterBlocks text = foldr (\d, rest => here d ++ rest) []
 
     here : PDecl -> List ParameterBlock
     here d = case d.val of
-      PParameters ps ds => MkParameterBlock (lineSpan d.fc) (namesOf ps) (bindersAt text (fst (lineSpan d.fc)) (firstOf d ds)) :: parameterBlocks text ds
+      PParameters ps ds =>
+        MkParameterBlock (lineSpan d.fc) (namesOf ps)
+          (bindersAt text (fst (lineSpan d.fc)) (firstOf d ds)) :: parameterBlocks text ds
       PNamespace _ ds => parameterBlocks text ds
       PMutual ds => parameterBlocks text ds
       PUsing _ ds => parameterBlocks text ds

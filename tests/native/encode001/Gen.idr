@@ -26,7 +26,9 @@ nonAcc : List Reg64            -- everything but rax, whose imm32 forms as short
 nonAcc = drop 1 regs
 
 xmms : List Xmm
-xmms = [XMM0, XMM1, XMM2, XMM3, XMM4, XMM5, XMM6, XMM7, XMM8, XMM9, XMM10, XMM11, XMM12, XMM13, XMM14, XMM15]
+xmms =
+  [XMM0, XMM1, XMM2, XMM3, XMM4, XMM5, XMM6, XMM7, XMM8, XMM9, XMM10, XMM11, XMM12, XMM13, XMM14,
+   XMM15]
 
 conds : List Cond
 conds = [O, NO, B, AE, E, NE, BE, A, Sign, NoSign, P, NP, L, GE, LE, G]
@@ -50,7 +52,8 @@ imms32 = [0, 1, -1, 127, -128, 128, -129, 1000, -1000, 2147483647, -2147483648]
 
 imms64 : List Integer
 imms64 = [0, 1, -1, 2147483647, -2147483648, 2147483648, -2147483649,
-          4294967296, 0x0000020000010001, 0x1DC0000000000001, 9223372036854775807, -9223372036854775808]
+          4294967296, 0x0000020000010001, 0x1DC0000000000001, 9223372036854775807,
+            -9223372036854775808]
 
 shiftCounts : List Bits8
 shiftCounts = [2, 3, 7, 31, 32, 33, 63]      -- 1 is group B (as uses D1)
@@ -64,11 +67,15 @@ groupA =
   -- rip-relative and branches first: the targets sit >127 bytes away, so as
   -- must use rel32 as we do
   [Jmp 2, Call 2] ++ [Jcc c 2 | c <- conds]
-  ++ [Lea r (MRip 1 0) | r <- regs] ++ [MovRM r (MRip 1 0) | r <- regs] ++ [MovMR (MRip 1 0) r | r <- regs]
-  ++ [JmpM (MRip 1 0), MovsdRM XMM4 (MRip 1 0), MovsdMR (MRip 1 0) XMM12, MovMI (MRip 1 0) 5, AluRM ADD RBX (MRip 1 0), AluMR CMP (MRip 1 0) R9,
+  ++ [Lea r (MRip 1 0) | r <- regs] ++ [MovRM r (MRip 1 0) | r <- regs]
+    ++ [MovMR (MRip 1 0) r | r <- regs]
+  ++ [JmpM (MRip 1 0),
+    MovsdRM XMM4 (MRip 1 0), MovsdMR (MRip 1 0) XMM12, MovMI (MRip 1 0) 5, AluRM ADD RBX (MRip 1 0),
+      AluMR CMP (MRip 1 0) R9,
       Load W8 False RCX (MRip 1 0), Store W16 (MRip 1 0) R10, LockCmpxchg (MRip 1 0) RDX]
   -- a displacement from the label, as a static's pointer tag needs
-  ++ [Lea r (MRip 1 1) | r <- regs] ++ [MovRM RAX (MRip 1 (-8)), MovMR (MRip 1 15) R11, JmpM (MRip 1 (-1))]
+  ++ [Lea r (MRip 1 1) | r <- regs]
+    ++ [MovRM RAX (MRip 1 (-8)), MovMR (MRip 1 15) R11, JmpM (MRip 1 (-1))]
   ++ [MovRR d s | d <- regs, s <- regs]
   ++ [MovRI r i | r <- regs, i <- imms64]
   ++ [MovRM r m | r <- regs, m <- mems]
@@ -87,14 +94,16 @@ groupA =
   ++ [Imul d s | d <- regs, s <- regs]
   ++ [ImulI d s i | d <- regs, s <- regs, i <- [1, -1, 127, -128, 128, 1000, 2147483647]]
   ++ [Cqo]
-  ++ [Idiv r | r <- regs] ++ [DivU r | r <- regs] ++ [Mul r | r <- regs] ++ [Neg r | r <- regs] ++ [Not r | r <- regs]
+  ++ [Idiv r | r <- regs] ++ [DivU r | r <- regs] ++ [Mul r | r <- regs] ++ [Neg r | r <- regs]
+    ++ [Not r | r <- regs]
   ++ [ShiftI op r n | op <- shifts, r <- regs, n <- shiftCounts]
   ++ [ShiftCl op r | op <- shifts, r <- regs]
   ++ [JmpR r | r <- regs] ++ [CallR r | r <- regs] ++ [JmpM m | m <- mems]
   ++ [Ret]
   ++ [Push r | r <- regs] ++ [Pop r | r <- regs]
   ++ [Setcc c r | c <- conds, r <- regs]
-  ++ [Cmov c d s | c <- conds, d <- regs, s <- take 4 regs] ++ [Cmov E d s | d <- take 4 regs, s <- regs]
+  ++ [Cmov c d s | c <- conds, d <- regs, s <- take 4 regs]
+    ++ [Cmov E d s | d <- take 4 regs, s <- regs]
   ++ [MovsdRM x m | x <- xmms, m <- take 26 mems] ++ [MovsdMR m x | m <- take 26 mems, x <- xmms]
   ++ [MovsdRR d s | d <- xmms, s <- xmms]
   ++ [Sse op d s | op <- sses, d <- xmms, s <- xmms]
@@ -117,7 +126,8 @@ writeBytes path bs = do
   let n = length bs
   Just buf <- newBuffer (cast n) | Nothing => putStrLn "buffer allocation failed"
   traverse_ (\(i, b) => setBits8 buf (cast i) b) (zip [0 .. minus n 1] bs)
-  Right () <- writeBufferToFile path buf (cast n) | Left err => putStrLn ("write failed: " ++ show err)
+  Right () <- writeBufferToFile path buf (cast n)
+    | Left err => putStrLn ("write failed: " ++ show err)
   pure ()
 
 emit : String -> List Instr -> IO ()
@@ -125,8 +135,12 @@ emit name is = do
   let (code, _, missing) = assemble 0 is
       bytes = code <>> []
   writeBytes (name ++ ".bin") bytes
-  ignore $ writeFile (name ++ ".s") (".intel_syntax noprefix\n.text\n" ++ concat (map (\i => show i ++ "\n") is))
-  putStrLn (name ++ ": " ++ show (length is) ++ " instructions, " ++ show (length bytes) ++ " bytes, missing labels: " ++ show (length missing))
+  ignore $
+    writeFile (name ++ ".s")
+      (".intel_syntax noprefix\n.text\n" ++ concat (map (\i => show i ++ "\n") is))
+  putStrLn
+    (name ++ ": " ++ show (length is) ++ " instructions, " ++ show (length bytes)
+     ++ " bytes, missing labels: " ++ show (length missing))
 
 main : IO ()
 main = do

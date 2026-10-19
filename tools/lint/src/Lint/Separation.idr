@@ -54,12 +54,17 @@ separation : List (SourceFile, List Declared) -> Resolution -> Component
 separation fds r =
   let byModule = conceptsByModule fds
       out = excludedFrom "separation" (map fst fds)
-      counted = filter hasPieces [ (m, piecesOf byModule r.modules m) | m <- keys byModule, not (m `elem` out) ]
+      counted =
+        filter hasPieces
+          [ (m, piecesOf byModule r.modules m) | m <- keys byModule, not (m `elem` out) ]
       pieces = sum (map (counting . snd) counted)
   in MkComponent "structure" "separation" (percent (length counted) pieces)
-       ("modules that are one piece, of the pieces of " ++ show pieceLines ++ " lines or more their importers use: "
+       ("modules that are one piece, of the pieces of " ++ show pieceLines
+         ++ " lines or more their importers use: "
         ++ show (length counted) ++ " modules, " ++ show pieces ++ " pieces" ++ leftOut out)
-       [ MkOffender m (minus (counting ps) 1) (show (counting ps) ++ " pieces: " ++ fastConcat (intersperse "; " (map described (filter large ps))))
+       [ MkOffender m (minus (counting ps) 1)
+         (show (counting ps) ++ " pieces: "
+          ++ fastConcat (intersperse "; " (map described (filter large ps))))
        | (m, ps) <- counted, counting ps > 1 ]
   where
     hasPieces : (String, List Piece) -> Bool
@@ -80,14 +85,17 @@ separation fds r =
     described p =
       let us = Prelude.toList p.users in
       listed (take 4 p.concepts) ++ (if length p.concepts > 4 then ", ..." else "")
-      ++ " (" ++ show p.size ++ " lines) used by " ++ listed (take 3 us) ++ (if length us > 3 then ", ..." else "")
+      ++ " (" ++ show p.size ++ " lines) used by " ++ listed (take 3 us)
+        ++ (if length us > 3 then ", ..." else "")
 
     ||| A module's pieces: its concepts that other modules use, clustered by
     ||| use, each with its users.
     piecesOf : SortedMap String (List Concept) -> List ResolvedModule -> String -> List Piece
     piecesOf byModule rms m =
       let usersOf = usersMap (filter (.offered) (fromMaybe [] (lookup m byModule)))
-      in map (piece usersOf) (parts (usedOnes usersOf) (sharing usersOf ++ cyclic (usedOnes usersOf) ++ sharingHelpers (usedOnes usersOf)))
+      in map (piece usersOf)
+        (parts (usedOnes usersOf)
+         (sharing usersOf ++ cyclic (usedOnes usersOf) ++ sharingHelpers (usedOnes usersOf)))
       where
         concepts : List Concept
         concepts = fromMaybe [] (lookup m byModule)
@@ -97,7 +105,8 @@ separation fds r =
 
         -- two concepts that refer to each other, through any: one piece
         cyclic : List String -> List (String, String)
-        cyclic ns = [ (a, b) | a <- ns, b <- ns, a < b, contains b (reaches a), contains a (reaches b) ]
+        cyclic ns =
+          [ (a, b) | a <- ns, b <- ns, a < b, contains b (reaches a), contains a (reaches b) ]
 
         -- two concepts that reach one private concept, a helper both use:
         -- one piece, unless the helper were exported, which a split must
@@ -105,25 +114,34 @@ separation fds r =
         sharingHelpers : List String -> List (String, String)
         sharingHelpers ns =
           let helpers = map (.name) (filter (not . (.offered)) concepts) in
-          [ (a, b) | a <- ns, b <- ns, a < b, any (\h => contains h (reaches a) && contains h (reaches b)) helpers ]
+          [ (a, b) | a <- ns, b <- ns, a < b,
+            any (\h => contains h (reaches a) && contains h (reaches b)) helpers ]
 
         usedOnes : List (String, SortedSet String) -> List String
         usedOnes usersOf = [ n | (n, us) <- usersOf, not (null us) ]
 
         -- the other modules that use each concept
         usersMap : List Concept -> List (String, SortedSet String)
-        usersMap cs = [ (c.name, fromList [ rm.name | rm <- rms, rm.name /= m, contains c.name (usedOf byModule rm m) ]) | c <- cs ]
+        usersMap cs =
+          [ (c.name,
+            fromList [ rm.name | rm <- rms, rm.name /= m, contains c.name (usedOf byModule rm m) ])
+           | c <- cs ]
 
         usersIn : List (String, SortedSet String) -> String -> SortedSet String
         usersIn usersOf n = fromMaybe empty (lookup n usersOf)
 
         -- two concepts some module uses both of
         sharing : List (String, SortedSet String) -> List (String, String)
-        sharing usersOf = [ (a, b) | (a, ua) <- usersOf, (b, ub) <- usersOf, a < b, not (null (intersection ua ub)) ]
+        sharing usersOf =
+          [ (a, b) | (a, ua) <- usersOf, (b, ub) <- usersOf, a < b,
+           not (null (intersection ua ub)) ]
 
         piece : List (String, SortedSet String) -> List String -> Piece
         piece usersOf ns = MkPiece ns (foldr (\n, acc => union (usersIn usersOf n) acc) empty ns)
-                                   (sum (map (.size) (filter (\c => c.name `elem` ns) (fromMaybe [] (lookup m byModule)))))
+                                   (sum
+                                     (map (.size)
+                                       (filter (\c => c.name `elem` ns)
+                                        (fromMaybe [] (lookup m byModule)))))
 
         ||| The connected parts of a graph, given its nodes and its edges, each part
         ||| its nodes in the order given.
@@ -135,10 +153,12 @@ separation fds r =
 
             reach : SortedSet String -> List String -> SortedSet String
             reach seen [] = seen
-            reach seen (n :: ns) = if contains n seen then reach seen ns else reach (insert n seen) (neighbours n ++ ns)
+            reach seen (n :: ns) = if contains n seen then reach seen ns
+              else reach (insert n seen) (neighbours n ++ ns)
 
             go : List String -> SortedSet String -> List (List String)
             go [] _ = []
             go (n :: ns) done =
               if contains n done then go ns done
-              else let part = reach empty [n] in filter (`contains` part) nodes :: go ns (union done part)
+              else let part = reach empty [n] in filter (`contains` part) nodes
+                :: go ns (union done part)

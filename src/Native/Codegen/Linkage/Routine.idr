@@ -119,14 +119,19 @@ routines r =
     symbolOf Routine.Crash = Sym.SymCrash
 
     generic : (Name, Routine) -> RoutineCall enc
-    generic (n, c) = MkRoutineCall n (Just (symbolOf c)) (portResults (Routine.port c)) (portParams (Routine.port c))
+    generic (n, c) =
+      MkRoutineCall n (Just (symbolOf c)) (portResults (Routine.port c))
+        (portParams (Routine.port c))
 
     string : (Name, Types.StringRoutine) -> RoutineCall enc
-    string (n, c) = MkRoutineCall n Nothing (portResults (Types.StringRoutine.port c)) (portParams (Types.StringRoutine.port c))
+    string (n, c) =
+      MkRoutineCall n Nothing (portResults (Types.StringRoutine.port c))
+        (portParams (Types.StringRoutine.port c))
 
     integer : (Name, Types.IntegerRoutine) -> RoutineCall enc
     integer (n, c) =
-      MkRoutineCall n Nothing (portResults (Types.IntegerRoutine.port c)) (portParams (Types.IntegerRoutine.port c))
+      MkRoutineCall n Nothing (portResults (Types.IntegerRoutine.port c))
+        (portParams (Types.IntegerRoutine.port c))
 
     strings : List (RoutineCall enc)
     strings = maybe [] (map string) r.strings

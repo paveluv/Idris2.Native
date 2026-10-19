@@ -51,7 +51,8 @@ data Expansion : Port -> Type where
   ||| The uniform value a word is.
   WordValue : Expansion (MkPort [Port.Word] (Just Port.Value))
   ||| The machine's system call, of six arguments.
-  Syscall : Expansion (MkPort [Port.Word, Port.Word, Port.Word, Port.Word, Port.Word, Port.Word, Port.Word]
+  Syscall : Expansion
+            (MkPort [Port.Word, Port.Word, Port.Word, Port.Word, Port.Word, Port.Word, Port.Word]
                              (Just Port.Word))
 
 ||| Each intrinsic's expansion, of its port.

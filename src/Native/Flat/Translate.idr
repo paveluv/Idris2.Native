@@ -183,7 +183,8 @@ inRoot tr = isLin tr.chain && all (\n => n == tr.root || blockName n) tr.unfoldi
 -- has it, or else where the translation left the root's code.
 fail : {auto s : Ref FlatSt FlatState} -> Tr -> FC -> Problem.FlatProblem -> Core a
 fail tr fc p
-    = do update FlatSt { failure := Just (Problem.NotFlatBody (if inRoot tr then nonEmpty fc else tr.site)
+    = do update FlatSt
+           { failure := Just (Problem.NotFlatBody (if inRoot tr then nonEmpty fc else tr.site)
                                                        tr.root (tr.chain <>> []) p) }
          throw (InternalError "the flat translation stopped")
   where
@@ -273,7 +274,8 @@ skeleton _ = pure Exp.SOther
 
 ||| A type's skeleton and layout, or why it is not flat.
 export
-laidOut : {auto c : Ref Ctxt Defs} -> ClosedNF -> Core (Either Problem.NotFlatReason (Exp.Skeleton, Exp.Layout))
+laidOut : {auto c : Ref Ctxt Defs} -> ClosedNF ->
+          Core (Either Problem.NotFlatReason (Exp.Skeleton, Exp.Layout))
 laidOut ty
     = case !(layout [] ty) of
            Judgement.LaidOut l => pure (Right (!(skeleton ty), l))
@@ -375,7 +377,8 @@ stuckType env v scTy
                   nf defs Env.empty !(resolved (instantiate env scTy))
 
 -- The one constructor alternative of a case.
-conCase : List (CaseAlt vars) -> Maybe (Name, (args : List Name ** CaseTree (Scope.addInner vars args)))
+conCase : List (CaseAlt vars) ->
+          Maybe (Name, (args : List Name ** CaseTree (Scope.addInner vars args)))
 conCase [] = Nothing
 conCase (ConCase cn _ args sc :: _) = Just (cn, (args ** sc))
 conCase (_ :: as) = conCase as
@@ -457,7 +460,8 @@ mutual
                           let Nothing = unwrapping
                             | Just (u, origin) =>
                                 do update FlatSt { statics $= insert v (Unwrapped u origin) }
-                                   sc' <- sc defs (toClosure defaultOpts Env.empty (Ref bfc Bound v))
+                                   sc' <- sc defs
+                                     (toClosure defaultOpts Env.empty (Ref bfc Bound v))
                                    bind ps tyArgs (S i) as sc' (Ref bfc Bound v :: vals) fvs tr
                           Right (sk, l) <- laidOut atyNF
                             | Left why => fail tr fc (Problem.ValueNotFlat !(quoteClosed atyNF) why)
@@ -513,7 +517,8 @@ mutual
                               | Nothing => pure Nothing
                             evalStatic tr env' sc
         where
-          conAlt : Name -> List ClosedTerm -> List (CaseAlt vars) -> Core (Maybe (ClosedTerm, List Name))
+          conAlt : Name -> List ClosedTerm -> List (CaseAlt vars) ->
+                   Core (Maybe (ClosedTerm, List Name))
           conAlt cn cargs [] = pure Nothing
           conAlt cn cargs (ConCase n _ args sc :: as)
               = if !(toFullNames n) == cn
@@ -609,7 +614,8 @@ root n
             = do defs <- get Ctxt
                  v <- fresh x
                  let i' = if isExplicit pinfo then S i else i
-                 let b = MkApplied x rig (isAutoImplicit pinfo) (Just (i', x)) !(evalClosure defs aty)
+                 let b =
+                       MkApplied x rig (isAutoImplicit pinfo) (Just (i', x)) !(evalClosure defs aty)
                  walk ns i' (SigArg b v :: acc)
                       !(sc defs (toClosure defaultOpts Env.empty (Ref fc Bound v)))
         walk ns i acc res
@@ -623,7 +629,8 @@ root n
     ||| types, and its result's skeleton and layout: if every run-time argument
     ||| and the result are flat. A function of any other signature has flat
     ||| forms only at static arguments: its copies.
-    groundSignature : Signature -> Core (Maybe (List (Exp.FlatVar, ClosedTerm), (Exp.Skeleton, Exp.Layout)))
+    groundSignature : Signature ->
+                      Core (Maybe (List (Exp.FlatVar, ClosedTerm), (Exp.Skeleton, Exp.Layout)))
     groundSignature sig
         = do let deferred = mapMaybe erasedVar sig.parts
              Just ps <- params deferred [] sig.parts
@@ -688,9 +695,11 @@ root n
                     | _ => fail tr' fc (Problem.Unhandled "A definition without clauses")
                   put FlatSt ({ making $= (form ::) } st)
                   let Just (envTms, pending) = takeArgs (length targs) parts
-                    | Nothing => fail tr' fc (Problem.Unhandled "Clauses with more arguments than the type")
+                    | Nothing =>
+                      fail tr' fc (Problem.Unhandled "Clauses with more arguments than the type")
                   let Just env = mkSubst targs envTms
-                    | Nothing => fail tr' fc (Problem.Unhandled "Clauses with more arguments than the type")
+                    | Nothing =>
+                      fail tr' fc (Problem.Unhandled "Clauses with more arguments than the type")
                   body <- trTree tr' env ct pending
                   let d = Exp.MkFlatDef form (map fst params) rsk rl body (location gdef)
                   update FlatSt { forms $= insert form d }
@@ -751,13 +760,19 @@ root n
                      => case lookup x tr.vars of
                              Just _ => case ps of
                                             [] => pure (Exp.FVar fc x)
-                                            _ => fail tr fc (Problem.Unhandled "A flat value applied to arguments")
+                                            _ =>
+                                              fail tr fc
+                                                (Problem.Unhandled
+                                                 "A flat value applied to arguments")
                              Nothing =>
                                do ps' <- traverse (staticPending tr) ps
                                   case lookup x (statics !(get FlatSt)) of
                                        Just (Closure t origin) => trTerm (inside origin tr) t ps'
-                                       Just (Unwrapped v origin) => trTerm (inside origin tr) v (PUnwrap :: ps')
-                                       Nothing => fail tr fc (Problem.Unhandled "An erased value used at run time")
+                                       Just (Unwrapped v origin) =>
+                                         trTerm (inside origin tr) v (PUnwrap :: ps')
+                                       Nothing =>
+                                         fail tr fc
+                                           (Problem.Unhandled "An erased value used at run time")
                   (PrimVal fc c, []) => constant tr fc c
                   (Erased fc _, _) => pure (Exp.FNone fc)
                   (Bind fc x (Lam _ rig _ ty) sc, PArg a :: ps) => bindValue tr fc x rig ty a sc ps
@@ -769,7 +784,8 @@ root n
                   (Ref fc (TyCon _) _, _) =>
                     fail tr fc (Problem.ValueNotFlat (TType fc (MN "top" 0)) Problem.RuntimeType)
                   (Ref fc Func n, ps) => callGlobal tr fc n ps
-                  (TType fc _, _) => fail tr fc (Problem.ValueNotFlat (TType fc (MN "top" 0)) Problem.RuntimeType)
+                  (TType fc _, _) =>
+                    fail tr fc (Problem.ValueNotFlat (TType fc (MN "top" 0)) Problem.RuntimeType)
                   (TForce fc _ t, ps)
                      => do (TDelay _ _ _ v, origin) <- whnfStatic tr t
                              | _ => fail tr fc Problem.NotStatic
@@ -789,10 +805,12 @@ root n
                     constant : Tr -> FC -> Constant -> Core Exp
                     constant tr fc (Str _)
                         = fail tr fc
-                          (Problem.ValueNotFlat (PrimVal fc (PrT StringType)) (Problem.BoxedPrimitive StringType))
+                          (Problem.ValueNotFlat (PrimVal fc (PrT StringType))
+                            (Problem.BoxedPrimitive StringType))
                     constant tr fc (BI _)
                         = fail tr fc
-                          (Problem.ValueNotFlat (PrimVal fc (PrT IntegerType)) (Problem.BoxedPrimitive IntegerType))
+                          (Problem.ValueNotFlat (PrimVal fc (PrT IntegerType))
+                            (Problem.BoxedPrimitive IntegerType))
                     constant tr fc (PrT _) =
                       fail tr fc (Problem.ValueNotFlat (TType fc (MN "top" 0)) Problem.RuntimeType)
                     constant tr fc WorldVal = pure (Exp.FNone fc)
@@ -804,7 +822,8 @@ root n
 
                     -- A constructor applied to `ps`: a flat value, or a newtype's function
                     -- when the context unwraps it.
-                    conApp : Tr -> FC -> Name -> (tag : Int) -> (arity : Nat) -> List Pending -> Core Exp
+                    conApp : Tr -> FC -> Name -> (tag : Int) -> (arity : Nat) -> List Pending ->
+                             Core Exp
                     conApp tr fc n tag arity ps
                         = do Just (cargs, rest) <- pure (takeArgs arity ps)
                                | Nothing => fail tr fc Problem.NotStatic
@@ -812,18 +831,28 @@ root n
                              Just gdef <- lookupCtxtExact n (gamma defs)
                                | Nothing => undefinedName fc n
                              Just (bs, resTy) <- applyType (type gdef) cargs
-                               | Nothing => fail tr fc (Problem.Unhandled "A constructor of another arity")
+                               | Nothing =>
+                                 fail tr fc (Problem.Unhandled "A constructor of another arity")
                              let fields = map snd (filter runtime (zip bs cargs))
                              case rest of
                                   [] => do Right (sk, l) <- laidOut resTy
-                                             | Left why => fail tr fc (Problem.ValueNotFlat !(quoteClosed resTy) why)
+                                             | Left why =>
+                                               fail tr fc
+                                                 (Problem.ValueNotFlat !(quoteClosed resTy) why)
                                            fs <- traverse (\f => trTerm tr f []) fields
-                                           pure (Exp.FCon fc !(toFullNames n) !(sumTag resTy tag) sk l fs)
+                                           pure
+                                             (Exp.FCon fc !(toFullNames n) !(sumTag resTy tag) sk l
+                                              fs)
                                   PUnwrap :: rest' =>
                                     case fields of
                                          [f] => trTerm tr f rest'
-                                         _ => fail tr fc (Problem.Unhandled "A newtype without one field")
-                                  _ => fail tr fc (Problem.Unhandled "A constructor applied to too many arguments")
+                                         _ =>
+                                           fail tr fc
+                                             (Problem.Unhandled "A newtype without one field")
+                                  _ =>
+                                    fail tr fc
+                                      (Problem.Unhandled
+                                       "A constructor applied to too many arguments")
 
                     -- The term for a translated value that is an atom.
                     atomOf : Exp -> Maybe ClosedTerm
@@ -841,17 +870,22 @@ root n
                     -- that it is computed once and in order, and each static one, like what
                     -- the call is applied to, is passed as a closure.
                     unfold : {targs : _} ->
-                             Tr -> FC -> Name -> GlobalDef -> CaseTree targs -> List Pending -> Core Exp
+                             Tr -> FC -> Name -> GlobalDef -> CaseTree targs -> List Pending ->
+                               Core Exp
                     unfold tr fc fn gdef ct ps
                         = do Just (args, rest) <- pure (takeArgs (length targs) ps)
                                | Nothing => fail tr fc Problem.NotStatic
                              Just (bs, _) <- applyType (type gdef) args
-                               | Nothing => fail tr fc (Problem.Unhandled "A definition of another arity")
+                               | Nothing =>
+                                 fail tr fc (Problem.Unhandled "A definition of another arity")
                              (args', wrap, tr') <- bindArgs tr fc (zip bs args)
                              rest' <- traverse (staticPending tr') rest
-                             let tr'' = { unfolding $= (fn ::) } (if blockName fn then tr' else leave tr' fc)
+                             let tr'' =
+                                   { unfolding $= (fn ::) }
+                                     (if blockName fn then tr' else leave tr' fc)
                              let Just env = mkSubst targs args'
-                               | Nothing => fail tr fc (Problem.Unhandled "A definition of another arity")
+                               | Nothing =>
+                                 fail tr fc (Problem.Unhandled "A definition of another arity")
                              wrap <$> trTree tr'' env ct rest'
                       where
                         bindArgs : Tr -> FC -> List (Applied, ClosedTerm) ->
@@ -866,7 +900,8 @@ root n
                                      | Just a' => keep a'
                                    x <- fresh b.name
                                    let fv = Exp.MkFlatVar x sk l
-                                   (as, wrap, tr') <- bindArgs (addVar fv !(quoteClosed b.type) tr) fc bas
+                                   (as, wrap, tr') <- bindArgs (addVar fv !(quoteClosed b.type) tr)
+                                     fc bas
                                    pure (Ref fc Bound x :: as, Exp.FLet fc fv v . wrap, tr')
                           where
                             keep : ClosedTerm -> Core (List ClosedTerm, Exp -> Exp, Tr)
@@ -889,7 +924,8 @@ root n
                                     else if unfoldable tr fn gdef
                                        then unfold tr fc fn gdef ct ps
                                        else demand tr fc fn gdef ps
-                                  _ => fail tr fc (Problem.Unhandled ("The reference to " ++ show fn))
+                                  _ =>
+                                    fail tr fc (Problem.Unhandled ("The reference to " ++ show fn))
                       where
                         -- The run-time arguments of a call of a primitive, which must be flat.
                         primArgs : Tr -> FC -> Name -> List (Applied, ClosedTerm) -> Core (List Exp)
@@ -899,11 +935,14 @@ root n
                             arg (b, a)
                                 = do Right _ <- laidOut b.type
                                        | Left why =>
-                                         fail tr fc (Problem.CalleeNotFlat fn b.position !(quoteClosed b.type) why)
+                                         fail tr fc
+                                           (Problem.CalleeNotFlat fn b.position
+                                            !(quoteClosed b.type) why)
                                      trTerm tr a []
 
                         primOp : {arity : Nat} ->
-                                 Tr -> FC -> Name -> GlobalDef -> PrimFn arity -> List Pending -> Core Exp
+                                 Tr -> FC -> Name -> GlobalDef -> PrimFn arity -> List Pending ->
+                                   Core Exp
                         primOp tr fc fn gdef op ps
                             = do Just (args, rest) <- pure (takeArgs arity ps)
                                    | Nothing => fail tr fc Problem.NotStatic
@@ -914,25 +953,36 @@ root n
                                                 | Just c => trTerm tr c rest
                                               Just (bs, resTy) <- applyType (type gdef) args
                                                 | Nothing =>
-                                                  fail tr fc (Problem.Unhandled "A primitive of another arity")
+                                                  fail tr fc
+                                                    (Problem.Unhandled
+                                                     "A primitive of another arity")
                                               Right _ <- laidOut resTy
                                                 | Left why =>
-                                                  fail tr fc (Problem.CalleeNotFlat fn Nothing !(quoteClosed resTy) why)
+                                                  fail tr fc
+                                                    (Problem.CalleeNotFlat fn Nothing
+                                                     !(quoteClosed resTy) why)
                                               as <- primArgs tr fc fn (zip bs args)
                                               let Just vs = toVect arity as
                                                 | Nothing =>
-                                                  fail tr fc (Problem.Unhandled "A primitive of another arity")
+                                                  fail tr fc
+                                                    (Problem.Unhandled
+                                                     "A primitive of another arity")
                                               case rest of
                                                    [] => pure (Exp.FOp fc op vs)
                                                    _ =>
                                                      fail tr fc
-                                                       (Problem.Unhandled "A primitive applied to too many arguments")
+                                                       (Problem.Unhandled
+                                                         ("A primitive applied to too many " ++
+                                                          "arguments"))
                           where
                             crash : List ClosedTerm -> Core Exp
                             crash [_, msg]
                                 = do (PrimVal _ (Str str), _) <- whnfStatic tr msg
-                                       | _ => fail tr fc (Problem.ValueNotFlat (PrimVal fc (PrT StringType))
-                                                                       (Problem.BoxedPrimitive StringType))
+                                       | _ =>
+                                         fail tr fc
+                                           (Problem.ValueNotFlat (PrimVal fc (PrT StringType))
+                                                                       (Problem.BoxedPrimitive
+                                                                         StringType))
                                      pure (Exp.FCrash fc str)
                             crash _ = fail tr fc (Problem.Unhandled "A crash of another arity")
 
@@ -948,24 +998,33 @@ root n
                                        | Left why => fail tr fc (Problem.ValueNotFlat b' why)
                                      if la == lb
                                         then trTerm tr x rest
-                                        else fail tr fc (Problem.Unhandled "A coercion between layouts")
-                            believe _ _ = fail tr fc (Problem.Unhandled "A coercion of another arity")
+                                        else fail tr fc
+                                          (Problem.Unhandled "A coercion between layouts")
+                            believe _ _ =
+                              fail tr fc (Problem.Unhandled "A coercion of another arity")
 
                         -- An `%extern` or `%foreign` primitive, or one of the backend's: a
                         -- definition its directive marks, whose body the translation leaves.
-                        primitive : Tr -> FC -> Name -> GlobalDef -> (arity : Nat) -> List Pending -> Core Exp
+                        primitive : Tr -> FC -> Name -> GlobalDef -> (arity : Nat) ->
+                                    List Pending -> Core Exp
                         primitive tr fc fn gdef arity ps
                             = do Just (args, rest) <- pure (takeArgs arity ps)
                                    | Nothing => fail tr fc Problem.NotStatic
                                  checkPrivate tr fc fn gdef
                                  Just (bs, resTy) <- applyType (type gdef) args
-                                   | Nothing => fail tr fc (Problem.Unhandled "A primitive of another arity")
+                                   | Nothing =>
+                                     fail tr fc (Problem.Unhandled "A primitive of another arity")
                                  Right (sk, lay) <- laidOut resTy
-                                   | Left why => fail tr fc (Problem.CalleeNotFlat fn Nothing !(quoteClosed resTy) why)
+                                   | Left why =>
+                                     fail tr fc
+                                       (Problem.CalleeNotFlat fn Nothing !(quoteClosed resTy) why)
                                  as <- primArgs tr fc fn (zip bs args)
                                  case rest of
                                       [] => pure (Exp.FPrim fc fn sk lay as)
-                                      _ => fail tr fc (Problem.Unhandled "A primitive applied to too many arguments")
+                                      _ =>
+                                        fail tr fc
+                                          (Problem.Unhandled
+                                           "A primitive applied to too many arguments")
                           where
                             -- A private primitive is used only where its own module wrote it: the
                             -- definition the reference was written inside, the innermost being
@@ -998,7 +1057,8 @@ root n
                                  let args = mapMaybe pendingArg ps
                                  let erasure = mapMaybe binderErased sig.parts
                                  when (length args /= length erasure) $ fail tr fc Problem.NotStatic
-                                 as <- traverse (\a => trTerm tr a []) (map fst (filter (not . snd) (zip args erasure)))
+                                 as <- traverse (\a => trTerm tr a [])
+                                   (map fst (filter (not . snd) (zip args erasure)))
                                  makeForm tr fc fn fn gdef (sigPending sig.parts) params res
                                  pure (Exp.FCall fc fn as)
                           where
@@ -1010,52 +1070,65 @@ root n
                             pendingArg (PArg a) = Just a
                             pendingArg _ = Nothing
 
-                            -- A call of `fn` at static arguments: a call of its copy at them, made on
-                            -- demand and memoised by the function and its static arguments.
+                            -- A call of `fn` at static arguments: a call of its copy at them, made
+                            -- on demand and memoised by the function and its static arguments.
                             --
-                            -- The callee's type is walked with the call's arguments, which instantiate
-                            -- the types of the binders after them. An argument is static if its binder
-                            -- is erased or auto-implicit, if its type's values are static only (a
-                            -- function, a type, a lazy value, a dictionary), or if it is closed and
-                            -- its type has no layout (a message to `idris_crash`); it is substituted
-                            -- into the copy's case tree. Any other argument of a flat type is dynamic,
-                            -- a parameter of the copy. The flat variables the static arguments capture,
-                            -- such as those a lambda refers to, are parameters too, after the dynamic
-                            -- ones, renamed in the copy so that one copy serves every call whose static
-                            -- arguments are the same terms.
+                            -- The callee's type is walked with the call's arguments, which
+                            -- instantiate the types of the binders after them. An argument is
+                            -- static if its binder is erased or auto-implicit, if its type's values
+                            -- are static only (a function, a type, a lazy value, a dictionary), or
+                            -- if it is closed and its type has no layout (a message to
+                            -- `idris_crash`); it is substituted into the copy's case tree. Any
+                            -- other argument of a flat type is dynamic, a parameter of the copy.
+                            -- The flat variables the static arguments capture, such as those a
+                            -- lambda refers to, are parameters too, after the dynamic ones, renamed
+                            -- in the copy so that one copy serves every call whose static arguments
+                            -- are the same terms.
                             copy : Tr -> FC -> Name -> GlobalDef -> List Pending -> Core Exp
                             copy tr fc fn gdef ps
                                 = do defs <- get Ctxt
-                                     (parts, params, actuals, res) <- walk [] 0 (mapMaybe pendingArg ps)
-                                                                          !(nf defs Env.empty (type gdef)) [<] [<] [<]
+                                     (parts, params, actuals, res) <- walk [] 0
+                                       (mapMaybe pendingArg ps)
+                                                                          !(nf defs Env.empty
+                                                                            (type gdef))
+                                                                            [<] [<] [<]
                                      Right res' <- laidOut res
                                        | Left why =>
-                                         fail tr fc (Problem.CalleeNotFlat fn Nothing !(quoteClosed res) why)
+                                         fail tr fc
+                                           (Problem.CalleeNotFlat fn Nothing !(quoteClosed res) why)
                                      -- the flat variables the static arguments capture
                                      sts <- statics <$> get FlatSt
                                      let staticTerms = mapMaybe staticOf parts
                                      let caps = filter (\x => isJust (lookup x tr.vars))
                                                        (nub
-                                                         (Data.Builder.joinMap (boundRefs . substLets . resolve sts)
+                                                         (Data.Builder.joinMap
+                                                           (boundRefs . substLets . resolve sts)
                                                           staticTerms))
-                                     let canon = zip caps (map (MN "flat captured" . cast) [0 .. length caps])
+                                     let canon =
+                                           zip caps
+                                             (map (MN "flat captured" . cast) [0 .. length caps])
                                      parts' <- relocateParts (fromList canon) parts
                                      key <- traverse keyOf parts'
                                      as <- traverse (\a => trTerm tr a []) actuals
                                      let capArgs = map (Exp.FVar fc) caps
                                      st <- get FlatSt
-                                     case find (\cp => cp.function == fn && sameKey cp.key key) st.copies of
+                                     case find (\cp => cp.function == fn && sameKey cp.key key)
+                                       st.copies of
                                           Just cp => pure (Exp.FCall fc cp.form (as ++ capArgs))
                                           Nothing =>
                                             do when (count (== fn) (tr.chain <>> []) >= copyDepth) $
                                                  fail tr fc (Problem.CopiesDoNotEnd fn)
                                                name <- pure (copyName fn st.nextName)
-                                               update FlatSt { nextName $= (+ 1), copies $= (MkCopy fn key name ::) }
+                                               update FlatSt
+                                                 { nextName $= (+ 1), copies $= (MkCopy fn key name
+                                                                                 ::) }
                                                capParams <- traverse (capParam canon) caps
-                                               makeForm tr fc name fn gdef (map snd parts') (params ++ capParams) res'
+                                               makeForm tr fc name fn gdef (map snd parts')
+                                                 (params ++ capParams) res'
                                                pure (Exp.FCall fc name (as ++ capArgs))
                               where
-                                -- The `Bound` names a term refers to, in the order it first refers to them.
+                                -- The `Bound` names a term refers to, in the order it first refers
+                                -- to them.
                                 boundRefs : Term vars'' -> List Name
                                 boundRefs tm = nub (toList (go tm))
                                   where
@@ -1070,8 +1143,10 @@ root n
 
                                     go : Term vs -> Data.Builder Name
                                     go (Ref _ Bound x) = Data.Builder.single x
-                                    -- lint: allow trust-escape: a binder's terms are parts of it, which `binderTerms` hides
-                                    go (Bind _ _ b sc) = concatMap go (assert_total (binderTerms b)) <+> go sc
+                                    -- lint: allow trust-escape: a binder's terms are parts of it,
+                                    -- which `binderTerms` hides
+                                    go (Bind _ _ b sc) = concatMap go (assert_total (binderTerms b))
+                                      <+> go sc
                                     go (App _ f a) = go f <+> go a
                                     go (As _ _ a p) = go a <+> go p
                                     go (TDelayed _ _ t) = go t
@@ -1083,11 +1158,12 @@ root n
                                 closed : ClosedTerm -> Bool
                                 closed t = all (\x => isNothing (lookup x tr.vars)) (boundRefs t)
 
-                                -- Whether a reason for a type not to be flat makes its values static only: a
-                                -- function, a type, a lazy value, or something holding one, such as a
-                                -- dictionary. An argument of such a type is always a static argument, which
-                                -- a flat form at it takes. Any other type without a layout, such as
-                                -- `String`, has values computed at run time, and makes the callee not flat.
+                                -- Whether a reason for a type not to be flat makes its values
+                                -- static only: a function, a type, a lazy value, or something
+                                -- holding one, such as a dictionary. An argument of such a type is
+                                -- always a static argument, which a flat form at it takes. Any
+                                -- other type without a layout, such as `String`, has values
+                                -- computed at run time, and makes the callee not flat.
                                 staticOnly : Problem.NotFlatReason -> Bool
                                 staticOnly Problem.FunctionType = True
                                 staticOnly Problem.RuntimeType = True
@@ -1099,50 +1175,69 @@ root n
                                 -- static (`True`, an argument the key holds) or not. The parts, the
                                 -- parameters and the actual arguments accumulate at their ends, an
                                 -- argument at a time.
-                                walk : (unfolded : List Name) -> (explicit : Nat) -> List ClosedTerm -> ClosedNF ->
-                                       SnocList (Bool, Pending) -> SnocList (Exp.FlatVar, ClosedTerm) ->
+                                walk : (unfolded : List Name) -> (explicit : Nat) ->
+                                       List ClosedTerm -> ClosedNF ->
+                                       SnocList (Bool, Pending) ->
+                                         SnocList (Exp.FlatVar, ClosedTerm) ->
                                          SnocList ClosedTerm ->
                                        Core (List (Bool, Pending),
-                                             List (Exp.FlatVar, ClosedTerm), List ClosedTerm, ClosedNF)
-                                walk ns i (a :: as) (NBind bfc x (Pi _ rig pinfo aty) sc) parts params actuals
+                                             List (Exp.FlatVar, ClosedTerm), List ClosedTerm,
+                                               ClosedNF)
+                                walk ns i (a :: as) (NBind bfc x (Pi _ rig pinfo aty) sc) parts
+                                  params actuals
                                     = do defs <- get Ctxt
                                          let i' = if isExplicit pinfo then S i else i
                                          tyNF <- evalClosure defs aty
                                          a' <- resolved a
                                          let next : ClosedTerm -> Core ClosedNF
-                                                   = \t => sc defs (toClosure defaultOpts Env.empty t)
+                                                   = \t =>
+                                                     sc defs (toClosure defaultOpts Env.empty t)
                                          if isErased rig
-                                            then walk ns i' as !(next a') (parts :< (True, PArg a)) params actuals
+                                            then walk ns i' as !(next a') (parts :< (True, PArg a))
+                                              params actuals
                                             else if isAutoImplicit pinfo
                                               then do sa <- static tr a
-                                                      walk ns i' as !(next a') (parts :< (True, PArg sa)) params actuals
+                                                      walk ns i' as !(next a')
+                                                        (parts :< (True, PArg sa)) params actuals
                                               else case !(layout [] tyNF) of
                                                 Judgement.LaidOut l =>
                                                             do v <- fresh x
-                                                               fv <- pure (Exp.MkFlatVar v !(skeleton tyNF) l)
-                                                               walk ns i' as !(next (Ref bfc Bound v))
-                                                                 (parts :< (False, PArg (Ref bfc Bound v)))
-                                                                    (params :< (fv, !(quoteClosed tyNF))) (actuals :< a)
+                                                               fv <- pure
+                                                                 (Exp.MkFlatVar v !(skeleton tyNF)
+                                                                  l)
+                                                               walk ns i' as
+                                                                 !(next (Ref bfc Bound v))
+                                                                 (parts :<
+                                                                   (False, PArg (Ref bfc Bound v)))
+                                                                    (params :<
+                                                                      (fv, !(quoteClosed tyNF)))
+                                                                      (actuals :< a)
                                                 Judgement.Rejected why =>
                                                             if staticOnly why || closed a'
                                                                then do sa <- static tr a
                                                                        walk ns i' as !(next a')
-                                                                         (parts :< (True, PArg sa)) params actuals
+                                                                         (parts :< (True, PArg sa))
+                                                                           params actuals
                                                                else fail tr fc
-                                                                 (Problem.CalleeNotFlat fn (Just (i', x))
+                                                                 (Problem.CalleeNotFlat fn
+                                                                   (Just (i', x))
                                                                   !(quoteClosed tyNF) why)
                                                 Judgement.Deferred =>
                                                   fail tr fc
-                                                    (Problem.Unhandled "A type made of erased arguments at a call")
+                                                    (Problem.Unhandled
+                                                      "A type made of erased arguments at a call")
                                 walk ns i as res parts params actuals
                                     = do Just (n, fnTy) <- Judgement.newtypeOverFunction res
                                            | Nothing => done
                                          if elem n ns || isNil as then done
-                                            else walk (n :: ns) i as fnTy (parts :< (False, PUnwrap)) params actuals
+                                            else walk (n :: ns) i as fnTy
+                                              (parts :< (False, PUnwrap)) params actuals
                                   where
                                     done : Core (List (Bool, Pending),
-                                                 List (Exp.FlatVar, ClosedTerm), List ClosedTerm, ClosedNF)
-                                    done = if isNil as then pure (parts <>> [], params <>> [], actuals <>> [], res)
+                                                 List (Exp.FlatVar, ClosedTerm), List ClosedTerm,
+                                                   ClosedNF)
+                                    done = if isNil as
+                                      then pure (parts <>> [], params <>> [], actuals <>> [], res)
                                       else fail tr fc Problem.NotStatic
 
                                 staticOf : (Bool, Pending) -> Maybe ClosedTerm
@@ -1152,33 +1247,34 @@ root n
                                 -- A term with every let substituted into its scope.
                                 substLets : Term vars'' -> Term vars''
                                 substLets (Bind fc x (Let _ _ v _) sc) = substLets (subst v sc)
-                                substLets (Bind fc x b sc) = Bind fc x (map substLets b) (substLets sc)
+                                substLets (Bind fc x b sc) =
+                                  Bind fc x (map substLets b) (substLets sc)
                                 substLets (App fc f a) = App fc (substLets f) (substLets a)
                                 substLets (As fc u a p) = As fc u (substLets a) (substLets p)
                                 substLets (TDelayed fc r t) = TDelayed fc r (substLets t)
-                                substLets (TDelay fc r t v) = TDelay fc r (substLets t) (substLets v)
+                                substLets (TDelay fc r t v) =
+                                  TDelay fc r (substLets t) (substLets v)
                                 substLets (TForce fc r t) = TForce fc r (substLets t)
                                 substLets (Meta fc n i args) = Meta fc n i (map substLets args)
                                 substLets tm = tm
 
-                                ||| Terms that are static arguments of a copy, with the flat variables they
-                                ||| capture renamed by `caps`. A name that stands for a static value whose
-                                ||| term captures one, directly or through another such name, stands for a
-                                ||| renamed copy of it, written where the original was, so that each copy
-                                ||| sees only its own parameters.
-                                relocate : (caps : NameMap Name) -> List ClosedTerm -> Core (List ClosedTerm)
+                                ||| Terms that are static arguments of a copy, with the flat
+                                ||| variables they capture renamed by `caps`. A name that stands for
+                                ||| a static value whose term captures one, directly or through
+                                ||| another such name, stands for a renamed copy of it, written
+                                ||| where the original was, so that each copy sees only its own
+                                ||| parameters.
+                                relocate : (caps : NameMap Name) -> List ClosedTerm ->
+                                           Core (List ClosedTerm)
                                 relocate caps ts
                                     = do sts <- statics <$> get FlatSt
                                          let moved =
-                                               filter (captures sts []) (nub (toList (concatMap (reachable sts []) ts)))
+                                               filter (captures sts [])
+                                                 (nub (toList (concatMap (reachable sts []) ts)))
                                          renames <- traverse (\x => pure (x, !(fresh x))) moved
-                                         let m = foldl (\acc, (x, x') => insert x x' acc) caps renames
-                                         traverse_ (\(x, x') => case lookup x sts of
-                                                                    Just st =>
-                                                                      update FlatSt
-                                                                        { statics $= insert x' (renameStatic m st) }
-                                                                    Nothing => pure ())
-                                                   renames
+                                         let m =
+                                               foldl (\acc, (x, x') => insert x x' acc) caps renames
+                                         traverse_ (copied sts m) renames
                                          pure (map (renameRefs m) ts)
                                   where
                                     -- The term a static value stands for.
@@ -1187,15 +1283,18 @@ root n
                                     staticTerm (Unwrapped v _) = v
 
                                     -- The names standing for static values that a term reaches.
-                                    -- Through lets, as a key looks: a let is a substitution, and one that
-                                    -- Idris binds around a case alternative's right-hand side names the
-                                    -- alternative's variables without the static term capturing them.
-                                    reachable : NameMap Static -> List Name -> Term vs -> Data.Builder Name
+                                    -- Through lets, as a key looks: a let is a substitution, and
+                                    -- one that Idris binds around a case alternative's right-hand
+                                    -- side names the alternative's variables without the static
+                                    -- term capturing them.
+                                    reachable : NameMap Static -> List Name -> Term vs ->
+                                                Data.Builder Name
                                     reachable sts seen tm
                                         = concatMap (\x => if elem x seen then neutral else
                                                              case lookup x sts of
                                                                   Just st => Data.Builder.single x
-                                                                    <+> reachable sts (x :: seen) (staticTerm st)
+                                                                    <+> reachable sts (x :: seen)
+                                                                      (staticTerm st)
                                                                   Nothing => neutral)
                                                     (boundRefs (substLets tm))
 
@@ -1206,55 +1305,82 @@ root n
                                                Just st => any (\y => isJust (lookup y caps)
                                                                      ||
                                                                        (not (elem y seen)
-                                                                        && captures sts (x :: seen) y))
-                                                              (boundRefs (substLets (staticTerm st)))
+                                                                        && captures sts (x :: seen)
+                                                                          y))
+                                                              (boundRefs
+                                                                (substLets (staticTerm st)))
 
                                     -- A term with `Bound` names renamed.
                                     renameRefs : NameMap Name -> Term vars'' -> Term vars''
-                                    renameRefs m (Ref fc Bound x) = Ref fc Bound (fromMaybe x (lookup x m))
-                                    renameRefs m (Bind fc x b sc) = Bind fc x (map (renameRefs m) b) (renameRefs m sc)
-                                    renameRefs m (App fc f a) = App fc (renameRefs m f) (renameRefs m a)
-                                    renameRefs m (As fc u a p) = As fc u (renameRefs m a) (renameRefs m p)
+                                    renameRefs m (Ref fc Bound x) =
+                                      Ref fc Bound (fromMaybe x (lookup x m))
+                                    renameRefs m (Bind fc x b sc) =
+                                      Bind fc x (map (renameRefs m) b) (renameRefs m sc)
+                                    renameRefs m (App fc f a) =
+                                      App fc (renameRefs m f) (renameRefs m a)
+                                    renameRefs m (As fc u a p) =
+                                      As fc u (renameRefs m a) (renameRefs m p)
                                     renameRefs m (TDelayed fc r t) = TDelayed fc r (renameRefs m t)
-                                    renameRefs m (TDelay fc r t v) = TDelay fc r (renameRefs m t) (renameRefs m v)
+                                    renameRefs m (TDelay fc r t v) =
+                                      TDelay fc r (renameRefs m t) (renameRefs m v)
                                     renameRefs m (TForce fc r t) = TForce fc r (renameRefs m t)
-                                    renameRefs m (Meta fc n i args) = Meta fc n i (map (renameRefs m) args)
+                                    renameRefs m (Meta fc n i args) =
+                                      Meta fc n i (map (renameRefs m) args)
                                     renameRefs m tm = tm
 
                                     renameStatic : NameMap Name -> Static -> Static
                                     renameStatic m (Closure t o) = Closure (renameRefs m t) o
                                     renameStatic m (Unwrapped v o) = Unwrapped (renameRefs m v) o
 
-                                relocateParts : NameMap Name -> List (Bool, Pending) -> Core (List (Bool, Pending))
+                                    -- A static value moved to its fresh name, its references
+                                    -- renamed.
+                                    copied : NameMap Static -> NameMap Name -> (Name, Name) ->
+                                             Core ()
+                                    copied sts m (x, x') = case lookup x sts of
+                                      Just st =>
+                                        update FlatSt { statics $= insert x' (renameStatic m st) }
+                                      Nothing => pure ()
+
+                                relocateParts : NameMap Name -> List (Bool, Pending) ->
+                                                Core (List (Bool, Pending))
                                 relocateParts canon parts
                                     = do moved <- relocate canon (mapMaybe staticOf parts)
                                          pure (place parts moved)
                                   where
-                                    place : List (Bool, Pending) -> List ClosedTerm -> List (Bool, Pending)
-                                    place ((True, PArg _) :: ps') (t :: ts) = (True, PArg t) :: place ps' ts
+                                    place : List (Bool, Pending) -> List ClosedTerm ->
+                                            List (Bool, Pending)
+                                    place ((True, PArg _) :: ps') (t :: ts) = (True, PArg t)
+                                      :: place ps' ts
                                     place (p :: ps') ts = p :: place ps' ts
                                     place [] _ = []
 
                                 -- A let is a substitution, so a key sees through it: inside a case
-                                -- alternative Idris binds the matched variable to its value with one,
-                                -- around the whole right-hand side, and a recursive call there would
-                                -- otherwise carry one more let per level and never meet its memo.
+                                -- alternative Idris binds the matched variable to its value with
+                                -- one, around the whole right-hand side, and a recursive call there
+                                -- would otherwise carry one more let per level and never meet its
+                                -- memo.
                                 keyOf : (Bool, Pending) -> Core (Maybe ClosedTerm)
-                                keyOf (True, PArg t) = Just <$> toFullNames (substLets !(resolved t))
+                                keyOf (True, PArg t) =
+                                  Just <$> toFullNames (substLets !(resolved t))
                                 keyOf _ = pure Nothing
 
                                 sameKey : List (Maybe ClosedTerm) -> List (Maybe ClosedTerm) -> Bool
                                 sameKey [] [] = True
                                 sameKey (Nothing :: ks) (Nothing :: ks') = sameKey ks ks'
-                                sameKey (Just t :: ks) (Just t' :: ks') = eqTerm t t' && sameKey ks ks'
+                                sameKey (Just t :: ks) (Just t' :: ks') = eqTerm t t'
+                                  && sameKey ks ks'
                                 sameKey _ _ = False
 
-                                capParam : List (Name, Name) -> Name -> Core (Exp.FlatVar, ClosedTerm)
+                                capParam : List (Name, Name) -> Name ->
+                                           Core (Exp.FlatVar, ClosedTerm)
                                 capParam canon x
                                     = do Just (fv, ty) <- pure (lookup x tr.vars)
                                            | Nothing =>
-                                             fail tr fc (Problem.Unhandled "A captured variable out of scope")
-                                         pure ({ name := fromMaybe fv.name (lookup x canon) } fv, ty)
+                                             fail tr fc
+                                               (Problem.Unhandled
+                                                "A captured variable out of scope")
+                                         pure ({ name := fromMaybe fv.name (lookup x canon) } fv,
+                                               ty)
 
                                 -- The name of the form of a copy of `fn`.
                                 copyName : Name -> Int -> Name
@@ -1262,10 +1388,11 @@ root n
                                 copyName (DN _ n) k = copyName n k
                                 copyName n k = MN (nameRoot n) k
 
-                                -- How many copies of one function may nest in a chain of calls before its
-                                -- static arguments count as growing without end. Only recursion at other
-                                -- static arguments nests them, and such arguments, and the types they
-                                -- decide, can double at each step, so the bound is small.
+                                -- How many copies of one function may nest in a chain of calls
+                                -- before its static arguments count as growing without end. Only
+                                -- recursion at other static arguments nests them, and such
+                                -- arguments, and the types they decide, can double at each step, so
+                                -- the bound is small.
                                 copyDepth : Nat
                                 copyDepth = 8
 
@@ -1288,14 +1415,16 @@ root n
                                v' <- trTerm tr v []
                                sts <- get FlatSt
                                let Just (sk, l) = Exp.expType (varType tr) (formType sts) v'
-                                 | Nothing => fail tr fc (Problem.Unhandled "A let whose type is not known")
+                                 | Nothing =>
+                                   fail tr fc (Problem.Unhandled "A let whose type is not known")
                                bindFlat sk l v'
                       where
                         varType : Tr -> Name -> Maybe (Exp.Skeleton, Exp.Layout)
                         varType tr y = (\(fv, _) => (fv.skeleton, fv.layout)) <$> lookup y tr.vars
 
                         formType : FlatState -> Name -> Maybe (Exp.Skeleton, Exp.Layout)
-                        formType sts n = (\fd => (fd.resultSkeleton, fd.result)) <$> lookup n sts.forms
+                        formType sts n =
+                          (\fd => (fd.resultSkeleton, fd.result)) <$> lookup n sts.forms
 
                         -- the value bound to a fresh flat variable, unless it is an atom
                         bindFlat : Exp.Skeleton -> Exp.Layout -> Exp -> Core Exp
@@ -1304,7 +1433,8 @@ root n
                                    | Just a => trTerm tr (subst a sc) ps
                                  x' <- fresh x
                                  let fv = Exp.MkFlatVar x' sk l
-                                 body <- trTerm (addVar fv !(resolved ty) tr) (subst (Ref fc Bound x') sc) ps
+                                 body <- trTerm (addVar fv !(resolved ty) tr)
+                                   (subst (Ref fc Bound x') sc) ps
                                  pure (Exp.FLet fc fv v' body)
 
             -- A case on a flat variable: a case at run time.
@@ -1322,10 +1452,12 @@ root n
                 go tyNF (ConCase cn tag args sc :: as)
                     = do (vals, fvs, tr') <- openCon tr fc tyNF cn args Nothing
                          let Just env' = extendSubst args vals env
-                           | Nothing => fail tr fc (Problem.Unhandled "A constructor pattern of another arity")
+                           | Nothing =>
+                             fail tr fc (Problem.Unhandled "A constructor pattern of another arity")
                          body <- trTree tr' env' sc ps
                          (rest, def) <- go tyNF as
-                         pure (Exp.FConAlt !(toFullNames cn) !(sumTag tyNF tag) fvs body :: rest, def)
+                         pure (Exp.FConAlt !(toFullNames cn) !(sumTag tyNF tag) fvs body :: rest,
+                               def)
                 go tyNF (ConstCase k sc :: as)
                     = do body <- trTree tr env sc ps
                          (rest, def) <- go tyNF as
@@ -1343,7 +1475,8 @@ root n
             erasedCase tr env fc [ConCase _ _ args sc] ps
                 = do vals <- traverse (\a => Ref fc Bound <$> fresh a) args
                      let Just env' = extendSubst args vals env
-                       | Nothing => fail tr fc (Problem.Unhandled "A constructor pattern of another arity")
+                       | Nothing =>
+                         fail tr fc (Problem.Unhandled "A constructor pattern of another arity")
                      trTree tr env' sc ps
             erasedCase tr env fc [DefaultCase sc] ps = trTree tr env sc ps
             erasedCase tr env fc _ ps = fail tr fc (Problem.Unhandled "A case on an erased value")
@@ -1366,15 +1499,19 @@ root n
                                     | Nothing => do Right _ <- laidOut tyNF
                                                       | Left why =>
                                                         fail tr (getLoc scr)
-                                                          (Problem.ValueNotFlat !(quoteClosed tyNF) why)
+                                                          (Problem.ValueNotFlat !(quoteClosed tyNF)
+                                                            why)
                                                     fail tr (getLoc scr)
-                                                      (Problem.Unhandled "A case on a value that is not a variable")
+                                                      (Problem.Unhandled
+                                                        "A case on a value that is not a variable")
                                   Just (cn, (args ** sc)) <- pure (conCase alts)
                                     | Nothing => fail tr (getLoc scr) Problem.NotStatic
-                                  (vals, _, tr') <- openCon tr (getLoc scr) tyNF cn args (Just (v, origin))
+                                  (vals, _, tr') <- openCon tr (getLoc scr) tyNF cn args
+                                    (Just (v, origin))
                                   let Just env' = extendSubst args vals env
                                     | Nothing =>
-                                      fail tr (getLoc scr) (Problem.Unhandled "A constructor pattern of another arity")
+                                      fail tr (getLoc scr)
+                                        (Problem.Unhandled "A constructor pattern of another arity")
                                   trTree tr' env' sc ps
               where
                 conAlt : Name -> List ClosedTerm -> List (CaseAlt vars') -> Core Exp
@@ -1383,7 +1520,8 @@ root n
                     = if !(toFullNames n) == cn
                          then do let Just env' = extendSubst args cargs env
                                    | Nothing =>
-                                     fail tr (getLoc scr) (Problem.Unhandled "A constructor pattern of another arity")
+                                     fail tr (getLoc scr)
+                                       (Problem.Unhandled "A constructor pattern of another arity")
                                  trTree tr env' sc ps
                          else conAlt cn cargs as
                 conAlt cn cargs (DefaultCase sc :: _) = trTree tr env sc ps
@@ -1401,7 +1539,8 @@ root n
 ||| far as it takes to name one function. A name that names none, or more
 ||| than one, is an error.
 export
-flatNames : {auto c : Ref Ctxt Defs} -> (directives : List String) -> Core (List Name, List Problem.FlatError)
+flatNames : {auto c : Ref Ctxt Defs} -> (directives : List String) ->
+            Core (List Name, List Problem.FlatError)
 flatNames directives
     = do -- Idris gives a module's directives last first
          found <- traverse one (nub (Data.Builder.joinMap names (reverse directives)))
@@ -1422,7 +1561,8 @@ flatNames directives
     parsed : String -> Name
     parsed str = case reverse (forget (split (== '.') str)) of
                       [n] => basic n
-                      (n :: ns) => NS (mkNamespace (concat (intersperse "." (reverse ns)))) (basic n)
+                      (n :: ns) =>
+                        NS (mkNamespace (concat (intersperse "." (reverse ns)))) (basic n)
                       [] => basic str
 
     one : String -> Core (Either Problem.FlatError Name)
@@ -1431,7 +1571,10 @@ flatNames directives
              found <- lookupCtxtName (parsed str) (gamma defs)
              case found of
                   [(n, _, _)] => Right <$> toFullNames n
-                  ms => pure (Left (Problem.UnknownFlatName str !(traverse (\(n, _, _) => toFullNames n) ms)))
+                  ms =>
+                    pure
+                      (Left
+                       (Problem.UnknownFlatName str !(traverse (\(n, _, _) => toFullNames n) ms)))
 
     ok : Either Problem.FlatError Name -> Maybe Name
     ok (Right n) = Just n
@@ -1465,7 +1608,8 @@ flatForms primitives ns
              before <- get FlatSt
              catch (do root n; pure Nothing)
                    (\err => do st <- get FlatSt
-                               put FlatSt ({ forms := forms before, making := [], failure := Nothing } st)
+                               put FlatSt
+                                 ({ forms := forms before, making := [], failure := Nothing } st)
                                case failure st of
                                     Just e => pure (Just e)
                                     Nothing => throw err)
@@ -1570,7 +1714,8 @@ shape sk
                  | Nothing => pure Nothing
                let DCon tag arity nt = definition cdef
                  | _ => pure Nothing
-               fs <- traverse (\t => shapeOf !(nf defs Env.empty t)) !(Judgement.fieldTypes args cdef)
+               fs <- traverse (\t => shapeOf !(nf defs Env.empty t))
+                 !(Judgement.fieldTypes args cdef)
                let Just fs' = the (Maybe (List Exp.Shape)) (sequence fs)
                  | Nothing => pure Nothing
                ord <- case nt of
@@ -1634,10 +1779,14 @@ forget d
              case definition gdef of
                   DCon _ arity (Just (_, pos)) =>
                     do Just a <- pure (atIndex !(newtypeField cn arity pos) as')
-                         | Nothing => throw (InternalError ("Flat form with a newtype of no field: " ++ show cn))
+                         | Nothing =>
+                           throw
+                             (InternalError ("Flat form with a newtype of no field: " ++ show cn))
                        pure a
                   DCon tag _ _ => pure (CCon fc cn !(conInfo cn) (Just tag) as')
-                  _ => throw (InternalError ("Flat form with a constructor that is not one: " ++ show cn))
+                  _ =>
+                    throw
+                      (InternalError ("Flat form with a constructor that is not one: " ++ show cn))
       where
         atIndex : Nat -> List a -> Maybe a
         atIndex _ [] = Nothing
@@ -1648,7 +1797,8 @@ forget d
              def' <- traverseOpt forgetExp def
              case alts of
                   [] => pure (fromMaybe (CCrash fc "No alternative") def')
-                  (Exp.FConstAlt {} :: _) => pure (CConstCase fc scr' !(traverse constAlt alts) def')
+                  (Exp.FConstAlt {} :: _) =>
+                    pure (CConstCase fc scr' !(traverse constAlt alts) def')
                   [Exp.FConAlt cn _ fvs sc] =>
                         do Just k <- newtype cn
                              | Nothing => pure (CConCase fc scr' !(traverse conAlt alts) def')
@@ -1683,9 +1833,12 @@ forget d
                  Just gdef <- lookupCtxtExact cn (gamma defs)
                    | Nothing => undefinedName fc cn
                  let DCon tag _ _ = definition gdef
-                   | _ => throw (InternalError ("Flat form with a constructor that is not one: " ++ show cn))
+                   | _ =>
+                     throw
+                       (InternalError ("Flat form with a constructor that is not one: " ++ show cn))
                  let args = map name fvs
-                 pure (MkConAlt cn !(conInfo cn) (Just tag) args !(forgetExp {vars = args ++ vars} sc))
+                 pure
+                   (MkConAlt cn !(conInfo cn) (Just tag) args !(forgetExp {vars = args ++ vars} sc))
         conAlt (Exp.FConstAlt {}) = throw (InternalError "Flat form with mixed alternatives")
 
         constAlt : Exp.FlatAlt -> Core (CConstAlt vars)
@@ -1739,7 +1892,8 @@ useFlatForms forms = traverse_ use (toList forms)
     -- A primitive's form applies the primitive, so its body stays the
     -- function's, which the primitive's calls call.
     use : (Name, Exp.FlatDef) -> Core ()
-    use (n, d@(Exp.MkFlatDef _ _ _ _ (Exp.FPrim _ p _ _ _) _)) = if p == n then pure () else useForm n d
+    use (n, d@(Exp.MkFlatDef _ _ _ _ (Exp.FPrim _ p _ _ _) _)) = if p == n then pure ()
+      else useForm n d
     use (n, d) = useForm n d
 
 ||| Write the flat forms to `file`, each followed by the shapes of the data
@@ -1762,7 +1916,10 @@ dumpFlat file forms
     dumpForm d
         = do let sks = nub (filter isData (map skeleton d.params ++ [d.resultSkeleton]))
              shapes <- traverse (\sk => do s <- shape sk
-                                           pure ("  shape " ++ show sk ++ " = " ++ maybe "none" show s ++ "\n"))
+                                           pure
+                                             ("  shape " ++ show sk ++ " = " ++ maybe "none" show s
+                                              ++ "\n"))
                                 sks
              pure
-               (Exp.defPieces d <+> Data.Builder.single "\n" <+> Data.Builder.piece shapes <+> Data.Builder.single "\n")
+               (Exp.defPieces d <+> Data.Builder.single "\n" <+> Data.Builder.piece shapes
+                 <+> Data.Builder.single "\n")

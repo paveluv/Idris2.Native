@@ -30,14 +30,19 @@ import Native.Types.StringRoutine
 
 %default total
 
-%extern string__textBytes : Runtime.PortTy.ExternTy (Types.StringRoutine.port Types.StringRoutine.TextBytes)
-%extern string__textAddress : Runtime.PortTy.ExternTy (Types.StringRoutine.port Types.StringRoutine.TextAddress)
-%extern string__copyText : Runtime.PortTy.ExternTy (Types.StringRoutine.port Types.StringRoutine.CopyText)
-%extern string__ofText : Runtime.PortTy.ExternTy (Types.StringRoutine.port Types.StringRoutine.OfText)
+%extern string__textBytes : Runtime.PortTy.ExternTy
+  (Types.StringRoutine.port Types.StringRoutine.TextBytes)
+%extern string__textAddress : Runtime.PortTy.ExternTy
+  (Types.StringRoutine.port Types.StringRoutine.TextAddress)
+%extern string__copyText : Runtime.PortTy.ExternTy
+  (Types.StringRoutine.port Types.StringRoutine.CopyText)
+%extern string__ofText : Runtime.PortTy.ExternTy
+  (Types.StringRoutine.port Types.StringRoutine.OfText)
 
 ||| A new string of the `len` bytes of the system's text at the address.
 export %inline
-ofText : (bytes : Runtime.Raw) -> (len : Bits64) -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform String)
+ofText : (bytes : Runtime.Raw) -> (len : Bits64) ->
+         Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform String)
 ofText = string__ofText
 
 ||| The empty string.
@@ -67,7 +72,8 @@ zeroEndedText p = do
 ||| failure that there is no memory, if there is none for the copy.
 export %inline covering
 withText : Flat.Uniform String -> (none : Runtime.Ordo.Op Runtime.Ordo a) ->
-           (use : Runtime.Raw -> Bits64 -> Runtime.Ordo.Op Runtime.Ordo a) -> Runtime.Ordo.Op Runtime.Ordo a
+           (use : Runtime.Raw -> Bits64 -> Runtime.Ordo.Op Runtime.Ordo a) ->
+             Runtime.Ordo.Op Runtime.Ordo a
 withText s none use = do
   n <- string__textBytes s
   own <- string__textAddress s

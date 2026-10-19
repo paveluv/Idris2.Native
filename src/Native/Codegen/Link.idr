@@ -34,7 +34,8 @@ import Native.Types.Enc as Types
 export
 linkProgram : (enc : Types.Enc) -> {auto 0 _ : HeapObj.ValEnc.HasFixnums enc.val} ->
               (window : Int) -> (areas : Linkage.Areas) -> (program : List X86.Asm.Instr) ->
-              (rodata : List (X86.Asm.Label, List Bits8)) -> Either (List X86.Encode.AsmProblem) ELF.Image
+              (rodata : List (X86.Asm.Label, List Bits8)) ->
+                Either (List X86.Encode.AsmProblem) ELF.Image
 linkProgram enc window areas program items =
   let text = Seed.seedText enc window ++ program
       tl = X86.Encode.layout ELF.textBase text
@@ -45,17 +46,20 @@ linkProgram enc window areas program items =
       as = Linkage.Areas.maxAreas Seed.seedAreas areas
       lay = ELF.planLayout ts (Bytes.byteCount rodata) (Seed.seedBssSize as)
       env = fromList (map (\(s, off) => (Linkage.Sym.symLabel s, rodataBase lay + off)) rsyms
-                   ++ map (\(s, off) => (Linkage.Sym.symLabel s, bssBase lay + off)) (Seed.seedBss as)
+                   ++ map (\(s, off) => (Linkage.Sym.symLabel s, bssBase lay + off))
+                     (Seed.seedBss as)
                    ++ map (\(l, off) => (l, rodataBase lay + off)) offsets)
       (bytes, labels, problems) = X86.Encode.assembleWith env ELF.textBase text
       entry = fromMaybe ELF.textBase (lookup (Linkage.Sym.symLabel Linkage.Sym.SymStart) labels)
-  in if null problems then Right (ELF.elfImage Platform.X86_64 lay bytes rodata (Seed.seedBssSize as) entry)
+  in if null problems
+    then Right (ELF.elfImage Platform.X86_64 lay bytes rodata (Seed.seedBssSize as) entry)
                       else Left problems
   where
     -- each item's label at its offset, the items laid end to end from `at`
     offsetsFrom : Int -> List (X86.Asm.Label, List Bits8) -> List (X86.Asm.Label, Int)
     offsetsFrom _ [] = []
-    offsetsFrom at ((l, item) :: rest) = (l, at) :: offsetsFrom (at + cast (length (Bytes.pad8 item))) rest
+    offsetsFrom at ((l, item) :: rest) = (l, at)
+      :: offsetsFrom (at + cast (length (Bytes.pad8 item))) rest
 
 ||| The default allocation window: 4 MiB, the bytes the inline bump may
 ||| allocate before the runtime's slow path runs, which extends the window
@@ -69,7 +73,8 @@ windowBytes = 4 * 1024 * 1024
 ||| seed's, with no read-only data of its own.
 export
 linkWith : (enc : Types.Enc) -> {auto 0 _ : HeapObj.ValEnc.HasFixnums enc.val} ->
-           (window : Int) -> (program : List X86.Asm.Instr) -> Either (List X86.Encode.AsmProblem) ELF.Image
+           (window : Int) -> (program : List X86.Asm.Instr) ->
+             Either (List X86.Encode.AsmProblem) ELF.Image
 linkWith enc window program = linkProgram enc window Seed.seedAreas program []
 
 ||| `linkWith` the default window.

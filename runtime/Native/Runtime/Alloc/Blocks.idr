@@ -94,7 +94,8 @@ at xs i = do
 ||| `done`; `none` of the block if there is no memory for the array to grow,
 ||| or the array is not made.
 export %inline covering
-push : Blocks -> (1 b : Block) -> (none : (1 b : Block) -> Op Ordo a) -> (done : Op Ordo a) -> Op Ordo a
+push : Blocks -> (1 b : Block) -> (none : (1 b : Block) -> Op Ordo a) -> (done : Op Ordo a) ->
+       Op Ordo a
 push xs b none done = do
   ok <- room xs
   case ok of

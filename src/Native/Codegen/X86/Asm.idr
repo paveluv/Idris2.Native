@@ -12,10 +12,10 @@
 ||| the product path parses it back.
 module Native.Codegen.X86.Asm
 
--- lint: exclude precision: imported whole by target-neutral modules until the targets are separated, with AArch64
--- (Seed, Link, Linkage.Sym, Linkage.ResumePoint and the driver use it; the
--- separation moves the x86 code into this group and puts a target's
--- assembler behind an interface)
+-- lint: exclude precision: imported whole by target-neutral modules until the targets are
+-- separated, with AArch64 (Seed, Link, Linkage.Sym, Linkage.ResumePoint and
+-- the driver use it; the separation moves the x86 code into this group and
+-- puts a target's assembler behind an interface)
 
 import Data.List
 

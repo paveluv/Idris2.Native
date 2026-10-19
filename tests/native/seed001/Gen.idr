@@ -52,7 +52,8 @@ unsupportedMsg = map (cast . ord) (unpack "idris: unsupported: a construct, in M
 unsupportedProg : List Instr
 unsupportedProg =
   [ Lbl (symLabel SymMain)
-  , Lea RDI (MRip reservedLabels 0), MovRI RSI (cast (length unsupportedMsg)), Jmp (symLabel SymUnsupported) ]
+  , Lea RDI (MRip reservedLabels 0), MovRI RSI (cast (length unsupportedMsg)),
+    Jmp (symLabel SymUnsupported) ]
 
 -- 3. A (3 words) via the slow path; B (8 MiB, larger than a window) via the
 -- slow path, filling its window exactly; C through the inline fast path (lea,
@@ -121,7 +122,9 @@ allocSlowByHand =
   , Ret ]
 
 emit : String -> List Instr -> List (Label, List Bits8) -> IO ()
-emit name prog rodata = case linkProgram SeedEnc windowBytes seedAreas (prog ++ startByHand ++ allocSlowByHand ++ crashByHand) rodata of
+emit name prog rodata =
+  case linkProgram SeedEnc windowBytes seedAreas
+    (prog ++ startByHand ++ allocSlowByHand ++ crashByHand) rodata of
   Left missing => putStrLn (name ++ ": unresolved labels " ++ show missing)
   Right image => do
     Right () <- writeImage name image

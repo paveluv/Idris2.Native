@@ -68,7 +68,8 @@ sizeAt : Bits64 -> Ordo.Op Ordo Bits64
 sizeAt a = do
   h <- firstWord a
   if HeapObj.Shape.isFrame h
-     then do l <- Memory.loadAt (Raw.fromWord h) (0 - 8); Ordo.pure (HeapObj.LayoutWord.continuationWords l)
+     then do l <- Memory.loadAt (Raw.fromWord h) (0 - 8)
+             Ordo.pure (HeapObj.LayoutWord.continuationWords l)
      else Ordo.pure (HeapObj.Shape.objectWordsOf h)
 
 export
@@ -92,7 +93,8 @@ Memory Ordo where
       scannedAt a = do
         h <- firstWord a
         if HeapObj.Shape.isFrame h
-           then do l <- Memory.loadAt (Raw.fromWord h) (0 - 8); Ordo.pure (HeapObj.LayoutWord.continuationScanned l)
+           then do l <- Memory.loadAt (Raw.fromWord h) (0 - 8)
+                   Ordo.pure (HeapObj.LayoutWord.continuationScanned l)
            else Ordo.pure (HeapObj.Shape.scannedOf h)
   forwarded a = do
     h <- firstWord a

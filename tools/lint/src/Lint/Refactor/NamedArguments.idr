@@ -17,7 +17,8 @@ import Data.Maybe
 ||| function's line, past the others, up to what ends the application: an
 ||| operator, a closing bracket, a keyword.
 export
-namedArguments : (text : List String) -> (at : (Int, Int)) -> (function, name : String) -> List ((Int, Int), Bool)
+namedArguments : (text : List String) -> (at : (Int, Int)) -> (function, name : String) ->
+                 List ((Int, Int), Bool)
 namedArguments ls (l, c) f n =
   let line = fromMaybe "" (head' (drop (cast l) ls))
       start = c + cast (length f)
@@ -32,7 +33,8 @@ namedArguments ls (l, c) f n =
     balanced Z cs = (0, cs)
     balanced _ [] = (0, [])
     balanced (S d) (x :: xs) =
-      let depth = if x == '{' || x == '(' || x == '[' then S (S d) else if x == '}' || x == ')' || x == ']' then d else S d
+      let depth = if x == '{' || x == '(' || x == '[' then S (S d) else if x == '}' || x == ')' || x
+            == ']' then d else S d
           (k, rest) = balanced depth xs
       in (k + 1, rest)
 

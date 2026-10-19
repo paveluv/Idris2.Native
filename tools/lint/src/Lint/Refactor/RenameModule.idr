@@ -46,7 +46,8 @@ import Lint.Source
 export
 renameModule : (arguments : List String) -> Refactoring
 renameModule args =
-  MkRefactoring "rename-module" "rename a module or a group (--arg OLD --arg NEW), its files moved and its importers rewritten"
+  MkRefactoring "rename-module"
+    "rename a module or a group (--arg OLD --arg NEW), its files moved and its importers rewritten"
     True False candidates
   where
     ||| A module's name.
@@ -59,26 +60,33 @@ renameModule args =
 
     -- a name written qualified by the old module's last parts, written
     -- with as many of the new one's
-    requalified : (old, new : String) -> (exports : List String) -> Subject -> (FC, Name) -> List Edit
+    requalified : (old, new : String) -> (exports : List String) -> Subject -> (FC, Name) ->
+                  List Edit
     requalified old new exports t (fc, NS ns (UN (Basic n))) =
       let q = partsOf (show ns)
           k = length q
       in case bounds fc of
            Just ((l, c), (l', c')) =>
              let shown = substr (cast c) (cast (c' - c)) (lineOf t l) in
-             if l /= l' || not (n `elem` exports) || not (isSuffixOf q (partsOf old)) || shown /= show ns ++ "." ++ n then []
-             else [MkEdit (l, c) (l', c') (joinBy "." (drop (length (partsOf new) `minus` k) (partsOf new)) ++ "." ++ n)]
+             if l /= l' || not (n `elem` exports) || not (isSuffixOf q (partsOf old)) || shown
+               /= show ns ++ "." ++ n then []
+             else
+               [MkEdit (l, c) (l', c')
+                (joinBy "." (drop (length (partsOf new) `minus` k) (partsOf new)) ++ "." ++ n)]
            Nothing => []
     requalified _ _ _ _ _ = []
 
     -- an importer's edits: its import of the old module made one of the
     -- new, with what follows the name kept, and the names written by the
     -- old module's name rewritten
-    importerEdits : (old, new : String) -> (exports : List String) -> Subject -> Maybe (String, List Edit)
+    importerEdits : (old, new : String) -> (exports : List String) -> Subject ->
+                    Maybe (String, List Edit)
     importerEdits old new exports t =
       case List.filter (\i => show i.path == old) t.file.mod.imports of
         [] => Nothing
-        is => Just (t.file.path, map importEdit is ++ concatMap (requalified old new exports t) t.written)
+        is =>
+          Just (t.file.path,
+                map importEdit is ++ concatMap (requalified old new exports t) t.written)
       where
         importEdit : Import -> Edit
         importEdit i =
@@ -92,24 +100,31 @@ renameModule args =
     -- the module renamed, or why not
     plan : Project -> Subject -> (old, new : String) -> Either String Change
     plan p s old new = do
-      when (any (\t => nameOf t == new) p.files) $ Left ("`" ++ new ++ "` is among the files already")
+      when (any (\t => nameOf t == new) p.files) $
+        Left ("`" ++ new ++ "` is among the files already")
       l <- listingOf p.packages old new
       ptext <- maybe (Left "the package's text cannot be read") Right (lookup l.package p.packages)
       let exports = nub (concatMap (.visible) s.declared)
-          header = maybe (-1) fst (find (isPrefixOf "module " . snd) (zip [0 .. cast (length (linesOf s))] (linesOf s)))
-          own = MkEdit (header, 0) (header + 1, 0) ("module " ++ new ++ "\n") :: concatMap (requalified old new exports s) s.written
+          header =
+            maybe (-1) fst
+              (find (isPrefixOf "module " . snd) (zip [0 .. cast (length (linesOf s))] (linesOf s)))
+          own = MkEdit (header, 0) (header + 1, 0) ("module " ++ new ++ "\n")
+            :: concatMap (requalified old new exports s) s.written
           entry = l.indent ++ new ++ (if l.lastInList then "" else ",")
           -- a list in order stays in order, the new name in its place
           listed = case moduleList ptext of
             Just ml => if sort ml.modules == ml.modules
-                         then replaceLines ml.first ml.last (moduleLines ml.indent (sort (map (\m => if m == old then new else m) ml.modules)))
+                         then replaceLines ml.first ml.last
+                           (moduleLines ml.indent
+                            (sort (map (\m => if m == old then new else m) ml.modules)))
                          else replaceLines l.line l.line [entry]
             Nothing => replaceLines l.line l.line [entry]
       when (header < 0) $ Left "it has no `module` line"
       text <- maybe (Left "its own edits overlap") Right (apply own s.text)
       pure (MkChange
               ((l.package, [listed])
-               :: mapMaybe (importerEdits old new exports) (List.filter (\t => nameOf t /= old) p.files))
+               :: mapMaybe (importerEdits old new exports)
+                 (List.filter (\t => nameOf t /= old) p.files))
               [(l.newPath, text)]
               [s.file.path])
 

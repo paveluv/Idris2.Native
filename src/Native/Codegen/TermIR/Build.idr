@@ -46,20 +46,25 @@ import Native.Types.Enc as Types
 export
 data PBody : Decls enc -> IRCommon.Conv enc -> Bool -> (v : IRCommon.Ty enc -> Type) ->
   (l : List (IRCommon.Ty enc) -> Type) -> Type where
-  PBind : {ts : List (IRCommon.Ty enc)} -> Instr d m v ts -> (All v ts -> PBody d c m v l) -> PBody d c m v l
-  PJoin : (ps : List (IRCommon.Ty enc)) -> (l ps -> All v ps -> PBody d c m v l) -> (l ps -> PBody d c m v l) ->
+  PBind : {ts : List (IRCommon.Ty enc)} -> Instr d m v ts -> (All v ts -> PBody d c m v l) ->
+          PBody d c m v l
+  PJoin : (ps : List (IRCommon.Ty enc)) -> (l ps -> All v ps -> PBody d c m v l) ->
+          (l ps -> PBody d c m v l) ->
           PBody d c m v l
   PJump : l ps -> All (Opnd v) ps -> PBody d c m v l
-  PBranch : {auto 0 int : IsInt t} -> IRCommon.Op.Rel -> Opnd v t -> Opnd v t -> (yes, no : PBody d c m v l) ->
+  PBranch : {auto 0 int : IsInt t} -> IRCommon.Op.Rel -> Opnd v t -> Opnd v t ->
+            (yes, no : PBody d c m v l) ->
             PBody d c m v l
   PIfFixnums : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} ->
                {n : Nat} -> Vect (S n) (Opnd v IRCommon.Ty.Val) ->
-               (All v (replicate (S n) (IRCommon.Ty.Fix {enc})) -> PBody d c m v l) -> PBody d c m v l ->
+               (All v (replicate (S n) (IRCommon.Ty.Fix {enc})) -> PBody d c m v l) ->
+                 PBody d c m v l ->
                  PBody d c m v l
   PArithOv : {t : IRCommon.Ty enc} -> {auto 0 int : IsInt t} -> OvOp -> Opnd v t -> Opnd v t ->
              (v t -> PBody d c m v l) -> PBody d c m v l -> PBody d c m v l
   PTagOv : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} ->
-           Opnd v IRCommon.Ty.W64 -> (v (IRCommon.Ty.Fix {enc}) -> PBody d c m v l) -> PBody d c m v l ->
+           Opnd v IRCommon.Ty.W64 -> (v (IRCommon.Ty.Fix {enc}) -> PBody d c m v l) ->
+             PBody d c m v l ->
              PBody d c m v l
   PSwitch : {auto 0 int : IsInt t} -> Opnd v t -> (keys : List Int64) ->
             {auto 0 ok : So (distinct keys && keysFit t keys)} ->
@@ -67,8 +72,10 @@ data PBody : Decls enc -> IRCommon.Conv enc -> Bool -> (v : IRCommon.Ty enc -> T
   PCall : Var d.sigs (MkSig n IRCommon.Conv.CPS ps cv) -> All (Opnd v) ps ->
           (v IRCommon.Ty.Val -> PBody d IRCommon.Conv.CPS m v l) ->
           PBody d IRCommon.Conv.CPS m v l
-  PTailCall : Var d.sigs (MkSig n IRCommon.Conv.CPS ps cv) -> All (Opnd v) ps -> PBody d IRCommon.Conv.CPS m v l
-  PApply : (fn, arg : Opnd v IRCommon.Ty.Val) -> (v IRCommon.Ty.Val -> PBody d IRCommon.Conv.CPS m v l) ->
+  PTailCall : Var d.sigs (MkSig n IRCommon.Conv.CPS ps cv) -> All (Opnd v) ps ->
+              PBody d IRCommon.Conv.CPS m v l
+  PApply : (fn, arg : Opnd v IRCommon.Ty.Val) ->
+           (v IRCommon.Ty.Val -> PBody d IRCommon.Conv.CPS m v l) ->
            PBody d IRCommon.Conv.CPS m v l
   PTailApply : (fn, arg : Opnd v IRCommon.Ty.Val) -> PBody d IRCommon.Conv.CPS m v l
   PReturn : Opnd v IRCommon.Ty.Val -> PBody d IRCommon.Conv.CPS m v l
@@ -81,7 +88,8 @@ data PBody : Decls enc -> IRCommon.Conv enc -> Bool -> (v : IRCommon.Ty enc -> T
 ||| variables and labels.
 public export
 0 Closed : Decls enc -> IRCommon.Conv enc -> Bool -> List (IRCommon.Ty enc) -> Type
-Closed d c m ps = {0 v : IRCommon.Ty enc -> Type} -> {0 l : List (IRCommon.Ty enc) -> Type} -> All v ps ->
+Closed d c m ps = {0 v : IRCommon.Ty enc -> Type} -> {0 l : List (IRCommon.Ty enc) -> Type} ->
+  All v ps ->
   PBody d c m v l
 
 ------------------------------------------------------------------------------
@@ -109,7 +117,8 @@ Monad (Build d c m v l) where
 
 ||| Code that ends the body: it never reaches the rest.
 public export
-0 End : Decls enc -> IRCommon.Conv enc -> Bool -> (IRCommon.Ty enc -> Type) -> (List (IRCommon.Ty enc) -> Type) -> Type
+0 End : Decls enc -> IRCommon.Conv enc -> Bool -> (IRCommon.Ty enc -> Type) ->
+  (List (IRCommon.Ty enc) -> Type) -> Type
 End d c m v l = Build d c m v l Void
 
 ||| The body that code ending in a terminator makes.
@@ -123,7 +132,8 @@ vars (x :: xs) = Opnd.V x :: vars xs
 
 ||| A body from `Build` code over the parameters.
 export
-build : ({0 v : IRCommon.Ty enc -> Type} -> {0 l : List (IRCommon.Ty enc) -> Type} -> All (Opnd v) ps ->
+build : ({0 v : IRCommon.Ty enc -> Type} -> {0 l : List (IRCommon.Ty enc) -> Type} ->
+         All (Opnd v) ps ->
          End d c m v l) ->
         Closed d c m ps
 build f xs = finish (f (vars xs))
@@ -145,7 +155,8 @@ emit0 i = MkBuild (\k => PBind i (\[] => k ()))
 
 ||| A Direct call, binding its results.
 export
-directCall : {rs : List (IRCommon.Ty enc)} -> Var d.sigs (MkSig n (IRCommon.Conv.Direct rs col) ps cv) ->
+directCall : {rs : List (IRCommon.Ty enc)} ->
+             Var d.sigs (MkSig n (IRCommon.Conv.Direct rs col) ps cv) ->
              All (Opnd v) ps ->
              Build d c m v l (All (Opnd v) rs)
 directCall f xs = vars <$> emit (Instr.DirectCall f xs)
@@ -159,11 +170,13 @@ call f xs = MkBuild (\k => PCall f xs (k . Opnd.V))
 ||| A closure applied to one argument: the rest of the code is its
 ||| continuation.
 export
-apply : (fn, arg : Opnd v IRCommon.Ty.Val) -> Build d IRCommon.Conv.CPS m v l (Opnd v IRCommon.Ty.Val)
+apply : (fn, arg : Opnd v IRCommon.Ty.Val) ->
+        Build d IRCommon.Conv.CPS m v l (Opnd v IRCommon.Ty.Val)
 apply f x = MkBuild (\k => PApply f x (k . Opnd.V))
 
 export
-tailCall : Var d.sigs (MkSig n IRCommon.Conv.CPS ps cv) -> All (Opnd v) ps -> End d IRCommon.Conv.CPS m v l
+tailCall : Var d.sigs (MkSig n IRCommon.Conv.CPS ps cv) -> All (Opnd v) ps ->
+           End d IRCommon.Conv.CPS m v l
 tailCall f xs = MkBuild (\_ => PTailCall f xs)
 
 export
@@ -194,7 +207,8 @@ unsupported s = MkBuild (\_ => PUnsupported s)
 
 ||| A jump to a block with its parameters.
 public export
-0 Jumper : Decls enc -> IRCommon.Conv enc -> Bool -> (IRCommon.Ty enc -> Type) -> (List (IRCommon.Ty enc) -> Type) ->
+0 Jumper : Decls enc -> IRCommon.Conv enc -> Bool -> (IRCommon.Ty enc -> Type) ->
+  (List (IRCommon.Ty enc) -> Type) ->
   List (IRCommon.Ty enc) -> Type
 Jumper d c m v l ps = All (Opnd v) ps -> End d c m v l
 
@@ -203,13 +217,16 @@ jumpTo lbl xs = MkBuild (\_ => PJump lbl xs)
 
 ||| A block with parameters, which the rest of the code may jump to.
 export
-block : (ps : List (IRCommon.Ty enc)) -> (All (Opnd v) ps -> End d c m v l) -> Build d c m v l (Jumper d c m v l ps)
-block ps body = MkBuild (\k => PJoin ps (\_, xs => finish (body (vars xs))) (\lbl => k (jumpTo lbl)))
+block : (ps : List (IRCommon.Ty enc)) -> (All (Opnd v) ps -> End d c m v l) ->
+        Build d c m v l (Jumper d c m v l ps)
+block ps body =
+  MkBuild (\k => PJoin ps (\_, xs => finish (body (vars xs))) (\lbl => k (jumpTo lbl)))
 
 ||| A join: the code given ends by jumping to the exit with values, and the
 ||| rest of the code runs on them, lowered once.
 export
-joinPoint : (ps : List (IRCommon.Ty enc)) -> (Jumper d c m v l ps -> End d c m v l) -> Build d c m v l (All (Opnd v) ps)
+joinPoint : (ps : List (IRCommon.Ty enc)) -> (Jumper d c m v l ps -> End d c m v l) ->
+            Build d c m v l (All (Opnd v) ps)
 joinPoint ps f = MkBuild (\k => PJoin ps (\_, xs => k (vars xs)) (\lbl => finish (f (jumpTo lbl))))
 
 ||| A loop: the body runs on the initial values and may jump back with new
@@ -218,28 +235,35 @@ export
 loop : (ps : List (IRCommon.Ty enc)) -> All (Opnd v) ps ->
        (Jumper d c m v l ps -> All (Opnd v) ps -> End d c m v l) -> End d c m v l
 loop ps init body =
-  MkBuild (\_ => PJoin ps (\lbl, xs => finish (body (jumpTo lbl) (vars xs))) (\lbl => PJump lbl init))
+  MkBuild
+    (\_ => PJoin ps (\lbl, xs => finish (body (jumpTo lbl) (vars xs))) (\lbl => PJump lbl init))
 
 ||| Compare two integers and branch.
 export
-branch : {auto 0 int : IsInt t} -> IRCommon.Op.Rel -> Opnd v t -> Opnd v t -> (yes, no : End d c m v l) -> End d c m v l
+branch : {auto 0 int : IsInt t} -> IRCommon.Op.Rel -> Opnd v t -> Opnd v t ->
+         (yes, no : End d c m v l) -> End d c m v l
 branch r x y yes no = MkBuild (\_ => PBranch r x y (finish yes) (finish no))
 
 ||| Leave by the code given when the relation holds; else go on.
 export
-leaveIf : {auto 0 int : IsInt t} -> IRCommon.Op.Rel -> Opnd v t -> Opnd v t -> End d c m v l -> Build d c m v l ()
+leaveIf : {auto 0 int : IsInt t} -> IRCommon.Op.Rel -> Opnd v t -> Opnd v t -> End d c m v l ->
+          Build d c m v l ()
 leaveIf r x y out = MkBuild (\k => PBranch r x y (finish out) (k ()))
 
 ||| Whether every value is a fixnum; the yes branch has them as `Fix`es.
 ||| An immediate is a fixnum (the erased value is fixnum 0), so only the
 ||| variables are tested, and with none the yes branch is taken outright.
 export
-ifFixnums : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> {n : Nat} -> Vect (S n) (Opnd v IRCommon.Ty.Val) ->
-            (All (Opnd v) (replicate (S n) (IRCommon.Ty.Fix {enc})) -> End d c m v l) -> End d c m v l -> End d c m v l
+ifFixnums : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> {n : Nat} ->
+            Vect (S n) (Opnd v IRCommon.Ty.Val) ->
+            (All (Opnd v) (replicate (S n) (IRCommon.Ty.Fix {enc})) -> End d c m v l) ->
+              End d c m v l -> End d c m v l
 ifFixnums vs yes no = case variables vs of
     [] => yes (fixes (fill vs []))
     (t :: ts) => MkBuild (\_ => PIfFixnums (Opnd.V t :: map Opnd.V (fromList ts))
-                                   (\fs => finish (yes (fixes (fill vs (narrowed {k = S (length ts)} fs)))))
+                                   (\fs =>
+                                     finish
+                                     (yes (fixes (fill vs (narrowed {k = S (length ts)} fs)))))
                                    (finish no))
   where
     -- The values to test: the variables.
@@ -249,7 +273,8 @@ ifFixnums vs yes no = case variables vs of
     variables (_ :: xs) = variables xs
 
     -- The tested values, narrowed, in order.
-    narrowed : {k : Nat} -> All v (replicate k (IRCommon.Ty.Fix {enc})) -> List (v (IRCommon.Ty.Fix {enc}))
+    narrowed : {k : Nat} -> All v (replicate k (IRCommon.Ty.Fix {enc})) ->
+               List (v (IRCommon.Ty.Fix {enc}))
     narrowed {k = Z} [] = []
     narrowed {k = S k} (f :: fs) = f :: narrowed fs
 
@@ -261,9 +286,11 @@ ifFixnums vs yes no = case variables vs of
     fill (Opnd.Vx {ok} i :: xs) fs = Opnd.Fx {ok} i :: fill xs fs
     fill (Opnd.Erased :: xs) fs = Opnd.Fx 0 :: fill xs fs
     fill (Opnd.V _ :: xs) (f :: fs) = Opnd.V f :: fill xs fs
-    fill (Opnd.V _ :: xs) [] = Opnd.Fx 0 :: fill xs []   -- not reached: one narrowed value per variable
+    fill (Opnd.V _ :: xs) [] = Opnd.Fx 0
+      :: fill xs []   -- not reached: one narrowed value per variable
 
-    fixes : Vect j (Opnd v (IRCommon.Ty.Fix {enc})) -> All (Opnd v) (replicate j (IRCommon.Ty.Fix {enc}))
+    fixes : Vect j (Opnd v (IRCommon.Ty.Fix {enc})) ->
+            All (Opnd v) (replicate j (IRCommon.Ty.Fix {enc}))
     fixes [] = []
     fixes (x :: xs) = x :: fixes xs
 
@@ -283,9 +310,11 @@ tagOv x ok ovf = MkBuild (\_ => PTagOv x (finish . ok . Opnd.V) (finish ovf))
 ||| them (`choose`) and passes the proof.
 export
 switch : {auto 0 int : IsInt t} -> Opnd v t -> (cases : List (Int64, End d c m v l)) ->
-         {auto 0 ok : So (Data.Distinct.distinct (map Builtin.fst cases) && Body.keysFit t (map Builtin.fst cases))} ->
+         {auto 0 ok : So (Data.Distinct.distinct (map Builtin.fst cases)
+                          && Body.keysFit t (map Builtin.fst cases))} ->
          End d c m v l -> End d c m v l
-switch x cases {ok} dflt = MkBuild (\_ => PSwitch x (map Builtin.fst cases) {ok} (bodies cases) (finish dflt))
+switch x cases {ok} dflt =
+  MkBuild (\_ => PSwitch x (map Builtin.fst cases) {ok} (bodies cases) (finish dflt))
   where
     bodies : (cs : List (Int64, End d c m v l)) -> All (\_ => PBody d c m v l) (map Builtin.fst cs)
     bodies [] = []
@@ -321,13 +350,15 @@ toBody ls dl pl ctx dc pc body = case body of
             (toBody ls dl pl (ts ++ ctx) (length ts + dc) (plusLength pc) (k (levels dc ts))) |]
   PJoin ps b r => do
     let lbl = MkLLvl {ps} dl
-    b' <- toBody (ps :: ls) (S dl) (cong S pl) (ps ++ ctx) (length ps + dc) (plusLength pc) (b lbl (levels dc ps))
+    b' <- toBody (ps :: ls) (S dl) (cong S pl) (ps ++ ctx) (length ps + dc) (plusLength pc)
+      (b lbl (levels dc ps))
     r' <- toBody (ps :: ls) (S dl) (cong S pl) ctx dc pc (r lbl)
     pure (Body.Join ps b' r')
   PJump lbl xs => [| Body.Jump (label ls dl pl lbl) (Opnd.traverseAll (opnd ctx dc pc) xs) |]
   PBranch {int} r x y a b =>
     [| (\x', y', a', b' => Body.Branch {int} r x' y' a' b')
-         (opnd ctx dc pc x) (opnd ctx dc pc y) (toBody ls dl pl ctx dc pc a) (toBody ls dl pl ctx dc pc b) |]
+         (opnd ctx dc pc x) (opnd ctx dc pc y) (toBody ls dl pl ctx dc pc a)
+           (toBody ls dl pl ctx dc pc b) |]
   PIfFixnums {fx} {n} vs y no =>
     [| (\vs', y', no' => Body.IfFixnums {fx} vs' y' no')
          (traverse (opnd ctx dc pc) vs)
@@ -339,7 +370,8 @@ toBody ls dl pl ctx dc pc body = case body of
   PArithOv {t} {int} o x y ok ovf =>
     [| (\x', y', ok', ovf' => Body.ArithOv {t} {int} o x' y' ok' ovf')
          (opnd ctx dc pc x) (opnd ctx dc pc y)
-         (toBody ls dl pl (t :: ctx) (S dc) (cong S pc) (ok (MkLvl dc))) (toBody ls dl pl ctx dc pc ovf) |]
+         (toBody ls dl pl (t :: ctx) (S dc) (cong S pc) (ok (MkLvl dc)))
+           (toBody ls dl pl ctx dc pc ovf) |]
   PTagOv {fx} x ok ovf =>
     [| (\x', ok', ovf' => Body.TagOv {fx} x' ok' ovf')
          (opnd ctx dc pc x)
@@ -364,7 +396,8 @@ toBody ls dl pl ctx dc pc body = case body of
   PCrash s => Just (Body.Crash s)
   PUnsupported s => Just (Body.Unsupported s)
   where
-    label : (ls : List (List (IRCommon.Ty enc))) -> (dl : Nat) -> (0 _ : dl = length ls) -> LLvl ps ->
+    label : (ls : List (List (IRCommon.Ty enc))) -> (dl : Nat) -> (0 _ : dl = length ls) ->
+            LLvl ps ->
             Maybe (Var ls ps)
     label ls dl _ (MkLLvl n) = if n < dl then Var.varAt (minus dl (S n)) ps ls else Nothing
 
@@ -377,7 +410,8 @@ toBody ls dl pl ctx dc pc body = case body of
         -- the top of the context and not the context's length, which made a long
         -- body cost the square of its length; the erased proof keeps the two in
         -- step.
-        var : (ctx : List (IRCommon.Ty enc')) -> (dc : Nat) -> (0 _ : dc = length ctx) -> Lvl t' -> Maybe (Var ctx t')
+        var : (ctx : List (IRCommon.Ty enc')) -> (dc : Nat) -> (0 _ : dc = length ctx) -> Lvl t' ->
+              Maybe (Var ctx t')
         var ctx dc _ (MkLvl n) = if n < dc then Var.varAt (minus dc (S n)) t' ctx else Nothing
     opnd ctx dc _ (Opnd.W i) = Just (Opnd.W i)
     opnd ctx dc _ (Opnd.Fx {fx} {ok} i) = Just (Opnd.Fx {fx} {ok} i)
@@ -393,7 +427,8 @@ toBody ls dl pl ctx dc pc body = case body of
         appendLength (x :: xs) ys = cong S (appendLength xs ys)
 
 cases ls dl pl ctx dc pc [] = Just []
-cases ls dl pl ctx dc pc (b :: bs) = [| toBody ls dl pl ctx dc pc b :: cases ls dl pl ctx dc pc bs |]
+cases ls dl pl ctx dc pc (b :: bs) =
+  [| toBody ls dl pl ctx dc pc b :: cases ls dl pl ctx dc pc bs |]
 
 ||| A closed body as a term over its parameters.
 export

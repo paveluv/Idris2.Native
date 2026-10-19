@@ -95,7 +95,8 @@ data Instr : Types.Enc -> Type where
   ||| The fixnum of a `W64`, as a `Fix`, or a branch to the label if the value
   ||| is outside the fixnum range. The label is a successor of the block at
   ||| this instruction, as for `ArithOv`.
-  TagOv      : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Reg enc -> Reg enc -> Label -> Instr enc
+  TagOv      : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Reg enc -> Reg enc -> Label ->
+    Instr enc
   ||| A `Val` as the type given, a `Fix` or a `PtrTo k`, which is the
   ||| destination's. No code: the producer guarantees it, after an `IfFixnums`
   ||| or a `Switch` on a header, or from static typing. The only way from a

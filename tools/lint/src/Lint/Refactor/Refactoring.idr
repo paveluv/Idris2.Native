@@ -127,7 +127,8 @@ record Run where
 ||| it was read from. A dry run prints its changes at the end, those of the
 ||| run that stood.
 export
-refactor : (dryRun : Bool) -> (check : Maybe String) -> Refactoring -> (project : IO Project) -> (changed : IO ()) -> (path : String) -> IO Report
+refactor : (dryRun : Bool) -> (check : Maybe String) -> Refactoring -> (project : IO Project) ->
+           (changed : IO ()) -> (path : String) -> IO Report
 refactor dryRun check r project changedFiles path = case check of
   Just cmd => if r.needsCheck then loop True check [] [] empty [] >>= finish else checkedOnce cmd
   Nothing => loop False Nothing [] [] empty [] >>= finish
@@ -262,19 +263,23 @@ refactor dryRun check r project changedFiles path = case check of
     ||| `check`, if one is given. `checked` says that a check judges the run,
     ||| now or once it is over, so that a candidate's preferred change may be
     ||| made: under a check, the change made when it fails.
-    loop : (checked : Bool) -> (check : Maybe String) -> List String -> List (String, String) -> Saved -> List (String, Saved, Change) -> IO Run
+    loop : (checked : Bool) -> (check : Maybe String) -> List String -> List (String, String) ->
+           Saved -> List (String, Saved, Change) -> IO Run
     loop checked check changed stays saved made = do
       -- a change of another file's may have removed this one
       True <- exists path
         | False => pure (MkRun changed stays saved made)
       Right s <- load path
-        | Left e => pure (MkRun changed (("the file", "it does not parse: " ++ e) :: stays) saved made)
+        | Left e =>
+          pure (MkRun changed (("the file", "it does not parse: " ++ e) :: stays) saved made)
       others <- if r.wide then project else pure (MkProject [] [] Nothing [])
       let left = filter (\c => not (c.label `elem` map fst stays)) (r.candidates others s)
       case left of
         [] => pure (MkRun changed stays saved made)
         (c :: _) =>
-          if c.label `elem` changed then loop checked check changed ((c.label, "it comes back after its change") :: stays) saved made else
+          if c.label `elem` changed
+            then loop checked check changed ((c.label, "it comes back after its change") :: stays)
+              saved made else
           case c.plan of
             Left why => loop checked check changed ((c.label, why) :: stays) saved made
             Right ch => do
@@ -285,7 +290,8 @@ refactor dryRun check r project changedFiles path = case check of
                   changedFiles
                   -- what a file was before the run is kept, not what it
                   -- was before this change
-                  loop checked check (c.label :: changed) stays (mergeLeft saved before) ((c.label, before, ch') :: made)
+                  loop checked check (c.label :: changed) stays (mergeLeft saved before)
+                    ((c.label, before, ch') :: made)
       where
         -- the preferred change if there is one and it checks, else the
         -- change; what the files were before it, and the change made
@@ -303,7 +309,8 @@ refactor dryRun check r project changedFiles path = case check of
     checkedOnce cmd = do
       unchecked <- loop True Nothing [] [] empty []
       -- the Idris files the run touched that are there after it
-      there <- traverse (\p => (p,) <$> exists p) (filter (isSuffixOf ".idr") (keys unchecked.saved))
+      there <- traverse (\p => (p,) <$> exists p)
+        (filter (isSuffixOf ".idr") (keys unchecked.saved))
       let touched = map fst (filter snd there)
       Nothing <- failsOn cmd touched
         | Just _ => do

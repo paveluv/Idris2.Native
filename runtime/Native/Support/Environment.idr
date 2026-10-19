@@ -128,7 +128,8 @@ own = do
 ||| and `overwrite` is false; whether it is, which it is not for a name
 ||| that cannot be a variable's (`validName`) or when there is no memory.
 export covering
-set : (name : Raw) -> (nameLen : Bits64) -> (value : Raw) -> (valueLen : Bits64) -> (overwrite : Bool) ->
+set : (name : Raw) -> (nameLen : Bits64) -> (value : Raw) -> (valueLen : Bits64) ->
+      (overwrite : Bool) ->
       Runtime.Ordo.Op Runtime.Ordo Bool
 set name nl value vl overwrite = do
   valid <- validName name nl
@@ -156,7 +157,8 @@ set name nl value vl overwrite = do
     ||| A new entry, `NAME=value` and a zero byte, in a block for `use`;
     ||| `none` if there is no memory for it.
     %inline covering
-    newEntry : (none : Runtime.Ordo.Op Runtime.Ordo Bool) -> (use : (1 e : Block) -> Runtime.Ordo.Op Runtime.Ordo Bool) ->
+    newEntry : (none : Runtime.Ordo.Op Runtime.Ordo Bool) ->
+               (use : (1 e : Block) -> Runtime.Ordo.Op Runtime.Ordo Bool) ->
                Runtime.Ordo.Op Runtime.Ordo Bool
     newEntry none use =
       Runtime.Alloc.Block.allocate (nl + vl + 2) none (\b => do

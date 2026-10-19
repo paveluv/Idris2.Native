@@ -39,8 +39,10 @@ record Tally where
 
 export
 Show Tally where
-  show t = show t.allocs ++ " allocations, " ++ show t.frees ++ " frees, " ++ show t.nulls ++ " null, "
-           ++ show t.misaligned ++ " misaligned, " ++ show t.overlaps ++ " overlapping, " ++ show t.corrupted ++ " corrupted"
+  show t = show t.allocs ++ " allocations, " ++ show t.frees ++ " frees, " ++ show t.nulls
+    ++ " null, "
+           ++ show t.misaligned ++ " misaligned, " ++ show t.overlaps ++ " overlapping, "
+             ++ show t.corrupted ++ " corrupted"
 
 nextWord : Bits64 -> Bits64
 nextWord s = s * 6364136223846793005 + 1442695040888963407
@@ -91,7 +93,8 @@ release ops live t a = case lookup a live of
     ops.free a
     pure (delete a live, { frees $= S, corrupted $= (if x == tag && y == tag then id else S) } t)
 
-steps : Ops -> (large : Bits64) -> Live -> Tally -> (seed : Bits64) -> (left : Nat) -> IO (Live, Tally)
+steps : Ops -> (large : Bits64) -> Live -> Tally -> (seed : Bits64) -> (left : Nat) ->
+        IO (Live, Tally)
 steps ops large live t s Z = pure (live, t)
 steps ops large live t s (S k) = do
   let s' = nextWord s

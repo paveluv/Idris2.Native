@@ -71,12 +71,14 @@ withoutBinder g t = go [] (unpack t)
     go : List Char -> List Char -> String
     go acc [] = pack (reverse acc)
     go acc cs@(c :: more) =
-      if isPrefixOf gs cs then pack (reverse acc) ++ pack (arrow (drop (length gs) cs)) else go (c :: acc) more
+      if isPrefixOf gs cs then pack (reverse acc) ++ pack (arrow (drop (length gs) cs))
+        else go (c :: acc) more
 
 ||| The name a binder group binds, `{auto 0 fx : T}` binding `fx`.
 export
 binderName : (tidy : String) -> Maybe String
 binderName g =
-  case dropWhile (\w => w `elem` the (List String) ["auto", "0", "1"]) (words (substr 1 (length g `minus` 2) g)) of
+  case dropWhile (\w => w `elem` the (List String) ["auto", "0", "1"])
+    (words (substr 1 (length g `minus` 2) g)) of
     (n :: ":" :: _) => Just n
     _ => Nothing

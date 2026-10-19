@@ -132,7 +132,8 @@ export
 appendValues : Value enc v -> Value enc v -> Value enc v
 appendValues (MkValue a xs) (MkValue b ys) = MkValue (a ++ b) (go a xs)
   where
-    go : (a' : Flat.Exp.Layout) -> All (TermIR.Opnd v) (tys a') -> All (TermIR.Opnd v) (tys (a' ++ b))
+    go : (a' : Flat.Exp.Layout) -> All (TermIR.Opnd v) (tys a') ->
+         All (TermIR.Opnd v) (tys (a' ++ b))
     go [] [] = ys
     go (_ :: rs) (x :: xs') = x :: go rs xs'
 
@@ -191,7 +192,8 @@ export
 zeros : (a : Flat.Exp.Layout) -> TermIR.Build d c m v l (All (TermIR.Opnd v) (tys a))
 zeros [] = pure []
 zeros (Flat.Exp.Word :: rs) = (TermIR.Opnd.W 0 ::) <$> zeros rs
-zeros (Flat.Exp.Dbl :: rs) = do z <- TermIR.Build.emit1 (TermIR.Instr.FConst 0.0); (z ::) <$> zeros rs
+zeros (Flat.Exp.Dbl :: rs) = do z <- TermIR.Build.emit1 (TermIR.Instr.FConst 0.0)
+                                (z ::) <$> zeros rs
 zeros (Flat.Exp.Uniform :: rs) = (TermIR.Opnd.Erased ::) <$> zeros rs
 
 ------------------------------------------------------------------------------
@@ -214,7 +216,8 @@ record Placement where
 export
 placement : List Flat.Exp.ConShape -> Name -> Maybe (Flat.Exp.ConShape, Placement)
 placement [] _ = Nothing
-placement [c] n = if c.name == n then Just (c, MkPlacement Nothing [] (Flat.Exp.fieldsLayout c.fields) []) else Nothing
+placement [c] n = if c.name == n
+  then Just (c, MkPlacement Nothing [] (Flat.Exp.fieldsLayout c.fields) []) else Nothing
 placement cs n = do
   i <- position cs 0
   c <- getAt i cs
@@ -274,7 +277,8 @@ callees d fds = fromList (mapMaybe one (TermIR.Var.enumerate d.sigs))
     one (TermIR.MkSig n (IRCommon.Conv.Direct rs False) ps cv ** var) = do
       fd <- lookup n byName
       case (decEq rs (tys fd.result),
-            decEq ps (tys (paramsLayout fd.params)), decEq cv (Linkage.ConvertsIn.convertsIn fd.name)) of
+            decEq ps (tys (paramsLayout fd.params)),
+              decEq cv (Linkage.ConvertsIn.convertsIn fd.name)) of
         (Yes Refl, Yes Refl, Yes Refl) => Just (fd.name, MkCallee fd (n ** var))
         _ => Nothing
     one _ = Nothing
@@ -325,7 +329,8 @@ record Forms (enc : Types.Enc) (d : TermIR.Decls enc) where
 Env : (enc : Types.Enc) -> (IRCommon.Ty enc -> Type) -> Type
 Env enc v = SortedMap Name (Flat.Exp.Skeleton, Value enc v)
 
-parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self : Flat.Exp.FlatDef) (m : Bool)
+parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self : Flat.Exp.FlatDef)
+  (m : Bool)
            {0 v : IRCommon.Ty enc -> Type} {0 l : List (IRCommon.Ty enc) -> Type}
 
   0 B : Type -> Type
@@ -335,7 +340,9 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
   E = TermIR.Build.End d (IRCommon.Conv.Direct (tys self.result) False) m v l
 
   0 Again : Type
-  Again = TermIR.Build.Jumper d (IRCommon.Conv.Direct (tys self.result) False) m v l (tys (paramsLayout self.params))
+  Again =
+    TermIR.Build.Jumper d (IRCommon.Conv.Direct (tys self.result) False) m v l
+      (tys (paramsLayout self.params))
 
   ------------------------------------------------------------------------------
   -- Words and doubles
@@ -360,7 +367,8 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
     expr env exp = case exp of
       Flat.Exp.FVar _ x => case lookup x env of
                  Just t => pure t
-                 Nothing => TermIR.Build.unsupported ("the unbound variable " ++ show x ++ " in a flat form")
+                 Nothing =>
+                   TermIR.Build.unsupported ("the unbound variable " ++ show x ++ " in a flat form")
       Flat.Exp.FLet _ fv val sc => do
                  env' <- bind env fv val
                  expr env' sc
@@ -378,7 +386,8 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
                      xs <- traverse (\a => snd <$> expr env a) args
                      (_, x) <- callForm f xs
                      maybe
-                       (TermIR.Build.unsupported ("the OS service " ++ show n ++ ", whose result is not its type's"))
+                       (TermIR.Build.unsupported
+                         ("the OS service " ++ show n ++ ", whose result is not its type's"))
                            (\rs => pure (sk, MkValue lay rs)) (regsAs lay x)
                    Nothing => case lookup n pr.primitives of
                      -- one of the backend's: its instructions
@@ -386,19 +395,22 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
                        xs <- traverse (\a => snd <$> expr env a) args
                        x <- primitive n p (concatValues xs)
                        maybe
-                         (TermIR.Build.unsupported ("the primitive " ++ show n ++ ", whose result is not its type's"))
+                         (TermIR.Build.unsupported
+                           ("the primitive " ++ show n ++ ", whose result is not its type's"))
                              (\rs => pure (sk, MkValue lay rs)) (regsAs lay x)
                      Nothing => case lookup n pr.tables of
                        -- a table: a load of the row at the index
                        Just (lo, width) => do
                          xs <- traverse (\a => snd <$> expr env a) args
                          row n lo width lay (concatValues xs) >>= \rs => pure (sk, MkValue lay rs)
-                       Nothing => TermIR.Build.unsupported ("the primitive " ++ show n ++ " in a flat form")
+                       Nothing =>
+                         TermIR.Build.unsupported ("the primitive " ++ show n ++ " in a flat form")
                  Just i => do
                    xs <- traverse (\a => snd <$> expr env a) args
                    x <- inlineExtern n i (concatValues xs)
                    maybe
-                     (TermIR.Build.unsupported ("the inline extern " ++ show n ++ ", whose result is not its type's"))
+                     (TermIR.Build.unsupported
+                       ("the inline extern " ++ show n ++ ", whose result is not its type's"))
                          (\rs => pure (sk, MkValue lay rs)) (regsAs lay x)
       Flat.Exp.FCon _ c _ sk lay args => do
                  xs <- traverse (\a => snd <$> expr env a) args
@@ -406,16 +418,19 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
                  case regsAs lay x of
                    Just rs => pure (sk, MkValue lay rs)
                    Nothing =>
-                     TermIR.Build.unsupported ("the constructor " ++ show c ++ ", whose layout is not its type's")
+                     TermIR.Build.unsupported
+                       ("the constructor " ++ show c ++ ", whose layout is not its type's")
       e@(Flat.Exp.FCase _ scr alts def) => case typeOf (layouts env) e of
         Nothing => do
-          _ <- TermIR.Build.joinPoint [] $ \exit => dispatch env scr alts def (\env', b => do _ <- expr env' b; exit [])
+          _ <- TermIR.Build.joinPoint [] $ \exit =>
+            dispatch env scr alts def (\env', b => do _ <- expr env' b; exit [])
           TermIR.Build.unsupported "a case that has no value"
         Just (sk, lay) => do
           rs <- TermIR.Build.joinPoint (tys lay) $ \exit =>
             dispatch env scr alts def $ \env', b => do
               (_, x) <- expr env' b
-              maybe (TermIR.Build.unsupported "an alternative of another layout") exit (regsAs lay x)
+              maybe (TermIR.Build.unsupported "an alternative of another layout") exit
+                (regsAs lay x)
           pure (sk, MkValue lay rs)
       Flat.Exp.FCrash _ msg => TermIR.Build.crash msg
       Flat.Exp.FNone _ => pure (Flat.Exp.SOther, noRegs)
@@ -447,22 +462,29 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
              then TermIR.Build.unsupported ("the table " ++ show n ++ " of rows of another layout")
              else do
                base <- TermIR.Build.emit1 (TermIR.Instr.TableAddr n)
-               i <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.Sub k (TermIR.Opnd.W (cast lo)))
-               off <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.Mul i (TermIR.Opnd.W (cast (8 * width))))
+               i <- TermIR.Build.emit1
+                 (TermIR.Instr.Arith IRCommon.Op.Sub k (TermIR.Opnd.W (cast lo)))
+               off <- TermIR.Build.emit1
+                 (TermIR.Instr.Arith IRCommon.Op.Mul i (TermIR.Opnd.W (cast (8 * width))))
                a <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.Add base off)
                words a 0 lay
           where
-            words : TermIR.Opnd v IRCommon.Ty.W64 -> Int -> (l : Flat.Exp.Layout) -> B (All (TermIR.Opnd v) (tys l))
+            words : TermIR.Opnd v IRCommon.Ty.W64 -> Int -> (l : Flat.Exp.Layout) ->
+                    B (All (TermIR.Opnd v) (tys l))
             words a j [] = pure []
             words a j (Flat.Exp.Word :: l) = do
-              w <- TermIR.Build.emit1 (TermIR.Instr.Load IRCommon.Ty.W64 (TermIR.MkMem (TermIR.Mem.AtWord a) Nothing j))
+              w <- TermIR.Build.emit1
+                (TermIR.Instr.Load IRCommon.Ty.W64 (TermIR.MkMem (TermIR.Mem.AtWord a) Nothing j))
               (w ::) <$> words a (j + 8) l
             words a j (Flat.Exp.Dbl :: l) = do
-              f <- TermIR.Build.emit1 (TermIR.Instr.Load IRCommon.Ty.F64 (TermIR.MkMem (TermIR.Mem.AtWord a) Nothing j))
+              f <- TermIR.Build.emit1
+                (TermIR.Instr.Load IRCommon.Ty.F64 (TermIR.MkMem (TermIR.Mem.AtWord a) Nothing j))
               (f ::) <$> words a (j + 8) l
             words a j (Flat.Exp.Uniform :: _) =
-              TermIR.Build.unsupported ("the table " ++ show n ++ " of a value as ordinary code holds it")
-        row n _ _ _ _ = TermIR.Build.unsupported ("the table " ++ show n ++ " at an index of another layout")
+              TermIR.Build.unsupported
+                ("the table " ++ show n ++ " of a value as ordinary code holds it")
+        row n _ _ _ _ =
+          TermIR.Build.unsupported ("the table " ++ show n ++ " at an index of another layout")
 
         ||| A primitive's instructions, from its arguments' registers, which are
         ||| its signature's, into its results'.
@@ -476,25 +498,35 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
         primitive n Primitive.BitsDouble (MkValue [Flat.Exp.Word] [w]) = do
           f <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.BitsF w)
           pure (MkValue [Flat.Exp.Dbl] [f])
-        primitive n _ _ = TermIR.Build.unsupported ("the primitive " ++ show n ++ " on registers other than its signature's")
+        primitive n _ _ =
+          TermIR.Build.unsupported
+            ("the primitive " ++ show n ++ " on registers other than its signature's")
 
         ||| An inline extern's instructions, from its arguments' registers, which
         ||| are its port's: the intrinsic's expansion (`Linkage.Expansion`), which
         ||| Idris has checked against the same port.
         inlineExtern : Name -> Intrinsic -> Value enc v -> B (Value enc v)
-        inlineExtern n i x = case operands (Linkage.Routine.portParams (Intrinsic.port i)) x.layout x.regs of
+        inlineExtern n i x =
+          case operands (Linkage.Routine.portParams (Intrinsic.port i)) x.layout x.regs of
           Just os => expand (Linkage.Expansion.expansion i) os
-          Nothing => TermIR.Build.unsupported ("the inline extern " ++ show n ++ " on registers other than its port's")
+          Nothing =>
+            TermIR.Build.unsupported
+              ("the inline extern " ++ show n ++ " on registers other than its port's")
           where
             outside : B a
-            outside = TermIR.Build.unsupported ("the inline extern " ++ show n ++ " outside the memory module")
+            outside =
+              TermIR.Build.unsupported
+                ("the inline extern " ++ show n ++ " outside the memory module")
 
             -- the registers of a value, as the types its port gives them
-            operands : (ts : List (IRCommon.Ty enc)) -> (l : Flat.Exp.Layout) -> All (TermIR.Opnd v) (tys l) ->
+            operands : (ts : List (IRCommon.Ty enc)) -> (l : Flat.Exp.Layout) ->
+                       All (TermIR.Opnd v) (tys l) ->
                        Maybe (All (TermIR.Opnd v) ts)
             operands [] [] [] = Just []
-            operands (IRCommon.Ty.W64 :: ts) (Flat.Exp.Word :: l) (r :: rs) = (r ::) <$> operands ts l rs
-            operands (IRCommon.Ty.Val :: ts) (Flat.Exp.Uniform :: l) (r :: rs) = (r ::) <$> operands ts l rs
+            operands (IRCommon.Ty.W64 :: ts) (Flat.Exp.Word :: l) (r :: rs) =
+              (r ::) <$> operands ts l rs
+            operands (IRCommon.Ty.Val :: ts) (Flat.Exp.Uniform :: l) (r :: rs) =
+              (r ::) <$> operands ts l rs
             operands _ _ _ = Nothing
 
             word : TermIR.Opnd v IRCommon.Ty.W64 -> Value enc v
@@ -504,8 +536,10 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
             -- a pointer, converted from or to its word, so that only this
             -- module's functions read or set it
             getWord : IRCommon.Pinned -> B (TermIR.Opnd v IRCommon.Ty.W64)
-            getWord IRCommon.Pinned.Hp = TermIR.Build.emit1 (TermIR.Instr.GetPinned IRCommon.Pinned.Hp)
-            getWord IRCommon.Pinned.HpLim = TermIR.Build.emit1 (TermIR.Instr.GetPinned IRCommon.Pinned.HpLim)
+            getWord IRCommon.Pinned.Hp =
+              TermIR.Build.emit1 (TermIR.Instr.GetPinned IRCommon.Pinned.Hp)
+            getWord IRCommon.Pinned.HpLim =
+              TermIR.Build.emit1 (TermIR.Instr.GetPinned IRCommon.Pinned.HpLim)
             getWord IRCommon.Pinned.K = case m of
               True => do
                 p <- TermIR.Build.emit1 (TermIR.Instr.GetPinned IRCommon.Pinned.K)
@@ -513,8 +547,10 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
               False => outside
 
             setWord : IRCommon.Pinned -> TermIR.Opnd v IRCommon.Ty.W64 -> B ()
-            setWord IRCommon.Pinned.Hp x = TermIR.Build.emit0 (TermIR.Instr.SetPinned IRCommon.Pinned.Hp x)
-            setWord IRCommon.Pinned.HpLim x = TermIR.Build.emit0 (TermIR.Instr.SetPinned IRCommon.Pinned.HpLim x)
+            setWord IRCommon.Pinned.Hp x =
+              TermIR.Build.emit0 (TermIR.Instr.SetPinned IRCommon.Pinned.Hp x)
+            setWord IRCommon.Pinned.HpLim x =
+              TermIR.Build.emit0 (TermIR.Instr.SetPinned IRCommon.Pinned.HpLim x)
             setWord IRCommon.Pinned.K x = case m of
               True => do
                 p <- TermIR.Build.emit1 (TermIR.Instr.WordToAddr Types.Kind.CONT x)
@@ -522,28 +558,40 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
               False => outside
 
             -- the instructions an expansion stands for, on its port's operands
-            expand : Linkage.Expansion p -> All (TermIR.Opnd v) (Linkage.Routine.portParams {enc} p) ->
+            expand : Linkage.Expansion p ->
+                     All (TermIR.Opnd v) (Linkage.Routine.portParams {enc} p) ->
                     B (Value enc v)
             expand (Linkage.Expansion.Load Linkage.Expansion.Whole) [base, off] = do
               a <- TermIR.Build.emit1 (TermIR.Instr.Arith Add base off)
-              word <$> TermIR.Build.emit1 (TermIR.Instr.Load IRCommon.Ty.W64 (TermIR.MkMem (TermIR.Mem.AtWord a) Nothing 0))
+              word <$> TermIR.Build.emit1
+                (TermIR.Instr.Load IRCommon.Ty.W64 (TermIR.MkMem (TermIR.Mem.AtWord a) Nothing 0))
             expand (Linkage.Expansion.Load (Linkage.Expansion.Narrow sw)) [base, off] = do
               a <- TermIR.Build.emit1 (TermIR.Instr.Arith Add base off)
-              word <$> TermIR.Build.emit1 (TermIR.Instr.LoadN sw False (TermIR.MkMem (TermIR.Mem.AtWord a) Nothing 0))
+              word <$> TermIR.Build.emit1
+                (TermIR.Instr.LoadN sw False (TermIR.MkMem (TermIR.Mem.AtWord a) Nothing 0))
             expand (Linkage.Expansion.Store Linkage.Expansion.Whole) [base, off, x] = do
               a <- TermIR.Build.emit1 (TermIR.Instr.Arith Add base off)
-              TermIR.Build.emit0 (TermIR.Instr.Store IRCommon.Ty.W64 (TermIR.MkMem (TermIR.Mem.AtWord a) Nothing 0) x)
+              TermIR.Build.emit0
+                (TermIR.Instr.Store IRCommon.Ty.W64 (TermIR.MkMem (TermIR.Mem.AtWord a) Nothing 0)
+                 x)
               pure noRegs
             expand (Linkage.Expansion.Store (Linkage.Expansion.Narrow sw)) [base, off, x] = do
               a <- TermIR.Build.emit1 (TermIR.Instr.Arith Add base off)
-              TermIR.Build.emit0 (TermIR.Instr.StoreN sw (TermIR.MkMem (TermIR.Mem.AtWord a) Nothing 0) x)
+              TermIR.Build.emit0
+                (TermIR.Instr.StoreN sw (TermIR.MkMem (TermIR.Mem.AtWord a) Nothing 0) x)
               pure noRegs
             expand (Linkage.Expansion.Get r) [] = word <$> getWord r
-            expand (Linkage.Expansion.Set IRCommon.Pinned.Hp) [x] = do setWord IRCommon.Pinned.Hp x; pure noRegs
-            expand (Linkage.Expansion.Set IRCommon.Pinned.HpLim) [x] = do setWord IRCommon.Pinned.HpLim x; pure noRegs
-            expand (Linkage.Expansion.Set IRCommon.Pinned.K) [x] = do setWord IRCommon.Pinned.K x; pure noRegs
-            expand Linkage.Expansion.PointerTag [] = pure (word (TermIR.Opnd.W (cast (HeapObj.ValEnc.pointerTag enc.val))))
-            expand (Linkage.Expansion.AreaAddress a) [] = word <$> TermIR.Build.emit1 (TermIR.Instr.AreaAddr a)
+            expand (Linkage.Expansion.Set IRCommon.Pinned.Hp) [x] = do setWord IRCommon.Pinned.Hp x
+                                                                       pure noRegs
+            expand (Linkage.Expansion.Set IRCommon.Pinned.HpLim) [x] = do setWord
+                                                                            IRCommon.Pinned.HpLim x
+                                                                          pure noRegs
+            expand (Linkage.Expansion.Set IRCommon.Pinned.K) [x] = do setWord IRCommon.Pinned.K x
+                                                                      pure noRegs
+            expand Linkage.Expansion.PointerTag [] =
+              pure (word (TermIR.Opnd.W (cast (HeapObj.ValEnc.pointerTag enc.val))))
+            expand (Linkage.Expansion.AreaAddress a) [] =
+              word <$> TermIR.Build.emit1 (TermIR.Instr.AreaAddr a)
             -- a uniform value and a word: the conversions, so this module's
             -- functions alone
             expand Linkage.Expansion.ValueWord [u] = case m of
@@ -562,15 +610,21 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
         construct sk c fs = case Flat.Exp.shapeOf pr.shapes sk of
           Just (Flat.Exp.DataShape cs) => case placement cs c of
             Just (_, p) => conValue p fs
-            Nothing => TermIR.Build.unsupported ("the constructor " ++ show c ++ ", which is not one of " ++ show sk)
-          _ => TermIR.Build.unsupported ("a constructor of " ++ show sk ++ ", whose shape is not known")
+            Nothing =>
+              TermIR.Build.unsupported
+                ("the constructor " ++ show c ++ ", which is not one of " ++ show sk)
+          _ =>
+            TermIR.Build.unsupported
+              ("a constructor of " ++ show sk ++ ", whose shape is not known")
 
         ||| The skeleton and layout of an expression's value, from the variables'
         ||| and the callees' results.
         typeOf : SortedMap Name (Flat.Exp.Skeleton, Flat.Exp.Layout) -> Flat.Exp ->
                  Maybe (Flat.Exp.Skeleton, Flat.Exp.Layout)
         typeOf env = Flat.Exp.expType (\x => lookup x env)
-                             (\n => (\c => (c.form.resultSkeleton, c.form.result)) <$> lookup n pr.callees)
+                             (\n =>
+                               (\c => (c.form.resultSkeleton, c.form.result)) <$> lookup n
+                               pr.callees)
 
         layouts : Env enc v -> SortedMap Name (Flat.Exp.Skeleton, Flat.Exp.Layout)
         layouts = map (\(sk, x) => (sk, x.layout))
@@ -583,7 +637,8 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
           (Mul t, [x, y]) => arith t Mul IRCommon.Op.FMul x y
           (Div DoubleType, [x, y]) => do a <- double x
                                          b <- double y
-                                         doubleVal <$> TermIR.Build.emit1 (TermIR.Instr.FArith IRCommon.Op.FDiv a b)
+                                         doubleVal <$> TermIR.Build.emit1
+                                           (TermIR.Instr.FArith IRCommon.Op.FDiv a b)
           (Div t, [x, y]) => withHeld t "division" $ \h => do
             a <- word x
             b <- word y
@@ -596,7 +651,8 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
             Words.nonZero b
             w <- Words.divide (signed h) True a b
             wordVal t <$> wrap h w
-          (Neg DoubleType, [x]) => do a <- double x; doubleVal <$> TermIR.Build.emit1 (TermIR.Instr.FNeg a)
+          (Neg DoubleType, [x]) => do a <- double x
+                                      doubleVal <$> TermIR.Build.emit1 (TermIR.Instr.FNeg a)
           (Neg t, [x]) => withHeld t "negation" $ \h => do
             a <- word x
             w <- TermIR.Build.emit1 (TermIR.Instr.Unary IRCommon.Op.Negate a)
@@ -620,7 +676,8 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
             wrap (Whole _) w = pure w
 
             double : Value enc v -> B (TermIR.Opnd v IRCommon.Ty.F64)
-            double x = maybe (TermIR.Build.unsupported "a double of another layout") pure (doubleOf x)
+            double x =
+              maybe (TermIR.Build.unsupported "a double of another layout") pure (doubleOf x)
 
             withHeld : PrimType -> String -> (Held -> B a) -> B a
             withHeld t what k = case held t of
@@ -646,10 +703,15 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
             castTo from to x =
               if from == to then pure (prim to x) else
               case (from, to) of
-                (DoubleType, CharType) => do f <- double x; w <- doubleToWord (Whole True) f; wordVal to <$> toChar w
-                (DoubleType, _) => withHeld to "a cast" $ \h => do f <- double x; wordVal to <$> doubleToWord h f
-                (_, DoubleType) => withHeld from "a cast" $ \h => do w <- word x; doubleVal <$> wordToDouble h w
-                (_, CharType) => withHeld from "a cast" $ \_ => do w <- word x; wordVal to <$> toChar w
+                (DoubleType, CharType) => do f <- double x
+                                             w <- doubleToWord (Whole True) f
+                                             wordVal to <$> toChar w
+                (DoubleType, _) => withHeld to "a cast" $ \h => do f <- double x
+                                                                   wordVal to <$> doubleToWord h f
+                (_, DoubleType) => withHeld from "a cast" $ \h => do w <- word x
+                                                                     doubleVal <$> wordToDouble h w
+                (_, CharType) => withHeld from "a cast" $ \_ => do w <- word x
+                                                                   wordVal to <$> toChar w
                 _ => withHeld from "a cast" $ \_ => withHeld to "a cast" $ \h => do
                        w <- word x
                        wordVal to <$> wrap h w
@@ -663,18 +725,23 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
                     TermIR.Build.branch IRCommon.Op.LtS w (TermIR.Opnd.W 0) (zero []) $
                       TermIR.Build.branch IRCommon.Op.LeS w (TermIR.Opnd.W 55295) (keep []) $
                         TermIR.Build.branch IRCommon.Op.LtS w (TermIR.Opnd.W 57344) (zero []) $
-                          TermIR.Build.branch IRCommon.Op.LeS w (TermIR.Opnd.W 1114111) (keep []) (zero [])
+                          TermIR.Build.branch IRCommon.Op.LeS w (TermIR.Opnd.W 1114111) (keep [])
+                            (zero [])
                   pure r
 
                 ||| A word of the integer type as a double. A `Bits64` at or above 2^63
                 ||| is halved, its low bit kept for the rounding, converted and doubled.
-                wordToDouble : Held -> TermIR.Opnd v IRCommon.Ty.W64 -> B (TermIR.Opnd v IRCommon.Ty.F64)
+                wordToDouble : Held -> TermIR.Opnd v IRCommon.Ty.W64 ->
+                               B (TermIR.Opnd v IRCommon.Ty.F64)
                 wordToDouble (Whole False) w = do
                   [f] <- TermIR.Build.joinPoint [IRCommon.Ty.F64] $ \done =>
                     TermIR.Build.branch IRCommon.Op.GeS w (TermIR.Opnd.W 0)
-                      (do f <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.I2F w); done [f]) $ do
-                      h <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.Shr w (TermIR.Opnd.W 1))
-                      b <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.And w (TermIR.Opnd.W 1))
+                      (do f <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.I2F w)
+                          done [f]) $ do
+                      h <- TermIR.Build.emit1
+                        (TermIR.Instr.Arith IRCommon.Op.Shr w (TermIR.Opnd.W 1))
+                      b <- TermIR.Build.emit1
+                        (TermIR.Instr.Arith IRCommon.Op.And w (TermIR.Opnd.W 1))
                       hb <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.Or h b)
                       f <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.I2F hb)
                       f2 <- TermIR.Build.emit1 (TermIR.Instr.FArith IRCommon.Op.FAdd f f)
@@ -684,16 +751,19 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
 
                 ||| A double truncated to the integer type. A `Bits64` at or above 2^63 is
                 ||| converted less 2^63, which is added back to the word.
-                doubleToWord : Held -> TermIR.Opnd v IRCommon.Ty.F64 -> B (TermIR.Opnd v IRCommon.Ty.W64)
+                doubleToWord : Held -> TermIR.Opnd v IRCommon.Ty.F64 ->
+                               B (TermIR.Opnd v IRCommon.Ty.W64)
                 doubleToWord (Whole False) f = do
                   big <- TermIR.Build.emit1 (TermIR.Instr.FConst 9223372036854775808.0)
                   above <- TermIR.Build.emit1 (TermIR.Instr.FCmp IRCommon.Op.GeS f big)
                   [w] <- TermIR.Build.joinPoint [IRCommon.Ty.W64] $ \done =>
                     TermIR.Build.branch IRCommon.Op.EqR above (TermIR.Opnd.W 0)
-                      (do w <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.F2I f); done [w]) $ do
+                      (do w <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.F2I f)
+                          done [w]) $ do
                       g <- TermIR.Build.emit1 (TermIR.Instr.FArith IRCommon.Op.FSub f big)
                       w <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.F2I g)
-                      w' <- TermIR.Build.emit1 (TermIR.Instr.Arith Add w (TermIR.Opnd.W (-9223372036854775808)))
+                      w' <- TermIR.Build.emit1
+                        (TermIR.Instr.Arith Add w (TermIR.Opnd.W (-9223372036854775808)))
                       done [w']
                   pure w
                 doubleToWord h f = do
@@ -704,14 +774,16 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
                     B (Flat.Exp.Skeleton, Value enc v)
             arith DoubleType _ o x y = do a <- double x
                                           b <- double y
-                                          doubleVal <$> TermIR.Build.emit1 (TermIR.Instr.FArith o a b)
+                                          doubleVal <$> TermIR.Build.emit1
+                                            (TermIR.Instr.FArith o a b)
             arith t o _ x y = withHeld t "arithmetic" $ \h => do
               a <- word x
               b <- word y
               w <- TermIR.Build.emit1 (TermIR.Instr.Arith o a b)
               wordVal t <$> wrap h w
 
-            bitwise : PrimType -> IRCommon.Op.ArithOp -> (x, y : Value enc v) -> B (Flat.Exp.Skeleton, Value enc v)
+            bitwise : PrimType -> IRCommon.Op.ArithOp -> (x, y : Value enc v) ->
+                      B (Flat.Exp.Skeleton, Value enc v)
             bitwise t o x y = withHeld t "a bitwise operation" $ \h => do
               a <- word x
               b <- word y
@@ -722,15 +794,19 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
             signed (Narrower _ s) = s
             signed (Whole s) = s
 
-            shifting : PrimType -> (left : Bool) -> (x, y : Value enc v) -> B (Flat.Exp.Skeleton, Value enc v)
+            shifting : PrimType -> (left : Bool) -> (x, y : Value enc v) ->
+                       B (Flat.Exp.Skeleton, Value enc v)
             shifting t left x y = withHeld t "a shift" $ \h => do
               a <- word x
               k <- word y
               w <- Words.shiftBy
-                (if left then IRCommon.Op.Shl else if signed h then IRCommon.Op.Sar else IRCommon.Op.Shr) a k
+                (if left then IRCommon.Op.Shl else if signed h then IRCommon.Op.Sar
+                  else IRCommon.Op.Shr)
+                  a k
               wordVal t <$> wrap h w
 
-            comparison : PrimType -> IRCommon.Op.Rel -> (x, y : Value enc v) -> B (Flat.Exp.Skeleton, Value enc v)
+            comparison : PrimType -> IRCommon.Op.Rel -> (x, y : Value enc v) ->
+                         B (Flat.Exp.Skeleton, Value enc v)
             comparison DoubleType rel x y = do
               a <- double x
               b <- double y
@@ -738,7 +814,8 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
             comparison t rel x y = withHeld t "a comparison" $ \h => do
               a <- word x
               b <- word y
-              wordVal IntType <$> TermIR.Build.emit1 (TermIR.Instr.Cmp (if signed h then rel else unsignedRel rel) a b)
+              wordVal IntType <$> TermIR.Build.emit1
+                (TermIR.Instr.Cmp (if signed h then rel else unsignedRel rel) a b)
               where
                 ||| The unsigned relation for a signed one.
                 unsignedRel : IRCommon.Op.Rel -> IRCommon.Op.Rel
@@ -751,9 +828,13 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
         ||| A call of a form.
         callForm : Name -> List (Value enc v) -> B (Flat.Exp.Skeleton, Value enc v)
         callForm n xs = case lookup n pr.callees of
-          Nothing => TermIR.Build.unsupported ("a call of " ++ show n ++ ", which has no flat form in the program")
+          Nothing =>
+            TermIR.Build.unsupported
+              ("a call of " ++ show n ++ ", which has no flat form in the program")
           Just (MkCallee fd (_ ** var)) => case regsAs (paramsLayout fd.params) (concatValues xs) of
-            Nothing => TermIR.Build.unsupported ("a call of " ++ show n ++ " with arguments of other layouts")
+            Nothing =>
+              TermIR.Build.unsupported
+                ("a call of " ++ show n ++ " with arguments of other layouts")
             Just args => do
               rs <- TermIR.Build.directCall var args
               pure (fd.resultSkeleton, MkValue fd.result rs)
@@ -764,11 +845,14 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
       (_, x) <- expr env val
       case regsAs fv.layout x of
         Just rs => pure (insert fv.name (fv.skeleton, MkValue fv.layout rs) env)
-        Nothing => TermIR.Build.unsupported ("the value of " ++ show fv.name ++ ", whose layout is not its type's")
+        Nothing =>
+          TermIR.Build.unsupported
+            ("the value of " ++ show fv.name ++ ", whose layout is not its type's")
 
     ||| A case: the scrutinee, then each alternative's body as `k` lowers it,
     ||| in the environment of its variables.
-    dispatch : Env enc v -> Flat.Exp -> List Flat.Exp.FlatAlt -> Maybe Flat.Exp -> (Env enc v -> Flat.Exp -> E) -> E
+    dispatch : Env enc v -> Flat.Exp -> List Flat.Exp.FlatAlt -> Maybe Flat.Exp ->
+               (Env enc v -> Flat.Exp -> E) -> E
     dispatch env scr alts def k = do
       (sk, x) <- expr env scr
       let other = maybe (TermIR.Build.crash "no case alternative matched") (k env) def
@@ -777,15 +861,18 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
         Flat.Exp.FConstAlt _ _ :: _ => constCase env x alts other k
         Flat.Exp.FConAlt _ _ _ _ :: _ => conCase env sk x alts other k
       where
-        constCase : Env enc v -> Value enc v -> List Flat.Exp.FlatAlt -> E -> (Env enc v -> Flat.Exp -> E) -> E
+        constCase : Env enc v -> Value enc v -> List Flat.Exp.FlatAlt -> E ->
+                    (Env enc v -> Flat.Exp -> E) -> E
         constCase env x alts other k = do
           w <- word x
           let cs = mapMaybe (\a => case a of
                                      Flat.Exp.FConstAlt c b => (\i => (i, k env b)) <$> constWord c
                                      _ => Nothing) alts
-          if length cs /= length alts then TermIR.Build.unsupported "a case on constants that are not words" else
+          if length cs /= length alts
+            then TermIR.Build.unsupported "a case on constants that are not words" else
             case choose
-              (Data.Distinct.distinct (map fst cs) && TermIR.Body.keysFit (IRCommon.Ty.W64 {enc}) (map fst cs)) of
+              (Data.Distinct.distinct (map fst cs)
+                && TermIR.Body.keysFit (IRCommon.Ty.W64 {enc}) (map fst cs)) of
               Left ok => TermIR.Build.switch w cs other
               Right _ => TermIR.Build.unsupported "a case with repeated constants"
 
@@ -801,10 +888,12 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
             let branches = mapMaybe (\a => case a of
                                              Flat.Exp.FConAlt cn _ vs b => do
                                                         (c, p) <- placement cs cn
-                                                        pure (the Int64 (cast c.tag), alternative env p x vs b k)
+                                                        pure (the Int64 (cast c.tag),
+                                                              alternative env p x vs b k)
                                              _ => Nothing) alts
             if length branches /= length alts
-              then TermIR.Build.unsupported ("a case on a constructor that is not one of " ++ show sk) else
+              then TermIR.Build.unsupported
+                ("a case on a constructor that is not one of " ++ show sk) else
               case choose
                 (Data.Distinct.distinct (map fst branches)
                  && TermIR.Body.keysFit (IRCommon.Ty.W64 {enc}) (map fst branches)) of
@@ -816,11 +905,13 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
             named n (Flat.Exp.FConAlt cn _ _ _) = cn == n
             named _ _ = False
 
-            alternative : Env enc v -> Placement -> Value enc v -> List Flat.Exp.FlatVar -> Flat.Exp ->
+            alternative : Env enc v -> Placement -> Value enc v -> List Flat.Exp.FlatVar ->
+                          Flat.Exp ->
                           (Env enc v -> Flat.Exp -> E) -> E
             alternative env p x vs b k = case fieldsOf p x >>= bindFields env vs of
               Just env' => k env' b
-              Nothing => TermIR.Build.unsupported "an alternative whose fields are not its constructor's"
+              Nothing =>
+                TermIR.Build.unsupported "an alternative whose fields are not its constructor's"
 
   ||| The form's body, from the parameters' registers.
   formBody : Maybe Again -> All (TermIR.Opnd v) (tys (paramsLayout self.params)) -> E
@@ -835,11 +926,14 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
         (again, Flat.Exp.FLet _ fv val sc) => do
           env' <- bind env fv val
           tailExp env' again sc
-        (again, Flat.Exp.FCase _ scr alts def) => dispatch env scr alts def (\env', b => tailExp env' again b)
+        (again, Flat.Exp.FCase _ scr alts def) =>
+          dispatch env scr alts def (\env', b => tailExp env' again b)
         (Just again, e@(Flat.Exp.FCall _ n args)) =>
           if n /= self.name then returned env e else do
             xs <- traverse (\a => snd <$> expr env a) args
-            maybe (TermIR.Build.unsupported "a call of the form itself with arguments of other layouts") again
+            maybe
+              (TermIR.Build.unsupported "a call of the form itself with arguments of other layouts")
+                again
                   (regsAs (paramsLayout self.params) (concatValues xs))
         (_, Flat.Exp.FCrash _ msg) => TermIR.Build.crash msg
         (_, e) => returned env e
@@ -848,14 +942,17 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
           returned : Env enc v -> Flat.Exp -> E
           returned env e = do
             (_, x) <- expr env e
-            maybe (TermIR.Build.unsupported "a result whose layout is not the form's") TermIR.Build.ret
+            maybe (TermIR.Build.unsupported "a result whose layout is not the form's")
+              TermIR.Build.ret
               (regsAs self.result x)
 
 ||| A form as the body of its `Direct` function. A form that calls itself
 ||| is a loop, which a call in tail position jumps back to.
 export
-lowerForm : {enc : Types.Enc} -> (0 d : TermIR.Decls enc) -> Forms enc d -> (fd : Flat.Exp.FlatDef) ->
-            TermIR.Build.Closed d (IRCommon.Conv.Direct (tys fd.result) False) (Linkage.ConvertsIn.convertsIn fd.name)
+lowerForm : {enc : Types.Enc} -> (0 d : TermIR.Decls enc) -> Forms enc d ->
+            (fd : Flat.Exp.FlatDef) ->
+            TermIR.Build.Closed d (IRCommon.Conv.Direct (tys fd.result) False)
+              (Linkage.ConvertsIn.convertsIn fd.name)
               (tys (paramsLayout fd.params))
 lowerForm d pr fd = TermIR.Build.build $ \xs =>
   if calls fd.name fd.body

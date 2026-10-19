@@ -66,9 +66,12 @@ texts =
   , "١٢" ]
 
 line : String -> String
-line t = show t ++ " " ++ show (the Int (cast t)) ++ " " ++ show (the Int8 (cast t)) ++ " " ++ show (the Int16 (cast t))
-  ++ " " ++ show (the Int32 (cast t)) ++ " " ++ show (the Int64 (cast t)) ++ " " ++ show (the Bits8 (cast t))
-  ++ " " ++ show (the Bits16 (cast t)) ++ " " ++ show (the Bits32 (cast t)) ++ " " ++ show (the Bits64 (cast t))
+line t = show t ++ " " ++ show (the Int (cast t)) ++ " " ++ show (the Int8 (cast t)) ++ " "
+  ++ show (the Int16 (cast t))
+  ++ " " ++ show (the Int32 (cast t)) ++ " " ++ show (the Int64 (cast t)) ++ " "
+    ++ show (the Bits8 (cast t))
+  ++ " " ++ show (the Bits16 (cast t)) ++ " " ++ show (the Bits32 (cast t)) ++ " "
+    ++ show (the Bits64 (cast t))
 
 main : IO ()
 main = traverse_ (putStrLn . line) texts

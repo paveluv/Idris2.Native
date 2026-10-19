@@ -38,10 +38,12 @@ nativeFree : Bits64 -> IO ()
 nativeFree a = primIO $ \w => let (MkOrdo # ()) = freeBlock a MkOrdo in MkIORes () w
 
 nativeLoad : Bits64 -> IO Bits64
-nativeLoad a = primIO $ \w => let (MkOrdo # v) = Memory.loadAt (Raw.fromWord a) 0 MkOrdo in MkIORes v w
+nativeLoad a = primIO $ \w => let (MkOrdo # v) =
+                                    Memory.loadAt (Raw.fromWord a) 0 MkOrdo in MkIORes v w
 
 nativeStore : Bits64 -> Bits64 -> IO ()
-nativeStore a v = primIO $ \w => let (MkOrdo # ()) = Memory.storeAt (Raw.fromWord a) 0 v MkOrdo in MkIORes () w
+nativeStore a v = primIO $ \w => let (MkOrdo # ()) =
+                                       Memory.storeAt (Raw.fromWord a) 0 v MkOrdo in MkIORes () w
 
 main : IO ()
 main = do

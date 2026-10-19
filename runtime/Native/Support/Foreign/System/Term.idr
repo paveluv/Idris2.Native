@@ -14,18 +14,21 @@ import Native.Runtime.OS
 ||| has to be asked.
 export
 prim__setupTerm : PrimIO ()
-prim__setupTerm w = let (Runtime.MkOrdo # ()) = Runtime.OS.osPrepareTerminal Runtime.MkOrdo in MkIORes () w
+prim__setupTerm w = let (Runtime.MkOrdo # ()) =
+                          Runtime.OS.osPrepareTerminal Runtime.MkOrdo in MkIORes () w
 
 %cg native flat Support.Foreign.System.Term.prim__getTermCols
 ||| The columns of the terminal the standard input is, or else the standard
 ||| output; 0 if neither is a terminal.
 export
 prim__getTermCols : PrimIO Int
-prim__getTermCols w = let (Runtime.MkOrdo # n) = Runtime.OS.osTerminalColumns Runtime.MkOrdo in MkIORes (cast n) w
+prim__getTermCols w = let (Runtime.MkOrdo # n) =
+                            Runtime.OS.osTerminalColumns Runtime.MkOrdo in MkIORes (cast n) w
 
 %cg native flat Support.Foreign.System.Term.prim__getTermLines
 ||| The lines of the terminal the standard input is, or else the standard
 ||| output; 0 if neither is a terminal.
 export
 prim__getTermLines : PrimIO Int
-prim__getTermLines w = let (Runtime.MkOrdo # n) = Runtime.OS.osTerminalLines Runtime.MkOrdo in MkIORes (cast n) w
+prim__getTermLines w = let (Runtime.MkOrdo # n) =
+                             Runtime.OS.osTerminalLines Runtime.MkOrdo in MkIORes (cast n) w

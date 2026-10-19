@@ -37,15 +37,19 @@ checks : List Bool
 checks =
   [ length (str "hello") == 5, length (str "héllo") == 5, length (str "日本") == 2
   , length (str "𝄞x") == 2, length (str "") == 0
-  , strIndex (str "hello") 1 == 'e', strIndex (str "héllo") 1 == 'é', strIndex (str "héllo") 2 == 'l'
+  , strIndex (str "hello") 1 == 'e', strIndex (str "héllo") 1 == 'é',
+    strIndex (str "héllo") 2 == 'l'
   , strIndex (str "日本") 1 == '本', strIndex (str "𝄞x") 0 == '𝄞'
   , prim__strHead (str "héllo") == 'h', prim__strHead (str "日本") == '日'
-  , prim__strTail (str "héllo") == "éllo", prim__strTail (str "𝄞x") == "x", prim__strTail (str "a") == ""
+  , prim__strTail (str "héllo") == "éllo", prim__strTail (str "𝄞x") == "x",
+    prim__strTail (str "a") == ""
   , strCons 'x' (str "yz") == "xyz", strCons 'é' (str "t") == "ét", strCons '𝄞' (str "") == "𝄞"
   , str "ab" ++ str "cd" == "abcd", str "hé" ++ str "llo" == "héllo", str "" ++ str "" == ""
   , reverse (str "hello") == "olleh", reverse (str "héllo") == "olléh", reverse (str "日本𝄞") == "𝄞本日"
-  , substr 1 3 (str "hello") == "ell", substr 1 3 (str "héllo") == "éll", substr 0 1 (str "日本") == "日"
-  , substr 3 10 (str "hello") == "lo", substr 9 2 (str "hello") == "", substr 5 1 (str "hello") == ""
+  , substr 1 3 (str "hello") == "ell", substr 1 3 (str "héllo") == "éll",
+    substr 0 1 (str "日本") == "日"
+  , substr 3 10 (str "hello") == "lo", substr 9 2 (str "hello") == "",
+    substr 5 1 (str "hello") == ""
   , prim__strSubstr (-2) 3 (str "hello") == "hel", prim__strSubstr 1 (-1) (str "hello") == ""
   , str "abc" < str "abd", str "ab" < str "abc", not (str "b" < str "abc"), str "z" < str "é"
   , str "é" < str "日", str "日" < str "𝄞", str "same" == str "same", str "héllo" /= str "hello"

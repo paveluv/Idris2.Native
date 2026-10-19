@@ -100,12 +100,14 @@ in' ns n = NS ns (UN (Basic n))
 ||| code generator's copy of it (`own`) are one declaration, so their
 ||| elements pair up whatever the order. A context without the list has
 ||| none of them, which only an enumeration not `required` may.
-entries : {auto c : Ref Ctxt Defs} -> (required : Bool) -> (contract, listName : String) -> (own : List a) -> (heads : List Name) ->
+entries : {auto c : Ref Ctxt Defs} -> (required : Bool) -> (contract, listName : String) ->
+          (own : List a) -> (heads : List Name) ->
           (keep : Name -> GlobalDef -> Bool) -> Core (Either String (List (Name, Name, a)))
 entries required contract listName own heads keep = do
   defs <- get Ctxt
   Just lg <- lookupCtxtExact (in' ns listName) (gamma defs)
-    | Nothing => pure (if required then Left ("the runtime has no " ++ show (in' ns listName)) else Right [])
+    | Nothing =>
+      pure (if required then Left ("the runtime has no " ++ show (in' ns listName)) else Right [])
   listed <- case definition lg of
     PMDef _ _ (STerm _ tm) _ _ => elements <$> toFullNames tm
     _ => pure []
@@ -156,13 +158,15 @@ entries required contract listName own heads keep = do
 ||| by its type, `FunctionTy (signature c)`, in a module of
 ||| `Native.Primitive`: at most one of each.
 primitives : {auto c : Ref Ctxt Defs} -> Core (Either String (List (Name, Name, Primitive)))
-primitives = entries False "Native.Primitive" "allPrimitives" Primitive.allPrimitives [functionTy] inPrimitive
+primitives =
+  entries False "Native.Primitive" "allPrimitives" Primitive.allPrimitives [functionTy] inPrimitive
   where
     functionTy : Name
     functionTy = in' (mkNamespace "Native.Primitive") "FunctionTy"
 
     inPrimitive : Name -> GlobalDef -> Bool
-    inPrimitive (NS ns _) _ = ns /= mkNamespace "Native.Primitive" && isParentOf (mkNamespace "Native.Primitive") ns
+    inPrimitive (NS ns _) _ = ns /= mkNamespace "Native.Primitive"
+      && isParentOf (mkNamespace "Native.Primitive") ns
     inPrimitive _ _ = False
 
 ||| The tables the context defines (`Native.Table`), each by its type,
@@ -217,23 +221,33 @@ realise platform enc = do
     | Left e => pure (Left ("the bignum encoding's routines: " ++ e))
   Just platformNs <- pure (OSService.platformModule platform)
     | Nothing => pure (Left ("the platform " ++ show platform ++ " has no OS services"))
-  Right intrinsics <- entries True "Native.Intrinsic" "allIntrinsics" Intrinsic.allIntrinsics [externTy] isExtern
+  Right intrinsics <- entries True "Native.Intrinsic" "allIntrinsics" Intrinsic.allIntrinsics
+    [externTy] isExtern
     | Left e => pure (Left ("the runtime's inline externs: " ++ e))
-  Right serviceExterns <- entries True "Native.Service" "allServices" Service.allServices [externTy] isExtern
+  Right serviceExterns <- entries True "Native.Service" "allServices" Service.allServices [externTy]
+    isExtern
     | Left e => pure (Left ("the runtime's OS services: " ++ e))
-  Right serviceFunctions <- entries True "Native.Service" "allServices" Service.allServices [portTy] (inModule platformNs)
+  Right serviceFunctions <- entries True "Native.Service" "allServices" Service.allServices [portTy]
+    (inModule platformNs)
     | Left e => pure (Left ("the platform's OS services: " ++ e))
-  Right textExterns <- entries False "Native.Types.StringRoutine" "allStringRoutines" Types.StringRoutine.allStringRoutines [externTy] isExtern
+  Right textExterns <- entries False "Native.Types.StringRoutine" "allStringRoutines"
+    Types.StringRoutine.allStringRoutines [externTy] isExtern
     | Left e => pure (Left ("the runtime's externs of the string encoding: " ++ e))
   Right prims <- primitives
     | Left e => pure (Left ("the backend's primitives: " ++ e))
   ts <- tables
   let [] = mapMaybe (\(n, r) => maybe (Just n) (const Nothing) r) ts
-    | (n :: _) => pure (Left ("the table " ++ show n ++ " has a range that does not reduce to two Ints"))
+    | (n :: _) =>
+      pure (Left ("the table " ++ show n ++ " has a range that does not reduce to two Ints"))
   let externs = fromList [ (n, i) | (n, _, i) <- intrinsics ]
-      services = fromList ([ (x, f) | (x, c, _) <- serviceExterns, (f, c', _) <- serviceFunctions, c == c' ]
-                           ++ [ (x, f) | (x, c, _) <- textExterns, (f, c', _) <- fromMaybe [] ss', c == c' ])
-  pure (Right (MkRealised (pairs rs) (map pairs ss') (map pairs is') externs services (fromList (pairs prims))
+      services =
+        fromList ([ (x, f) | (x, c, _) <- serviceExterns, (f, c', _) <- serviceFunctions, c == c' ]
+                           ++ [ (x, f) | (x, c, _) <- textExterns,
+                               (f, c', _) <- fromMaybe [] ss', c == c' ])
+  pure
+    (Right
+      (MkRealised (pairs rs) (map pairs ss') (map pairs is') externs services
+       (fromList (pairs prims))
                            (fromList (mapMaybe (\(n, r) => (n,) <$> r) ts))))
   where
     externTy, portTy : Name

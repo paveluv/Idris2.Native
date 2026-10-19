@@ -46,7 +46,8 @@ doubleBits x =
     place a = if a >= 2.0 then high a 0 else low a 0
       where
         high, low : Double -> Int -> Int
-        -- lint: allow trust-escape: halving a finite double of at least 2 reaches below 2 within 1024 steps
+        -- lint: allow trust-escape: halving a finite double of at least 2 reaches below 2 within
+        -- 1024 steps
         high b e = if b >= 2.0 then high (assert_smaller b (b / 2.0)) (e + 1) else e
         -- lint: allow trust-escape: doubling a positive double below 1 reaches 1 within 1075 steps
         low b e = if b < 1.0 then low (assert_smaller b (b * 2.0)) (e - 1) else e
@@ -61,7 +62,8 @@ doubleBits x =
         in if e < -1022
               then cast {to = Bits64} (cast {to = Integer} (a * pow2 1022 * pow2 52))
               else prim__shl_Bits64 (cast (e + 1023)) 52
-                     + cast {to = Bits64} (cast {to = Integer} ((a * pow2 (negate e) - 1.0) * pow2 52))
+                     + cast {to = Bits64}
+                       (cast {to = Integer} ((a * pow2 (negate e) - 1.0) * pow2 52))
 
 ||| The double of 64 bits, as IEEE 754 lays them out. The body is its
 ||| meaning, put together by exact arithmetic on doubles; every NaN's bits

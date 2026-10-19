@@ -55,8 +55,13 @@ parse path = do
   case runParser origin Nothing text (prog origin) of
     Left err => pure (Left (path ++ ": does not parse: " ++ show err))
     Right (_, st, m) => do
-      let cs = nubBy (\a, b => (a.line, a.col) == (b.line, b.col)) (foldr (\d, rest => comments numbered d ++ rest) [] st.decorations)
-      pure (Right (MkSourceFile path m (sortBy (\a, b => compare (a.line, a.col) (b.line, b.col)) cs) (blank 0 ls)))
+      let cs =
+            nubBy (\a, b => (a.line, a.col) == (b.line, b.col))
+              (foldr (\d, rest => comments numbered d ++ rest) [] st.decorations)
+      pure
+        (Right
+          (MkSourceFile path m (sortBy (\a, b => compare (a.line, a.col) (b.line, b.col)) cs)
+           (blank 0 ls)))
   where
     ||| The text between two positions of a file given as its lines, by
     ||| number.
@@ -99,7 +104,10 @@ parse path = do
     comments ls ((_, s, e), Comment, _) =
       let t = slice ls s e in
       if not (isPrefixOf "|||" (trim t)) then [MkSourceComment (fst s) (snd s) False (unmarked t)]
-      else [ MkSourceComment (fst s + cast i) (if i == 0 then snd s else cast (length l `minus` length (ltrim l))) True (documented (ltrim l))
+      else
+        [ MkSourceComment (fst s + cast i)
+          (if i == 0 then snd s else cast (length l `minus` length (ltrim l))) True
+         (documented (ltrim l))
            | (i, l) <- zip [0 .. length (lines t)] (lines t), isPrefixOf "|||" (ltrim l) ]
     comments _ _ = []
 

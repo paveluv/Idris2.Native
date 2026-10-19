@@ -58,9 +58,12 @@ main = do
             ++ show (null (single (the Nat 1))))
   -- `foldMap` on a builder of lists puts each list in front of the rest:
   -- [1, 2] then [3] then [4, 5]
-  putStrLn ("foldMap: " ++ show (foldMap id (single [1, 2] <+> single [3] <+> single (the (List Nat) [4, 5]))))
+  putStrLn
+    ("foldMap: "
+     ++ show (foldMap id (single [1, 2] <+> single [3] <+> single (the (List Nat) [4, 5]))))
   -- a text in pieces written a piece at a time, then read back whole
-  Right () <- writeBuilder "pieces.txt" (concatMap (\i => single ("line " ++ show i ++ "\n")) [the Nat 1 .. 3])
+  Right () <- writeBuilder "pieces.txt"
+    (concatMap (\i => single ("line " ++ show i ++ "\n")) [the Nat 1 .. 3])
     | Left err => putStrLn ("cannot write: " ++ show err)
   Right text <- readFile "pieces.txt"
     | Left err => putStrLn ("cannot read: " ++ show err)

@@ -90,7 +90,9 @@ port RemoveDirectory = MkPort [Port.Raw] (Just Port.Word)
 ||| loaded runtime's context holds it, with its own copy, element by element.
 public export
 allServices : List Service
-allServices = [Exit, Write, Reserve, Commit, Release, StackLimit, PageBytes, PrepareTerminal, TerminalColumns, TerminalLines, ChangeDirectory,
+allServices =
+  [Exit, Write, Reserve, Commit, Release, StackLimit, PageBytes, PrepareTerminal, TerminalColumns,
+   TerminalLines, ChangeDirectory,
                CurrentDirectory, CreateDirectory, RemoveDirectory]
 
 ||| The list holds every service.

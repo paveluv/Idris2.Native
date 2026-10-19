@@ -24,4 +24,5 @@ main = do
   let lay = planLayout (byteCount text) 0 0
   Right () <- writeImage "exit42" (elfImage X86_64 lay text [<] 0 textBase)
     | Left err => putStrLn ("write failed: " ++ show err)
-  putStrLn ("text bytes: " ++ show (byteCount text) ++ ", missing labels: " ++ show (length missing))
+  putStrLn
+    ("text bytes: " ++ show (byteCount text) ++ ", missing labels: " ++ show (length missing))

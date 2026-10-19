@@ -53,7 +53,8 @@ signInHeader (MkBignumEnc _ TwosComplement) = Nothing
 public export covering
 magnitudeWords : Integer -> List Int64
 magnitudeWords m =
-  if m <= 0 then [] else word (m `mod` 18446744073709551616) :: magnitudeWords (m `div` 18446744073709551616)
+  if m <= 0 then [] else word (m `mod` 18446744073709551616)
+    :: magnitudeWords (m `div` 18446744073709551616)
   where
     word : Integer -> Int64
     word u = cast (if u >= 9223372036854775808 then u - 18446744073709551616 else u)

@@ -40,7 +40,8 @@ literal enc s = case enc of
       let n = the Integer (cast (ord c)) in
       if n < 0x80 then [b n]
       else if n < 0x800 then [b (0xC0 + n `div` 64), b (0x80 + n `mod` 64)]
-      else if n < 0x10000 then [b (0xE0 + n `div` 4096), b (0x80 + (n `div` 64) `mod` 64), b (0x80 + n `mod` 64)]
+      else if n < 0x10000
+        then [b (0xE0 + n `div` 4096), b (0x80 + (n `div` 64) `mod` 64), b (0x80 + n `mod` 64)]
       else [ b (0xF0 + n `div` 262144), b (0x80 + (n `div` 4096) `mod` 64)
            , b (0x80 + (n `div` 64) `mod` 64), b (0x80 + n `mod` 64) ]
       where

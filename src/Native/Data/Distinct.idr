@@ -10,7 +10,8 @@ public export
 mergeSorted : Ord a => List a -> List a -> List a
 mergeSorted [] ys = ys
 mergeSorted xs [] = xs
-mergeSorted (x :: xs) (y :: ys) = if x <= y then x :: mergeSorted xs (y :: ys) else y :: mergeSorted (x :: xs) ys
+mergeSorted (x :: xs) (y :: ys) = if x <= y then x :: mergeSorted xs (y :: ys) else y
+  :: mergeSorted (x :: xs) ys
 
 public export
 halves : List a -> (List a, List a)

@@ -37,9 +37,11 @@ keysFit _ _ = True
 ||| words and addresses, with the blocks `ls` (each its parameters' types)
 ||| and the variables `ctx` in scope.
 public export
-data Body : Decls enc -> IRCommon.Conv enc -> Bool -> List (List (IRCommon.Ty enc)) -> List (IRCommon.Ty enc) ->
+data Body : Decls enc -> IRCommon.Conv enc -> Bool -> List (List (IRCommon.Ty enc)) ->
+  List (IRCommon.Ty enc) ->
   Type where
-  Bind : {ts : List (IRCommon.Ty enc)} -> Instr d m (Var ctx) ts -> Body d c m ls (ts ++ ctx) -> Body d c m ls ctx
+  Bind : {ts : List (IRCommon.Ty enc)} -> Instr d m (Var ctx) ts -> Body d c m ls (ts ++ ctx) ->
+         Body d c m ls ctx
   ||| A join point: `block`, with parameters `ps`, which may jump to itself
   ||| (a loop); then `rest`, from which it is reached.
   Join : (ps : List (IRCommon.Ty enc)) -> (block : Body d c m (ps :: ls) (ps ++ ctx)) ->
@@ -56,7 +58,8 @@ data Body : Decls enc -> IRCommon.Conv enc -> Bool -> List (List (IRCommon.Ty en
               (no : Body d c m ls ctx) -> Body d c m ls ctx
   ||| Integer arithmetic, or the overflow branch when the result does not
   ||| fit: 64 signed bits for `W64`s, the fixnum range for `Fix`es.
-  ArithOv : {t : IRCommon.Ty enc} -> {auto 0 int : IsInt t} -> OvOp -> Opnd (Var ctx) t -> Opnd (Var ctx) t ->
+  ArithOv : {t : IRCommon.Ty enc} -> {auto 0 int : IsInt t} -> OvOp -> Opnd (Var ctx) t ->
+            Opnd (Var ctx) t ->
             (ok : Body d c m ls (t :: ctx)) ->
             (overflow : Body d c m ls ctx) -> Body d c m ls ctx
   ||| The fixnum of a word, or the overflow branch when it is out of range.
@@ -74,12 +77,14 @@ data Body : Decls enc -> IRCommon.Conv enc -> Bool -> List (List (IRCommon.Ty en
              Body d IRCommon.Conv.CPS m ls ctx
   ||| Apply a closure to one argument, through the runtime's apply routine.
   Apply : (fn, arg : Opnd (Var ctx) IRCommon.Ty.Val) ->
-          (resume : Body d IRCommon.Conv.CPS m ls (IRCommon.Ty.Val :: ctx)) -> Body d IRCommon.Conv.CPS m ls ctx
+          (resume : Body d IRCommon.Conv.CPS m ls (IRCommon.Ty.Val :: ctx)) ->
+            Body d IRCommon.Conv.CPS m ls ctx
   TailApply : (fn, arg : Opnd (Var ctx) IRCommon.Ty.Val) -> Body d IRCommon.Conv.CPS m ls ctx
   Return : Opnd (Var ctx) IRCommon.Ty.Val -> Body d IRCommon.Conv.CPS m ls ctx
   ||| Jump to a code address with arguments, under the current continuation:
   ||| the runtime's one way into Idris code.
-  Enter : Opnd (Var ctx) IRCommon.Ty.W64 -> List (Opnd (Var ctx) IRCommon.Ty.Val) -> Body d c m ls ctx
+  Enter : Opnd (Var ctx) IRCommon.Ty.W64 -> List (Opnd (Var ctx) IRCommon.Ty.Val) ->
+          Body d c m ls ctx
   Ret : All (Opnd (Var ctx)) rs -> Body d (IRCommon.Conv.Direct rs col) m ls ctx
   Crash : String -> Body d c m ls ctx
   ||| Exit with the abort status: a construct the backend does not lower yet.

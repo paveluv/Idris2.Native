@@ -45,7 +45,8 @@ codegenFlatOracle primitives = MkCG compileExpr executeExpr Nothing Nothing
     useForms
         = do Just forms <- Marked.markedForms primitives (pure ())
                | Nothing => pure False
-             whenJust (dumpFlatFile !(getDirectives (Other "flat-oracle"))) $ \f => Translate.dumpFlat f forms
+             whenJust (dumpFlatFile !(getDirectives (Other "flat-oracle"))) $ \f =>
+               Translate.dumpFlat f forms
              Translate.useFlatForms forms
              pure True
 
@@ -53,7 +54,8 @@ codegenFlatOracle primitives = MkCG compileExpr executeExpr Nothing Nothing
                   (tmpDir : String) -> (outputDir : String) ->
                   ClosedTerm -> (outfile : String) -> Core (Maybe String)
     compileExpr c s tmpDir outputDir tm outfile
-        = if !useForms then codegenChez.compileExpr c s tmpDir outputDir tm outfile else pure Nothing
+        = if !useForms then codegenChez.compileExpr c s tmpDir outputDir tm outfile
+          else pure Nothing
 
     executeExpr : Ref Ctxt Defs -> Ref Syn SyntaxInfo -> (tmpDir : String) -> ClosedTerm -> Core ()
     executeExpr c s tmpDir tm

@@ -32,14 +32,17 @@ import TTImp.TTImp
 ||| other declaration uses, deleted.
 export
 removeUnused : Refactoring
-removeUnused = fileRefactoring "remove-unused" "delete each private function at the top of a module that nothing uses" candidates
+removeUnused =
+  fileRefactoring "remove-unused"
+    "delete each private function at the top of a module that nothing uses" candidates
   where
     -- whether a declaration, not one of the function's own, uses it
     uses : Declared -> Declared -> Bool
     uses f d =
       not (any (`elem` f.defines) d.defines) &&
         (let names = inDecl d.decl in
-         if contains unknown names then any (`elem` f.defines) d.mentions else any (\n => contains n names) f.defines)
+         if contains unknown names then any (`elem` f.defines) d.mentions
+           else any (\n => contains n names) f.defines)
 
     -- whether the function is used without being named
     unnamedUse : Declared -> Bool
@@ -54,5 +57,8 @@ removeUnused = fileRefactoring "remove-unused" "delete each private function at 
 
     candidates : Subject -> List Candidate
     candidates s =
-      map (\f => candidate (labelOf f) (map (\e => inFile s.file.path [cut (linesOf s) e]) (extentOf s f)))
-          (filter (\f => privateAtTop f && not (unnamedUse f) && not (any (uses f) s.declared)) s.declared)
+      map
+        (\f =>
+         candidate (labelOf f) (map (\e => inFile s.file.path [cut (linesOf s) e]) (extentOf s f)))
+          (filter (\f => privateAtTop f && not (unnamedUse f) && not (any (uses f) s.declared))
+            s.declared)

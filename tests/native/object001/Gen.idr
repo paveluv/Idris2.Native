@@ -35,7 +35,8 @@ headers =
   [ (_ ** ConH 0 0), (_ ** ConH 1 1), (_ ** ConH 3 7), (_ ** ConH (largest 20) (largest 28))
   , (_ ** ClosureH 1 0), (_ ** ClosureH 4 2), (_ ** ClosureH (largest 16) (largest 28))
   , (_ ** Int64H), (_ ** DoubleH), (_ ** IORefH), (_ ** PtrH)
-  , (_ ** StringH True 0), (_ ** StringH False 1), (_ ** StringH True 9), (_ ** StringH False (largest 47))
+  , (_ ** StringH True 0), (_ ** StringH False 1), (_ ** StringH True 9),
+    (_ ** StringH False (largest 47))
   , (_ ** BufferH 0), (_ ** BufferH 17), (_ ** BufferH (largest 47))
   , (_ ** BignumH False 0), (_ ** BignumH True 3), (_ ** BignumH True (largest 44))
   , (_ ** ArrayH 0), (_ ** ArrayH 5), (_ ** ArrayH (largest 28)) ]
@@ -65,10 +66,20 @@ check (k ** h) =
       typed = (objectWords h, scanned h)
       (size, (from, count)) = (objectWordsOf w, scannedOf w)
       words = (cast {to = Nat} size, (cast {to = Nat} from, cast {to = Nat} count))
-  in (if Just (shapeIdOf w) /= map shapeId (shapeOf k) then [show h ++ ": the shape read is " ++ show (shapeIdOf w)] else [])
-     ++ (if field {s = VALUES} Tag w /= tagOf k then [show h ++ ": the tag read is " ++ show (field {s = VALUES} Tag w)] else [])
-     ++ (if typed /= layout h then [show h ++ ": the compiler reads " ++ show typed ++ ", not " ++ show (layout h)] else [])
-     ++ (if words /= layout h then [show h ++ ": the collector reads " ++ show words ++ ", not " ++ show (layout h)] else [])
+  in
+    (if Just (shapeIdOf w) /= map shapeId (shapeOf k)
+     then [show h ++ ": the shape read is " ++ show (shapeIdOf w)] else [])
+     ++
+       (if field {s = VALUES} Tag w /= tagOf k
+        then [show h ++ ": the tag read is " ++ show (field {s = VALUES} Tag w)] else [])
+     ++
+       (if typed /= layout h
+         then [show h ++ ": the compiler reads " ++ show typed ++ ", not " ++ show (layout h)]
+        else [])
+     ++
+       (if words /= layout h
+         then [show h ++ ": the collector reads " ++ show words ++ ", not " ++ show (layout h)]
+        else [])
 
 main : IO ()
 main = do
@@ -77,5 +88,11 @@ main = do
   putStrLn (show (length headers) ++ " headers, " ++ show (length failures) ++ " differences")
   -- a continuation of 3 values and 2 raw words: 7 words, scanned from its parent
   let l = cast {to = Bits64} (layoutWord 3 2)
-  putStrLn ("a continuation of 3 values and 2 raw words: " ++ show (continuationWords l) ++ " words, scanned " ++ show (continuationScanned l))
-  putStrLn ("forwarded to 0x1000: " ++ (if isForwarding (forwardingHeader 0x1000) && forwardedTo (forwardingHeader 0x1000) == 0x1000 then "id 15, address kept" else "WRONG"))
+  putStrLn
+    ("a continuation of 3 values and 2 raw words: " ++ show (continuationWords l)
+     ++ " words, scanned " ++ show (continuationScanned l))
+  putStrLn
+    ("forwarded to 0x1000: "
+      ++
+        (if isForwarding (forwardingHeader 0x1000) && forwardedTo (forwardingHeader 0x1000)
+         == 0x1000 then "id 15, address kept" else "WRONG"))

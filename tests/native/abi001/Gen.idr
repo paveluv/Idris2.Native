@@ -115,7 +115,8 @@ runtimeCrash = NS (runtimeModule "System") (UN (Basic "crash"))
 
 realised : Realised
 realised =
-  MkRealised [(runtimeStart, Start), (runtimeAllocSlow, AllocSlow), (runtimeAllocMutable, AllocMutable),
+  MkRealised [(runtimeStart, Start),
+              (runtimeAllocSlow, AllocSlow), (runtimeAllocMutable, AllocMutable),
               (runtimeCrash, Crash)]
              Nothing Nothing empty empty empty empty
 
@@ -229,7 +230,8 @@ main = do
   traverse_ (\(i, l) => putStrLn ("  " ++ show i ++ " " ++ show (tyOf i) ++ ": " ++ show l))
             (zip indices (place x86_64.abi (map classOfIndex indices)))
   putStrLn "results:"
-  traverse_ (\(j, l) => putStrLn ("  " ++ show j ++ " " ++ show (tyOf (source j)) ++ ": " ++ show l))
+  traverse_
+    (\(j, l) => putStrLn ("  " ++ show j ++ " " ++ show (tyOf (source j)) ++ ": " ++ show l))
             (zip indices (place x86_64.abi (map (classOfIndex . source) indices)))
   let Just m = close mainBody | Nothing => putStrLn "main: a level outside its context"
   let Just s = close spreadBody | Nothing => putStrLn "spread: a level outside its context"
@@ -240,7 +242,11 @@ main = do
   case choose (distinct (map (.name) (sigs D)) && distinct (map (.sym) (statics D))) of
     Right _ => putStrLn "names repeat"
     Left ok => do
-      let ir = allocRegs x86_64 (MkProgram {d = D} [Defined m, Defined s, Defined e, Defined cr, Defined st, Defined al] [] (MkEntry here) noConIds)
+      let ir =
+            allocRegs x86_64
+              (MkProgram {d = D}
+                [Defined m, Defined s, Defined e, Defined cr, Defined st, Defined al] []
+               (MkEntry here) noConIds)
       let Right rendered = render TestEnc realised [] ir
         | Left err => putStrLn ("render: " ++ err)
       let Right image = linkProgram TestEnc windowBytes rendered.areas rendered.text rendered.rodata

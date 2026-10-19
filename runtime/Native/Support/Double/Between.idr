@@ -23,7 +23,8 @@ import Native.Support.Obj
 ||| that it is above the halfway point where `digits` is on it. The digits
 ||| are a number in limbs, which the comparison changes.
 export covering
-between : (digits : Limbs) -> (sticky : Bool) -> (e10 : Int) -> (below : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
+between : (digits : Limbs) -> (sticky : Bool) -> (e10 : Int) -> (below : Bits64) ->
+          Runtime.Ordo.Op Runtime.Ordo Bits64
 between d sticky e10 b = do
   -- the halfway point, (2m + 1) * 2^(e2 - 1), of the lower double m * 2^e2
   let biased = b `shiftR` 52
@@ -38,10 +39,12 @@ between d sticky e10 b = do
   if e10 >= 0
      then do
        Limbs.mulPow5 d (cast e10)
-       if e10 >= f2 then Limbs.shiftLeft d (cast (e10 - f2)) else Limbs.shiftLeft y (cast (f2 - e10))
+       if e10 >= f2 then Limbs.shiftLeft d (cast (e10 - f2))
+         else Limbs.shiftLeft y (cast (f2 - e10))
      else do
        Limbs.mulPow5 y (cast (negate e10))
-       if f2 >= e10 then Limbs.shiftLeft y (cast (f2 - e10)) else Limbs.shiftLeft d (cast (e10 - f2))
+       if f2 >= e10 then Limbs.shiftLeft y (cast (f2 - e10))
+         else Limbs.shiftLeft d (cast (e10 - f2))
   c <- Limbs.compareLimbs d y
   Runtime.Ordo.pure $
     if c < 0 then b

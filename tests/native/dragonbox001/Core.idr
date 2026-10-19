@@ -35,13 +35,16 @@ chez t =
 
 -- Dragonbox's decimal of the double.
 ours : Bits64 -> Decimal
-ours w = case shortest (prim__and_Bits64 w 0xFFFFFFFFFFFFF) (prim__and_Bits64 (prim__shr_Bits64 w 52) 0x7FF) of
+ours w =
+  case shortest (prim__and_Bits64 w 0xFFFFFFFFFFFFF)
+    (prim__and_Bits64 (prim__shr_Bits64 w 52) 0x7FF) of
   (s, e) => MkDecimal (cast s) (cast e)
 
 -- A decimal without the zeros at the end of its digits.
 trimmed : Decimal -> Decimal
 trimmed (MkDecimal 0 _) = MkDecimal 0 0
-trimmed d@(MkDecimal ds sc) = if ds `mod` 10 == 0 then trimmed (assert_smaller d (MkDecimal (ds `div` 10) (sc + 1))) else d
+trimmed d@(MkDecimal ds sc) = if ds `mod` 10 == 0
+  then trimmed (assert_smaller d (MkDecimal (ds `div` 10) (sc + 1))) else d
 
 power : Integer -> Integer -> Integer
 power b 0 = 1
@@ -112,5 +115,7 @@ main = do
                                                           Tie => "tie"
                                                           Other why => why)) edges
   let (same, ties, others) = run 200000 2026 0 0 []
-  putStrLn (show same ++ " the same, " ++ show ties ++ " ties to the even digit, " ++ show (length others) ++ " others")
+  putStrLn
+    (show same ++ " the same, " ++ show ties ++ " ties to the even digit, " ++ show (length others)
+     ++ " others")
   traverse_ putStrLn (take 5 others)

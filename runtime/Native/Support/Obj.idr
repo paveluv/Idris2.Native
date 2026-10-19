@@ -43,7 +43,8 @@ import Native.Types.Represents as Types
 ||| shape.
 export
 data Obj : (0 k : Types.Kind) -> Type where
-  MkObj : {0 s : HeapObj.Shape} -> (0 shaped : Types.Kind.shapeOf k = Just s) -> Runtime.Memory.Addr s -> Obj k
+  MkObj : {0 s : HeapObj.Shape} -> (0 shaped : Types.Kind.shapeOf k = Just s) ->
+          Runtime.Memory.Addr s -> Obj k
 
 ||| The word, or 32, 16 or 8 bits of it, at the offset into the payload of
 ||| an object of the raw shape.
@@ -59,7 +60,8 @@ load8 (MkObj _ a) n = Runtime.Memory.load8 a (8 + n)
 ||| payload of an object of the raw shape.
 export %inline
 store64, store32, store16, store8 : {auto 0 raw : Types.Kind.shapeOf k = Just HeapObj.Shape.RAW} ->
-                                    Obj k -> (offset, value : Bits64) -> Runtime.Ordo.Op Runtime.Ordo ()
+                                    Obj k -> (offset, value : Bits64) ->
+                                      Runtime.Ordo.Op Runtime.Ordo ()
 store64 (MkObj _ a) n = Runtime.Memory.store64 a (8 + n)
 store32 (MkObj _ a) n = Runtime.Memory.store32 a (8 + n)
 store16 (MkObj _ a) n = Runtime.Memory.store16 a (8 + n)
@@ -112,7 +114,8 @@ objectBytes (MkObj _ a) n = Runtime.Memory.objectBytes a (8 + n)
 
 ||| The object a value is, of a kind that holds every value of its type.
 export %inline
-valueObject : {auto 0 only : Types.Represents.Only k a} -> {auto 0 shaped : Types.Kind.shapeOf k = Just s} ->
+valueObject : {auto 0 only : Types.Represents.Only k a} ->
+              {auto 0 shaped : Types.Kind.shapeOf k = Just s} ->
               Flat.Uniform a -> Runtime.Ordo.Op Runtime.Ordo (Obj k)
 valueObject v = do
   a <- Runtime.Memory.valueObject v
@@ -120,32 +123,38 @@ valueObject v = do
 
 ||| The value an object is, of a type its kind holds values of.
 export %inline
-objectValue : {auto 0 rep : Types.Represents k a} -> Obj k -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform a)
+objectValue : {auto 0 rep : Types.Represents k a} -> Obj k ->
+              Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform a)
 objectValue (MkObj _ a) = Runtime.Memory.objectValue a
 
 ||| The object a value is, if it is one of the kind `k`, for a type whose
 ||| values are objects of several kinds, each told by its header: by the
 ||| header's kind code (`Types.Kind.headerCode`), compared with `k`'s.
 export %inline
-asKind : (k : Types.Kind) -> {auto 0 objs : Types.Represents.Objects a} -> {auto 0 rep : Types.Represents k a} ->
-         {auto 0 shaped : Types.Kind.shapeOf k = Just s} -> Flat.Uniform a -> Runtime.Ordo.Op Runtime.Ordo (Maybe (Obj k))
+asKind : (k : Types.Kind) -> {auto 0 objs : Types.Represents.Objects a} ->
+         {auto 0 rep : Types.Represents k a} ->
+         {auto 0 shaped : Types.Kind.shapeOf k = Just s} -> Flat.Uniform a ->
+           Runtime.Ordo.Op Runtime.Ordo (Maybe (Obj k))
 asKind k v = do
   -- every value of the type is an object, whose header is at 0, whatever
   -- its shape
   a <- Runtime.Memory.valueObject {s} v
   h <- Runtime.Memory.load64 a 0
-  if Types.Kind.headerCode h == Types.Kind.code k then Runtime.Ordo.pure (Just (MkObj shaped a)) else Runtime.Ordo.pure Nothing
+  if Types.Kind.headerCode h == Types.Kind.code k then Runtime.Ordo.pure (Just (MkObj shaped a))
+    else Runtime.Ordo.pure Nothing
 
 ||| The integer a fixnum stands for, of a type held as fixnums, and the
 ||| value of one.
 export %inline
-immediate : {auto 0 imm : Types.Represents.Immediate t} -> Flat.Uniform t -> Runtime.Ordo.Op Runtime.Ordo Bits64
+immediate : {auto 0 imm : Types.Represents.Immediate t} -> Flat.Uniform t ->
+            Runtime.Ordo.Op Runtime.Ordo Bits64
 immediate v = do
   w <- Runtime.Memory.valueWord v
   Runtime.Ordo.pure (Runtime.Memory.fixnumOf w)
 
 export %inline
-ofImmediate : {auto 0 imm : Types.Represents.Immediate t} -> Bits64 -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform t)
+ofImmediate : {auto 0 imm : Types.Represents.Immediate t} -> Bits64 ->
+              Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform t)
 ofImmediate n = do
   w <- Runtime.Memory.fixnumWord n
   Runtime.Memory.fieldValue w
@@ -158,16 +167,19 @@ data Con : (0 t : Type) -> (0 c : Types.ConstructorId) -> Type where
 ||| The value as its constructor `c`, if it is that one: by its header's
 ||| constructor id.
 export %inline
-asCon : (c : Types.ConstructorId) -> {auto 0 only : Types.Represents.Only Types.Kind.CON t} -> {auto 0 con : Types.Represents.IsCon t c} ->
+asCon : (c : Types.ConstructorId) -> {auto 0 only : Types.Represents.Only Types.Kind.CON t} ->
+        {auto 0 con : Types.Represents.IsCon t c} ->
         Flat.Uniform t -> Runtime.Ordo.Op Runtime.Ordo (Maybe (Con t c))
 asCon c v = do
   a <- Runtime.Memory.valueObject {s = HeapObj.Shape.VALUES} v
   h <- Runtime.Memory.load64 a 0
-  if Types.ConstructorId.ofHeader h == c then Runtime.Ordo.pure (Just (MkCon a)) else Runtime.Ordo.pure Nothing
+  if Types.ConstructorId.ofHeader h == c then Runtime.Ordo.pure (Just (MkCon a))
+    else Runtime.Ordo.pure Nothing
 
 ||| Field `i` of a constructor, as the value it holds.
 export %inline
-field : (i : Bits64) -> {auto 0 fld : Types.Represents.FieldOf t c i f} -> Con t c -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform f)
+field : (i : Bits64) -> {auto 0 fld : Types.Represents.FieldOf t c i f} -> Con t c ->
+        Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform f)
 field i (MkCon a) = do
   w <- Runtime.Memory.load64 a (8 + 8 * i)
   Runtime.Memory.fieldValue w
@@ -175,7 +187,8 @@ field i (MkCon a) = do
 ||| A new value of constructor `c` of no fields, and of two, each field a
 ||| value of the type the contract gives it.
 export %inline
-con0 : (c : Types.ConstructorId) -> {auto 0 only : Types.Represents.Only Types.Kind.CON t} -> {auto 0 con : Types.Represents.ConOf t c 0} ->
+con0 : (c : Types.ConstructorId) -> {auto 0 only : Types.Represents.Only Types.Kind.CON t} ->
+       {auto 0 con : Types.Represents.ConOf t c 0} ->
        Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform t)
 con0 c = do
   h <- checked Types.Kind.CON (Types.ConstructorId.withConstructor c Types.Header.noParts)
@@ -185,12 +198,15 @@ con0 c = do
   Runtime.Memory.objectValue o
 
 export %inline
-con2 : (c : Types.ConstructorId) -> {auto 0 only : Types.Represents.Only Types.Kind.CON t} -> {auto 0 con : Types.Represents.ConOf t c 2} ->
-       {auto 0 f0 : Types.Represents.FieldOf t c 0 a0} -> {auto 0 f1 : Types.Represents.FieldOf t c 1 a1} ->
+con2 : (c : Types.ConstructorId) -> {auto 0 only : Types.Represents.Only Types.Kind.CON t} ->
+       {auto 0 con : Types.Represents.ConOf t c 2} ->
+       {auto 0 f0 : Types.Represents.FieldOf t c 0 a0} ->
+         {auto 0 f1 : Types.Represents.FieldOf t c 1 a1} ->
        Flat.Uniform a0 -> Flat.Uniform a1 -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform t)
 con2 c x y = do
   h <- checked Types.Kind.CON
-         (Types.ConstructorId.withConstructor c (Types.Header.withPart Types.Header.ConArity 2 Types.Header.noParts))
+         (Types.ConstructorId.withConstructor c
+           (Types.Header.withPart Types.Header.ConArity 2 Types.Header.noParts))
   wx <- Runtime.Memory.valueWord x
   wy <- Runtime.Memory.valueWord y
   a <- Runtime.Space.allocate 24

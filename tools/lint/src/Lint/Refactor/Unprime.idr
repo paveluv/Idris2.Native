@@ -43,7 +43,8 @@ import Lint.Source
 export
 unprime : Refactoring
 unprime = MkRefactoring "unprime"
-  "give each local function's primed type variables the names a scope around it binds, where that checks; only with a check"
+  ("give each local function's primed type variables the names a scope around it binds, where " ++
+   "that checks; only with a check")
   False True (\_ => candidates)
   where
     -- a name with one prime less, if it has one
@@ -94,7 +95,8 @@ unprime = MkRefactoring "unprime"
            in case more of
                 ('=' :: '>' :: rest) =>
                   let sp' = length (fst (span (== ' ') rest)) in
-                  [((st, (el, ec + cast (length sp) + 2 + cast sp')), fromMaybe "" (head' (writtenAs ls a)))]
+                  [((st, (el, ec + cast (length sp) + 2 + cast sp')),
+                    fromMaybe "" (head' (writtenAs ls a)))]
                 _ => []
          Nothing => [])
       ++ spans ls r
@@ -107,41 +109,55 @@ unprime = MkRefactoring "unprime"
     -- the constraints of the enclosing declaration, tidy
     enclosing : Subject -> Declared -> List String
     enclosing s d = map tidy (case d.decl.val of
-      PImplementation _ _ _ _ cs _ _ _ _ _ => foldr (\c, rest => writtenAs (linesOf s) (snd c) ++ rest) [] cs
+      PImplementation _ _ _ _ cs _ _ _ _ _ =>
+        foldr (\c, rest => writtenAs (linesOf s) (snd c) ++ rest) [] cs
       _ => foldr (\c, rest => case c.decl.val of
-                                PClaim cd => if any (`elem` d.defines) c.defines then constraintsOf (linesOf s) cd.type.val.type ++ rest else rest
+                                PClaim cd => if any (`elem` d.defines) c.defines
+                                  then constraintsOf (linesOf s) cd.type.val.type ++ rest else rest
                                 _ => rest) [] s.declared)
 
     -- the change for one local claim, or why it stays
     plan : Subject -> List String -> InnerClaim -> List (String, String) -> Either String Change
     plan s theirs ic rs = do
       let named = filter (namedSomewhere s.text . fst) rs
-      when (not (null named)) $ Left ("its callers name `" ++ fst (fromMaybe ("", "") (head' named)) ++ "` in a named argument")
+      when (not (null named)) $
+        Left
+          ("its callers name `" ++ fst (fromMaybe ("", "") (head' named))
+           ++ "` in a named argument")
       let sites = sitesOf (allOf (occurrences ic.type :: map clauseAt ic.clauses))
-      when (any (\(p, _, _) => p == (-1, -1)) sites) $ Left "a variable occurs where it cannot be renamed"
+      when (any (\(p, _, _) => p == (-1, -1)) sites) $
+        Left "a variable occurs where it cannot be renamed"
       let dropped = droppedOf (spans (linesOf s) ic.type)
-      pure (inFile s.file.path (renamesOf dropped sites ++ map (\((a, b), _) => MkEdit a b "") dropped))
+      pure
+        (inFile s.file.path
+         (renamesOf dropped sites ++ map (\((a, b), _) => MkEdit a b "") dropped))
       where
         -- each place a renamed variable occurs, with its new name
         sitesOf : Occurrences -> List ((Int, Int), String, String)
-        sitesOf occ = foldr (\(v, t), rest => map (\p => (p, v, t)) (fromMaybe [] (lookup v occ)) ++ rest) [] rs
+        sitesOf occ =
+          foldr (\(v, t), rest => map (\p => (p, v, t)) (fromMaybe [] (lookup v occ)) ++ rest) [] rs
 
         -- the claim's constraints that repeat the enclosing declaration's
         -- once renamed
-        droppedOf : List (((Int, Int), (Int, Int)), String) -> List (((Int, Int), (Int, Int)), String)
+        droppedOf : List (((Int, Int), (Int, Int)), String) ->
+                    List (((Int, Int), (Int, Int)), String)
         droppedOf = filter (\(_, w) => elem (tidy (renameWords rs w)) theirs)
 
         -- the renames, those within a constraint dropped aside
-        renamesOf : List (((Int, Int), (Int, Int)), String) -> List ((Int, Int), String, String) -> List Edit
+        renamesOf : List (((Int, Int), (Int, Int)), String) -> List ((Int, Int), String, String) ->
+                    List Edit
         renamesOf dropped sites =
-          [ MkEdit (l, c) (l, c + cast (length v)) t | ((l, c), v, t) <- sites, not (any (\d => within (fst d) (l, c)) dropped) ]
+          [ MkEdit (l, c) (l, c + cast (length v)) t | ((l, c), v, t) <- sites,
+            not (any (\d => within (fst d) (l, c)) dropped) ]
 
     -- the local claims of a declaration, with the names around them
     claimsOf : Subject -> SortedSet String -> Declared -> List InnerClaim
     claimsOf s globals d = case d.decl.val of
       PDef cls => claimsWithin globals ofClaim cls
       PImplementation _ _ _ _ cs _ ps _ _ (Just body) =>
-        let around = foldr (\t, rest => union (free t) rest) (foldr (\c, rest => union (free (snd c)) rest) empty cs) ps in
+        let around =
+              foldr (\t, rest => union (free t) rest)
+                (foldr (\c, rest => union (free (snd c)) rest) empty cs) ps in
         foldr (\m, rest => case m.val of
                              PDef cls => claimsWithin globals around cls ++ rest
                              _ => rest) [] body
@@ -149,7 +165,9 @@ unprime = MkRefactoring "unprime"
       where
         ofClaim : SortedSet String
         ofClaim = foldr (\c, rest => case c.decl.val of
-                                       PClaim cd => if any (`elem` d.defines) c.defines then union (typeVariables globals cd.type.val.type) rest else rest
+                                       PClaim cd => if any (`elem` d.defines) c.defines
+                                         then union (typeVariables globals cd.type.val.type) rest
+                                           else rest
                                        _ => rest) empty s.declared
 
     candidates : Subject -> List Candidate
@@ -160,7 +178,12 @@ unprime = MkRefactoring "unprime"
         forDecl : SortedSet String -> Declared -> List Candidate
         forDecl globals d =
           let theirs = enclosing s d in
-          mapMaybe (\ic => let rs = mapMaybe (\v => map (v,) (target ic v)) (Prelude.toList ic.variables) in
+          mapMaybe
+            (\ic => let rs =
+                          mapMaybe (\v => map (v,) (target ic v)) (Prelude.toList ic.variables) in
                            if null rs then Nothing
-                           else Just (candidate ("the variables of the claim at line " ++ show (ic.line + 1)) (plan s theirs ic rs)))
+                           else Just
+                             (candidate
+                               ("the variables of the claim at line " ++ show (ic.line + 1))
+                              (plan s theirs ic rs)))
                    (claimsOf s globals d)

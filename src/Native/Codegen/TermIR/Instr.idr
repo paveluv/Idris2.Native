@@ -50,7 +50,8 @@ convTo IRCommon.Op.BitsF = IRCommon.Ty.F64
 ||| An instruction of a function that may (`True`) or may not convert between
 ||| words and addresses, with the types of the results it binds.
 public export
-data Instr : Decls enc -> Bool -> (var : IRCommon.Ty enc -> Type) -> List (IRCommon.Ty enc) -> Type where
+data Instr : Decls enc -> Bool -> (var : IRCommon.Ty enc -> Type) -> List (IRCommon.Ty enc) ->
+  Type where
   FConst : Double -> Instr d m var [IRCommon.Ty.F64]
   ||| The entry address of a CPS function of the program: a closure's code.
   CodeAddr : Var d.sigs (MkSig n IRCommon.Conv.CPS ps cv) -> Instr d m var [IRCommon.Ty.W64]
@@ -62,19 +63,25 @@ data Instr : Decls enc -> Bool -> (var : IRCommon.Ty enc -> Type) -> List (IRCom
   TableAddr : Name -> Instr d m var [IRCommon.Ty.W64]
   ||| Integer arithmetic on two `W64`s or two `Fix`es; on `Fix`es the
   ||| producer guarantees the result is a fixnum.
-  Arith : {auto 0 int : IsInt t} -> IRCommon.Op.ArithOp -> Opnd var t -> Opnd var t -> Instr d m var [t]
+  Arith : {auto 0 int : IsInt t} -> IRCommon.Op.ArithOp -> Opnd var t -> Opnd var t ->
+          Instr d m var [t]
   ||| The 128-bit product of two words: its high word, then its low word.
-  Mul128 : Opnd var IRCommon.Ty.W64 -> Opnd var IRCommon.Ty.W64 -> Instr d m var [IRCommon.Ty.W64, IRCommon.Ty.W64]
+  Mul128 : Opnd var IRCommon.Ty.W64 -> Opnd var IRCommon.Ty.W64 ->
+           Instr d m var [IRCommon.Ty.W64, IRCommon.Ty.W64]
   Unary : IRCommon.Op.UnOp -> Opnd var IRCommon.Ty.W64 -> Instr d m var [IRCommon.Ty.W64]
   ||| Narrow a word to the width, then extend it back, signed or not.
-  Ext : IRCommon.Op.SubWord -> (signed : Bool) -> Opnd var IRCommon.Ty.W64 -> Instr d m var [IRCommon.Ty.W64]
-  FArith : IRCommon.Op.FOp -> Opnd var IRCommon.Ty.F64 -> Opnd var IRCommon.Ty.F64 -> Instr d m var [IRCommon.Ty.F64]
+  Ext : IRCommon.Op.SubWord -> (signed : Bool) -> Opnd var IRCommon.Ty.W64 ->
+        Instr d m var [IRCommon.Ty.W64]
+  FArith : IRCommon.Op.FOp -> Opnd var IRCommon.Ty.F64 -> Opnd var IRCommon.Ty.F64 ->
+           Instr d m var [IRCommon.Ty.F64]
   FNeg : Opnd var IRCommon.Ty.F64 -> Instr d m var [IRCommon.Ty.F64]
   ||| Compare two doubles: 1 or 0.
-  FCmp : IRCommon.Op.Rel -> Opnd var IRCommon.Ty.F64 -> Opnd var IRCommon.Ty.F64 -> Instr d m var [IRCommon.Ty.W64]
+  FCmp : IRCommon.Op.Rel -> Opnd var IRCommon.Ty.F64 -> Opnd var IRCommon.Ty.F64 ->
+         Instr d m var [IRCommon.Ty.W64]
   Convert : (op : IRCommon.Op.ConvOp) -> Opnd var (convFrom op) -> Instr d m var [convTo op]
   ||| Compare two integers: 1 or 0.
-  Cmp : {auto 0 int : IsInt t} -> IRCommon.Op.Rel -> Opnd var t -> Opnd var t -> Instr d m var [IRCommon.Ty.W64]
+  Cmp : {auto 0 int : IsInt t} -> IRCommon.Op.Rel -> Opnd var t -> Opnd var t ->
+        Instr d m var [IRCommon.Ty.W64]
   Load : (t : IRCommon.Ty enc) -> Mem var -> Instr d m var [t]
   Store : (t : IRCommon.Ty enc) -> Mem var -> Opnd var t -> Instr d m var []
   ||| Load 8, 16 or 32 bits, extended to a word.
@@ -95,7 +102,8 @@ data Instr : Decls enc -> Bool -> (var : IRCommon.Ty enc -> Type) -> List (IRCom
              Instr d m var [IRCommon.Ty.Val]
   WidenPtr : Opnd var (IRCommon.Ty.PtrTo k) -> Instr d m var [IRCommon.Ty.Val]
   AddrToWord : Opnd var (IRCommon.Ty.PtrTo k) -> Instr d True var [IRCommon.Ty.W64]
-  WordToAddr : (k : Types.Kind) -> Opnd var IRCommon.Ty.W64 -> Instr d True var [IRCommon.Ty.PtrTo k]
+  WordToAddr : (k : Types.Kind) -> Opnd var IRCommon.Ty.W64 ->
+               Instr d True var [IRCommon.Ty.PtrTo k]
   ||| The word a `Val` is, and the `Val` a word is, of any value: restricted
   ||| as `AddrToWord` is.
   ValToWord : Opnd var IRCommon.Ty.Val -> Instr d True var [IRCommon.Ty.W64]
@@ -113,7 +121,8 @@ data Instr : Decls enc -> Bool -> (var : IRCommon.Ty enc -> Type) -> List (IRCom
                (count : Opnd var IRCommon.Ty.W64) ->
                Sizes.Fill var p -> Instr d m var [IRCommon.Ty.PtrTo k]
   ||| A machine call of a Direct function, binding its results.
-  DirectCall : Var d.sigs (MkSig n (IRCommon.Conv.Direct rs col) ps cv) -> All (Opnd var) ps -> Instr d m var rs
+  DirectCall : Var d.sigs (MkSig n (IRCommon.Conv.Direct rs col) ps cv) -> All (Opnd var) ps ->
+               Instr d m var rs
   ||| A pinned register's value, and setting it.
   GetPinned : (r : IRCommon.Pinned) -> Instr d m var [IRCommon.Pinned.pinnedTy r]
   SetPinned : (r : IRCommon.Pinned) -> Opnd var (IRCommon.Pinned.pinnedTy r) -> Instr d m var []
@@ -129,7 +138,8 @@ data Instr : Decls enc -> Bool -> (var : IRCommon.Ty enc -> Type) -> List (IRCom
 ||| The instruction with each operand replaced, effectfully: how a pass
 ||| changes the representation of variables.
 public export
-traverseInstr : Applicative f => ({0 t : IRCommon.Ty enc} -> Opnd v t -> f (Opnd w t)) -> Instr d m v ts ->
+traverseInstr : Applicative f => ({0 t : IRCommon.Ty enc} -> Opnd v t -> f (Opnd w t)) ->
+                Instr d m v ts ->
                 f (Instr d m w ts)
 traverseInstr g (FConst x) = pure (FConst x)
 traverseInstr g (CodeAddr r) = pure (CodeAddr r)

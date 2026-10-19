@@ -65,7 +65,9 @@ record Imported where
 export
 qualifyNames : Refactoring
 qualifyNames =
-  MkRefactoring "qualify-names" "write each name taken from another of our modules with its path past the common prefix (an experiment)"
+  MkRefactoring "qualify-names"
+    ("write each name taken from another of our modules with its path past the common prefix " ++
+     "(an experiment)")
     True False candidates
   where
     -- the one import of ours that exports a name, if exactly one does,
@@ -81,12 +83,14 @@ qualifyNames =
     qualified i = qualifiedName i.path
 
     -- a name written bare, made qualified
-    bareEdits : List (String, String) -> List Imported -> (defined : List String) -> (String, List (Int, Int)) -> List Edit
+    bareEdits : List (String, String) -> List Imported -> (defined : List String) ->
+                (String, List (Int, Int)) -> List Edit
     bareEdits uses is defined (n, ps) =
       if n `elem` defined then [] else
         case providerOf uses is n of
           Just i => let q = qualified i n in
-                    if q == n then [] else [ MkEdit p (fst p, snd p + cast (length n)) q | p <- ps, p /= (-1, -1) ]
+                    if q == n then []
+                      else [ MkEdit p (fst p, snd p + cast (length n)) q | p <- ps, p /= (-1, -1) ]
           Nothing => []
 
     -- a name written qualified otherwise than the rule writes it, under
@@ -99,7 +103,8 @@ qualifyNames =
            ([i], Just ((l, c), (l', c'))) =>
              let shown = substr (cast c) (cast (c' - c)) (lineOf s l)
                  q = qualified i n
-             in if l /= l' || shown /= x ++ "." ++ n || shown == q then [] else [MkEdit (l, c) (l', c') q]
+             in if l /= l' || shown /= x ++ "." ++ n || shown == q then []
+               else [MkEdit (l, c) (l', c') q]
            _ => []
     qualifiedEdits _ _ _ = []
 
@@ -107,7 +112,8 @@ qualifyNames =
     ||| writes the module's key type or the type's constructor.
     aliasFor : (uses : List (String, String)) -> Imported -> Maybe String
     aliasFor uses i = case last' i.path of
-      Just m => if any (\(d, n) => d == i.name && keyNamed m n) uses then aliasAt i.path else Nothing
+      Just m => if any (\(d, n) => d == i.name && keyNamed m n) uses then aliasAt i.path
+        else Nothing
       Nothing => Nothing
 
     -- an import whose alias is not the one the rule asks, rewritten
@@ -117,7 +123,9 @@ qualifyNames =
           have = if show i.imp.nameAs == i.name then Nothing else Just (show i.imp.nameAs)
           l = fst (lineSpan i.imp.loc)
       in if want == have then [] else
-           [MkEdit (l, 0) (l + 1, 0) ("import " ++ (if i.imp.reexport then "public " else "") ++ i.name ++ maybe "" (" as " ++) want ++ "\n")]
+           [MkEdit (l, 0) (l + 1, 0)
+             ("import " ++ (if i.imp.reexport then "public " else "") ++ i.name
+              ++ maybe "" (" as " ++) want ++ "\n")]
 
     ||| The imports of a file that are of our modules, with their paths.
     importedIn : Project -> Subject -> List Imported
@@ -125,7 +133,10 @@ qualifyNames =
       where
         imported : Import -> Maybe Imported
         imported i =
-          map (\t => MkImported (show i.path) (pathFrom (show s.file.mod.moduleNS) (show i.path)) i (nub (joined (map (.visible) t.declared))))
+          map
+            (\t =>
+              MkImported (show i.path) (pathFrom (show s.file.mod.moduleNS) (show i.path)) i
+             (nub (joined (map (.visible) t.declared))))
               (find (\t => show t.file.mod.moduleNS == show i.path) (p.files ++ p.context))
     ||| The free names of a declaration, each where it is written: a claim's,
     ||| a definition's, a `mutual` block's, followed by Free; an
@@ -148,7 +159,9 @@ qualifyNames =
     capitals : Subject -> Occurrences
     capitals s = foldr (\(fc, n), acc => case (n, bounds fc) of
                                            (UN (Basic x), Just (start, _)) =>
-                                             if capital x then insert x (start :: fromMaybe [] (lookup x acc)) acc else acc
+                                             if capital x
+                                               then insert x (start :: fromMaybe [] (lookup x acc))
+                                                 acc else acc
                                            _ => acc) empty s.written
 
     candidates : Project -> Subject -> List Candidate
@@ -156,8 +169,11 @@ qualifyNames =
       Nothing => [candidate "names" (Left "the modules' uses cannot be resolved: build them first")]
       Just r =>
         let is = importedIn p s
-            uses = [ (u.definer, u.name) | rm <- r.modules, rm.name == show s.file.mod.moduleNS, u <- rm.uses, not u.searched ]
-            defined = joined (map (.defines) s.declared) ++ joined (map (.members) (conceptsOf s.file s.declared))
+            uses =
+              [ (u.definer, u.name) | rm <- r.modules, rm.name == show s.file.mod.moduleNS,
+               u <- rm.uses, not u.searched ]
+            defined = joined (map (.defines) s.declared)
+              ++ joined (map (.members) (conceptsOf s.file s.declared))
             lower = [ o | d <- s.declared, o <- SortedMap.toList (freeIn d), not (capital (fst o)) ]
             bare = joined (map (bareEdits uses is defined) (lower ++ SortedMap.toList (capitals s)))
             requalified = joined (map (qualifiedEdits s is) s.written)

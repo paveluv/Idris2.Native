@@ -1,7 +1,10 @@
 ||| `idris2-native-lint`: the rules of the product's code, checked on Idris's
 ||| own parse of each file.
 |||
-|||   idris2-native-lint [--golden | --fix] [--health [--minimum N] [--offenders N]] [--helpers] [--refactor NAME [--arg VALUE]... [--dry-run] [--check COMMAND]] [--resolved] PATH... [--unscored PATH...] [--programs PATH...]
+||| idris2-native-lint [--golden | --fix] [--health [--minimum N] [--offenders
+||| N]]
+|||     [--helpers] [--refactor NAME [--arg VALUE]... [--dry-run] [--check COMMAND]]
+|||     [--resolved] PATH... [--unscored PATH...] [--programs PATH...]
 |||
 ||| Each path is a `.idr` file or a directory, walked for `.idr` files, its
 ||| `build` directories left out. The paths after `--unscored` are bound by
@@ -146,17 +149,23 @@ main = do
     | [] => exitWith (ExitFailure 2)
   let o = request args
   when (null o.paths && null o.unscored && null o.programs) $ do
-    putStrLn "usage: idris2-native-lint [--golden | --fix] [--health [--minimum N] [--offenders N]] [--helpers] [--refactor NAME [--arg VALUE]... [--dry-run] [--check COMMAND]] [--resolved] PATH... [--unscored PATH...] [--programs PATH...]"
+    putStrLn
+      ("usage: idris2-native-lint [--golden | --fix] [--health [--minimum N] [--offenders N]] " ++
+       "[--helpers] [--refactor NAME [--arg VALUE]... [--dry-run] [--check COMMAND]] " ++
+       "[--resolved] PATH... [--unscored PATH...] [--programs PATH...]")
     exitWith (ExitFailure 2)
   when o.fix $ runRefactoring True False Nothing orderImports (o.paths ++ o.unscored ++ o.programs)
   whenJust o.refactoring $ \n => do
     case find (\r => r.name == n) (refactorings o.arguments) of
       Nothing => do
-        putStrLn ("no refactoring `" ++ n ++ "`; there are " ++ fastConcat (intersperse ", " (map (.name) (refactorings []))))
+        putStrLn
+          ("no refactoring `" ++ n ++ "`; there are "
+           ++ fastConcat (intersperse ", " (map (.name) (refactorings []))))
         exitWith (ExitFailure 2)
       Just r => do
         when (r.needsCheck && isNothing o.checkCommand) $ do
-          putStrLn ("`" ++ n ++ "` runs only with `--check`: only the type checker can judge its changes")
+          putStrLn
+            ("`" ++ n ++ "` runs only with `--check`: only the type checker can judge its changes")
           exitWith (ExitFailure 2)
         runRefactoring False o.dryRun o.checkCommand r (o.paths ++ o.unscored ++ o.programs)
         exitWith ExitSuccess
@@ -172,7 +181,8 @@ main = do
   res <- if o.resolved then Just <$> resolve (fs ++ us) else pure Nothing
   findings <- the (IO (List Finding)) $ if o.health then pure [] else do
     pms <- traverse (\f => mentions f.mod.decls) ps
-    let programNames = the (SortedSet String) (fromList (joined (map (\m => map (nameRoot . snd) m.refs) pms)))
+    let programNames =
+          the (SortedSet String) (fromList (joined (map (\m => map (nameRoot . snd) m.refs) pms)))
         findings = (failed ++ failedUnscored ++ failedPrograms) ++ lint fdms ps programNames res
     traverse_ (putStrLn . if o.golden then withoutPosition else withPosition) findings
     pure findings
@@ -183,12 +193,15 @@ main = do
         traverse_ (putStrLn . withPosition) problems
         exitWith (ExitFailure 2)
       pure False
-    Just (Right r) => healthOf o scored (Just ({ modules $= filter (\rm => rm.path `elem` map (.path) fs) } r))
+    Just (Right r) =>
+      healthOf o scored (Just ({ modules $= filter (\rm => rm.path `elem` map (.path) fs) } r))
     Nothing => healthOf o scored Nothing
   when (not o.golden && (not (null findings) || low)) $ exitWith (ExitFailure 1)
   where
     request : List String -> Request
-    request = go (MkRequest False False False Nothing 0 False False Nothing False Nothing [] [] [] [] Scored)
+    request =
+      go
+        (MkRequest False False False Nothing 0 False False Nothing False Nothing [] [] [] [] Scored)
       where
         go : Request -> List String -> Request
         go o [] = o
@@ -215,7 +228,8 @@ main = do
     ||| findings that kept it from being made. A suppression of a resolved
     ||| rule suppresses nothing without the resolution, and is not reported
     ||| for it then.
-    lint : List (SourceFile, List Declared, Mentions) -> List SourceFile -> (programNames : SortedSet String) ->
+    lint : List (SourceFile, List Declared, Mentions) -> List SourceFile ->
+           (programNames : SortedSet String) ->
            Maybe (Either (List Finding) Resolution) -> List Finding
     lint fdms ps programNames res =
       let fs = map (\(f, _, _) => f) fdms
@@ -228,9 +242,17 @@ main = do
             Just (Left problems) => problems
             Just (Right r) => resolvedRules fdms programNames r
           ours = the (SortedSet String) (fromList (map (\f => show f.mod.moduleNS) fs))
-          exportsOf = the (SortedMap String (List String)) (fromList [ (show f.mod.moduleNS, joined (map (.visible) ds)) | (f, ds) <- fds ])
-          aliases = joined (map (\(f, ds, ms) => importAlias exportsOf f ms.refs ++ selfQualified f (joined (map (.defines) ds)) ms.refs) fdms)
-          all = joined (map (\(f, ds, ms) => fileRules f ms ds) fdms) ++ joined (map programRules ps) ++ graphRules fs
+          exportsOf =
+            the (SortedMap String (List String))
+              (fromList [ (show f.mod.moduleNS, joined (map (.visible) ds)) | (f, ds) <- fds ])
+          aliases =
+            joined
+              (map
+                (\(f, ds, ms) => importAlias exportsOf f ms.refs
+                 ++ selfQualified f (joined (map (.defines) ds)) ms.refs)
+               fdms)
+          all = joined (map (\(f, ds, ms) => fileRules f ms ds) fdms)
+            ++ joined (map programRules ps) ++ graphRules fs
                 ++ aliases ++ joined (map exclusionRules fs) ++ resolved
       in sort (foldl (\acc, f => suppress ran f acc) all (fs ++ ps))
       where
@@ -254,19 +276,28 @@ main = do
               where
                 -- the first finding of the rule in the suppression's paragraph
                 firstFrom : Suppression -> Maybe (Int, Int)
-                firstFrom s = head' (sort [ (g.line, g.col) | g <- fs, g.path == f.path, g.rule == s.rule
-                                                            , g.line >= s.line, g.line <= s.through ])
+                firstFrom s =
+                  head' (sort [ (g.line, g.col) | g <- fs, g.path == f.path, g.rule == s.rule
+                                                            , g.line >= s.line,
+                                                              g.line <= s.through ])
 
             check : List Finding -> Suppression -> List Finding
             check fs s =
               let at = MkFinding "suppression" f.path s.line s.col s.rule in
-              if not (s.rule `elem` ruleNames ++ resolvedRuleNames) then [at ("no rule `" ++ s.rule ++ "`")]
-              else if s.rule `elem` unsuppressibleRules then [at ("`" ++ s.rule ++ "` is not to be suppressed: change what it reports")]
-              else if (s.rule == "import-unused" || s.rule == "public-import") && forTheFlatCheck s.reason
-                then [at ("the flat check loads every module a flat function reaches: no import is kept, nor re-exported, for it")]
+              if not (s.rule `elem` ruleNames ++ resolvedRuleNames)
+                then [at ("no rule `" ++ s.rule ++ "`")]
+              else if s.rule `elem` unsuppressibleRules
+                then [at ("`" ++ s.rule ++ "` is not to be suppressed: change what it reports")]
+              else if (s.rule == "import-unused" || s.rule == "public-import")
+                && forTheFlatCheck s.reason
+                then
+                  [at
+                    (("the flat check loads every module a flat function reaches: no import is " ++
+                      "kept, nor re-exported, for it"))]
               else if s.reason == "" then [at ("a suppression of `" ++ s.rule ++ "` says why")]
               else if not ran && (s.rule `elem` resolvedRuleNames) then []
-              else if not (any (\fi => fi.path == f.path && covers s fi) fs) then [at ("the suppression of `" ++ s.rule ++ "` suppresses nothing")]
+              else if not (any (\fi => fi.path == f.path && covers s fi) fs)
+                then [at ("the suppression of `" ++ s.rule ++ "` suppresses nothing")]
               else []
 
             suppressions : SourceFile -> List Suppression
@@ -279,7 +310,9 @@ main = do
                         (r, why) = break (== ':') rest
                         -- to the line before the next blank one
                         through = maybe 2147483647 (\b => b - 1) (find (> c.line) f.blankLines)
-                    in Just (MkSuppression (trim r) (trim (substr 1 (length why) why)) c.line c.col through)
+                    in Just
+                      (MkSuppression (trim r) (trim (substr 1 (length why) why)) c.line c.col
+                       through)
 
     ||| The `.idr` files under a path, in order.
     files : String -> IO (List String)
@@ -296,19 +329,26 @@ main = do
     parsed roots = do
       paths <- joined <$> traverse files roots
       results <- traverse parse paths
-      let failures = mapMaybe (\(p, r) => either (\e => Just (MkFinding "parse" p 0 0 "" e)) (const Nothing) r) (zip paths results)
+      let failures =
+            mapMaybe
+              (\(p, r) => either (\e => Just (MkFinding "parse" p 0 0 "" e)) (const Nothing) r)
+                (zip paths results)
       pure (rights results, failures)
 
     ||| The refactorings, by name, given the run's arguments (`--arg`), which
     ||| those that take them read: `split-module` the module to make and the
     ||| concepts to move to it.
     refactorings : List String -> List Refactoring
-    refactorings args = [inlineAlias args, joinModules args, mergeClauses, orderImports, pruneImports, qualifyNames, reflowLines args, removeUnused, rename args, renameModule args, scopeHelpers, splitModule args, unprime]
+    refactorings args =
+      [inlineAlias args, joinModules args, mergeClauses, orderImports, pruneImports, qualifyNames,
+        reflowLines args, removeUnused, rename args, renameModule args, scopeHelpers,
+       splitModule args, unprime]
 
     ||| The files under a run's roots listed and parsed once, and again only
     ||| after a change, which may have moved one: a wide refactoring asks
     ||| for them at every file it looks at.
-    projectOnce : IORef (Maybe Project) -> (roots : List String) -> Maybe Resolution -> List Subject -> IO Project
+    projectOnce : IORef (Maybe Project) -> (roots : List String) -> Maybe Resolution ->
+                  List Subject -> IO Project
     projectOnce cache roots res context = do
       Nothing <- readIORef cache
         | Just p => pure p
@@ -343,7 +383,8 @@ main = do
 
     ||| The refactoring run over every file under the paths, each to a fixed
     ||| point, with what it changed and what stays printed unless `quiet`.
-    runRefactoring : (quiet, dryRun : Bool) -> (check : Maybe String) -> Refactoring -> List String -> IO ()
+    runRefactoring : (quiet, dryRun : Bool) -> (check : Maybe String) -> Refactoring ->
+                     List String -> IO ()
     runRefactoring quiet dryRun check r roots = do
       paths <- joined <$> traverse files roots
       cache <- newIORef Nothing
@@ -354,10 +395,13 @@ main = do
       -- may import, read once, as the run does not change them
       context <- if r.wide then contextOf roots paths else pure []
       for_ paths $ \p => do
-        rep <- refactor dryRun check r (projectOnce cache roots res context) (writeIORef cache Nothing) p
+        rep <- refactor dryRun check r (projectOnce cache roots res context)
+          (writeIORef cache Nothing) p
         when (not quiet || not (null rep.changed)) $
           when (not (null rep.changed) || not (null rep.stays)) $ do
-            putStrLn (p ++ ": " ++ show (length rep.changed) ++ " changed, " ++ show (length rep.stays) ++ " stay")
+            putStrLn
+              (p ++ ": " ++ show (length rep.changed) ++ " changed, " ++ show (length rep.stays)
+               ++ " stay")
             for_ rep.stays $ \(what, why) => putStrLn ("  `" ++ what ++ "` stays: " ++ why)
 
     ||| The components of a group.
@@ -367,22 +411,32 @@ main = do
     ||| A component's line, and under it, short of 100, its worst `n` offenders.
     component : (n : Nat) -> Component -> IO ()
     component n c = do
-      putStrLn ("    " ++ padRight 14 ' ' c.name ++ padLeft 3 ' ' (show c.value) ++ "  " ++ c.counted)
+      putStrLn
+        ("    " ++ padRight 14 ' ' c.name ++ padLeft 3 ' ' (show c.value) ++ "  " ++ c.counted)
       when (c.value /= 100) $ traverse_ offender (worst n c.offenders)
       where
         ||| A component's offenders that cost it most, the first `n`, the costliest
         ||| first, and among equal costs in the order of their subjects.
         worst : Nat -> List Offender -> List Offender
-        worst n os = take n (sortBy (\a, b => compare (negate (cast {to = Integer} a.cost), a.subject) (negate (cast b.cost), b.subject)) os)
+        worst n os =
+          take n
+            (sortBy (\a,
+              b =>
+                compare (negate (cast {to = Integer} a.cost), a.subject)
+                     (negate (cast b.cost), b.subject))
+             os)
 
         offender : Offender -> IO ()
-        offender x = putStrLn ("      " ++ padLeft 5 ' ' (show x.cost) ++ "  " ++ x.subject ++ ": " ++ x.detail)
+        offender x =
+          putStrLn
+            ("      " ++ padLeft 5 ' ' (show x.cost) ++ "  " ++ x.subject ++ ": " ++ x.detail)
 
     ||| A helper used by one declaration, as `--helpers` prints it: where it is
     ||| declared, its name, and its user with where that starts.
     singleUse : SourceFile -> (Declared, Declared) -> String
     singleUse f (h, u) =
-      f.path ++ ":" ++ show (line h) ++ " `" ++ name h ++ "` used only by `" ++ name u ++ "` at " ++ show (line u)
+      f.path ++ ":" ++ show (line h) ++ " `" ++ name h ++ "` used only by `" ++ name u ++ "` at "
+        ++ show (line u)
       where
         line : Declared -> Int
         line d = case d.decl.fc of

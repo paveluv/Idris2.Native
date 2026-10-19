@@ -24,7 +24,8 @@ import Native.HeapObj.Shape as HeapObj
 public export
 PortTy : (addr : (0 s : HeapObj.Shape) -> Type) -> Port -> Type
 PortTy addr p =
-  forShape (any isAddress (carriers p)) (\s => forValue (any isValue (carriers p)) (\a => arrows s a p.takes))
+  forShape (any isAddress (carriers p))
+    (\s => forValue (any isValue (carriers p)) (\a => arrows s a p.takes))
   where
     carriers : Port -> List Port.Carrier
     carriers q = q.takes ++ maybe [] (\c => [c]) q.gives

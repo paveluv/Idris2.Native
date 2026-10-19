@@ -43,7 +43,8 @@ import Libraries.Data.WithData
 ||| types and the libraries' foreign functions, which know their types),
 ||| each a group under the product's root, `Native`, the contract several;
 ||| and the linter's own, of a root of its own.
-data Layer = DataLayer | ContractLayer | TypesLayer | FlatLayer | CodegenLayer | RuntimeLayer | SupportLayer | LintLayer
+data Layer = DataLayer | ContractLayer | TypesLayer | FlatLayer | CodegenLayer | RuntimeLayer
+  | SupportLayer | LintLayer
 
 Eq Layer where
   DataLayer == DataLayer = True
@@ -67,7 +68,9 @@ allowed ours importer imported = case layerOf importer of
   where
     ||| The groups of the contract.
     contract : List String
-    contract = ["HeapObj", "Area", "Port", "Routine", "Intrinsic", "Service", "Failure", "Primitive", "Table"]
+    contract =
+      ["HeapObj", "Area", "Port", "Routine", "Intrinsic", "Service", "Failure", "Primitive",
+       "Table"]
 
     ||| A module's layer: the group under the product's root its name is in
     ||| (`Codegen` for `Native.Codegen.TermIR.Instr`), or the linter's.
@@ -75,7 +78,9 @@ allowed ours importer imported = case layerOf importer of
     layerOf m = case forget (split (== '.') m) of
       ("Native" :: g :: _) =>
         if g `elem` contract then Just ContractLayer
-        else lookup g [("Data", DataLayer), ("Types", TypesLayer), ("Flat", FlatLayer), ("Codegen", CodegenLayer),
+        else lookup g
+          [("Data", DataLayer), ("Types", TypesLayer), ("Flat", FlatLayer),
+           ("Codegen", CodegenLayer),
                        ("Runtime", RuntimeLayer), ("Support", SupportLayer)]
       ("Lint" :: _) => Just LintLayer
       _ => Nothing
@@ -104,7 +109,9 @@ allowed ours importer imported = case layerOf importer of
     mayImport : Layer -> String -> Bool
     mayImport l m =
       maybe False (`elem` imports l) (layerOf m)
-        || (elem l (the (List Layer) [ContractLayer, TypesLayer, RuntimeLayer, SupportLayer]) && m == "Native.Flat.Uniform")
+        ||
+          (elem l (the (List Layer) [ContractLayer, TypesLayer, RuntimeLayer, SupportLayer]) && m
+           == "Native.Flat.Uniform")
 
 moduleOf : SourceFile -> String
 moduleOf f = show f.mod.moduleNS
@@ -125,11 +132,15 @@ graphRules fs =
     rules ours f =
       [ MkFinding "layering" f.path (fst (start i.loc)) (snd (start i.loc)) imported
           ("`" ++ moduleOf f ++ "` may not import `" ++ imported ++ "`: the layers")
-      | i <- f.mod.imports, let imported = show i.path, allowed ours (moduleOf f) imported == Just False ]
+      | i <- f.mod.imports, let imported = show i.path,
+                                  allowed ours (moduleOf f) imported == Just False ]
       ++
-      [ MkFinding "syscall" f.path (fst (start i.loc)) (snd (start i.loc)) "Native.Runtime.OS.Syscall"
-          "the raw system call outside `Native.Runtime.OS`: the platform's services reach the system"
-      | i <- f.mod.imports, show i.path == "Native.Runtime.OS.Syscall", not (isPrefixOf "Native.Runtime.OS." (moduleOf f)) ]
+      [ MkFinding "syscall" f.path (fst (start i.loc)) (snd (start i.loc))
+        "Native.Runtime.OS.Syscall"
+          ("the raw system call outside `Native.Runtime.OS`: the platform's services reach the " ++
+           "system")
+      | i <- f.mod.imports, show i.path == "Native.Runtime.OS.Syscall",
+        not (isPrefixOf "Native.Runtime.OS." (moduleOf f)) ]
       where
         start : FC -> (Int, Int)
         start (MkFC _ s _) = s
@@ -162,12 +173,16 @@ groupOf m = parentOf m >>= \p => last' (forget (Data.String.split (== '.') p))
 ||| the two modules' names share, `TermIR.StaticDef.SWord` in
 ||| `Native.Codegen.RegAlloc`.
 export
-importAlias : (exportsOf : SortedMap String (List String)) -> SourceFile -> List (FC, Name) -> List Finding
+importAlias : (exportsOf : SortedMap String (List String)) -> SourceFile -> List (FC, Name) ->
+              List Finding
 importAlias exportsOf f refs =
   [ MkFinding "import-alias" f.path l c m
       ("`" ++ m ++ "` imported as `" ++ show i.nameAs ++ "`: "
-       ++ maybe "its names are qualified by its path, which needs no alias" (\a => "an alias is the qualifier of its key type, `" ++ a ++ "`") (aliasAt (pathFrom me m)))
-  | i <- ours, let m = show i.path, show i.nameAs /= m, Just (show i.nameAs) /= aliasAt (pathFrom me m)
+       ++ maybe "its names are qualified by its path, which needs no alias"
+         (\a => "an alias is the qualifier of its key type, `" ++ a ++ "`")
+           (aliasAt (pathFrom me m)))
+  | i <- ours, let m = show i.path, show i.nameAs /= m,
+                     Just (show i.nameAs) /= aliasAt (pathFrom me m)
   , let (l, c) = start i.loc ]
   ++
   mapMaybe written refs
@@ -188,7 +203,8 @@ importAlias exportsOf f refs =
     by : String -> String -> Import -> Bool
     by q n i =
       let m = show i.path in
-      (show i.nameAs == q || m == q || isSuffixOf ("." ++ q) m) && maybe False (elem n) (lookup m exportsOf)
+      (show i.nameAs == q || m == q || isSuffixOf ("." ++ q) m)
+        && maybe False (elem n) (lookup m exportsOf)
 
     written : (FC, Name) -> Maybe Finding
     written (fc, NS ns (UN (Basic n))) =
@@ -198,7 +214,9 @@ importAlias exportsOf f refs =
                    (l, c) = start fc
                in if q ++ "." ++ n == want then Nothing
                   else Just (MkFinding "import-alias" f.path l c (q ++ "." ++ n)
-                               ("`" ++ q ++ "." ++ n ++ "` is written otherwise than its module's path from here: `" ++ want ++ "`"))
+                               ("`" ++ q ++ "." ++ n
+                                 ++ "` is written otherwise than its module's path from here: `"
+                                 ++ want ++ "`"))
         _ => Nothing
     written _ = Nothing
 
@@ -234,7 +252,8 @@ selfQualified f defines refs = mapMaybe one refs
           decl _ = []
 
           clause : PClause -> List ((Int, Int), (Int, Int))
-          clause (MkPatClause _ _ rhs wh) = maybe [] (\b => [b]) (bounds (getPTermLoc rhs)) ++ rhsOf wh
+          clause (MkPatClause _ _ rhs wh) = maybe [] (\b => [b]) (bounds (getPTermLoc rhs))
+            ++ rhsOf wh
           clause (MkWithClause _ _ _ _ cs) = foldr (\c, rest => clause c ++ rest) [] cs
           clause (MkImpossible _ _) = []
 
@@ -257,7 +276,8 @@ selfQualified f defines refs = mapMaybe one refs
       if (q == me || isSuffixOf ("." ++ q) me) && any (== n) defines && bareMeansIt fc n
          then case fc of
                 MkFC _ (l, c) _ => Just (MkFinding "self-qualified" f.path l c (q ++ "." ++ n)
-                                           ("`" ++ q ++ "." ++ n ++ "` is this module's own: write `" ++ n ++ "`"))
+                                           ("`" ++ q ++ "." ++ n
+                                             ++ "` is this module's own: write `" ++ n ++ "`"))
                 _ => Nothing
          else Nothing
     one _ = Nothing
@@ -284,7 +304,8 @@ record Meeting where
 
 ||| The modules whose names a module sees: those it imports, and those they
 ||| re-export publicly, in turn.
-seen : SortedMap String (List String) -> SortedMap String (List String) -> String -> SortedSet String
+seen : SortedMap String (List String) -> SortedMap String (List String) -> String ->
+       SortedSet String
 seen imports reexports m = go empty (fromMaybe [] (lookup m imports))
   where
     go : SortedSet String -> List String -> SortedSet String
@@ -305,14 +326,23 @@ meetings : List (SourceFile, List Declared) -> List Meeting
 meetings fds =
   let ours = ourModules (map fst fds)
       oursOnly = \is => filter (\i => contains i ours) is
-      imports = fromList [ (moduleOf f, oursOnly (map (show . (.path)) f.mod.imports)) | (f, _) <- fds ]
-      reexports = fromList [ (moduleOf f, oursOnly (map (show . (.path)) (filter (.reexport) f.mod.imports))) | (f, _) <- fds ]
-      visibleIn = the (SortedMap String (List String)) (fromList [ (moduleOf f, joined (map (.visible) ds)) | (f, ds) <- fds ])
+      imports =
+        fromList [ (moduleOf f, oursOnly (map (show . (.path)) f.mod.imports)) | (f, _) <- fds ]
+      reexports =
+        fromList
+          [ (moduleOf f, oursOnly (map (show . (.path)) (filter (.reexport) f.mod.imports)))
+           | (f, _) <- fds ]
+      visibleIn =
+        the (SortedMap String (List String))
+          (fromList [ (moduleOf f, joined (map (.visible) ds)) | (f, ds) <- fds ])
       found = foldl (\acc, fd => meet acc imports reexports visibleIn fd) empty fds
       overloads = the (SortedSet (String, String))
-                    (fromList (joined [ map (moduleOf f,) (d.defines ++ d.visible) | (f, ds) <- fds, d <- ds, typedOverload d ]))
+                    (fromList
+                      (joined [ map (moduleOf f,) (d.defines ++ d.visible) | (f, ds) <- fds,
+                               d <- ds, typedOverload d ]))
   in filter (\mt => not (exempt overloads mt.name mt.definers))
-            (map (\(n, (ds, ms)) => MkMeeting n (Prelude.toList ds) (Prelude.toList ms)) (SortedMap.toList found))
+            (map (\(n, (ds, ms)) => MkMeeting n (Prelude.toList ds) (Prelude.toList ms))
+              (SortedMap.toList found))
   where
     exempt : SortedSet (String, String) -> String -> List String -> Bool
     exempt overloads n defs = all (\d => contains (d, n) overloads) defs
@@ -320,14 +350,22 @@ meetings fds =
     tag : String -> List String -> List (String, String)
     tag m = map (\n => (n, m))
 
-    meet : SortedMap String (SortedSet String, SortedSet String) -> SortedMap String (List String) -> SortedMap String (List String) ->
-           SortedMap String (List String) -> (SourceFile, List Declared) -> SortedMap String (SortedSet String, SortedSet String)
+    meet : SortedMap String (SortedSet String, SortedSet String) ->
+           SortedMap String (List String) -> SortedMap String (List String) ->
+           SortedMap String (List String) -> (SourceFile, List Declared) ->
+             SortedMap String (SortedSet String, SortedSet String)
     meet acc imports reexports visibleIn (f, ds) =
       let m = moduleOf f
           own = tag m (joined (map (.defines) ds))
-          others = joined [ tag i (fromMaybe [] (lookup i visibleIn)) | i <- Prelude.toList (seen imports reexports m) ]
+          others =
+            joined
+              [ tag i (fromMaybe [] (lookup i visibleIn))
+               | i <- Prelude.toList (seen imports reexports m) ]
           written = the (SortedSet String) (fromList (joined (map (.bare) ds)))
-          byName = foldl (\mp, (n, d) => if contains n written then insert n (insert d (fromMaybe empty (lookup n mp))) mp else mp)
+          byName =
+            foldl (\mp,
+              (n, d) => if contains n written
+                   then insert n (insert d (fromMaybe empty (lookup n mp))) mp else mp)
                          (the (SortedMap String (SortedSet String)) empty) (own ++ others)
       in foldl (\a, (n, defs) => if length (Prelude.toList defs) < 2 then a
                                   else let (ds, ms) = fromMaybe (empty, empty) (lookup n a) in
@@ -405,8 +443,10 @@ exclusionRules f = mapMaybe check (exclusions f)
     check : Exclusion -> Maybe Finding
     check e =
       let at = MkFinding "exclusion" f.path e.line e.col e.componentName in
-      if not (e.componentName `elem` excludable) then Just (at ("no component `" ++ e.componentName ++ "` leaves modules out"))
-      else if e.reason == "" then Just (at ("an exclusion from `" ++ e.componentName ++ "` says why"))
+      if not (e.componentName `elem` excludable)
+        then Just (at ("no component `" ++ e.componentName ++ "` leaves modules out"))
+      else if e.reason == ""
+        then Just (at ("an exclusion from `" ++ e.componentName ++ "` says why"))
       else Nothing
 
 ||| The components of the architectural health of the files' modules, in
@@ -436,26 +476,33 @@ health fds =
       in MkComponent "structure" "encapsulation" (percent privates (length imports))
            ("private imports, façades exempt: " ++ show privates ++ " of " ++ show (length imports))
            [ MkOffender (moduleOf f) (length pub) ("imports publicly " ++ listed pub)
-           | f <- notFacades, let pub = [ show i.path | i <- f.mod.imports, i.reexport ], not (null pub) ]
+           | f <- notFacades, let pub = [ show i.path | i <- f.mod.imports, i.reexport ],
+                                    not (null pub) ]
 
     -- an import with whether the layers allow it
     allowedImport : (SourceFile, Import, Bool) -> Bool
     allowedImport (_, _, ok) = ok
 
     disallowed : (SourceFile, Import, Bool) -> Offender
-    disallowed (f, i, _) = MkOffender (moduleOf f) 1 ("imports `" ++ show i.path ++ "`, which its layer may not")
+    disallowed (f, i, _) =
+      MkOffender (moduleOf f) 1 ("imports `" ++ show i.path ++ "`, which its layer may not")
 
     layering : List SourceFile -> Component
     layering fs =
       let ours = ourModules fs
-          checked = joined [ mapMaybe (\i => map (f, i,) (allowed ours (moduleOf f) (show i.path))) f.mod.imports | f <- fs ]
+          checked =
+            joined
+              [ mapMaybe (\i => map (f, i,) (allowed ours (moduleOf f) (show i.path))) f.mod.imports
+               | f <- fs ]
           good = length (filter allowedImport checked)
       in MkComponent "structure" "layering" (percent good (length checked))
            ("imports the layers allow: " ++ show good ++ " of " ++ show (length checked))
            (map disallowed (filter (not . allowedImport) checked))
 
     reaching : (ourCount : Nat) -> (String, List String) -> Offender
-    reaching ourCount (m, r) = MkOffender m (length r) ("its imports reach " ++ show (length r) ++ " of our " ++ show ourCount ++ " modules")
+    reaching ourCount (m, r) =
+      MkOffender m (length r)
+        ("its imports reach " ++ show (length r) ++ " of our " ++ show ourCount ++ " modules")
 
     ||| The modules each module's imports reach, ours only.
     reaches : SortedMap String (List String) -> String -> SortedSet String
@@ -470,12 +517,17 @@ health fds =
     coupling : List SourceFile -> Component
     coupling fs =
       let ours = ourModules fs
-          g = the (SortedMap String (List String)) (fromList [ (moduleOf f, [ show i.path | i <- f.mod.imports, contains (show i.path) ours ]) | f <- fs ])
+          g =
+            the (SortedMap String (List String))
+              (fromList
+                [ (moduleOf f, [ show i.path | i <- f.mod.imports, contains (show i.path) ours ])
+                 | f <- fs ])
           n = length fs
           reachOf = [ (moduleOf f, Prelude.toList (reaches g (moduleOf f))) | f <- fs ]
           reached = sum (map (\mr => length (snd mr)) reachOf)
       in MkComponent "structure" "coupling" (percent (n * n `minus` reached) (n * n))
-           ("module pairs a change cannot reach: " ++ show (n * n `minus` reached) ++ " of " ++ show (n * n))
+           ("module pairs a change cannot reach: " ++ show (n * n `minus` reached) ++ " of "
+             ++ show (n * n))
            (map (reaching n) reachOf)
 
     cohesion : Component
@@ -483,19 +535,23 @@ health fds =
       let adjacencies = joined (map (\fd => adjacency (snd fd)) fds)
           adjacent = length (filter (\a => isNothing a.intruder) adjacencies)
       in MkComponent "readability" "cohesion" (percent adjacent (length adjacencies))
-           ("implementations next to their types: " ++ show adjacent ++ " of " ++ show (length adjacencies))
-           [ MkOffender (maybe "" fst a.impl.implementing ++ " " ++ a.type) 1 ("apart from `" ++ a.type ++ "`")
+           ("implementations next to their types: " ++ show adjacent ++ " of "
+             ++ show (length adjacencies))
+           [ MkOffender (maybe "" fst a.impl.implementing ++ " " ++ a.type) 1
+             ("apart from `" ++ a.type ++ "`")
            | a <- adjacencies, isJust a.intruder ]
 
     unnamedModule : (SourceFile, List Declared) -> Offender
-    unnamedModule (f, ds) = MkOffender (moduleOf f) 1 ("defines " ++ listed (joined (map (.visible) ds)))
+    unnamedModule (f, ds) =
+      MkOffender (moduleOf f) 1 ("defines " ++ listed (joined (map (.visible) ds)))
 
     names : Component
     names =
       let n = length fds
           unnamed = filter (\fd => not (namedAfterSymbol (fst fd) (snd fd))) fds
       in MkComponent "readability" "names" (percent (minus n (length unnamed)) n)
-           ("modules named after a symbol they define: " ++ show (minus n (length unnamed)) ++ " of " ++ show n)
+           ("modules named after a symbol they define: " ++ show (minus n (length unnamed))
+             ++ " of " ++ show n)
            (map unnamedModule unnamed)
 
     -- the names a module exports, each with the module
@@ -509,14 +565,19 @@ health fds =
           meetingNames = map (.name) ms
           unique = length (filter (\nm => not (fst nm `elem` meetingNames)) exportedNames)
       in MkComponent "readability" "uniqueness" (percent unique (length exportedNames))
-           ("exported names never written bare where another of the name is seen: " ++ show unique ++ " of " ++ show (length exportedNames))
+           ("exported names never written bare where another of the name is seen: " ++ show unique
+             ++ " of " ++ show (length exportedNames))
            [ MkOffender mt.name (length (filter (\nm => fst nm == mt.name) exportedNames))
-               ("defined in " ++ listed mt.definers ++ "; they meet bare in " ++ listed mt.inModules)
+               ("defined in " ++ listed mt.definers ++ "; they meet bare in "
+                 ++ listed mt.inModules)
            | mt <- ms ]
 
     moduleWide : (SourceFile, (List (Declared, Declared), Nat)) -> Maybe Offender
     moduleWide (_, ([], _)) = Nothing
-    moduleWide (f, (s, _)) = Just (MkOffender (moduleOf f) (length s) ("module-wide, each used by one: " ++ listed (joined (map (\hu => (fst hu).defines) s))))
+    moduleWide (f, (s, _)) =
+      Just
+        (MkOffender (moduleOf f) (length s)
+         ("module-wide, each used by one: " ++ listed (joined (map (\hu => (fst hu).defines) s))))
 
     scoping : Component
     scoping =
@@ -524,7 +585,8 @@ health fds =
           single = sum (map (\pm => length (fst (snd pm))) perModule)
           scoped = sum (map (\pm => snd (snd pm)) perModule)
       in MkComponent "readability" "scoping" (percent scoped (scoped + single))
-           ("helpers local to a function or a namespace block, of those and the ones a single user leaves module-wide: "
+           (("helpers local to a function or a namespace block, of those and the ones a single " ++
+             "user leaves module-wide: ")
             ++ show scoped ++ " of " ++ show (scoped + single))
            (mapMaybe moduleWide perModule)
 
@@ -536,7 +598,9 @@ groups = foldl (\gs, c => if c.group `elem` gs then gs else gs ++ [c.group]) []
 ||| A group's score: the mean of its components.
 export
 groupScore : List Component -> String -> Nat
-groupScore cs g = let mine = filter (\c => c.group == g) cs in percent (sum (map (.value) mine)) (100 * length mine)
+groupScore cs g = let mine =
+                        filter (\c => c.group == g) cs in percent (sum (map (.value) mine))
+                          (100 * length mine)
 
 ||| The score: the mean of the groups' scores.
 export

@@ -112,7 +112,8 @@ port OfText = MkPort [Port.Raw, Port.Word] (Just (Port.ValueOf String))
 public export
 allStringRoutines : List StringRoutine
 allStringRoutines =
-  [ Length, Head, Tail, Index, Cons, Append, Reverse, Substr, Compare, ShowSigned, ShowUnsigned, ShowDouble, ReadDouble
+  [ Length, Head, Tail, Index, Cons, Append, Reverse, Substr, Compare, ShowSigned, ShowUnsigned,
+    ShowDouble, ReadDouble
   , ReadWord, TextBytes, TextAddress, CopyText, OfText ]
 
 ||| The list holds every string routine.

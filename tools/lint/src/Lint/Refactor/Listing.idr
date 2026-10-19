@@ -48,7 +48,8 @@ listingOf packages old new = case mapMaybe listing packages of
       where
         value : String -> Maybe String
         value l = case break (== '=') (unpack (trim l)) of
-          (k, '=' :: v) => if trim (pack k) == "sourcedir" then Just (pack (filter (/= '"') (unpack (trim (pack v))))) else Nothing
+          (k, '=' :: v) => if trim (pack k) == "sourcedir"
+            then Just (pack (filter (/= '"') (unpack (trim (pack v))))) else Nothing
           _ => Nothing
 
     joinPath : List String -> String
@@ -61,8 +62,11 @@ listingOf packages old new = case mapMaybe listing packages of
       in case find (\(_, l) => entry l == old) numbered of
            Nothing => Nothing
            Just (i, l) =>
-             Just (MkListing path (cast i) (pack (takeWhile (== ' ') (unpack l))) (not (isSuffixOf "," (trim l)))
-                     (joinPath [directoryOf path, sourceDir ls, joinBy "/" (List1.forget (split (== '.') new))] ++ ".idr"))
+             Just
+               (MkListing path (cast i) (pack (takeWhile (== ' ') (unpack l)))
+                (not (isSuffixOf "," (trim l)))
+                     (joinPath [directoryOf path,
+                       sourceDir ls, joinBy "/" (List1.forget (split (== '.') new))] ++ ".idr"))
 
 ||| A package's list of modules: the lines it takes, both ends included, its
 ||| entries' indentation, and the modules in order.
@@ -84,7 +88,10 @@ moduleList text =
     (_ :: rest) =>
       let entries = takeWhile (isEntry . snd) rest in
       case (entries, last' entries) of
-        ((i, l) :: _, Just (j, _)) => Just (MkModuleList (cast i) (cast j) (pack (takeWhile (== ' ') (unpack l))) (map (entry . snd) entries))
+        ((i, l) :: _, Just (j, _)) =>
+          Just
+            (MkModuleList (cast i) (cast j) (pack (takeWhile (== ' ') (unpack l)))
+             (map (entry . snd) entries))
         _ => Nothing
     [] => Nothing
   where
@@ -92,7 +99,8 @@ moduleList text =
     heading l = isPrefixOf "modules" (trim l) && isSuffixOf "=" (trim l)
 
     isEntry : String -> Bool
-    isEntry l = let t = trim l in t /= "" && isPrefixOf " " l && all (\c => isAlphaNum c || c == '.' || c == '_' || c == ',') (unpack t)
+    isEntry l = let t = trim l in t /= "" && isPrefixOf " " l
+      && all (\c => isAlphaNum c || c == '.' || c == '_' || c == ',') (unpack t)
 
 ||| A list of modules as a package writes it: one a line, indented, each
 ||| but the last followed by a comma.

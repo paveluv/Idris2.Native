@@ -36,7 +36,8 @@ greet _ = "?"
 main : IO ()
 main = do
   printLn (map perimeter [Circle 2, Rect 3 4, Triangle 3 4 5])
-  putStrLn (describe Nothing ++ ", " ++ describe (Just (Left 7)) ++ ", " ++ describe (Just (Right "x")))
+  putStrLn
+    (describe Nothing ++ ", " ++ describe (Just (Left 7)) ++ ", " ++ describe (Just (Right "x")))
   printLn (map digit [0, 1, 2, 3])
   printLn (map kind ['a', 'b', ' ', 'e'])
   printLn (map greet ["fr", "en", "de"])

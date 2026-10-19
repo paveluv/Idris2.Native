@@ -24,7 +24,8 @@ import Native.Types.Represents
 ||| path (`Text.withPath`): 0 when it succeeds, -1 when it fails or there is
 ||| no memory for the path, as the C library's calls answer.
 %inline covering
-ofPath : (Runtime.Raw -> Runtime.Ordo.Op Runtime.Ordo Bits64) -> Flat.Uniform String -> Runtime.Ordo.Op Runtime.Ordo Int
+ofPath : (Runtime.Raw -> Runtime.Ordo.Op Runtime.Ordo Bits64) -> Flat.Uniform String ->
+         Runtime.Ordo.Op Runtime.Ordo Int
 ofPath service path = Text.withPath path (Runtime.Ordo.pure (-1)) (\p => do
   ok <- service p
   Runtime.Ordo.pure (if ok == 1 then 0 else -1))
@@ -34,21 +35,27 @@ ofPath service path = Text.withPath path (Runtime.Ordo.pure (-1)) (\p => do
 ||| is, -1 when it is not, as the C library's `chdir` answers.
 export covering
 prim__changeDir : Flat.Uniform String -> PrimIO Int
-prim__changeDir path w = let (Runtime.MkOrdo # r) = ofPath Runtime.OS.osChangeDirectory path Runtime.MkOrdo in MkIORes r w
+prim__changeDir path w = let (Runtime.MkOrdo # r) =
+                               ofPath Runtime.OS.osChangeDirectory path Runtime.MkOrdo in MkIORes r
+                                 w
 
 %cg native flat Support.Foreign.System.Directory.prim__createDir
 ||| `createDir`: a directory made at the path; 0 when it is, -1 when it is
 ||| not, as the C library's `mkdir` answers, the reason the last failure.
 export covering
 prim__createDir : Flat.Uniform String -> PrimIO Int
-prim__createDir path w = let (Runtime.MkOrdo # r) = ofPath Runtime.OS.osCreateDirectory path Runtime.MkOrdo in MkIORes r w
+prim__createDir path w = let (Runtime.MkOrdo # r) =
+                               ofPath Runtime.OS.osCreateDirectory path Runtime.MkOrdo in MkIORes r
+                                 w
 
 %cg native flat Support.Foreign.System.Directory.prim__removeDir
 ||| `removeDir`: the empty directory at the path removed, if it can be, the
 ||| reason the last failure if not.
 export covering
 prim__removeDir : Flat.Uniform String -> PrimIO ()
-prim__removeDir path w = let (Runtime.MkOrdo # _) = ofPath Runtime.OS.osRemoveDirectory path Runtime.MkOrdo in MkIORes () w
+prim__removeDir path w = let (Runtime.MkOrdo # _) =
+                               ofPath Runtime.OS.osRemoveDirectory path Runtime.MkOrdo in MkIORes ()
+                                 w
 
 %cg native flat Support.Foreign.System.Directory.prim__currentDir
 ||| `currentDir`: the current directory's path, as the system writes it,

@@ -26,14 +26,16 @@ import Native.Types.Represents
 ||| End the process with the status: its low byte is what the parent sees.
 export
 prim__exit : Int -> PrimIO ()
-prim__exit status w = let (Runtime.MkOrdo # ()) = Runtime.System.exit (cast status) Runtime.MkOrdo in MkIORes () w
+prim__exit status w = let (Runtime.MkOrdo # ()) =
+                            Runtime.System.exit (cast status) Runtime.MkOrdo in MkIORes () w
 
 %cg native flat Support.Foreign.System.prim__getArgCount
 ||| How many arguments the program has, its name the first, as the system
 ||| gave them.
 export
 prim__getArgCount : PrimIO Int
-prim__getArgCount w = let (Runtime.MkOrdo # n) = Runtime.Memory.argumentCount Runtime.MkOrdo in MkIORes (cast n) w
+prim__getArgCount w = let (Runtime.MkOrdo # n) =
+                            Runtime.Memory.argumentCount Runtime.MkOrdo in MkIORes (cast n) w
 
 %cg native flat Support.Foreign.System.prim__getArg
 ||| `getArg`: argument `n` of the program, its name argument 0, its text as
@@ -96,7 +98,8 @@ prim__getEnvPair n w = let (Runtime.MkOrdo # r) = pairOp n Runtime.MkOrdo in MkI
 ||| an empty name, one with `=` or a zero byte, or no memory.
 export covering
 prim__setEnv : Flat.Uniform String -> Flat.Uniform String -> Int -> PrimIO Int
-prim__setEnv name value overwrite w = let (Runtime.MkOrdo # r) = setOp name value Runtime.MkOrdo in MkIORes r w
+prim__setEnv name value overwrite w = let (Runtime.MkOrdo # r) =
+                                            setOp name value Runtime.MkOrdo in MkIORes r w
   where
     covering
     setOp : Flat.Uniform String -> Flat.Uniform String -> Runtime.Ordo.Op Runtime.Ordo Int

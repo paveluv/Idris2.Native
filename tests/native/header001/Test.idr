@@ -64,12 +64,15 @@ noHeader =
   , ("id 15, the forwarding header", 15)
   , ("an INT64 with a flag set", encodeHeader {enc = TestEnc} Int64H + 16)
   , ("an INT64 of 16 bytes", encodeHeader {enc = TestEnc} Int64H + 0x80000)
-  , ("an INT64 with its shape's part set", encodeHeader {enc = TestEnc} Int64H + 0x10000 * 0x10000 * 0x10000 * 0x8000)
+  , ("an INT64 with its shape's part set",
+     encodeHeader {enc = TestEnc} Int64H + 0x10000 * 0x10000 * 0x10000 * 0x8000)
   , ("a CON with the mark bit set", encodeHeader {enc = TestEnc} (ConH 1 2) + 16)
   , ("all ones", -1) ]
 
 samples : List (k : Kind ** Header TestEnc k)
-samples = [ (_ ** ConH 1 2), (_ ** ClosureH 3 1), (_ ** StringH True 9), (_ ** BignumH True 2), (_ ** IORefH), (_ ** ArrayH 4) ]
+samples =
+  [ (_ ** ConH 1 2), (_ ** ClosureH 3 1), (_ ** StringH True 9), (_ ** BignumH True 2),
+   (_ ** IORefH), (_ ** ArrayH 4) ]
 
 hex : Int64 -> String
 hex w = pack (map digit (reverse (go 16 (if w < 0 then cast w + 18446744073709551616 else cast w))))
@@ -83,12 +86,22 @@ hex w = pack (map digit (reverse (go 16 (if w < 0 then cast w + 1844674407370955
 main : IO ()
 main = do
   let failed = filter (not . roundTrips) headers
-  putStrLn ("round trip: " ++ show (length headers) ++ " headers, " ++ show (length failed) ++ " failed")
+  putStrLn
+    ("round trip: " ++ show (length headers) ++ " headers, " ++ show (length failed) ++ " failed")
   traverse_ (\(_ ** h) => putStrLn ("  failed: " ++ show h)) failed
-  putStrLn ("too wide for fits: " ++ show (length (filter (\(_ ** h) => not (fits h)) tooWide)) ++ " of " ++ show (length tooWide))
-  traverse_ (\(what, w) => putStrLn (what ++ ": " ++ maybe "rejected" (const "ACCEPTED") (decodeHeader TestEnc w))) noHeader
+  putStrLn
+    ("too wide for fits: " ++ show (length (filter (\(_ ** h) => not (fits h)) tooWide)) ++ " of "
+     ++ show (length tooWide))
+  traverse_
+    (\(what, w) =>
+     putStrLn (what ++ ": " ++ maybe "rejected" (const "ACCEPTED") (decodeHeader TestEnc w)))
+      noHeader
   let twos = MkEnc FixnumTag1 (MkBignumEnc Limb64 TwosComplement) Utf8
   putStrLn ("a BIGNUM header under two's complement: "
-            ++ maybe "rejected" (const "ACCEPTED") (decodeHeader twos (encodeHeader {enc = TestEnc} (BignumH True 2))))
+            ++ maybe "rejected" (const "ACCEPTED")
+              (decodeHeader twos (encodeHeader {enc = TestEnc} (BignumH True 2))))
   putStrLn ("ConH 1 2 encodes as 0x" ++ hex (encodeHeader (ConH 1 2)))
-  traverse_ (\(_ ** h) => putStrLn (show h ++ ": " ++ show (objectWords h) ++ " words, scanned " ++ show (scanned h))) samples
+  traverse_
+    (\(_ ** h) =>
+     putStrLn (show h ++ ": " ++ show (objectWords h) ++ " words, scanned " ++ show (scanned h)))
+      samples

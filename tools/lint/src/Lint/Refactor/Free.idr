@@ -103,14 +103,21 @@ mutual
   occurrences : PTerm -> Occurrences
   occurrences term = case term of
     PRef fc n => named fc n
-    NewPi b => both (inBinder b.val.binder) (except (occurrences b.val.scope) (binderNames b.val.binder))
-    Forall b => except (occurrences (snd b.val)) (foldr (\n, rest => union (plainSet n.val) rest) empty (forget (fst b.val)))
-    PPi _ _ info n a r => allOf [inInfo info, occurrences a, except (occurrences r) (maybe empty plainSet n)]
-    PLam _ _ info pat a sc => allOf [inInfo info, occurrences a, except (occurrences sc) (boundBy pat)]
+    NewPi b =>
+      both (inBinder b.val.binder) (except (occurrences b.val.scope) (binderNames b.val.binder))
+    Forall b =>
+      except (occurrences (snd b.val))
+        (foldr (\n, rest => union (plainSet n.val) rest) empty (forget (fst b.val)))
+    PPi _ _ info n a r =>
+      allOf [inInfo info, occurrences a, except (occurrences r) (maybe empty plainSet n)]
+    PLam _ _ info pat a sc =>
+      allOf [inInfo info, occurrences a, except (occurrences sc) (boundBy pat)]
     PLet _ _ pat ty val sc alts =>
-      allOf [occurrences ty, occurrences val, except (occurrences sc) (boundBy pat), allOf (map clauseAt alts)]
+      allOf [occurrences ty,
+             occurrences val, except (occurrences sc) (boundBy pat), allOf (map clauseAt alts)]
     PCase _ _ scr alts => both (occurrences scr) (allOf (map clauseAt alts))
-    PLocal _ ds sc => except (both (allOf (map declAt ds)) (occurrences sc)) (fromList (definedBy ds))
+    PLocal _ ds sc =>
+      except (both (allOf (map declAt ds)) (occurrences sc)) (fromList (definedBy ds))
     PUpdate _ us => allOf (map inUpdate us)
     PApp _ f x => both (occurrences f) (occurrences x)
     PWithApp _ f x => both (occurrences f) (occurrences x)
@@ -171,13 +178,18 @@ mutual
       inDo : List PDo -> Occurrences
       inDo [] = empty
       inDo (DoExp _ t :: rest) = both (occurrences t) (inDo rest)
-      inDo (DoBind _ _ n _ ty t :: rest) = allOf [maybe empty occurrences ty, occurrences t, except (inDo rest) (plainSet n)]
+      inDo (DoBind _ _ n _ ty t :: rest) =
+        allOf [maybe empty occurrences ty, occurrences t, except (inDo rest) (plainSet n)]
       inDo (DoBindPat _ pat ty t alts :: rest) =
-        allOf [maybe empty occurrences ty, occurrences t, allOf (map clauseAt alts), except (inDo rest) (boundBy pat)]
-      inDo (DoLet _ _ n _ ty t :: rest) = allOf [occurrences ty, occurrences t, except (inDo rest) (plainSet n)]
+        allOf [maybe empty occurrences ty,
+               occurrences t, allOf (map clauseAt alts), except (inDo rest) (boundBy pat)]
+      inDo (DoLet _ _ n _ ty t :: rest) =
+        allOf [occurrences ty, occurrences t, except (inDo rest) (plainSet n)]
       inDo (DoLetPat _ pat ty t alts :: rest) =
-        allOf [occurrences ty, occurrences t, allOf (map clauseAt alts), except (inDo rest) (boundBy pat)]
-      inDo (DoLetLocal _ ds :: rest) = except (both (allOf (map declAt ds)) (inDo rest)) (fromList (definedBy ds))
+        allOf [occurrences ty,
+               occurrences t, allOf (map clauseAt alts), except (inDo rest) (boundBy pat)]
+      inDo (DoLetLocal _ ds :: rest) =
+        except (both (allOf (map declAt ds)) (inDo rest)) (fromList (definedBy ds))
       inDo (DoRewrite _ t :: rest) = both (occurrences t) (inDo rest)
 
       -- an operator's name, at no place a rename could reach
@@ -195,9 +207,13 @@ mutual
   export
   clauseAt : PClause -> Occurrences
   clauseAt (MkPatClause _ lhs rhs wh) =
-    except (both (occurrences rhs) (allOf (map declAt wh))) (union (boundBy lhs) (fromList (definedBy wh)))
+    except (both (occurrences rhs) (allOf (map declAt wh)))
+      (union (boundBy lhs) (fromList (definedBy wh)))
   clauseAt (MkWithClause _ lhs problems _ cls) =
-    except (both (allOf (map (occurrences . (.withRigValue)) (forget problems))) (allOf (map clauseAt cls))) (boundBy lhs)
+    except
+      (both (allOf (map (occurrences . (.withRigValue)) (forget problems)))
+       (allOf (map clauseAt cls)))
+        (boundBy lhs)
   clauseAt (MkImpossible _ _) = empty
 
   ||| The names a declaration refers to and does not bind, with where each
@@ -242,16 +258,21 @@ inDecl = namesOf . declAt
 ||| is the type of, those it binds are bound, as its implicits are.
 export
 typeNames : PTerm -> SortedSet String
-typeNames (PPi _ _ info n a r) = union (maybe empty plainSet n) (union (namesOf (inInfo info)) (union (free a) (typeNames r)))
-typeNames (NewPi b) = union (binderNames b.val.binder) (union (namesOf (inBinder b.val.binder)) (typeNames b.val.scope))
-typeNames (Forall b) = union (foldr (\n, rest => union (plainSet n.val) rest) empty (forget (fst b.val))) (typeNames (snd b.val))
+typeNames (PPi _ _ info n a r) =
+  union (maybe empty plainSet n) (union (namesOf (inInfo info)) (union (free a) (typeNames r)))
+typeNames (NewPi b) =
+  union (binderNames b.val.binder) (union (namesOf (inBinder b.val.binder)) (typeNames b.val.scope))
+typeNames (Forall b) =
+  union (foldr (\n, rest => union (plainSet n.val) rest) empty (forget (fst b.val)))
+    (typeNames (snd b.val))
 typeNames t = free t
 
 ||| The names a type binds implicitly by a binder of its own, `{x : T}`, an
 ||| auto-implicit or a default one: those its clauses have in scope.
 export
 implicitBinders : PTerm -> SortedSet String
-implicitBinders (PPi _ _ info n _ r) = union (if isImplicit info then maybe empty plainSet n else empty) (implicitBinders r)
+implicitBinders (PPi _ _ info n _ r) =
+  union (if isImplicit info then maybe empty plainSet n else empty) (implicitBinders r)
   where
     isImplicit : PiInfo PTerm -> Bool
     isImplicit Explicit = False
@@ -261,7 +282,9 @@ implicitBinders (NewPi b) =
            Explicit => empty
            _ => binderNames b.val.binder)
         (implicitBinders b.val.scope)
-implicitBinders (Forall b) = union (foldr (\n, rest => union (plainSet n.val) rest) empty (forget (fst b.val))) (implicitBinders (snd b.val))
+implicitBinders (Forall b) =
+  union (foldr (\n, rest => union (plainSet n.val) rest) empty (forget (fst b.val)))
+    (implicitBinders (snd b.val))
 implicitBinders _ = empty
 
 ||| Where a type binds a name by a binder of its own that is not explicit,
@@ -319,7 +342,10 @@ typeVariables : (globals : SortedSet String) -> PTerm -> SortedSet String
 typeVariables globals t =
   let hs = heads t
       bound = difference (typeNames t) (free t)
-  in union bound (fromList (filter (\n => isVariable n && not (contains n hs) && not (contains n globals)) (Prelude.toList (free t))))
+  in union bound
+    (fromList
+      (filter (\n => isVariable n && not (contains n hs) && not (contains n globals))
+       (Prelude.toList (free t))))
 
 ||| A claim within clauses: the line its declaration starts at, the
 ||| variables its type leaves free, the names the scopes around it bind, its
@@ -351,13 +377,15 @@ claimsWithin globals around cls = foldr (\cl, rest => inPat cl ++ rest) [] cls
     -- a local function's type's names, from its claim among the block's
     typeOf : List PDecl -> List String -> SortedSet String
     typeOf ds names = foldr (\d, rest => case d.val of
-                                         PClaim c => if any (`elem` names) (definesOf d) then union (typeNames c.type.val.type) rest else rest
+                                         PClaim c => if any (`elem` names) (definesOf d)
+                                           then union (typeNames c.type.val.type) rest else rest
                                          _ => rest) empty ds
 
     -- the clauses of the local function a claim among the block's declares
     defsOf : List PDecl -> List String -> List PClause
     defsOf ds names = foldr (\d, rest => case d.val of
-                                         PDef cs => if any (`elem` names) (definesOf d) then cs ++ rest else rest
+                                         PDef cs => if any (`elem` names) (definesOf d) then cs
+                                           ++ rest else rest
                                          _ => rest) [] ds
 
     block : SortedSet String -> List PDecl -> List PDecl -> List InnerClaim
@@ -366,13 +394,17 @@ claimsWithin globals around cls = foldr (\cl, rest => inPat cl ++ rest) [] cls
         one : PDecl -> List InnerClaim
         one d = case d.val of
           PClaim c =>
-            [MkInnerClaim (line d) (intersection (free c.type.val.type) (typeVariables globals c.type.val.type)) env
+            [MkInnerClaim (line d)
+              (intersection (free c.type.val.type) (typeVariables globals c.type.val.type)) env
                           c.type.val.type (defsOf siblings (definesOf d))]
           PDef cs => claimsWithin globals (union env (typeOf siblings (definesOf d))) cs
           PMutual ms => block env siblings ms
           _ => []
 
     inPat : PClause -> List InnerClaim
-    inPat (MkPatClause _ lhs _ wh) = let env = union around (union (boundBy lhs) (fromList (definedBy wh))) in block env wh wh
+    inPat (MkPatClause _ lhs _ wh) = let env =
+                                           union around
+                                             (union (boundBy lhs) (fromList (definedBy wh))) in
+                                               block env wh wh
     inPat (MkWithClause _ lhs _ _ cs) = claimsWithin globals (union around (boundBy lhs)) cs
     inPat (MkImpossible _ _) = []

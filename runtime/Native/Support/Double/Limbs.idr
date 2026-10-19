@@ -51,7 +51,8 @@ setLimb x i v = Obj.store64 x (8 + 8 * i) v
 export
 newLimbs : Runtime.Ordo.Op Runtime.Ordo Limbs
 newLimbs = do
-  x <- Obj.allocate Types.Kind.BUFFER (Types.Header.withPart Types.Header.BufferBytes (8 * (1 + capacity)) Types.Header.noParts)
+  x <- Obj.allocate Types.Kind.BUFFER
+    (Types.Header.withPart Types.Header.BufferBytes (8 * (1 + capacity)) Types.Header.noParts)
   setCount x 0
   Runtime.Ordo.pure x
 
@@ -71,7 +72,8 @@ mulAdd x m a = do
   carry <- go 0 n a
   if carry == 0 then Runtime.Ordo.pure () else
     if n >= capacity
-       then Runtime.Ordo.crashOp "Native.Support.Double.Limbs.mulAdd: a number of more limbs than it holds"
+       then Runtime.Ordo.crashOp
+         "Native.Support.Double.Limbs.mulAdd: a number of more limbs than it holds"
        else do
          setLimb x n carry
          setCount x (n + 1)
@@ -113,7 +115,8 @@ shiftLeft x s = do
     let words = s `shiftR` 6
         bits = s .&. 63
     if n + words + 1 > capacity
-       then Runtime.Ordo.crashOp "Native.Support.Double.Limbs.shiftLeft: a number of more limbs than it holds"
+       then Runtime.Ordo.crashOp
+         "Native.Support.Double.Limbs.shiftLeft: a number of more limbs than it holds"
        else do
          top <- limb x (n - 1)
          let over = if bits == 0 then 0 else top `shiftR` (64 - bits)
@@ -130,7 +133,8 @@ shiftLeft x s = do
     moveUp i words bits = do
       v <- limb x i
       below <- if i == 0 then Runtime.Ordo.pure 0 else limb x (i - 1)
-      setLimb x (i + words) (if bits == 0 then v else (v `shiftL` bits) .|. (below `shiftR` (64 - bits)))
+      setLimb x (i + words)
+        (if bits == 0 then v else (v `shiftL` bits) .|. (below `shiftR` (64 - bits)))
       if i == 0 then Runtime.Ordo.pure () else moveUp (i - 1) words bits
 
     covering

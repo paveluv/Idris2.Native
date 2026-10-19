@@ -82,7 +82,8 @@ data Position = Kept String | Matched | Fixed String
 export
 mergeClauses : Refactoring
 mergeClauses = fileRefactoring "merge-clauses"
-  "write as one clause with a `case` each function several clauses of which use a helper only it uses"
+  ("write as one clause with a `case` each function several clauses of which use a helper only " ++
+   "it uses")
   candidates
   where
     ||| A line of the text, or an empty one past its end.
@@ -93,7 +94,8 @@ mergeClauses = fileRefactoring "merge-clauses"
     textAt : List String -> FC -> Either String String
     textAt ls fc = case bounds fc of
       Just ((l, a), (l', b)) =>
-        if l == l' then Right (substr (cast a) (cast (b - a)) (lineAt ls l)) else Left ("a pattern at line " ++ show (l + 1) ++ " spans lines")
+        if l == l' then Right (substr (cast a) (cast (b - a)) (lineAt ls l))
+          else Left ("a pattern at line " ++ show (l + 1) ++ " spans lines")
       Nothing => Left "a pattern has no place in the source"
 
     ||| The lines from `a` to `b`, both included.
@@ -104,11 +106,14 @@ mergeClauses = fileRefactoring "merge-clauses"
     ||| impossible one, a left-hand side over several lines, or a `where`
     ||| written after code on its line.
     partsOf : List String -> PClause -> Either String Parts
-    partsOf _ (MkWithClause fc _ _ _ _) = Left ("its clause at line " ++ show (fst (lineSpan fc) + 1) ++ " is a `with` clause")
-    partsOf _ (MkImpossible fc _) = Left ("its clause at line " ++ show (fst (lineSpan fc) + 1) ++ " is impossible")
+    partsOf _ (MkWithClause fc _ _ _ _) =
+      Left ("its clause at line " ++ show (fst (lineSpan fc) + 1) ++ " is a `with` clause")
+    partsOf _ (MkImpossible fc _) =
+      Left ("its clause at line " ++ show (fst (lineSpan fc) + 1) ++ " is impossible")
     partsOf ls cl@(MkPatClause fc lhs _ wh) = do
       ((l0, c0), _) <- maybe (Left "a clause has no place in the source") Right (bounds fc)
-      ((ll, _), (le, lce)) <- maybe (Left "a left-hand side has no place in the source") Right (bounds (getPTermLoc lhs))
+      ((ll, _), (le, lce)) <- maybe (Left "a left-hand side has no place in the source") Right
+        (bounds (getPTermLoc lhs))
       when (ll /= le) $ Left ("the left-hand side at line " ++ show (ll + 1) ++ " spans lines")
       (h, args) <- spine ls lhs
       let last = foldr (\d, m => max m (snd (lineSpan d.fc))) (snd (lineSpan fc)) wh
@@ -117,7 +122,8 @@ mergeClauses = fileRefactoring "merge-clauses"
       where
         ||| The last line from `l` down to `lo` with something on it, or `lo`.
         lastWritten : List String -> (lo, l : Int) -> Int
-        lastWritten ls lo l = if l <= lo || trim (lineAt ls l) /= "" then max lo l else lastWritten ls lo (l - 1)
+        lastWritten ls lo l = if l <= lo || trim (lineAt ls l) /= "" then max lo l
+          else lastWritten ls lo (l - 1)
 
         -- the last line of the body; the `where` block's lines, from the
         -- comments above its first declaration; and its column
@@ -128,24 +134,36 @@ mergeClauses = fileRefactoring "merge-clauses"
             let from = attachedFrom ls top
                 kw = lastWritten ls first (from - 1)
             in if trim (lineAt ls kw) /= "where"
-                 then Left ("the `where` of its clause at line " ++ show (first + 1) ++ " is written after code on its line")
-                 else Right (lastWritten ls first (kw - 1), linesFrom ls from last, foldr (\d, m => min m (startColumn d.fc)) 1000 wh)
+                 then Left
+                   ("the `where` of its clause at line " ++ show (first + 1)
+                    ++ " is written after code on its line")
+                 else Right
+                   (lastWritten ls first (kw - 1), linesFrom ls from last,
+                    foldr (\d, m => min m (startColumn d.fc)) 1000 wh)
 
         ||| A clause's left-hand side as its head and its arguments, in order.
         spine : List String -> PTerm -> Either String (String, SnocList Arg)
         spine ls (PRef fc _) = map (, [<]) (textAt ls fc)
         spine ls (PApp _ f x) = map (\(h, as) => (h, as :< Explicit x)) (spine ls f)
-        spine ls (PNamedApp fc f _ _) = do (h, as) <- spine ls f; t <- after (getPTermLoc f) fc; pure (h, as :< Written t)
+        spine ls (PNamedApp fc f _ _) = do (h, as) <- spine ls f
+                                           t <- after (getPTermLoc f) fc
+                                           pure (h, as :< Written t)
           where
             after : FC -> FC -> Either String String
             after inner outer = case (bounds inner, bounds outer) of
-              (Just (_, (l, a)), Just (_, (l', b))) => if l == l' then Right (trim (substr (cast a) (cast (b - a)) (lineAt ls l))) else Left "an implicit argument spans lines"
+              (Just (_, (l, a)), Just (_, (l', b))) => if l == l'
+                then Right (trim (substr (cast a) (cast (b - a)) (lineAt ls l)))
+                  else Left "an implicit argument spans lines"
               _ => Left "an implicit argument has no place in the source"
-        spine ls (PAutoApp fc f _) = do (h, as) <- spine ls f; t <- after (getPTermLoc f) fc; pure (h, as :< Written t)
+        spine ls (PAutoApp fc f _) = do (h, as) <- spine ls f
+                                        t <- after (getPTermLoc f) fc
+                                        pure (h, as :< Written t)
           where
             after : FC -> FC -> Either String String
             after inner outer = case (bounds inner, bounds outer) of
-              (Just (_, (l, a)), Just (_, (l', b))) => if l == l' then Right (trim (substr (cast a) (cast (b - a)) (lineAt ls l))) else Left "an auto-implicit argument spans lines"
+              (Just (_, (l, a)), Just (_, (l', b))) => if l == l'
+                then Right (trim (substr (cast a) (cast (b - a)) (lineAt ls l)))
+                  else Left "an auto-implicit argument spans lines"
               _ => Left "an auto-implicit argument has no place in the source"
         spine _ _ = Left "a left-hand side is not the function applied to patterns"
 
@@ -186,13 +204,15 @@ mergeClauses = fileRefactoring "merge-clauses"
         decide i Nothing =
           let pats = mapMaybe (patternAt i) parts
               names = nub (mapMaybe variableOf pats)
-          in if all plain pats && null (drop 1 names) then Kept (fromMaybe "_" (head' names)) else Matched
+          in if all plain pats && null (drop 1 names) then Kept (fromMaybe "_" (head' names))
+            else Matched
 
     ||| The explicit binders of a type, in order: each name, if it has one, and
     ||| its type.
     explicitBinders : PTerm -> List (Maybe String, PTerm)
     explicitBinders (NewPi b) = case b.val.binder.info of
-      Explicit => map (\n => (plain n.val, b.val.binder.bind.type)) (forget b.val.binder.bind.names) ++ explicitBinders b.val.scope
+      Explicit => map (\n => (plain n.val, b.val.binder.bind.type)) (forget b.val.binder.bind.names)
+        ++ explicitBinders b.val.scope
       _ => explicitBinders b.val.scope
       where
         plain : Name -> Maybe String
@@ -205,22 +225,32 @@ mergeClauses = fileRefactoring "merge-clauses"
 
     ||| The words a text could use as names.
     identifiers : String -> List String
-    identifiers t = filter (/= "") (forget (split (\c => not (isAlphaNum c || c == '_' || c == '\'')) t))
+    identifiers t =
+      filter (/= "") (forget (split (\c => not (isAlphaNum c || c == '_' || c == '\'')) t))
 
     ||| The words Idris keeps for itself, which no name may be.
     keywords : List String
-    keywords = ["case", "of", "do", "let", "in", "where", "if", "then", "else", "with", "data", "record", "module", "import",
-                "using", "open", "parameters", "implicit", "auto", "default", "impossible", "total", "partial", "covering",
-                "export", "public", "private", "namespace", "interface", "implementation", "forall", "rewrite", "mutual",
+    keywords =
+      ["case", "of", "do", "let", "in", "where", "if", "then", "else", "with", "data", "record",
+       "module", "import",
+                "using", "open", "parameters", "implicit", "auto", "default", "impossible", "total",
+                  "partial", "covering",
+                "export", "public", "private", "namespace", "interface", "implementation", "forall",
+                  "rewrite", "mutual",
                 "infix", "infixl", "infixr", "prefix", "failing", "constructor", "proof", "syntax"]
 
     ||| The Prelude's functions a name after a type could be (`maybe` after
     ||| `Maybe`, `all` after `All`), which a reader would take for those.
     preludeFunctions : List String
-    preludeFunctions = ["maybe", "either", "id", "const", "show", "map", "pure", "fst", "snd", "not", "length", "reverse",
-                        "filter", "head", "tail", "elem", "lookup", "max", "min", "pred", "succ", "negate", "abs", "cast", "the",
-                        "all", "any", "and", "or", "sum", "product", "concat", "zip", "take", "drop", "lines", "words",
-                        "pack", "unpack", "print", "ignore", "when", "flip", "compare", "div", "mod", "force", "delay"]
+    preludeFunctions =
+      ["maybe", "either", "id", "const", "show", "map", "pure", "fst", "snd", "not", "length",
+       "reverse",
+                        "filter", "head", "tail", "elem", "lookup", "max", "min", "pred", "succ",
+                          "negate", "abs", "cast", "the",
+                        "all", "any", "and", "or", "sum", "product", "concat", "zip", "take",
+                          "drop", "lines", "words",
+                        "pack", "unpack", "print", "ignore", "when", "flip", "compare", "div",
+                          "mod", "force", "delay"]
 
     ||| A name for each matched argument, in order: its binder's in the type,
     ||| or one after its type, that one with a prime (`body'`, when the module
@@ -232,14 +262,17 @@ mergeClauses = fileRefactoring "merge-clauses"
     scrutineeNames avoid (b :: bs) =
       let word = ownWord (b >>= (typeWord . snd))
           tries = catMaybes [b >>= fst, word, map (++ "'") word] ++ ["x", "y", "z"]
-          n = fromMaybe (primed (fromMaybe "x" (head' tries))) (find (\t => not (contains t avoid)) tries)
+          n =
+            fromMaybe (primed (fromMaybe "x" (head' tries)))
+              (find (\t => not (contains t avoid)) tries)
       in n :: scrutineeNames (insert n avoid) bs
       where
         primed : String -> String
         primed n = if contains (n ++ "'") avoid then primed (n ++ "'") else n ++ "'"
 
         ownWord : Maybe String -> Maybe String
-        ownWord (Just w) = if (w `elem` keywords) || (w `elem` preludeFunctions) then Nothing else Just w
+        ownWord (Just w) = if (w `elem` keywords) || (w `elem` preludeFunctions) then Nothing
+          else Just w
         ownWord Nothing = Nothing
 
         ||| A name for a value of a type, after the last word of its head:
@@ -258,7 +291,8 @@ mergeClauses = fileRefactoring "merge-clauses"
             headOf _ = Nothing
 
             lastWord : List Char -> List Char
-            lastWord cs = let (low, rest) = span (not . isUpper) (reverse cs) in reverse (low ++ take 1 rest)
+            lastWord cs = let (low, rest) =
+                                span (not . isUpper) (reverse cs) in reverse (low ++ take 1 rest)
 
     ||| A pattern as an alternative writes it: as written, or without the
     ||| parentheses around an application.
@@ -286,16 +320,20 @@ mergeClauses = fileRefactoring "merge-clauses"
     ||| opens a layout block on the clause's first line and lines below line
     ||| up with it, the arrow takes the `=`'s place, so that what follows it
     ||| moves only the two columns the rest does.
-    alternative : List String -> (column : Int) -> (pattern : String) -> Parts -> Either String (List String)
+    alternative : List String -> (column : Int) -> (pattern : String) -> Parts ->
+                  Either String (List String)
     alternative ls c pat p =
       let line0 = lineAt ls p.first
           rest0 = substr (cast p.lhsEnd) (length line0) line0
           t = ltrim rest0
           more = linesFrom ls (p.first + 1) p.bodyLast
           lead = indent (c + 2) ++ pat
-      in if isPrefixOf "=" t && not (isPrefixOf "==" t) then sameLine (p.lhsEnd + cast (length rest0) - cast (length t)) line0 more lead
+      in if isPrefixOf "=" t && not (isPrefixOf "==" t)
+        then sameLine (p.lhsEnd + cast (length rest0) - cast (length t)) line0 more lead
          else if t == "" then nextLine more lead
-         else Left ("its clause at line " ++ show (p.first + 1) ++ " has more than `=` after its left-hand side")
+         else Left
+           ("its clause at line " ++ show (p.first + 1)
+            ++ " has more than `=` after its left-hand side")
       where
         ||| Whether a line's text opens a layout block with something after it on
         ||| the line, which the lines below may line up with.
@@ -303,7 +341,8 @@ mergeClauses = fileRefactoring "merge-clauses"
         opensLayout t = go (words t)
           where
             go : List String -> Bool
-            go (w :: rest@(_ :: _)) = (w `elem` the (List String) ["do", "let", "of", "where"]) || go rest
+            go (w :: rest@(_ :: _)) = (w `elem` the (List String) ["do", "let", "of", "where"])
+              || go rest
             go _ = False
 
         sameLine : (eq : Int) -> String -> List String -> String -> Either String (List String)
@@ -311,8 +350,12 @@ mergeClauses = fileRefactoring "merge-clauses"
           let afterEq = substr (cast (eq + 1)) (length line0) line0
               width = cast {to = Int} (length lead)
           in if not (null more) && opensLayout afterEq
-               then (if width + 1 > eq + 1 then Left ("its clause at line " ++ show (p.first + 1) ++ " leaves no room for its arrow")
-                     else Right ((lead ++ indent (eq + 1 - width) ++ "=>" ++ afterEq) :: map shift more))
+               then
+                 (if width + 1 > eq + 1
+                   then Left
+                  ("its clause at line " ++ show (p.first + 1) ++ " leaves no room for its arrow")
+                     else Right
+                       ((lead ++ indent (eq + 1 - width) ++ "=>" ++ afterEq) :: map shift more))
                else Right ((lead ++ " =>" ++ afterEq) :: map shift more)
 
         nextLine : List String -> String -> Either String (List String)
@@ -323,11 +366,17 @@ mergeClauses = fileRefactoring "merge-clauses"
             (eqLine :: rest) =>
               let sp = cast {to = Int} (length eqLine) - cast (length (ltrim eqLine)) in
               if not (all (\l => trim l == "" || isPrefixOf "--" (trim l)) before) || sp < c + 2
-                then Left ("the `=` of its clause at line " ++ show (p.first + 1) ++ " has no room for an arrow")
-                else Right (lead :: map shift before ++ [indent (sp + 1) ++ "=>" ++ substr (cast (sp + 1)) (length eqLine) eqLine] ++ map shift rest)
+                then Left
+                  ("the `=` of its clause at line " ++ show (p.first + 1)
+                   ++ " has no room for an arrow")
+                else Right
+                  (lead :: map shift before
+                    ++ [indent (sp + 1) ++ "=>" ++ substr (cast (sp + 1)) (length eqLine) eqLine]
+                   ++ map shift rest)
 
     ||| The function's lines rewritten, or why they stay.
-    plan : Subject -> (user : Declared) -> List PClause -> (type : Maybe PTerm) -> Either String Change
+    plan : Subject -> (user : Declared) -> List PClause -> (type : Maybe PTerm) ->
+           Either String Change
     plan s u cls ty = do
       parts <- traverse (partsOf ls) cls
       shape <- sameShape parts
@@ -341,8 +390,13 @@ mergeClauses = fileRefactoring "merge-clauses"
       keptUncaptured ps parts
       wheresJoin ps parts
       alts <- traverse (\p => do pat <- alternativePattern ps p; alternative ls c pat p) parts
-      let header = indent c ++ maybe "" (.head) (head' parts) ++ fastConcat (map (" " ++) (argTexts ps names)) ++ " = case " ++ scrutinee names ++ " of"
-      pure (inFile s.file.path [replaceLines (fst region) (snd region) (header :: joinAlts parts alts ++ whereBlock c parts)])
+      let header = indent c ++ maybe "" (.head) (head' parts)
+            ++ fastConcat (map (" " ++) (argTexts ps names)) ++ " = case " ++ scrutinee names
+            ++ " of"
+      pure
+        (inFile s.file.path
+          [replaceLines (fst region) (snd region)
+           (header :: joinAlts parts alts ++ whereBlock c parts)])
       where
         ls : List String
         ls = linesOf s
@@ -353,16 +407,21 @@ mergeClauses = fileRefactoring "merge-clauses"
 
         oneColumn : List Parts -> Either String Int
         oneColumn [] = Left "it has no clauses"
-        oneColumn (p :: more) = if all (\q => q.column == p.column) more then Right p.column else Left "its clauses start at different columns"
+        oneColumn (p :: more) = if all (\q => q.column == p.column) more then Right p.column
+          else Left "its clauses start at different columns"
 
         inOrder : List Parts -> Either String ()
-        inOrder (p :: rest@(q :: _)) = if p.last < q.first then inOrder rest else Left "its clauses are not written one after another"
+        inOrder (p :: rest@(q :: _)) = if p.last < q.first then inOrder rest
+          else Left "its clauses are not written one after another"
         inOrder _ = Right ()
 
         -- no other declaration of the module among the clauses
         nothingBetween : (Int, Int) -> Either String ()
         nothingBetween (a, b) =
-          if any (\d => let l = fst (lineSpan d.decl.fc) in l >= a && l <= b && lineSpan d.decl.fc /= lineSpan u.decl.fc) s.declared
+          if any
+            (\d => let l = fst (lineSpan d.decl.fc) in l >= a && l <= b && lineSpan d.decl.fc
+             /= lineSpan u.decl.fc)
+              s.declared
             then Left "other declarations lie between its clauses" else Right ()
 
         -- the names the scrutinee may not take: those written in the
@@ -374,7 +433,9 @@ mergeClauses = fileRefactoring "merge-clauses"
               inType = maybe [] (\t => Prelude.toList (typeNames t)) ty
               explicit = maybe [] (\t => mapMaybe fst (explicitBinders t)) ty
               globals = foldr (\d, rest => d.defines ++ rest) [] s.declared
-          in fromList (written ++ filter (\n => not (n `elem` explicit)) inType ++ globals ++ keywords ++ preludeFunctions)
+          in fromList
+            (written ++ filter (\n => not (n `elem` explicit)) inType ++ globals ++ keywords
+             ++ preludeFunctions)
 
         -- the explicit binder of the type at each matched argument
         matchedBinders : List Position -> List (Maybe (Maybe String, PTerm))
@@ -407,14 +468,17 @@ mergeClauses = fileRefactoring "merge-clauses"
         alternativePattern ps p = do
           pats <- traverse (patternText ls) (mapMaybe (\(i, pos) => case pos of
                                                                       Matched => patternAt i p
-                                                                      _ => Nothing) (zip [0 .. length ps] ps))
+                                                                      _ =>
+                                                                        Nothing)
+                                                                          (zip [0 .. length ps] ps))
           pure (scrutinee pats)
 
         -- the variables a clause's matched patterns bind
         patternVariables : List Position -> Parts -> SortedSet String
         patternVariables ps p =
           foldr (\(i, pos), rest => case pos of
-                                      Matched => maybe rest (\t => union (boundBy t) rest) (patternAt i p)
+                                      Matched =>
+                                        maybe rest (\t => union (boundBy t) rest) (patternAt i p)
                                       _ => rest) empty (zip [0 .. length ps] ps)
 
         -- a name kept as an argument binds, in a clause that left it `_`,
@@ -423,11 +487,15 @@ mergeClauses = fileRefactoring "merge-clauses"
         keptUncaptured ps parts =
           case filter captured (zip [0 .. length ps] ps) of
             [] => Right ()
-            ((_, Kept n) :: _) => Left ("the argument `" ++ n ++ "` would capture what a clause leaving it `_` refers to")
+            ((_, Kept n) :: _) =>
+              Left
+                ("the argument `" ++ n ++ "` would capture what a clause leaving it `_` refers to")
             _ => Right ()
           where
             captured : (Nat, Position) -> Bool
-            captured (i, Kept n) = n /= "_" && any (\p => maybe False isWild (patternAt i p) && contains n (inClause p.clause)) parts
+            captured (i, Kept n) = n /= "_"
+              && any (\p => maybe False isWild (patternAt i p) && contains n (inClause p.clause))
+                parts
               where
                 isWild : PTerm -> Bool
                 isWild (PImplicit _) = True
@@ -447,21 +515,37 @@ mergeClauses = fileRefactoring "merge-clauses"
               let defs = fromList (definedBy p.wheres)
                   used = difference (foldr (\d, rest => union (inDecl d) rest) empty p.wheres) defs
                   others = filter (\q => q.first /= p.first) parts
-              in if contains unknown used then Left ("the `where` block of its clause at line " ++ show (p.first + 1) ++ " holds a declaration the analysis does not follow")
-                 else if not (null (intersection used (patternVariables ps p))) then Left ("the `where` block of its clause at line " ++ show (p.first + 1) ++ " uses what the clause's patterns bind")
-                 else if any (\q => not (null (intersection defs (union (fromList (definedBy q.wheres)) (inClause q.clause))))) others
-                   then Left ("the `where` block of its clause at line " ++ show (p.first + 1) ++ " defines a name another clause has")
+              in if contains unknown used
+                then Left
+                  ("the `where` block of its clause at line " ++ show (p.first + 1)
+                   ++ " holds a declaration the analysis does not follow")
+                 else if not (null (intersection used (patternVariables ps p)))
+                   then Left
+                     ("the `where` block of its clause at line " ++ show (p.first + 1)
+                      ++ " uses what the clause's patterns bind")
+                 else if any
+                   (\q =>
+                     not
+                       (null
+                         (intersection defs
+                          (union (fromList (definedBy q.wheres)) (inClause q.clause)))))
+                     others
+                   then Left
+                     ("the `where` block of its clause at line " ++ show (p.first + 1)
+                      ++ " defines a name another clause has")
                  else Right ()
 
         joinAlts : List Parts -> List (List String) -> List String
-        joinAlts (p :: rest@(q :: _)) (a :: as) = a ++ map shift (linesFrom ls (p.last + 1) (q.first - 1)) ++ joinAlts rest as
+        joinAlts (p :: rest@(q :: _)) (a :: as) = a
+          ++ map shift (linesFrom ls (p.last + 1) (q.first - 1)) ++ joinAlts rest as
         joinAlts _ (a :: _) = a
         joinAlts _ [] = []
 
         whereBlock : Int -> List Parts -> List String
         whereBlock c parts = case filter (\p => not (null p.whereText)) parts of
           [] => []
-          ws => (indent (c + 2) ++ "where") :: intercalate [""] (map (\p => reindent p.whereColumn (c + 4) p.whereText) ws)
+          ws => (indent (c + 2) ++ "where")
+            :: intercalate [""] (map (\p => reindent p.whereColumn (c + 4) p.whereText) ws)
 
     claimType : Subject -> Declared -> Maybe PTerm
     claimType s u = do
@@ -479,10 +563,15 @@ mergeClauses = fileRefactoring "merge-clauses"
     -- the user, or methods of it if it is an implementation
     targetsOf : Subject -> (Declared, Declared) -> List Candidate
     targetsOf s (h, u) = case u.decl.val of
-      PDef cls => if usedBy cls >= 2 then [candidate (labelOf u) (plan s u cls (claimType s u))] else []
+      PDef cls => if usedBy cls >= 2 then [candidate (labelOf u) (plan s u cls (claimType s u))]
+        else []
       PImplementation _ _ _ _ _ _ _ _ _ (Just body) =>
         mapMaybe (\d => case d.val of
-                          PDef cls => if usedBy cls >= 2 then Just (candidate (fastConcat (definesOf d) ++ " of " ++ labelOf u) (plan s u cls Nothing)) else Nothing
+                          PDef cls => if usedBy cls >= 2
+                            then Just
+                              (candidate (fastConcat (definesOf d) ++ " of " ++ labelOf u)
+                               (plan s u cls Nothing))
+                                else Nothing
                           _ => Nothing) (foldr (\d, rest => byFunction d ++ rest) [] body)
       _ => []
       where
@@ -490,4 +579,6 @@ mergeClauses = fileRefactoring "merge-clauses"
         usedBy cls = length (filter (\cl => any (\n => contains n (inClause cl)) h.defines) cls)
 
     candidates : Subject -> List Candidate
-    candidates s = nubBy (\a, b => a.label == b.label) (foldr (\p, rest => targetsOf s p ++ rest) [] (fst (helpers s.declared)))
+    candidates s =
+      nubBy (\a, b => a.label == b.label)
+        (foldr (\p, rest => targetsOf s p ++ rest) [] (fst (helpers s.declared)))

@@ -55,7 +55,8 @@ start entry window = do
   let soft = if given == 0 then defaultStack else given
   limit <- Memory.stackLimitArea
   Memory.storeAt limit 0
-    (Raw.rawWord (Raw.offset (Raw.before entry (if soft > stackCap then stackCap else soft)) stackMargin))
+    (Raw.rawWord
+      (Raw.offset (Raw.before entry (if soft > stackCap then stackCap else soft)) stackMargin))
   argv <- Memory.argvArea
   Memory.storeAt argv 0 (Raw.rawWord entry)
   where

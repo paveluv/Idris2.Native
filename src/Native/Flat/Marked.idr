@@ -7,13 +7,13 @@
 |||     %cg native flat sumTo Main.classify
 |||
 ||| Each name is written as in the program, qualified as far as it takes to
-||| name one function. The backend's primitives (`Native.Primitive` says
-||| what they are) are the code generator's to name, by their types: a call
-||| of one is the primitive's, and its form applies it. The translation (`Flat.Translate`) runs twice: as each
-||| module is built, by the incremental code generator `flat-check`, which
-||| reports a function that is not flat as an error of the module, at the
-||| term at fault; and when a program is compiled, which makes the forms, and
-||| reports what no module's check did.
+||| name one function. The backend's primitives (`Native.Primitive` says what
+||| they are) are the code generator's to name, by their types: a call of one
+||| is the primitive's, and its form applies it. The translation
+||| (`Flat.Translate`) runs twice: as each module is built, by the incremental
+||| code generator `flat-check`, which reports a function that is not flat as
+||| an error of the module, at the term at fault; and when a program is
+||| compiled, which makes the forms, and reports what no module's check did.
 module Native.Flat.Marked
 
 import Native.Flat.Exp
@@ -61,7 +61,8 @@ markingCG = Other "native"
 ||| options nor its output mode, so it cannot print the errors itself: what
 ||| it printed would be text in the middle of the IDE protocol. Thrown, the
 ||| one error is shown as the mode asks.
-report : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} -> List Problem.FlatError -> Core ()
+report : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} -> List Problem.FlatError ->
+         Core ()
 report errs
     = do o <- newRef ROpts ({ color := False, consoleWidth := Just 0 }
                               (defaultOpts Nothing (REPL ErrorLvl) []))
@@ -71,7 +72,9 @@ report errs
               (e :: earlier) =>
                 do texts <- traverse rendered (numbered (reverse earlier))
                    let (fc, msg) = messageOf e
-                   throw (GenericMsg fc (fastConcat (map (++ "\n") texts) ++ prefixed (length earlier) msg))
+                   throw
+                     (GenericMsg fc
+                      (fastConcat (map (++ "\n") texts) ++ prefixed (length earlier) msg))
   where
     numbered : List a -> List (Nat, a)
     numbered xs = zip [0 .. length xs] xs
@@ -128,7 +131,8 @@ reportedMark = "flat-errors-reported"
 ||| ambiguous with one of theirs.
 export
 markedForms : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} ->
-              (primitives : Ref Ctxt Defs -> Core (List Name)) -> (load : Core ()) -> Core (Maybe (NameMap Exp.FlatDef))
+              (primitives : Ref Ctxt Defs -> Core (List Name)) -> (load : Core ()) ->
+                Core (Maybe (NameMap Exp.FlatDef))
 markedForms primitives load
     = do own <- getDirectives markingCG
          marked <- Translate.flatNames own
@@ -209,7 +213,8 @@ checkModule primitives sourceFile
         = do u <- newRef UST initUState
              go [] [ (m, as) | (m, _, as) <- imported defs ]
       where
-        go : {auto u : Ref UST UState} -> (seen : List ModuleIdent) -> List (ModuleIdent, Namespace) -> Core ()
+        go : {auto u : Ref UST UState} -> (seen : List ModuleIdent) ->
+             List (ModuleIdent, Namespace) -> Core ()
         go seen [] = pure ()
         go seen ((m, as) :: ms)
             = if m `elem` seen then go seen ms else do

@@ -65,7 +65,9 @@ ownerIn f ds =
   let types = joined (map typeNames ds)
       interfaces = joined (map interfaceNames ds)
       placed = belongsTo (keyOf f types) types interfaces
-      claimed = the (SortedMap String String) (fromList [ (n, placed d) | d <- ds, isClaim d, n <- d.defines ])
+      claimed =
+        the (SortedMap String String)
+          (fromList [ (n, placed d) | d <- ds, isClaim d, n <- d.defines ])
   in ownerBy placed claimed
   where
     ||| Whether a type is that of a type: one that, past its binders, is `Type`,
@@ -102,7 +104,8 @@ ownerIn f ds =
       _ => placed d
 
     ||| What each of a module's declarations belongs to, by the concept's name.
-    belongsTo : (key : Maybe String) -> (types : List String) -> (interfaces : List String) -> Declared -> String
+    belongsTo : (key : Maybe String) -> (types : List String) -> (interfaces : List String) ->
+                Declared -> String
     belongsTo key types interfaces d = case d.decl.val of
       PData {} => own
       PRecord {} => own
@@ -130,7 +133,8 @@ conceptsOf : SourceFile -> List Declared -> List Concept
 conceptsOf f ds =
   let owner = ownerIn f ds
       names = nub (map owner ds)
-      memberOf = the (SortedMap String String) (fromList [ (m, owner d) | d <- ds, m <- membersOf d ])
+      memberOf =
+        the (SortedMap String String) (fromList [ (m, owner d) | d <- ds, m <- membersOf d ])
   in map (concept owner memberOf) names
   where
     ||| The names a declaration contributes to its concept: those it defines,
@@ -138,12 +142,16 @@ conceptsOf f ds =
     ||| what it implements.
     membersOf : Declared -> List String
     membersOf d = case d.decl.val of
-      PData _ _ _ (MkPData _ n _ _ cons) => nameRoot n :: foldr (\c, rest => map (nameRoot . (.val) . snd) (forget c.val.names) ++ rest) [] cons
+      PData _ _ _ (MkPData _ n _ _ cons) => nameRoot n
+        :: foldr (\c, rest => map (nameRoot . (.val) . snd) (forget c.val.names) ++ rest) [] cons
       PRecord _ _ _ (MkPRecord n _ _ con fields) =>
-        nameRoot n :: maybe [] (\c => [nameRoot c.val]) con ++ foldr (\f, rest => map (nameRoot . (.val)) f.names ++ rest) [] fields
+        nameRoot n :: maybe [] (\c => [nameRoot c.val]) con
+          ++ foldr (\f, rest => map (nameRoot . (.val)) f.names ++ rest) [] fields
       PInterface _ _ n _ _ _ _ body =>
         nameRoot n :: foldr (\m, rest => case m.val of
-                                           PClaim c => map (nameRoot . (.val) . snd) (forget c.type.val.names) ++ rest
+                                           PClaim c =>
+                                             map (nameRoot . (.val) . snd) (forget c.type.val.names)
+                                             ++ rest
                                            _ => rest) [] body
       PImplementation {} => maybe [] (\ip => [unwords (fst ip :: snd ip)]) d.implementing
       _ => d.defines
@@ -160,8 +168,10 @@ conceptsOf f ds =
     concept : (Declared -> String) -> SortedMap String String -> String -> Concept
     concept owner memberOf n =
       let mine = filter (\d => owner d == n) ds
-          refs = nub (filter (/= n) (mapMaybe (\m => lookup m memberOf) (joined (map (.mentions) mine))))
-      in MkConcept n (nub (joined (map membersOf mine))) (any exportedHere mine) refs (sum (map linesOf mine))
+          refs =
+            nub (filter (/= n) (mapMaybe (\m => lookup m memberOf) (joined (map (.mentions) mine))))
+      in MkConcept n (nub (joined (map membersOf mine))) (any exportedHere mine) refs
+        (sum (map linesOf mine))
 
 ||| The concept a use of a module's name is of: the one the name is a
 ||| member of; for an implementation found by search, named by what it
@@ -188,4 +198,5 @@ reachable cs n = go empty (refersOf n)
 
     go : SortedSet String -> List String -> SortedSet String
     go seen [] = seen
-    go seen (c :: rest) = if contains c seen then go seen rest else go (insert c seen) (refersOf c ++ rest)
+    go seen (c :: rest) = if contains c seen then go seen rest
+      else go (insert c seen) (refersOf c ++ rest)

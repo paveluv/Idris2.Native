@@ -24,13 +24,15 @@ Eq Finding where
 
 export
 Ord Finding where
-  compare a b = compare (a.path, a.line, a.col, a.rule, a.subject) (b.path, b.line, b.col, b.rule, b.subject)
+  compare a b =
+    compare (a.path, a.line, a.col, a.rule, a.subject) (b.path, b.line, b.col, b.rule, b.subject)
 
 ||| `path:line:col rule: message`, lines and columns from 1.
 export
 withPosition : Finding -> String
 withPosition f =
-  f.path ++ ":" ++ show (f.line + 1) ++ ":" ++ show (f.col + 1) ++ " " ++ f.rule ++ ": " ++ f.message
+  f.path ++ ":" ++ show (f.line + 1) ++ ":" ++ show (f.col + 1) ++ " " ++ f.rule ++ ": "
+    ++ f.message
 
 ||| `rule path subject`.
 export

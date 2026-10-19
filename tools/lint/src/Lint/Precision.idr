@@ -43,7 +43,9 @@ record ImportEdge where
 ||| The modules left out of a component, each by a comment with its reason.
 export
 excludedFrom : (component : String) -> List SourceFile -> List String
-excludedFrom c fs = [ show f.mod.moduleNS | f <- fs, any (\e => e.componentName == c && e.reason /= "") (exclusions f) ]
+excludedFrom c fs =
+  [ show f.mod.moduleNS | f <- fs,
+   any (\e => e.componentName == c && e.reason /= "") (exclusions f) ]
 
 ||| The concepts of each of our modules, by module.
 export
@@ -55,7 +57,8 @@ export
 usedOf : SortedMap String (List Concept) -> ResolvedModule -> (definer : String) -> SortedSet String
 usedOf byModule rm m =
   let cs = fromMaybe [] (lookup m byModule) in
-  fromList (mapMaybe (\u => if u.definer == m then conceptOfUse cs u.name u.searched else Nothing) rm.uses)
+  fromList
+    (mapMaybe (\u => if u.definer == m then conceptOfUse cs u.name u.searched else Nothing) rm.uses)
 
 ||| `precision`: of the concepts our modules' imports of each other offer,
 ||| the share the importers use; its offenders, each imported module by the
@@ -70,7 +73,8 @@ precision fds r =
       usedNames = sum (map (.used) edges)
       offeredNames = sum (map (.offered) edges)
   in MkComponent "structure" "precision" (percent usedNames offeredNames)
-       ("imported concepts a module uses: " ++ show usedNames ++ " of " ++ show offeredNames ++ leftOut out)
+       ("imported concepts a module uses: " ++ show usedNames ++ " of " ++ show offeredNames
+         ++ leftOut out)
        (offenders byModule edges)
   where
     leftOut : List String -> String
@@ -78,11 +82,16 @@ precision fds r =
     leftOut ms = "; left out: " ++ listed ms
 
     -- an import of one of ours, with what it offers through its re-exports
-    edge : SortedMap String (List Concept) -> SortedSet String -> List String -> ResolvedModule -> String -> Maybe ImportEdge
+    edge : SortedMap String (List Concept) -> SortedSet String -> List String -> ResolvedModule ->
+           String -> Maybe ImportEdge
     edge byModule ours out rm i =
       if not (contains i ours) || (i `elem` out) then Nothing else
-        let exposed = filter (shown ours out) (Prelude.toList (visibleThrough r.importsOf (`contains` ours) i)) in
-        Just (MkImportEdge rm.name i (sum (map (length . offeredIn byModule) exposed)) (sum (map (usedIn byModule rm) exposed)))
+        let exposed =
+              filter (shown ours out)
+                (Prelude.toList (visibleThrough r.importsOf (`contains` ours) i)) in
+        Just
+          (MkImportEdge rm.name i (sum (map (length . offeredIn byModule) exposed))
+           (sum (map (usedIn byModule rm) exposed)))
       where
         shown : SortedSet String -> List String -> String -> Bool
         shown ours out m = contains m ours && not (m `elem` out)
@@ -91,11 +100,14 @@ precision fds r =
         offeredIn byModule m = filter (.offered) (fromMaybe [] (lookup m byModule))
 
         usedIn : SortedMap String (List Concept) -> ResolvedModule -> String -> Nat
-        usedIn byModule rm m = let used = usedOf byModule rm m in length (filter (\c => contains c.name used) (offeredIn byModule m))
+        usedIn byModule rm m = let used =
+                                     usedOf byModule rm m in length
+                                       (filter (\c => contains c.name used) (offeredIn byModule m))
 
     offenders : SortedMap String (List Concept) -> List ImportEdge -> List Offender
     offenders byModule edges =
-      let byImported = foldl (\acc, e => insert e.imported (e :: fromMaybe [] (lookup e.imported acc)) acc)
+      let byImported =
+            foldl (\acc, e => insert e.imported (e :: fromMaybe [] (lookup e.imported acc)) acc)
                              (the (SortedMap String (List ImportEdge)) empty) edges
       in filter (\o => o.cost > 0) (map offender (SortedMap.toList byImported))
       where
@@ -105,7 +117,11 @@ precision fds r =
               unused = sum (map (\e => minus e.offered e.used) importers)
               fewest = sortBy (\e, e' => compare e.used e'.used) importers
           in MkOffender b unused
-               (show (length importers) ++ (if length importers == 1 then " importer" else " importers") ++ " of its "
-                ++ show (length concepts) ++ (if length concepts == 1 then " concept (" else " concepts (") ++ listed (map (.name) (take 6 concepts))
+               (show (length importers)
+                 ++ (if length importers == 1 then " importer" else " importers") ++ " of its "
+                ++ show (length concepts)
+                  ++ (if length concepts == 1 then " concept (" else " concepts (")
+                  ++ listed (map (.name) (take 6 concepts))
                 ++ (if length concepts > 6 then ", ..." else "") ++ "); fewest used: "
-                ++ fastConcat (intersperse ", " (map (\e => e.importer ++ " " ++ show e.used) (take 4 fewest))))
+                ++ fastConcat
+                  (intersperse ", " (map (\e => e.importer ++ " " ++ show e.used) (take 4 fewest))))

@@ -49,7 +49,8 @@ import Lint.Source
 export
 rename : (arguments : List String) -> Refactoring
 rename args =
-  MkRefactoring "rename" "rename a name a module defines (--arg MODULE.NAME --arg NEW), at its definition and every use"
+  MkRefactoring "rename"
+    "rename a name a module defines (--arg MODULE.NAME --arg NEW), at its definition and every use"
     True False candidates
   where
     ||| The names a declaration defines: its own, those it exports, and a
@@ -95,14 +96,16 @@ rename args =
         go i cs@(c :: more) =
           if isPrefixOf ws cs && not (maybe False ident (head' (drop (length ws) cs)))
              then i :: go (i + cast (length ws)) (drop (length ws) cs)
-             else if ident c then let (word, rest) = span ident cs in go (i + cast (length word)) rest
+             else if ident c then let (word, rest) =
+                                        span ident cs in go (i + cast (length word)) rest
              else go (i + 1) more
 
     ||| In the defining module, every whole-word occurrence of the name in
     ||| its code.
     ownEdits : (old, new : String) -> Subject -> List Edit
     ownEdits old new s =
-      [ MkEdit (l, c) (l, c + cast (length old)) new | (l, line) <- zip [0 .. cast (length (linesOf s))] (linesOf s), c <- wordsAt old line ]
+      [ MkEdit (l, c) (l, c + cast (length old)) new
+        | (l, line) <- zip [0 .. cast (length (linesOf s))] (linesOf s), c <- wordsAt old line ]
 
     ||| Whether a qualifier as written names the module: its alias in the
     ||| file, or last parts of its path.
@@ -125,30 +128,39 @@ rename args =
 
         one : (FC, Name) -> Maybe Edit
         one (fc, UN (Basic n)) = if n == old then root fc else Nothing
-        one (fc, NS ns (UN (Basic n))) = if n == old && names m s (show ns) then root fc else Nothing
+        one (fc, NS ns (UN (Basic n))) = if n == old && names m s (show ns) then root fc
+          else Nothing
         one _ = Nothing
 
     ||| A file the resolution left out, a program not built, that imports
     ||| the module: taken to use the name from it.
     unresolvedImporter : Resolution -> (module' : String) -> Subject -> Bool
     unresolvedImporter r m t =
-      not (any (\rm => rm.path == t.file.path) r.modules) && any (\i => show i.path == m) t.file.mod.imports
+      not (any (\rm => rm.path == t.file.path) r.modules)
+        && any (\i => show i.path == m) t.file.mod.imports
 
     ||| Whether the file takes the name from the module, resolved: by its
     ||| path, as programs share the name `Main`.
     takesFrom : Resolution -> (module', old : String) -> Subject -> Bool
     takesFrom r m old s =
-      any (\rm => rm.path == s.file.path && any (\u => u.definer == m && u.name == old) rm.uses) r.modules
+      any (\rm => rm.path == s.file.path && any (\u => u.definer == m && u.name == old) rm.uses)
+        r.modules
 
     ||| The rename, one change over every file of the run that takes the
     ||| name, or why it is not made: the module's own edits, and each
     ||| user's.
     plan : Project -> Resolution -> (module', old, new : String) -> Subject -> Either String Change
     plan p r m old new s = do
-      let users = List.filter (\t => show t.file.mod.moduleNS /= m && (takesFrom r m old t || unresolvedImporter r m t)) p.files
+      let users =
+            List.filter
+              (\t => show t.file.mod.moduleNS /= m
+               && (takesFrom r m old t || unresolvedImporter r m t))
+                p.files
           clash = List.filter (\t => new `elem` joined (map definedBy t.declared)) users
       when (not (null clash)) $
-        Left ("`" ++ new ++ "` is defined in " ++ joinBy ", " (map (\t => show t.file.mod.moduleNS) clash) ++ " already")
+        Left
+          ("`" ++ new ++ "` is defined in "
+           ++ joinBy ", " (map (\t => show t.file.mod.moduleNS) clash) ++ " already")
       pure (MkChange ((s.file.path, ownEdits old new s) :: List.filter (\(_, es) => not (isNil es))
                         (map (\t => (t.file.path, useEdits m old new t)) users)) [] [])
 
@@ -160,13 +172,17 @@ rename args =
               label = "rename " ++ q ++ " to " ++ new
           in if show s.file.mod.moduleNS /= m then []
              else case (old `elem` defined, new `elem` defined) of
-               (True, True) => [candidate label (Left ("`" ++ new ++ "` is defined in its module already"))]
+               (True, True) =>
+                 [candidate label (Left ("`" ++ new ++ "` is defined in its module already"))]
                (True, False) => [candidate label (plan p r m old new s)]
                -- renamed in the module already: the uses left, if any
                (False, True) => case plan p r m old new s of
-                 Right ch => if all (\(_, es) => isNil es) ch.edits then [] else [candidate label (Right ch)]
+                 Right ch => if all (\(_, es) => isNil es) ch.edits then []
+                   else [candidate label (Right ch)]
                  Left why => [candidate label (Left why)]
                (False, False) => []
-        Nothing => [candidate "rename" (Left ("`" ++ q ++ "` is not a name with its module's path"))]
-      ([_, _], Nothing) => [candidate "rename" (Left "the modules' uses cannot be resolved: build them first")]
+        Nothing =>
+          [candidate "rename" (Left ("`" ++ q ++ "` is not a name with its module's path"))]
+      ([_, _], Nothing) =>
+        [candidate "rename" (Left "the modules' uses cannot be resolved: build them first")]
       _ => []

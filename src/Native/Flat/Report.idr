@@ -29,27 +29,38 @@ import Libraries.Text.PrettyPrint.Prettyprinter.Util
 
 ||| The error, as Idris reports an error of its own: where, and the message.
 export
-asError : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} -> Problem.FlatError -> Core Error
+asError : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} -> Problem.FlatError ->
+          Core Error
 asError error = case error of
   Problem.UnknownFlatName str []
-             => pure (GenericMsg EmptyFC ("The flat directive names " ++ str ++ ", which is no function"))
+             =>
+               pure
+                 (GenericMsg EmptyFC
+                  ("The flat directive names " ++ str ++ ", which is no function"))
   Problem.UnknownFlatName str ns
-             => pure (GenericMsg EmptyFC ("The flat directive names " ++ str ++ ", which is ambiguous: "
+             =>
+               pure
+                 (GenericMsg EmptyFC ("The flat directive names " ++ str ++ ", which is ambiguous: "
                                             ++ concat (intersperse ", " (map show ns))
                                             ++ ". Qualify it with its namespace."))
   Problem.NotFlat fc n arg ty why
-             => message fc (!(name n) <++> reflow "is flat, but" <++> argDoc arg <++> reflow "has type"
+             =>
+               message fc
+                 (!(name n) <++> reflow "is flat, but" <++> argDoc arg <++> reflow "has type"
                               <++> code !(term ty) <+> colon <++> !(reasonDoc why) <+> dot)
   Problem.NotFlatBody fc n chain p
              => do calls <- traverse call (runs chain)
-                   message fc (!(name n) <++> reflow "is flat, but" <++> hsep calls <++> !(problemDoc p) <+> dot)
+                   message fc
+                     (!(name n) <++> reflow "is flat, but" <++> hsep calls <++> !(problemDoc p)
+                      <+> dot)
   where
     -- The chain with each run of calls of one function as one entry, with
     -- how many calls deep it goes.
     runs : List Name -> List (Name, Nat)
     runs [] = []
     runs (g :: gs) = case runs gs of
-                          ((h, k) :: rest) => if g == h then (g, S k) :: rest else (g, 1) :: (h, k) :: rest
+                          ((h, k) :: rest) => if g == h then (g, S k) :: rest else (g, 1) :: (h, k)
+                            :: rest
                           [] => [(g, 1)]
 
     name : Name -> Core (Doc IdrisAnn)
@@ -57,7 +68,8 @@ asError error = case error of
 
     call : (Name, Nat) -> Core (Doc IdrisAnn)
     call (g, 1) = pure (reflow "it calls" <++> !(name g) <+> comma <++> reflow "and")
-    call (g, k) = pure (reflow "it calls" <++> !(name g) <+> comma <++> reflow "nested" <++> byShow k
+    call (g, k) =
+      pure (reflow "it calls" <++> !(name g) <+> comma <++> reflow "nested" <++> byShow k
                           <++> reflow "deep, and")
 
     -- The position of a flat function's argument, or its result.
@@ -79,7 +91,9 @@ asError error = case error of
                  => pure (reflow "an" <++> code "Integer" <++> reflow "may need the heap")
       Problem.BoxedPrimitive pt => pure (code (byShow pt) <++> reflow "lives on the heap")
       Problem.NaturalType t
-                 => pure (!(name t) <++> reflow "is an" <++> code "Integer" <++> reflow "at run time")
+                 =>
+                   pure
+                     (!(name t) <++> reflow "is an" <++> code "Integer" <++> reflow "at run time")
       Problem.RuntimeType => pure (reflow "a type at run time is not flat")
       Problem.FunctionType => pure (reflow "a function is not flat")
       Problem.LazyType => pure (reflow "a lazy value is not flat")
@@ -103,22 +117,28 @@ asError error = case error of
                  else reflow "argument number" <++> byShow i
 
         fieldDoc : Name -> Doc IdrisAnn
-        fieldDoc f = if isUserName f then reflow "the field" <++> code (pretty0 f) else reflow "a field"
+        fieldDoc f = if isUserName f then reflow "the field" <++> code (pretty0 f)
+          else reflow "a field"
 
     problemDoc : Problem.FlatProblem -> Core (Doc IdrisAnn)
     problemDoc (Problem.ValueNotFlat ty why)
-        = pure (reflow "it has a value of type" <++> code !(term ty) <+> colon <++> !(reasonDoc why))
+        = pure
+          (reflow "it has a value of type" <++> code !(term ty) <+> colon <++> !(reasonDoc why))
     problemDoc Problem.NotStatic
         = pure (reflow "it uses a function or a lazy value other than by applying or forcing it")
     problemDoc (Problem.CalleeNotFlat g arg ty why)
         = pure (reflow "it calls" <++> !(name g) <+> comma <++> reflow "and" <++> argDoc arg
                   <++> reflow "has type" <++> code !(term ty) <+> colon <++> !(reasonDoc why))
     problemDoc (Problem.PrivateElsewhere g)
-        = pure (reflow "it uses the private primitive" <++> !(name g) <++> reflow "outside its module")
+        = pure
+          (reflow "it uses the private primitive" <++> !(name g) <++> reflow "outside its module")
     problemDoc (Problem.CopiesDoNotEnd g)
         = pure (reflow "its calls of" <++> !(name g)
-                  <++> reflow "at static arguments grow without end, each needing a copy of its own")
-    problemDoc (Problem.Unhandled what) = pure (reflow what <++> reflow "is not handled in the flat regime")
+                  <++> reflow
+                    "at static arguments grow without end, each needing a copy of its own")
+    problemDoc (Problem.Unhandled what) =
+      pure (reflow what <++> reflow "is not handled in the flat regime")
 
     message : FC -> Doc IdrisAnn -> Core Error
-    message fc doc = pure (GenericMsg fc (renderString (layoutPretty (MkLayoutOptions Unbounded) doc)))
+    message fc doc =
+      pure (GenericMsg fc (renderString (layoutPretty (MkLayoutOptions Unbounded) doc)))

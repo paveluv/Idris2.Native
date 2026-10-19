@@ -55,7 +55,8 @@ pagesIn a n = if n == 0 then [] else [ a + page * cast i | i <- [0 .. cast ((n -
 
 -- the words of the pages forgotten
 forget : List Bits64 -> SortedMap Bits64 Bits64 -> SortedMap Bits64 Bits64
-forget ps ws = foldl (\m, p => foldl (\m', i => delete (p + 8 * cast i) m') m [the Nat 0 .. 511]) ws ps
+forget ps ws =
+  foldl (\m, p => foldl (\m', i => delete (p + 8 * cast i) m') m [the Nat 0 .. 511]) ws ps
 
 Pages Model where
   reserve n (MkModel s) = MkModel ({ next := s.next + n + page } s) # s.next
@@ -105,7 +106,9 @@ main = do
   start <- on ref (field a 1)
   taken1 <- on ref (field a 3)
   sp1 <- space ref
-  putStrLn ("the region taken: " ++ show (taken1 - start) ++ " bytes; pages committed with every block freed: "
+  putStrLn
+    ("the region taken: " ++ show (taken1 - start)
+     ++ " bytes; pages committed with every block freed: "
             ++ show (length (Prelude.toList sp1.pages)))
   t2 <- run (ops ref s) 1024 7 20000
   putStrLn ("model, second run: " ++ show t2)

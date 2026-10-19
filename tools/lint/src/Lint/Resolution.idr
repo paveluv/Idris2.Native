@@ -120,14 +120,18 @@ record Resolution where
 ||| What a module makes visible to its importers: itself, and what it
 ||| re-exports publicly, in turn, re-exports followed where `follow` says.
 export
-visibleThrough : SortedMap String (List (String, Bool)) -> (follow : String -> Bool) -> String -> SortedSet String
+visibleThrough : SortedMap String (List (String, Bool)) -> (follow : String -> Bool) -> String ->
+                 SortedSet String
 visibleThrough imports follow m = go empty [m]
   where
     go : SortedSet String -> List String -> SortedSet String
     go acc [] = acc
     go acc (i :: is) =
       if contains i acc then go acc is
-      else let next = if follow i then map (\(j, _) => j) (filter (\(_, reexported) => reexported) (fromMaybe [] (lookup i imports))) else [] in
+      else let next = if follow i
+                 then map (\(j, _) => j)
+                   (filter (\(_, reexported) => reexported) (fromMaybe [] (lookup i imports)))
+                     else [] in
            go (insert i acc) (next ++ is)
 
 ------------------------------------------------------------------------------
@@ -175,7 +179,8 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
   where
     ||| A file's module as a path, without its extension.
     modulePath : SourceFile -> String
-    modulePath f = fastConcat (intersperse "/" (reverse (unsafeUnfoldNamespace (miAsNamespace f.mod.moduleNS))))
+    modulePath f =
+      fastConcat (intersperse "/" (reverse (unsafeUnfoldNamespace (miAsNamespace f.mod.moduleNS))))
 
     ||| The directory of the TTCs of a source file's package, if its path ends as
     ||| its module's name says: Idris looks for them under it, in the
@@ -226,8 +231,14 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
       built <- modTime ttc
       written <- modTime f.path
       let problem = \m => Just (MkFinding "resolution" f.path 0 0 (show f.mod.moduleNS) m)
-      pure (if built == MkTimestamp 0 0 then problem ("no TTC for `" ++ show f.mod.moduleNS ++ "` in " ++ dir ++ ": build it first")
-            else if built < written then problem ("the TTC of `" ++ show f.mod.moduleNS ++ "` is older than its source: build it first")
+      pure
+        (if built == MkTimestamp 0 0
+          then problem
+         ("no TTC for `" ++ show f.mod.moduleNS ++ "` in " ++ dir ++ ": build it first")
+            else if built < written
+              then problem
+                ("the TTC of `" ++ show f.mod.moduleNS
+                 ++ "` is older than its source: build it first")
             else Nothing)
 
     inModule : String -> String -> Name
@@ -238,13 +249,16 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
     joiners : {auto c : Ref Ctxt Defs} -> Core (List (Name, List Nat))
     joiners = do
       defs <- get Ctxt
-      traverse (positions defs) [ inModule "Prelude.Interfaces" m | m <- ["<+>", "concat", "concatMap", "foldMap"] ]
+      traverse (positions defs)
+        [ inModule "Prelude.Interfaces" m | m <- ["<+>", "concat", "concatMap", "foldMap"] ]
       where
         joinInterface : Defs -> Term vs -> Core Bool
         joinInterface defs ty = case getFnArgs ty of
           (Ref _ _ n, _) => do
             n' <- full (gamma defs) n
-            pure (n' == inModule "Prelude.Interfaces" "Semigroup" || n' == inModule "Prelude.Interfaces" "Monoid")
+            pure
+              (n' == inModule "Prelude.Interfaces" "Semigroup" || n'
+               == inModule "Prelude.Interfaces" "Monoid")
           _ => pure False
 
         go : Defs -> Nat -> Term vs -> Core (List Nat)
@@ -282,7 +296,9 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
 
         ||| The packages a module of ours may import from, installed.
         packages : List String
-        packages = ["prelude", "base", "contrib", "network", "idris2", "idris2-native", "idris2-native-runtime"]
+        packages =
+          ["prelude", "base", "contrib", "network", "idris2", "idris2-native",
+           "idris2-native-runtime"]
 
     ||| A module's imports, each with whether it is public, read from the head
     ||| of its TTC, where they follow the hashes and the incremental data: the
@@ -339,14 +355,18 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
 
     ||| A module of ours, resolved from the context it is loaded into.
     resolveModule : {auto c : Ref Ctxt Defs} -> {auto n : Ref Counting Count} ->
-                    (ours : SortedSet String) -> SortedSet String -> SortedSet String -> List (Name, List Nat) -> (SourceFile, List Name) ->
+                    (ours : SortedSet String) -> SortedSet String -> SortedSet String ->
+                      List (Name, List Nat) -> (SourceFile, List Name) ->
                     Core ResolvedModule
     resolveModule ours mods implementations js (f, names) = do
       let m = show f.mod.moduleNS
       defs <- get Ctxt
       is <- importsOf m
       perName <- traverse (definition defs) names
-      let uses = Prelude.toList (the (SortedSet (String, String, Bool)) (fromList (filter (\(u, _, _) => u /= m) (joined [ us | (us, _, _) <- perName ]))))
+      let uses =
+            Prelude.toList
+              (the (SortedSet (String, String, Bool))
+               (fromList (filter (\(u, _, _) => u /= m) (joined [ us | (us, _, _) <- perName ]))))
       pure (MkResolvedModule m f.path is (map (\(u, r, s) => MkUse u r s) uses)
               (mapMaybe (\(_, a, _) => a) perName) (mapMaybe (\(_, _, g) => g) perName))
       where
@@ -438,7 +458,8 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
           defs <- get Ctxt
           me <- full (gamma defs) g.fullname
           case g.definition of
-            PMDef _ _ _ _ pats => traverse_ (\(_ ** (_, lhs, rhs)) => countIn js (recursion me lhs) 0 rhs) pats
+            PMDef _ _ _ _ pats =>
+              traverse_ (\(_ ** (_, lhs, rhs)) => countIn js (recursion me lhs) 0 rhs) pats
             _ => pure ()
           k <- get Counting
           pure (k.atEnd, k.leftFolds, k.structured)
@@ -456,7 +477,9 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
             -- a name's last part as written: a `where` function's is shown as
             -- `outer,inner` where a block names it, and `i:j:inner` as its own
             lastWritten : Name -> String
-            lastWritten n = case last' (forget (Data.String.split (\c => c == ',' || c == ':') (outermost (show n)))) of
+            lastWritten n =
+              case last'
+                (forget (Data.String.split (\c => c == ',' || c == ':') (outermost (show n)))) of
               Just p => p
               Nothing => show n
 
@@ -498,7 +521,9 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
                   (Ref _ _ g, [_, x, e]) => do
                     defs <- get Ctxt
                     g' <- full (gamma defs) g
-                    pure (if listAppend g' then map (\i => (i, isJust (matched e))) (matched x) else Nothing)
+                    pure
+                      (if listAppend g' then map (\i => (i, isJust (matched e))) (matched x)
+                       else Nothing)
                   _ => pure Nothing
 
                 -- an argument of a recursive call that grows the pattern in its place
@@ -520,7 +545,8 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
 
                 -- a left fold's step `\acc, x => acc ++ e`
                 stepAppends : Term vs' -> Core Bool
-                stepAppends (Bind _ _ (Lam _ _ _ _) (Bind _ _ (Lam _ _ _ _) body)) = case getFnArgs body of
+                stepAppends (Bind _ _ (Lam _ _ _ _) (Bind _ _ (Lam _ _ _ _) body)) =
+                  case getFnArgs body of
                   (Ref _ _ g, [_, Local _ _ 1 _, _]) => do
                     defs <- get Ctxt
                     g' <- full (gamma defs) g
@@ -581,13 +607,17 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
                         classify defs t = case getFnArgs t of
                           (Ref _ _ iface, args) => do
                             iface' <- full (gamma defs) iface
-                            if iface' /= inModule "Prelude.Interfaces" "Semigroup" && iface' /= inModule "Prelude.Interfaces" "Monoid"
+                            if iface' /= inModule "Prelude.Interfaces" "Semigroup" && iface'
+                              /= inModule "Prelude.Interfaces" "Monoid"
                               then pure JoinsOther
                               else case map getFnArgs (last' args) of
                                 Just (Ref _ _ ty, _) => do
                                   ty' <- full (gamma defs) ty
-                                  pure (if ty' == inModule "Prelude.Basics" "List" || ty' == inModule "Prelude.Basics" "SnocList" then JoinsLists
-                                        else if ty' == inModule "Native.Data.Builder" "Builder" then JoinsBuilders
+                                  pure
+                                    (if ty' == inModule "Prelude.Basics" "List" || ty'
+                                     == inModule "Prelude.Basics" "SnocList" then JoinsLists
+                                        else if ty' == inModule "Native.Data.Builder" "Builder"
+                                          then JoinsBuilders
                                         else JoinsOther)
                                 _ => pure JoinsOther
                           _ => pure JoinsOther
@@ -601,7 +631,8 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
                 note : Name -> List (Term vs) -> Core ()
                 note f args = do
                   grown <- the (Core (List Bool)) $ case self of
-                    Own me pats => if f == me then traverse (grows pats) (zip [0 .. length args] args) else pure Nil
+                    Own me pats => if f == me
+                      then traverse (grows pats) (zip [0 .. length args] args) else pure Nil
                     FromBlock outer => if outer f then traverse growsFromBlock args else pure Nil
                   count { atEnd $= (+ length (filter id grown)) }
                   when (f == inModule "Prelude.Interfaces" "foldl") $ do
@@ -615,7 +646,8 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
                     Just ps => do
                       j <- firstJoin (mapMaybe (\p => getAt p args) ps)
                       case j of
-                        JoinsLists => when (f /= inModule "Prelude.Interfaces" "<+>") $ count { leftFolds $= S }
+                        JoinsLists => when (f /= inModule "Prelude.Interfaces" "<+>") $
+                          count { leftFolds $= S }
                         JoinsBuilders => count { structured $= S }
                         JoinsOther => pure ()
 
@@ -632,17 +664,22 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
                 inner (TForce _ _ t) = countIn js self d t
                 inner _ = pure ()
 
-        definition : Defs -> Name -> Core (List (String, String, Bool), Maybe Accumulations, Maybe (String, Int, Int))
+        definition : Defs -> Name ->
+                     Core (List (String, String, Bool),
+                           Maybe Accumulations, Maybe (String, Int, Int))
         definition defs nm = do
           Just g <- lookupCtxtExact nm (gamma defs)
             | Nothing => pure ([], Nothing, Nothing)
-          let refs = keys (fromMaybe empty g.refersToM) ++ keys (getRefs (UN Underscore) g.type) ++ clauseRefs g.definition
+          let refs = keys (fromMaybe empty g.refersToM) ++ keys (getRefs (UN Underscore) g.type)
+                ++ clauseRefs g.definition
           us <- mapMaybe id <$> traverse (used defs) refs
           (atEnd, folds, structured) <- accumulationsOf js g
           let (line, col) = startOf g.location
           me <- full (gamma defs) nm
           resolvedRefs <- traverse (full (gamma defs)) refs
-          let ofOurs = any (\r => r /= me && maybe False (\u => contains u ours) (moduleOfName mods r)) resolvedRefs
+          let ofOurs =
+                any (\r => r /= me && maybe False (\u => contains u ours) (moduleOfName mods r))
+                  resolvedRefs
               isFunction = case g.definition of
                              PMDef _ _ _ _ _ => arguments g.type > 0
                              _ => False
@@ -652,7 +689,8 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
               generic = atTop me && collapseDefault g.visibility /= Private && isFunction
                         && not (contains (show me) implementations) && not ofOurs && not names
           pure (us, case writtenName nm of
-                      Just s => if atEnd + folds + structured > 0 then Just (MkAccumulations s line col atEnd folds structured) else Nothing
+                      Just s => if atEnd + folds + structured > 0
+                        then Just (MkAccumulations s line col atEnd folds structured) else Nothing
                       Nothing => Nothing,
                     if generic then Just (nameRoot me, line, col) else Nothing)
           where
@@ -660,7 +698,11 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
             -- match among them, which its references leave out
             clauseRefs : Def -> List Name
             clauseRefs (PMDef _ _ _ _ pats) =
-              joined (map (\(_ ** (_, lhs, rhs)) => keys (getRefs (UN Underscore) lhs) ++ keys (getRefs (UN Underscore) rhs)) pats)
+              joined
+                (map
+                  (\(_ ** (_, lhs, rhs)) => keys (getRefs (UN Underscore) lhs)
+                   ++ keys (getRefs (UN Underscore) rhs))
+                 pats)
             clauseRefs _ = []
 
             startOf : FC -> (Int, Int)
@@ -687,28 +729,35 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
       problems <- mapMaybe id <$> traverse (\(f, d) => fresh f d) located
       if not (null problems) then pure (Left problems) else do
         setUp (Prelude.toList (the (SortedSet String) (fromList (map snd located))))
-        traverse_ (\(f, _) => addImport (MkImport EmptyFC False f.mod.moduleNS (miAsNamespace f.mod.moduleNS))) located
+        traverse_
+          (\(f, _) =>
+           addImport (MkImport EmptyFC False f.mod.moduleNS (miAsNamespace f.mod.moduleNS)))
+            located
         defs <- get Ctxt
-        let mods = the (SortedSet String) (fromList (map (\(_, (m, _, _)) => show m) (allImported defs)))
+        let mods =
+              the (SortedSet String) (fromList (map (\(_, (m, _, _)) => show m) (allImported defs)))
         -- every name in the context, by the map from full names to their
         -- entries: `allNames` counts the entries from 1, and leaves out the
         -- first one
         let names = keys (resolvedAs (gamma defs))
         let ours = the (SortedSet String) (fromList (map (\(f, _) => show f.mod.moduleNS) located))
             byModule = foldl (\acc, nm => case moduleOfName mods nm of
-                                 Just m => if contains m ours then insert m (nm :: fromMaybe [] (lookup m acc)) acc else acc
+                                 Just m => if contains m ours
+                                   then insert m (nm :: fromMaybe [] (lookup m acc)) acc else acc
                                  Nothing => acc)
                              (the (SortedMap String (List Name)) empty) names
         -- the implementations, as Idris keeps them for search: by interface,
         -- and the hints of no interface; a data type's constructors are
         -- hints for it too, and are left out
-        let hinted = joined (map (map (\(h, _) => h)) (values (typeHints defs))) ++ keys (autoHints defs)
+        let hinted = joined (map (map (\(h, _) => h)) (values (typeHints defs)))
+              ++ keys (autoHints defs)
         hintedNames <- traverse (full (gamma defs)) hinted
         found <- filterM (notConstructor defs) hintedNames
         let implementations = the (SortedSet String) (fromList (map show found))
         js <- joiners
         n <- newRef Counting (MkCount 0 0 0 empty)
         rs <- traverse (resolveModule ours mods implementations js)
-                       [ (f, fromMaybe [] (lookup (show f.mod.moduleNS) byModule)) | (f, _) <- located ]
+                       [ (f, fromMaybe [] (lookup (show f.mod.moduleNS) byModule))
+                         | (f, _) <- located ]
         imports <- traverse (\m => (m,) <$> importsOf m) (Prelude.toList mods)
         pure (Right (MkResolution rs (fromList imports)))

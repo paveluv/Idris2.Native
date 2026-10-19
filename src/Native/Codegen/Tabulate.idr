@@ -35,7 +35,8 @@ record Tabulated where
 ||| value is not computed, is not constants, or has a row not as long as
 ||| the first.
 export
-tabulate : (compiled : SortedMap Name NamedDef) -> (fuel : Nat) -> Name -> (lo, hi : Int) -> Core (Either String Tabulated)
+tabulate : (compiled : SortedMap Name NamedDef) -> (fuel : Nat) -> Name -> (lo, hi : Int) ->
+           Core (Either String Tabulated)
 tabulate compiled fuel n lo hi = do
   -- the index alone: its proof of the range is erased, as compiled code has it
   Right vs <- Evaluate.evaluate compiled fuel n [ [Evaluate.VConst (I k)] | k <- [lo .. hi] ]
@@ -50,7 +51,8 @@ tabulate compiled fuel n lo hi = do
     wordsOf _ = Nothing
 
     rows : List Evaluate.Value -> SnocList (List Integer) -> Maybe Nat -> Either String Tabulated
-    rows [] acc width = Right (MkTabulated n lo (fromMaybe 0 width) (concatMap Bytes.le64 (concat (acc <>> []))))
+    rows [] acc width =
+      Right (MkTabulated n lo (fromMaybe 0 width) (concatMap Bytes.le64 (concat (acc <>> []))))
     rows (v :: vs) acc width = case wordsOf v of
       Nothing => Left ("the table " ++ show n ++ " has a value that is not constants")
       Just ws =>

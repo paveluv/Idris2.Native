@@ -43,9 +43,12 @@ data Header : Enc -> Kind -> Type where
   ClosureH : (arity : Nat) -> (filled : Nat) -> Header enc Kind.CLOSURE
   Int64H   : Header enc Kind.INT64
   DoubleH  : Header enc Kind.DOUBLE
-  StringH  : {auto 0 u : StringEnc.Utf8Strings enc.string} -> (ascii : Bool) -> (bytes : Nat) -> Header enc Kind.STRING
-  StringCharsH : {auto 0 u : StringEnc.Utf32Strings enc.string} -> (chars : Nat) -> Header enc Kind.STRING
-  BignumH  : {auto 0 sh : BignumEnc.SignInHeader enc.bignum} -> (negative : Bool) -> (words : Nat) ->
+  StringH  : {auto 0 u : StringEnc.Utf8Strings enc.string} -> (ascii : Bool) -> (bytes : Nat) ->
+    Header enc Kind.STRING
+  StringCharsH : {auto 0 u : StringEnc.Utf32Strings enc.string} -> (chars : Nat) ->
+                 Header enc Kind.STRING
+  BignumH  : {auto 0 sh : BignumEnc.SignInHeader enc.bignum} -> (negative : Bool) ->
+    (words : Nat) ->
              Header enc Kind.BIGNUM
   IORefH   : Header enc Kind.IOREF
   ArrayH   : (elems : Nat) -> Header enc Kind.ARRAY
@@ -130,10 +133,14 @@ place ClosureFilled = HeapObj.Shape.place HeapObj.Shape.MixedValues
 place StringAscii = HeapObj.Shape.place {s = HeapObj.Shape.RAW} HeapObj.Shape.Part
 place StringBytes = HeapObj.Shape.place HeapObj.Shape.Bytes
 -- four bytes a character: the bytes' bits but for the low two
-place StringChars = (fst (HeapObj.Shape.place HeapObj.Shape.Bytes) + 2, snd (HeapObj.Shape.place HeapObj.Shape.Bytes) - 2)
+place StringChars =
+  (fst (HeapObj.Shape.place HeapObj.Shape.Bytes) + 2,
+   snd (HeapObj.Shape.place HeapObj.Shape.Bytes) - 2)
 place BignumNegative = HeapObj.Shape.place {s = HeapObj.Shape.RAW} HeapObj.Shape.Part
 -- eight bytes a limb: the bytes' bits but for the low three
-place BignumWords = (fst (HeapObj.Shape.place HeapObj.Shape.Bytes) + 3, snd (HeapObj.Shape.place HeapObj.Shape.Bytes) - 3)
+place BignumWords =
+  (fst (HeapObj.Shape.place HeapObj.Shape.Bytes) + 3,
+   snd (HeapObj.Shape.place HeapObj.Shape.Bytes) - 3)
 place ArrayElems = HeapObj.Shape.place HeapObj.Shape.Values
 place BufferBytes = HeapObj.Shape.place HeapObj.Shape.Bytes
 
@@ -156,7 +163,8 @@ fixedWord k = Kind.code k + fixedCounts k
 ||| the shift and the mask are constants.
 public export %inline
 readPart : {0 k : Kind} -> HeaderPart k -> (header : Bits64) -> Bits64
-readPart p h = prim__and_Bits64 (prim__shr_Bits64 h (fst (place p))) (prim__shl_Bits64 1 (snd (place p)) - 1)
+readPart p h =
+  prim__and_Bits64 (prim__shr_Bits64 h (fst (place p))) (prim__shl_Bits64 1 (snd (place p)) - 1)
 
 ||| A part's value where it lives in a header word: the word to add to the
 ||| kind's `fixedWord` for it.
@@ -221,17 +229,18 @@ encodeHeader : {k : Kind} -> Header enc k -> Int64
 encodeHeader h = signed (cast (fixedWord k) + sum (map part (parts h)))
   where
     part : (HeaderPart k, Nat) -> Integer
-    part (p, v) = (cast v `mod` prim__shl_Integer 1 (cast (snd (place p)))) * prim__shl_Integer 1 (cast (fst (place p)))
+    part (p, v) = (cast v `mod` prim__shl_Integer 1 (cast (snd (place p))))
+      * prim__shl_Integer 1 (cast (fst (place p)))
 
     signed : Integer -> Int64
     signed u = cast (if u >= prim__shl_Integer 1 63 then u - prim__shl_Integer 1 64 else u)
 
 ||| The header a word encodes, if the word is exactly what `encodeHeader`
 ||| makes of some header: a kind's code other than `CONT`'s, flags 0, the
-||| counts the kind fixes, and no bit outside the kind's parts. So `decodeHeader w = Just (k ** h)` implies
-||| `encodeHeader h = w`, and for a header that fits,
-||| `decodeHeader (encodeHeader h)` gives the header back, which
-||| `tests/native/header001` checks for every part at its boundaries.
+||| counts the kind fixes, and no bit outside the kind's parts. So
+||| `decodeHeader w = Just (k ** h)` implies `encodeHeader h = w`, and for a
+||| header that fits, `decodeHeader (encodeHeader h)` gives the header back,
+||| which `tests/native/header001` checks for every part at its boundaries.
 export
 decodeHeader : (enc : Enc) -> Int64 -> Maybe (k : Kind ** Header enc k)
 decodeHeader enc w = do
@@ -245,7 +254,10 @@ decodeHeader enc w = do
     u = unsigned w
 
     get : HeaderPart k -> Nat
-    get p = cast ((u `div` prim__shl_Integer 1 (cast (fst (place p)))) `mod` prim__shl_Integer 1 (cast (snd (place p))))
+    get p =
+      cast
+        ((u `div` prim__shl_Integer 1 (cast (fst (place p)))) `mod` prim__shl_Integer 1
+         (cast (snd (place p))))
 
     -- A sign-magnitude program's BIGNUM header, matched on the record so
     -- that the match proves the sign is in the header.
@@ -257,12 +269,14 @@ decodeHeader enc w = do
     -- A string's header, matched on the record so that the match proves the
     -- encoding the constructor needs.
     string : (enc' : Enc) -> Maybe (k : Kind ** Header enc' k)
-    string (MkEnc _ _ StringEnc.Utf8) = Just (Kind.STRING ** StringH (get StringAscii == 1) (get StringBytes))
+    string (MkEnc _ _ StringEnc.Utf8) =
+      Just (Kind.STRING ** StringH (get StringAscii == 1) (get StringBytes))
     string (MkEnc _ _ StringEnc.Utf32) = Just (Kind.STRING ** StringCharsH (get StringChars))
 
     parse : Maybe Kind -> Maybe (k : Kind ** Header enc k)
     parse (Just Kind.CON) = Just (Kind.CON ** ConH (get ConId) (get ConArity))
-    parse (Just Kind.CLOSURE) = Just (Kind.CLOSURE ** ClosureH (get ClosureArity) (get ClosureFilled))
+    parse (Just Kind.CLOSURE) =
+      Just (Kind.CLOSURE ** ClosureH (get ClosureArity) (get ClosureFilled))
     parse (Just Kind.INT64) = Just (Kind.INT64 ** Int64H)
     parse (Just Kind.DOUBLE) = Just (Kind.DOUBLE ** DoubleH)
     parse (Just Kind.STRING) = string enc

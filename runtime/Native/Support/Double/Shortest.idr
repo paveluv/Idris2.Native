@@ -24,7 +24,9 @@ shortest f be =
   let isEven = f .&. 1 == 0
       twoFc = f `shiftL` 1
   in if be /= 0
-        then (if twoFc == 0 then shorter (cast be - 1075) else normal (twoFc .|. (1 `shiftL` 53)) (cast be - 1075) isEven)
+        then
+          (if twoFc == 0 then shorter (cast be - 1075)
+           else normal (twoFc .|. (1 `shiftL` 53)) (cast be - 1075) isEven)
         else normal twoFc (-1074) isEven
   where
     ||| floor(e * log2(10)), for |e| <= 1233.
@@ -42,9 +44,13 @@ shortest f be =
     cache : Int -> (Bits64, Bits64)
     cache k with (-342 <= k && k <= 326) proof inside
       _ | True = case powerOfTen k inside of
-        (h, l) => if 0 <= k && k <= 55 then (h, l) else (if l == 0xFFFFFFFFFFFFFFFF then h + 1 else h, l + 1)
-      -- lint: allow trust-escape: unreached, as Dragonbox's indices for binary64 are from -292 to 326, inside the table's range
-      _ | False = assert_total (idris_crash "Native.Support.Double.Shortest.cache: an index outside the powers of ten")
+        (h, l) => if 0 <= k && k <= 55 then (h, l)
+          else (if l == 0xFFFFFFFFFFFFFFFF then h + 1 else h, l + 1)
+      -- lint: allow trust-escape: unreached, as Dragonbox's indices for binary64 are from -292 to
+      -- 326, inside the table's range
+      _ | False =
+        assert_total
+          (idris_crash "Native.Support.Double.Shortest.cache: an index outside the powers of ten")
 
     ||| The high word of a 64-by-64-bit product.
     high : Bits64 -> Bits64 -> Bits64
@@ -106,7 +112,8 @@ shortest f be =
     ||| is odd, and whether it is an integer.
     mulParity : (twoF : Bits64) -> (cache : (Bits64, Bits64)) -> (beta : Bits64) -> (Bool, Bool)
     mulParity twoF c beta = case lower128 twoF c of
-      (h, l) => ((h `shiftR` (64 - beta)) .&. 1 /= 0, ((h `shiftL` beta) .|. (l `shiftR` (64 - beta))) == 0)
+      (h, l) =>
+        ((h `shiftR` (64 - beta)) .&. 1 /= 0, ((h `shiftL` beta) .|. (l `shiftR` (64 - beta))) == 0)
       where
         ||| The lower 128 bits of the 192-bit product of a word and a 128-bit
         ||| number, as its high word and its low word.
@@ -137,7 +144,8 @@ shortest f be =
              if xParity || (xIsInteger && isEven) then removeTrailingZeros (s, minusK + 3)
              else smaller minusK c b s r deltai
       where
-        smaller : (minusK : Int) -> (Bits64, Bits64) -> (beta : Bits64) -> (s, r, deltai : Bits64) -> (Bits64, Int)
+        smaller : (minusK : Int) -> (Bits64, Bits64) -> (beta : Bits64) ->
+                  (s, r, deltai : Bits64) -> (Bits64, Int)
         smaller minusK c b s r deltai =
           let dist = r - (deltai `shiftR` 1) + 50
               approxYParity = (dist `xor` 50) .&. 1 /= 0

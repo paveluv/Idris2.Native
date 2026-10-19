@@ -44,7 +44,8 @@ eiselLemire w q =
         shift = upperbit + 9
         mantissa = ph `shiftR` shift
         power2 = power q + cast upperbit - cast lz + 1023
-    in if power2 <= 0 then subnormal ph shift mantissa power2 else normal ph pl shift mantissa power2
+    in if power2 <= 0 then subnormal ph shift mantissa power2
+      else normal ph pl shift mantissa power2
   where
     ||| floor(q * log2(5)) + q + 63, for q from -400 to 350.
     power : Int -> Int
@@ -55,9 +56,12 @@ eiselLemire w q =
     fiveTo : Int -> (Bits64, Bits64)
     fiveTo k with (-342 <= k && k <= 326) proof inside
       _ | True = case powerOfTen k inside of
-        (h, l) => if -27 <= k && k <= -1 then (if l == 0xFFFFFFFFFFFFFFFF then h + 1 else h, l + 1) else (h, l)
+        (h, l) => if -27 <= k && k <= -1 then (if l == 0xFFFFFFFFFFFFFFFF then h + 1 else h, l + 1)
+          else (h, l)
       -- lint: allow trust-escape: unreached, as q is from -342 to 308 here
-      _ | False = assert_total (idris_crash "Native.Support.Double.Nearest.fiveTo: an index outside the powers of ten")
+      _ | False =
+        assert_total
+          (idris_crash "Native.Support.Double.Nearest.fiveTo: an index outside the powers of ten")
 
     ||| `w` times 5^q, its top 128 bits: the second word of the power only
     ||| where the first product's low 9 bits of its high word are all ones.
@@ -83,10 +87,12 @@ eiselLemire w q =
     ||| exact and fell halfway, which needs 5^q in one word, q from -4 to 23.
     normal : (ph, pl, shift, mantissa : Bits64) -> (power2 : Int) -> Bits64
     normal ph pl shift mantissa power2 =
-      let tie = pl <= 1 && q >= -4 && q <= 23 && mantissa .&. 3 == 1 && (mantissa `shiftL` shift) == ph
+      let tie = pl <= 1 && q >= -4 && q <= 23 && mantissa .&. 3 == 1 && (mantissa `shiftL` shift)
+            == ph
           m = if tie then mantissa .&. 0xFFFFFFFFFFFFFFFE else mantissa
           m' = (m + (m .&. 1)) `shiftR` 1
-          (m'', p') = if m' >= 0x20000000000000 then (0x10000000000000, power2 + 1) else (m', power2)
+          (m'', p') = if m' >= 0x20000000000000 then (0x10000000000000, power2 + 1)
+            else (m', power2)
       in if p' >= 0x7FF then 0x7FF0000000000000
          else (m'' .&. 0xFFFFFFFFFFFFF) .|. (cast p' `shiftL` 52)
 
@@ -123,4 +129,6 @@ nearest w q =
       _ | False with (0 <= negate k && negate k <= 22) proof inside'
         _ | True = x / exactPowerOfTen (negate k) inside'
         -- lint: allow trust-escape: unreached, as q is from -22 to 22 here
-        _ | False = assert_total (idris_crash "Native.Support.Double.Nearest.clinger: a power outside the exact ones")
+        _ | False =
+          assert_total
+            (idris_crash "Native.Support.Double.Nearest.clinger: a power outside the exact ones")

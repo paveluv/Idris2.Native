@@ -25,11 +25,11 @@ orderImports : Refactoring
 orderImports = fileRefactoring "order-imports" "put each file's imports in order" candidates
   where
     ||| The file's lines with its imports in order, in their blocks
-    ||| (`importBlock`): the public ones, those of the module's own group,
-    ||| then the others, each block alphabetical as a reader sorts and set
-    ||| apart from the next by a blank line. Each import keeps the comment lines between it and the import
-    ||| before it, and whatever follows it on its own lines; comments above the
-    ||| first import stay above the block, which they describe.
+    ||| (`importBlock`): the public ones, those of the module's own group, then
+    ||| the others, each block alphabetical as a reader sorts and set apart from
+    ||| the next by a blank line. Each import keeps the comment lines between it
+    ||| and the import before it, and whatever follows it on its own lines;
+    ||| comments above the first import stay above the block, which they describe.
     orderedImports : SourceFile -> List String -> List String
     orderedImports f ls =
       let is = sortBy (\a, b => compare (span a) (span b)) f.mod.imports in
@@ -41,7 +41,11 @@ orderImports = fileRefactoring "order-imports" "put each file's imports in order
               blockEnd = snd (span lastImport)
               chunks = chunksOf blockStart is
               sorted = sortBy (\a, b => compare (key a) (key b)) chunks
-              block = joined (intersperse [""] (filter (not . null) (map (\b => chunkLines (filter (inBlock b) sorted)) [0, 1, 2])))
+              block =
+                joined
+                  (intersperse [""]
+                    (filter (not . null)
+                     (map (\b => chunkLines (filter (inBlock b) sorted)) [0, 1, 2])))
           in take (cast blockStart) ls ++ block ++ drop (cast (blockEnd + 1)) ls
       where
         key : (Import, List String) -> (Nat, String, String)
@@ -76,4 +80,6 @@ orderImports = fileRefactoring "order-imports" "put each file's imports in order
     candidates s =
       let ls = linesOf s
           ordered = orderedImports s.file ls
-      in if ordered == ls then [] else [candidate "imports" (Right (inFile s.file.path [replaceAll s.text (unlines ordered)]))]
+      in if ordered == ls then []
+        else
+          [candidate "imports" (Right (inFile s.file.path [replaceAll s.text (unlines ordered)]))]

@@ -130,7 +130,8 @@ scanned _ = (1, 0)
 ||| the shift and the mask are constants.
 public export %inline
 field : {s : Shape} -> Field s -> (header : Bits64) -> Bits64
-field f h = prim__and_Bits64 (prim__shr_Bits64 h (fst (place f))) (prim__shl_Bits64 1 (snd (place f)) - 1)
+field f h =
+  prim__and_Bits64 (prim__shr_Bits64 h (fst (place f))) (prim__shl_Bits64 1 (snd (place f)) - 1)
 
 ||| A field's value where it lives in a header word: the word to add to a
 ||| header for it.

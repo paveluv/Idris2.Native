@@ -259,7 +259,8 @@ expPieces : Nat -> Exp -> Data.Builder String
 expPieces i exp = case exp of
   FVar _ n => Data.Builder.single (show n)
   FLet _ v val sc
-     => Data.Builder.single ("let " ++ show v ++ " = ") <+> expPieces (i + 2) val <+> Data.Builder.single "\n"
+     => Data.Builder.single ("let " ++ show v ++ " = ") <+> expPieces (i + 2) val
+       <+> Data.Builder.single "\n"
         <+> Data.Builder.single (showIndent i) <+> expPieces i sc
   FConst _ c => Data.Builder.single (show c)
   FOp _ op as => Data.Builder.single (show op) <+> argPieces i (toList as)
@@ -269,8 +270,11 @@ expPieces i exp = case exp of
      => Data.Builder.single (show c ++ maybe "" (\t => "{" ++ show t ++ "}") t) <+> argPieces i as
   FCase _ sc alts def
      => Data.Builder.single "case " <+> expPieces i sc <+> Data.Builder.single " of"
-        <+> concatMap (\a => Data.Builder.single ("\n" ++ showIndent (i + 2)) <+> altPieces (i + 4) a) alts
-        <+> maybe neutral (\d => Data.Builder.single ("\n" ++ showIndent (i + 2) ++ "_ => ") <+> expPieces (i + 4) d)
+        <+> concatMap
+          (\a => Data.Builder.single ("\n" ++ showIndent (i + 2)) <+> altPieces (i + 4) a) alts
+        <+> maybe neutral
+          (\d => Data.Builder.single ("\n" ++ showIndent (i + 2) ++ "_ => ")
+           <+> expPieces (i + 4) d)
           def
   FCrash _ msg => Data.Builder.single ("crash " ++ show msg)
   FNone _ => Data.Builder.single "()"
@@ -286,7 +290,8 @@ expPieces i exp = case exp of
     covering
     argPieces : Nat -> List Exp -> Data.Builder String
     argPieces i [] = neutral
-    argPieces i as = Data.Builder.single "(" <+> concat (intersperse (Data.Builder.single ", ") (map (expPieces i) as))
+    argPieces i as = Data.Builder.single "("
+      <+> concat (intersperse (Data.Builder.single ", ") (map (expPieces i) as))
       <+> Data.Builder.single ")"
 
     showIndent : Nat -> String
@@ -371,7 +376,8 @@ expType var form (FOp _ op _) = (\t => (SPrim t, primLayout t)) <$> opResult op
 expType var form (FCall _ n _) = form n
 expType var form (FPrim _ _ sk lay _) = Just (sk, lay)
 expType var form (FCon _ _ _ sk lay _) = Just (sk, lay)
-expType var form (FCase _ _ alts def) = head' (catMaybes (map alt alts ++ [def >>= expType var form]))
+expType var form (FCase _ _ alts def) =
+  head' (catMaybes (map alt alts ++ [def >>= expType var form]))
   where
     bound : List FlatVar -> Name -> Maybe (Skeleton, Layout)
     bound vs y = case find (\v => v.name == y) vs of
@@ -431,7 +437,9 @@ formPrims fd = toList (go fd.body)
 export
 formSkeletons : FlatDef -> List Skeleton
 formSkeletons fd =
-  toList (Data.Builder.single fd.resultSkeleton <+> Data.Builder.piece (map skeleton fd.params) <+> go fd.body)
+  toList
+    (Data.Builder.single fd.resultSkeleton <+> Data.Builder.piece (map skeleton fd.params)
+     <+> go fd.body)
   where
     go : Exp -> Data.Builder Skeleton
     go (FVar _ _) = neutral

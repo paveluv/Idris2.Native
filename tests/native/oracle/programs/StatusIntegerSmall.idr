@@ -41,7 +41,8 @@ checks =
   , prim__xor_Integer (big (-12)) (big 10) == -2
   , big (-3) < big 2, big 5 >= big 5, big (-4611686018427387904) < big 4611686018427387903
   , negate (big 4611686018427387903) == -4611686018427387903
-  , the Int (cast (big (-5))) == -5, the Bits8 (cast (big (-1))) == 255, the Int8 (cast (big 200)) == -56
+  , the Int (cast (big (-5))) == -5, the Bits8 (cast (big (-1))) == 255,
+    the Int8 (cast (big 200)) == -56
   , the Integer (cast (the Bits8 200)) == 200, the Integer (cast (the Int8 (-5))) == -5
   , ord (the Char (cast (big 65))) == 65, ord (the Char (cast (big 55296))) == 0
   , pick (big 5) == 1, pick (big (-5)) == 2, pick (big 6) == 3

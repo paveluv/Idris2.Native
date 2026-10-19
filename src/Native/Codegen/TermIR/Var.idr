@@ -73,9 +73,11 @@ enumerate xs = go 0 xs (\p => p)
     Into i rest = {y : a} -> {j : Nat} -> AtIndex j y rest -> AtIndex (i + j) y xs
 
     0 step : {i : Nat} -> {0 z : a} -> {0 zs : List a} -> Into i (z :: zs) -> Into (S i) zs
-    step f {y} {j} p = replace {p = \n => AtIndex n y xs} (sym (plusSuccRightSucc i j)) (f (Later p))
+    step f {y} {j} p =
+      replace {p = \n => AtIndex n y xs} (sym (plusSuccRightSucc i j)) (f (Later p))
 
     go : (i : Nat) -> (rest : List a) -> (0 _ : Into i rest) -> List (x ** Var xs x)
     go i [] _ = []
     go i (y :: ys) f =
-      (y ** MkVar i (replace {p = \n => AtIndex n y xs} (plusZeroRightNeutral i) (f First))) :: go (S i) ys (step f)
+      (y ** MkVar i (replace {p = \n => AtIndex n y xs} (plusZeroRightNeutral i) (f First)))
+        :: go (S i) ys (step f)

@@ -39,7 +39,9 @@ intoWhere : (text : List String) -> PClause -> (names : List String) -> (uses : 
             (column : Int) -> List String -> Either String Edit
 intoWhere _ (MkPatClause fc _ _ []) _ _ column ls =
   let at = startColumn fc in
-  Right (insertLines (snd (lineSpan fc) + 1) ((pack (List.replicate (cast (at + 2)) ' ') ++ "where") :: reindent column (at + 4) ls))
+  Right
+    (insertLines (snd (lineSpan fc) + 1)
+     ((pack (List.replicate (cast (at + 2)) ' ') ++ "where") :: reindent column (at + 4) ls))
 intoWhere text (MkPatClause fc _ _ wh@(d :: _)) names uses column ls =
   let depth = startColumn d.fc in
   case find (\w => any (\n => contains n (inDecl w)) names) wh of
@@ -54,7 +56,8 @@ intoWhere text (MkPatClause fc _ _ wh@(d :: _)) names uses column ls =
           from = fst (lineSpan first.fc)
           after = filter (\w => fst (lineSpan w.fc) >= from) wh
       in if any (\w => any (\n => contains n uses) (definesOf w)) after
-           then Left "it uses a local function its user's `where` block defines after the one that uses it"
+           then Left
+             "it uses a local function its user's `where` block defines after the one that uses it"
            else Right (insertLines (attachedFrom text from) (reindent column depth ls ++ [""]))
 intoWhere _ (MkWithClause _ _ _ _ _) _ _ _ _ = Left "the clause is a `with` clause"
 intoWhere _ (MkImpossible _ _) _ _ _ _ = Left "the clause is impossible"

@@ -125,7 +125,8 @@ importBlock : (importer : String) -> Import -> Nat
 importBlock m i =
   if i.reexport then 0 else
     case reverse (forget (split (== '.') m)) of
-      (_ :: rest@(_ :: _)) => if isPrefixOf (joinBy "." (reverse rest) ++ ".") (moduleName i.path) then 1 else 2
+      (_ :: rest@(_ :: _)) => if isPrefixOf (joinBy "." (reverse rest) ++ ".") (moduleName i.path)
+        then 1 else 2
       _ => 2
 
 ||| Where an import goes among a module's: its block, then alphabetically
@@ -147,7 +148,10 @@ importOrder f =
        Nothing => []
        Just (a, b) =>
          [finding f "import-order" a.loc (moduleName a.path)
-            ("`" ++ moduleName b.path ++ "` comes here: the public imports first, then the module's own group's, then the others, each alphabetical")]
+            ("`" ++ moduleName b.path
+              ++
+                ("` comes here: the public imports first, then the module's own group's, then " ++
+                 "the others, each alphabetical"))]
 
 ||| A façade: a module that declares nothing, only re-exports.
 export
@@ -292,7 +296,9 @@ declared f = coreRun (traverse one leaves) (\_ => pure []) pure
     startLine d = fst (position d.fc)
 
     leaves : List (Maybe String, PDecl)
-    leaves = sortBy (\a, b => compare (startLine (snd a)) (startLine (snd b))) (leavesIn Nothing f.mod.decls)
+    leaves =
+      sortBy (\a, b => compare (startLine (snd a)) (startLine (snd b)))
+        (leavesIn Nothing f.mod.decls)
 
     ||| The names the terms mention, without their namespaces.
     namesIn : PTerm -> Core (List String)
@@ -305,21 +311,30 @@ declared f = coreRun (traverse one leaves) (\_ => pure []) pure
 
     visibleOf : PDecl -> List String
     visibleOf d = case d.val of
-      PClaim c => if exported c.vis then map (nameRoot . (.val) . snd) (forget c.type.val.names) else []
+      PClaim c => if exported c.vis then map (nameRoot . (.val) . snd) (forget c.type.val.names)
+        else []
       PData _ v _ (MkPData _ n _ _ cons) =>
         if exported (collapseDefault v)
-           then nameRoot n :: (if collapseDefault v == Public then foldr (\c, rest => map (nameRoot . (.val) . snd) (forget c.val.names) ++ rest) [] cons else [])
+           then nameRoot n
+             ::
+               (if collapseDefault v == Public
+                 then foldr (\c, rest => map (nameRoot . (.val) . snd) (forget c.val.names) ++ rest)
+                [] cons else [])
            else []
       PData _ v _ (MkPLater _ n _) => if exported (collapseDefault v) then [nameRoot n] else []
       PRecord _ v _ (MkPRecord n _ _ con _) =>
         if exported (collapseDefault v)
-           then nameRoot n :: (if collapseDefault v == Public then maybe [] (\c => [nameRoot c.val]) con else [])
+           then nameRoot n
+             :: (if collapseDefault v == Public then maybe [] (\c => [nameRoot c.val]) con else [])
            else []
-      PRecord _ v _ (MkPRecordLater n _) => if exported (collapseDefault v) then [nameRoot n] else []
+      PRecord _ v _ (MkPRecordLater n _) => if exported (collapseDefault v) then [nameRoot n]
+        else []
       PInterface v _ n _ _ _ _ body =>
         if exported (collapseDefault v)
            then nameRoot n :: foldr (\m, rest => case m.val of
-                                                    PClaim c => map (nameRoot . (.val) . snd) (forget c.type.val.names) ++ rest
+                                                    PClaim c =>
+                                                      map (nameRoot . (.val) . snd)
+                                                        (forget c.type.val.names) ++ rest
                                                     _ => rest) [] body
            else []
       _ => []
@@ -369,11 +384,13 @@ adjacency ds =
   in foldr (\(j, d), rest => case d.implementing of
        Nothing => rest
        Just (_, params) =>
-         mapMaybe (\t => map (\i => MkAdjacency d t (intruder indexed i j t)) (typeAt indexed t)) (filter (`elem` params) types) ++ rest)
+         mapMaybe (\t => map (\i => MkAdjacency d t (intruder indexed i j t)) (typeAt indexed t))
+           (filter (`elem` params) types) ++ rest)
      [] indexed
   where
     typeAt : List (Nat, Declared) -> String -> Maybe Nat
-    typeAt xs t = foldr (\(k, d), rest => if isType d && (t `elem` d.defines) then Just k else rest) Nothing xs
+    typeAt xs t =
+      foldr (\(k, d), rest => if isType d && (t `elem` d.defines) then Just k else rest) Nothing xs
       where
         isType : Declared -> Bool
         isType d = case d.decl.val of
@@ -399,14 +416,16 @@ adjacency ds =
     used ty impls others = go (foldr (\d, rest => d.mentions ++ rest) ty.mentions impls) others
       where
         named : List String -> Declared -> Bool
-        named names d = any (`elem` names) d.defines || maybe False (\ip => any (`elem` names) (snd ip)) d.implementing
+        named names d = any (`elem` names) d.defines
+          || maybe False (\ip => any (`elem` names) (snd ip)) d.implementing
 
         go : List String -> List Declared -> List String
         go names rest =
           let more = filter (\d => named names d && not (all (`elem` names) d.mentions)) rest in
           case more of
             [] => names
-            -- lint: allow trust-escape: each round takes declarations out of those still unfinished, of which there are finitely many
+            -- lint: allow trust-escape: each round takes declarations out of those still
+            -- unfinished, of which there are finitely many
             _ => assert_total (go (foldr (\d, acc => d.mentions ++ acc) names more) rest)
 
     -- the declarations strictly after position lo and before hi
@@ -432,7 +451,9 @@ adjacency ds =
 export
 namedAfterSymbol : SourceFile -> List Declared -> Bool
 namedAfterSymbol f ds =
-  facade f || any (\n => toLower n == toLower (lastPart (show f.mod.moduleNS))) (foldr (\d, rest => d.defines ++ rest) [] ds)
+  facade f
+    || any (\n => toLower n == toLower (lastPart (show f.mod.moduleNS)))
+      (foldr (\d, rest => d.defines ++ rest) [] ds)
 
 ||| An overload of its type: a declaration in a namespace block named after a
 ||| type its own signature or body names, as `area` in `namespace Circle`.
@@ -477,7 +498,8 @@ helpers ds =
 
     -- the declarations that mention a function, those defining it aside
     users : Declared -> List Declared
-    users h = filter (\d => not (any (`elem` h.defines) d.defines) && any (`elem` h.defines) d.mentions) ds
+    users h =
+      filter (\d => not (any (`elem` h.defines) d.defines) && any (`elem` h.defines) d.mentions) ds
 
     ||| How many functions a declaration keeps local: those declared in the
     ||| `where` blocks of its clauses, at any depth.
@@ -499,21 +521,25 @@ helpers ds =
 
 ||| A word of a text, its letters, digits, `-` and `_` kept together.
 words' : String -> List String
-words' s = forget (split (\c => not (isAlphaNum c || c == '-' || c == '_' || c == '/' || c == '.')) s)
+words' s =
+  forget (split (\c => not (isAlphaNum c || c == '-' || c == '_' || c == '/' || c == '.')) s)
 
 ||| `cites-plan`: the code is the specification, so it cites no plan.
 citesPlan : SourceFile -> List Finding
 citesPlan f =
-  [ MkFinding "cites-plan" f.path c.line c.col w ("cites `" ++ w ++ "`: the code states what it needs")
+  [ MkFinding "cites-plan" f.path c.line c.col w
+    ("cites `" ++ w ++ "`: the code states what it needs")
   | c <- f.comments, w <- mapMaybe citation (words' c.text) ]
   where
     ||| A plan cited: `PQ-`, `IL-` or `FL-` and three digits, or a document of
     ||| the plans (a path under `docs/`, a `.md` file).
     citation : String -> Maybe String
     citation w =
-      if any (\p => isPrefixOf p w && length w >= 6 && all isDigit (unpack (substr 3 3 w))) planPrefixes
+      if any (\p => isPrefixOf p w && length w >= 6 && all isDigit (unpack (substr 3 3 w)))
+        planPrefixes
          then Just (substr 0 6 w)
-      else if (isInfixOf "docs/" w && not (isSuffixOf "docs/" w)) || (isSuffixOf ".md" w && length w > 3) then Just w
+      else if (isInfixOf "docs/" w && not (isSuffixOf "docs/" w))
+        || (isSuffixOf ".md" w && length w > 3) then Just w
       else Nothing
       where
         ||| The prefixes of the plans' items: the queue's, the Idris ledger's, the
@@ -535,9 +561,12 @@ todo f =
 ||| declaration: in the module's documentation, or in a comment.
 headerComment : SourceFile -> List Finding
 headerComment f =
-  let firstItem = foldl min 2147483647 (map (fst . position . (.loc)) f.mod.imports ++ map (fst . position . (.fc)) f.mod.decls)
+  let firstItem =
+        foldl min 2147483647
+          (map (fst . position . (.loc)) f.mod.imports ++ map (fst . position . (.fc)) f.mod.decls)
   in if f.mod.documentation /= "" || any (\c => c.line < firstItem) f.comments then [] else
-       [MkFinding "header-comment" f.path 0 0 (show f.mod.moduleNS) "no comment says what the file is before its first import or declaration"]
+       [MkFinding "header-comment" f.path 0 0 (show f.mod.moduleNS)
+         "no comment says what the file is before its first import or declaration"]
 
 ------------------------------------------------------------------------------
 -- All of them
@@ -569,7 +598,8 @@ fileRules f ms ds =
     externName : SourceFile -> List Declared -> Mentions -> List Finding
     externName f ds ms =
       let m = show f.mod.moduleNS in
-      if not (isPrefixOf "Native.Runtime" m || isPrefixOf "Native.Support" m) then [] else concatMap one ds
+      if not (isPrefixOf "Native.Runtime" m || isPrefixOf "Native.Support" m) then []
+        else concatMap one ds
       where
         isExtern : PFnOpt -> Bool
         isExtern (IFnOpt ExternFn) = True
@@ -585,10 +615,12 @@ fileRules f ms ds =
         written fc = [ show n | (at, n) <- ms.refs, inside at fc ]
 
         portOf : String -> List String -> Bool
-        portOf contract ns = any (\n => n == contract ++ ".port" || isSuffixOf ("." ++ contract ++ ".port") n) ns
+        portOf contract ns =
+          any (\n => n == contract ++ ".port" || isSuffixOf ("." ++ contract ++ ".port") n) ns
 
         named : String -> List String -> Bool
-        named n ns = (isPrefixOf "intrinsic__" n && portOf "Intrinsic" ns) || (isPrefixOf "service__" n && portOf "Service" ns)
+        named n ns = (isPrefixOf "intrinsic__" n && portOf "Intrinsic" ns)
+          || (isPrefixOf "service__" n && portOf "Service" ns)
                      || (isPrefixOf "string__" n && portOf "StringRoutine" ns)
 
         one : Declared -> List Finding
@@ -596,8 +628,13 @@ fileRules f ms ds =
           PClaim c =>
             if not (any isExtern c.opts) then []
             else [ finding f "extern-name" d.decl.fc n
-                     ("`" ++ n ++ "` is an extern of the runtime: it is named by its contract, `intrinsic__` for an "
-                      ++ "intrinsic's port, `service__` for a service's, `string__` for a string routine's")
+                     ("`" ++ n
+                       ++
+                         ("` is an extern of the runtime: it is named by its contract, " ++
+                          "`intrinsic__` for an ")
+                      ++
+                        ("intrinsic's port, `service__` for a service's, `string__` for a " ++
+                         "string routine's"))
                  | n <- d.defines, not (named n (written d.decl.fc)) ]
           _ => []
 
@@ -611,8 +648,10 @@ fileRules f ms ds =
     moduleType f ds =
       if namedAfterSymbol f ds then [] else
         [ finding f "module-type" f.mod.headerLoc (show f.mod.moduleNS)
-            ("`" ++ show f.mod.moduleNS ++ "` is named almost after its type `" ++ t ++ "`: it is named `" ++ t ++ "`")
-        | t <- concatMap typeOf ds, isPrefixOf (toLower t) (toLower (lastPart (show f.mod.moduleNS))) ]
+            ("`" ++ show f.mod.moduleNS ++ "` is named almost after its type `" ++ t
+              ++ "`: it is named `" ++ t ++ "`")
+        | t <- concatMap typeOf ds,
+          isPrefixOf (toLower t) (toLower (lastPart (show f.mod.moduleNS))) ]
       where
         -- the exported types a declaration defines
         typeOf : Declared -> List String
@@ -633,7 +672,8 @@ fileRules f ms ds =
             let want = "Mk" ++ nameRoot n in
             if nameRoot c.val == want then []
             else [finding f "record-constructor" d.decl.fc (nameRoot c.val)
-                    ("`" ++ nameRoot c.val ++ "` constructs `" ++ nameRoot n ++ "`: a record's constructor is `" ++ want ++ "`")]
+                    ("`" ++ nameRoot c.val ++ "` constructs `" ++ nameRoot n
+                      ++ "`: a record's constructor is `" ++ want ++ "`")]
           _ => []
 
     ||| `public-import`: a module imports what it uses, so a public import is for
@@ -660,7 +700,8 @@ fileRules f ms ds =
         one a = flip map a.intruder $ \d =>
           let iface = maybe "" fst a.impl.implementing in
           finding f "implementation-adjacent" a.impl.decl.fc (iface ++ " " ++ a.type)
-            ("`" ++ iface ++ " " ++ a.type ++ "` stands apart from `" ++ a.type ++ "`: `" ++ intruderName d
+            ("`" ++ iface ++ " " ++ a.type ++ "` stands apart from `" ++ a.type ++ "`: `"
+              ++ intruderName d
              ++ "` is between them, neither one of its implementations nor something they use")
 
     ||| `default-totality`: every module says how total its functions are by
@@ -668,7 +709,8 @@ fileRules f ms ds =
     defaultTotality : SourceFile -> List Finding
     defaultTotality f =
       if any isDefault f.mod.decls then [] else
-        [finding f "default-totality" f.mod.headerLoc (show f.mod.moduleNS) "no `%default` directive"]
+        [finding f "default-totality" f.mod.headerLoc (show f.mod.moduleNS)
+          "no `%default` directive"]
       where
         isDefault : PDecl -> Bool
         isDefault d = case d.val of
@@ -688,8 +730,10 @@ fileRules f ms ds =
 
         decl : PDecl -> Maybe Finding
         decl d = case d.val of
-          PDirective (Extension ElabReflection) => Just (finding f "elab-reflection" d.fc "%language" "`%language ElabReflection`")
-          PRunElabDecl _ => Just (finding f "elab-reflection" d.fc "%runElab" "`%runElab` declaration")
+          PDirective (Extension ElabReflection) =>
+            Just (finding f "elab-reflection" d.fc "%language" "`%language ElabReflection`")
+          PRunElabDecl _ =>
+            Just (finding f "elab-reflection" d.fc "%runElab" "`%runElab` declaration")
           PClaim c => if any isMacro c.opts
                         then Just (finding f "elab-reflection" d.fc "%macro" "`%macro` function")
                         else Nothing
@@ -701,7 +745,9 @@ fileRules f ms ds =
     ||| (`Types.Represents`), and the conversions ask its evidence.
     casts : SourceFile -> Mentions -> List Finding
     casts f ms =
-      [ finding f "cast" fc (nameRoot n) ("`" ++ nameRoot n ++ "` takes a value for what it may not be: give the evidence that it is")
+      [ finding f "cast" fc (nameRoot n)
+        ("`" ++ nameRoot n
+         ++ "` takes a value for what it may not be: give the evidence that it is")
       | (fc, n) <- ms.refs, nameRoot n `elem` believed ]
       where
         ||| The functions that take a value for one of any type.
@@ -732,4 +778,5 @@ ruleNames : List String
 ruleNames =
   [ "import-order", "public-import", "default-totality", "elab-reflection"
   , "trust-escape", "cast", "cites-plan", "todo", "header-comment", "implementation-adjacent"
-  , "layering", "syscall", "import-alias", "self-qualified", "record-constructor", "module-type", "extern-name" ]
+  , "layering", "syscall", "import-alias", "self-qualified", "record-constructor", "module-type",
+    "extern-name" ]

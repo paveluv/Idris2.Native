@@ -100,7 +100,9 @@ tagOf CONT = 0
 ||| with; 0 for a continuation, whose first word has bits 0..3 zero.
 public export
 code : Kind -> Bits64
-code k = maybe 0 (\s => HeapObj.Shape.shapeId s + HeapObj.Shape.fieldBits {s} HeapObj.Shape.Tag (tagOf k)) (shapeOf k)
+code k =
+  maybe 0 (\s => HeapObj.Shape.shapeId s + HeapObj.Shape.fieldBits {s} HeapObj.Shape.Tag (tagOf k))
+    (shapeOf k)
 
 ||| The kind with this code, if any.
 public export
@@ -126,7 +128,10 @@ Eq Kind where
 public export
 DecEq Kind where
   decEq a b = case decEq (code a) (code b) of
-    Yes p => Yes (justInjective (trans (sym (kindRoundTrip a)) (trans (cong kindOfCode p) (kindRoundTrip b))))
+    Yes p =>
+      Yes
+        (justInjective
+         (trans (sym (kindRoundTrip a)) (trans (cong kindOfCode p) (kindRoundTrip b))))
     No c => No (\q => c (cong code q))
     where
       kindRoundTrip : (k : Kind) -> kindOfCode (code k) = Just k

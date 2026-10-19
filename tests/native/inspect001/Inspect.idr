@@ -259,14 +259,16 @@ platforms = [ (show a ++ "-" ++ show o, MkPlatform a o) | (_, a) <- arches, (_, 
 ||| backend's source.
 gatedEq : List String
 gatedEq =
-  [ "Arch", "Conv", "IntegerRoutine", "Kind", "Lowering", "OS", "Platform", "Reg64", "Rep", "Skeleton"
+  [ "Arch", "Conv", "IntegerRoutine", "Kind", "Lowering", "OS", "Platform", "Reg64", "Rep",
+    "Skeleton"
   , "StringRoutine", "Ty", "ValEnc" ]
 
 ||| The types whose hand-written `Eq` the gate does not check, each with why.
 exemptEq : List (String, String)
 exemptEq =
   [ ("Raw", "a record of one word, compared as its word, whose constructor is the runtime's")
-  , ("ConstructorId", "a record of one word, compared as its word, whose constructor is its module's") ]
+  , ("ConstructorId",
+     "a record of one word, compared as its word, whose constructor is its module's") ]
 
 failures : List String
 failures = concat

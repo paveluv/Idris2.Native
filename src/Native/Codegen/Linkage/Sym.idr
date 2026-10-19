@@ -12,25 +12,53 @@ import Native.Codegen.X86.Asm
 
 public export
 data Sym
-  = SymStart           -- `_start`: the ELF entry point
-  | SymMain            -- the program's entry under the heap lowering; the caller of `link` defines it
-  | SymHalt            -- `idris_halt`: the code of the HALT continuation; result in rax -> exit_group
-  | SymCrash           -- `idris_crash(msg, len)`: write to fd 2, exit_group(1)
-  | SymUnsupported     -- `idris_unsupported(msg, len)`: the abort stub for unlowered code; write to fd 2, exit_group(70)
-  | SymAllocSlow       -- `idris_alloc_slow(n)`: the allocation slow path, the runtime's
-  | SymHALT            -- rodata: the static HALT continuation, the bottom of every continuation chain
-  | SymArgs            -- bss: ARGS, sized by `Areas`: arguments beyond the argument registers
-  | SymRoots           -- bss: ROOTS, sized by `Areas`: the root buffer of the rooting stubs
-  | SymNRoots          -- bss: NROOTS, 1 word: the entries of ROOTS in use
-  | SymScratch         -- bss: SCRATCH, sized by `Areas`: extra registers for register allocation
-  | SymApply           -- `idris_apply(f, a)`: apply a closure to one argument (CPS)
-  | SymAllocMutable    -- `idris_alloc_mutable(n)`: the only way a mutable object is allocated, the runtime's
-  | SymStackLimit      -- bss: STACK_LIMIT, 1 word: the lowest the stack pointer may go in direct code
-  | SymStackOverflow   -- `idris_stack_overflow`: where direct code's stack check fails; message, exit 1
-  | SymMsgStackOverflow  -- rodata
-  | SymArgv            -- bss: ARGV, 1 word: the stack pointer at entry
-  | SymRuntimeStart    -- `idris_start(entry, window)`: the runtime's start-up, which `_start` calls
-  | SymRuntime         -- bss: RUNTIME, `runtimeWords` words: the runtime's state
+  = ||| `_start`: the ELF entry point
+    SymStart
+  | ||| the program's entry under the heap lowering; the caller of `link`
+    ||| defines it
+    SymMain
+  | ||| `idris_halt`: the code of the HALT continuation; result in rax ->
+    ||| exit_group
+    SymHalt
+  | ||| `idris_crash(msg, len)`: write to fd 2, exit_group(1)
+    SymCrash
+  | ||| `idris_unsupported(msg, len)`: the abort stub for unlowered code;
+    ||| write to fd 2, exit_group(70)
+    SymUnsupported
+  | ||| `idris_alloc_slow(n)`: the allocation slow path, the runtime's
+    SymAllocSlow
+  | ||| rodata: the static HALT continuation, the bottom of every
+    ||| continuation chain
+    SymHALT
+  | ||| bss: ARGS, sized by `Areas`: arguments beyond the argument registers
+    SymArgs
+  | ||| bss: ROOTS, sized by `Areas`: the root buffer of the rooting stubs
+    SymRoots
+  | ||| bss: NROOTS, 1 word: the entries of ROOTS in use
+    SymNRoots
+  | ||| bss: SCRATCH, sized by `Areas`: extra registers for register
+    ||| allocation
+    SymScratch
+  | ||| `idris_apply(f, a)`: apply a closure to one argument (CPS)
+    SymApply
+  | ||| `idris_alloc_mutable(n)`: the only way a mutable object is
+    ||| allocated, the runtime's
+    SymAllocMutable
+  | ||| bss: STACK_LIMIT, 1 word: the lowest the stack pointer may go in
+    ||| direct code
+    SymStackLimit
+  | ||| `idris_stack_overflow`: where direct code's stack check fails;
+    ||| message, exit 1
+    SymStackOverflow
+  | ||| rodata
+    SymMsgStackOverflow
+  | ||| bss: ARGV, 1 word: the stack pointer at entry
+    SymArgv
+  | ||| `idris_start(entry, window)`: the runtime's start-up, which `_start`
+    ||| calls
+    SymRuntimeStart
+  | ||| bss: RUNTIME, `runtimeWords` words: the runtime's state
+    SymRuntime
 
 public export
 symLabel : Sym -> X86.Asm.Label

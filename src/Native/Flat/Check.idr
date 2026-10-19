@@ -30,15 +30,19 @@ codegenFlatCheck : (primitives : Ref Ctxt Defs -> Core (List Name)) -> Codegen
 codegenFlatCheck primitives = MkCG compileExpr executeExpr (Just check) Nothing
   where
     nothing : Core a
-    nothing = throw (GenericMsg EmptyFC "flat-check only checks modules as they are built; it compiles nothing")
+    nothing =
+      throw
+        (GenericMsg EmptyFC "flat-check only checks modules as they are built; it compiles nothing")
 
-    compileExpr : Ref Ctxt Defs -> Ref Syn SyntaxInfo -> String -> String -> ClosedTerm -> String -> Core (Maybe String)
+    compileExpr : Ref Ctxt Defs -> Ref Syn SyntaxInfo -> String -> String -> ClosedTerm -> String ->
+                  Core (Maybe String)
     compileExpr _ _ _ _ _ _ = nothing
 
     executeExpr : Ref Ctxt Defs -> Ref Syn SyntaxInfo -> String -> ClosedTerm -> Core ()
     executeExpr _ _ _ _ = nothing
 
-    check : Ref Ctxt Defs -> Ref Syn SyntaxInfo -> (sourceFile : String) -> Core (Maybe (String, List String))
+    check : Ref Ctxt Defs -> Ref Syn SyntaxInfo -> (sourceFile : String) ->
+            Core (Maybe (String, List String))
     check c s sourceFile
         = do Marked.checkModule primitives sourceFile
              pure (Just (sourceFile, []))

@@ -50,7 +50,8 @@ packagesNear roots = do
     packagesIn d = do
       Right names <- listDir (if d == "" then "." else d)
         | Left _ => pure []
-      texts <- traverse (\n => map (inDirectory d n,) <$> readFile (inDirectory d n)) (filter (isSuffixOf ".ipkg") names)
+      texts <- traverse (\n => map (inDirectory d n,) <$> readFile (inDirectory d n))
+        (filter (isSuffixOf ".ipkg") names)
       pure (rights texts)
 
     ||| A directory's parent, `""` for the current one.
@@ -62,7 +63,8 @@ packagesNear roots = do
 ||| The files of a run, parsed, the packages beside its roots, and the
 ||| context, parsed before.
 export
-loadProject : (roots, paths : List String) -> Maybe Resolution -> (context : List Subject) -> IO Project
+loadProject : (roots, paths : List String) -> Maybe Resolution -> (context : List Subject) ->
+              IO Project
 loadProject roots paths res context = do
   subjects <- traverse load paths
   packages <- packagesNear roots
@@ -85,5 +87,6 @@ sourceDirOf path text =
 
     value : String -> Maybe String
     value l = case break (== '=') (unpack (trim l)) of
-      (k, '=' :: v) => if trim (pack k) == "sourcedir" then Just (pack (filter (/= '"') (unpack (trim (pack v))))) else Nothing
+      (k, '=' :: v) => if trim (pack k) == "sourcedir"
+        then Just (pack (filter (/= '"') (unpack (trim (pack v))))) else Nothing
       _ => Nothing

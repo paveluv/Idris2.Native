@@ -107,7 +107,8 @@ runtimeCrash = NS (runtimeModule "System") (UN (Basic "crash"))
 
 realised : Realised
 realised =
-  MkRealised [(runtimeStart, Start), (runtimeAllocSlow, AllocSlow), (runtimeAllocMutable, AllocMutable),
+  MkRealised [(runtimeStart, Start),
+              (runtimeAllocSlow, AllocSlow), (runtimeAllocMutable, AllocMutable),
               (runtimeCrash, Crash)]
              Nothing Nothing empty empty empty empty
 
@@ -255,7 +256,8 @@ sumToBody = build $ \[n] =>
 slowAddBody : Closed Run (Direct [Val] False) False [Val, Val]
 slowAddBody = build $ \[a, _] =>
   ifFixnums [a]
-    (\[f] => arithOv OvAdd f f (\r => do w <- emit1 (WidenFix r); ret [w]) (crash "slowAdd: overflow"))
+    (\[f] =>
+      arithOv OvAdd f f (\r => do w <- emit1 (WidenFix r); ret [w]) (crash "slowAdd: overflow"))
     (crash "slowAdd: not a fixnum")
 
 ||| A closure's code: the sum of its two arguments, through a tail call, as
@@ -411,7 +413,9 @@ Cover = MkDecls
   , MkSig (UN (Basic "idris_routine")) (Direct [] True) [] False ]
   []
 
-roundTripRef : Var (sigs Cover) (MkSig (NS (mkNamespace "Main.Memory") (UN (Basic "roundTrip"))) (Direct [W64] False) [W64] True)
+roundTripRef : Var (sigs Cover)
+               (MkSig (NS (mkNamespace "Main.Memory") (UN (Basic "roundTrip"))) (Direct [W64] False)
+                [W64] True)
 roundTripRef = later here
 
 routineRef : Var (sigs Cover) (MkSig (UN (Basic "idris_routine")) (Direct [] True) [] False)
@@ -476,11 +480,16 @@ main = do
   let Just cr = close crashBody | Nothing => putStrLn "crash: a level outside its context"
   let Just st = close startBody | Nothing => putStrLn "start: a level outside its context"
   let Just al = close allocSlowBody | Nothing => putStrLn "allocSlow: a level outside its context"
-  let Just am = close allocMutableBody | Nothing => putStrLn "allocMutable: a level outside its context"
+  let Just am = close allocMutableBody
+    | Nothing => putStrLn "allocMutable: a level outside its context"
   -- the names' distinctness decided here, as a producer decides it
   let Left ok = choose (distinct (map (.name) (sigs Run)) && distinct (map (.sym) (statics Run)))
     | Right _ => putStrLn "the running program: names repeat"
-  let run = allocRegs x86_64 (MkProgram {d = Run} [Defined m, Defined p, Defined s, Defined sa, Defined at, Defined sm, Defined dm, Defined fl, Defined by, Defined cr, Defined st, Defined al, Defined am]
+  let run =
+        allocRegs x86_64
+          (MkProgram {d = Run}
+            [Defined m, Defined p, Defined s, Defined sa, Defined at, Defined sm, Defined dm,
+             Defined fl, Defined by, Defined cr, Defined st, Defined al, Defined am]
                                    [MkStaticDef (ConH 2 0) []] (MkEntry here) noConIds)
   let Right rendered = render TestEnc realised [] run
     | Left err => putStrLn ("render: " ++ err)
@@ -493,6 +502,8 @@ main = do
   -- the names' distinctness decided here, as a producer decides it
   case choose (distinct (map (.name) (sigs Cover)) && distinct (map (.sym) (statics Cover))) of
     Left ok => do
-      let cover = allocRegs x86_64 (MkProgram {d = Cover} [Defined c, Defined rt, External] [] (MkEntry here) noConIds)
+      let cover =
+            allocRegs x86_64
+              (MkProgram {d = Cover} [Defined c, Defined rt, External] [] (MkEntry here) noConIds)
       putStr (fastConcat (toList (dumpProgram cover)))
     Right _ => putStrLn "the covering program: names repeat"

@@ -131,7 +131,8 @@ evaluate compiled fuel n calls = do
       S k => put Steps k
 
     compiledForm : FC -> Name -> Core NamedDef
-    compiledForm fc n' = maybe (stuck fc ("the definition " ++ show n' ++ ", which the program does not compile")) pure
+    compiledForm fc n' =
+      maybe (stuck fc ("the definition " ++ show n' ++ ", which the program does not compile")) pure
                            (lookup n' compiled)
 
     mutual
@@ -141,7 +142,9 @@ evaluate compiled fuel n calls = do
       eval env (NmLam _ x b) = pure (VLam env x b)
       eval env (NmLet fc x v b) = do tick fc; v' <- eval env v; eval ((x, v') :: env) b
       eval env (NmApp fc (NmRef _ n') as) = do tick fc; global fc n' !(traverse (eval env) as)
-      eval env (NmApp fc f as) = do tick fc; f' <- eval env f; applyAll fc f' !(traverse (eval env) as)
+      eval env (NmApp fc f as) = do tick fc
+                                    f' <- eval env f
+                                    applyAll fc f' !(traverse (eval env) as)
       eval env (NmCon _ n' _ tag as) = VCon n' tag <$> traverse (eval env) as
       eval env (NmOp fc op as) = do tick fc; prim fc op !(traverseVect (eval env) as)
       eval env (NmExtPrim fc p _) = stuck fc ("the external primitive " ++ show p)

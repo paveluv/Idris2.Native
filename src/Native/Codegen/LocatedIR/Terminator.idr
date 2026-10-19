@@ -25,11 +25,13 @@ data Terminator : Types.Enc -> Type where
   ||| Branch on whether every one of the `Val`s is a fixnum, that is, on their
   ||| fixnum tags; the yes branch may narrow them to `Fix`es. The renderings
   ||| test the tags of several at once.
-  IfFixnums    : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> List (Reg enc) -> (ifYes, ifNo : Label) ->
+  IfFixnums    : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> List (Reg enc) ->
+    (ifYes, ifNo : Label) ->
     Terminator enc
   ||| Compare and branch, with the operand types of `Cmp`. Renderings fuse
   ||| the comparison and the branch.
-  Branch      : IRCommon.Op.Rel -> Opnd enc -> Opnd enc -> (ifTrue, ifFalse : Label) -> Terminator enc
+  Branch      : IRCommon.Op.Rel -> Opnd enc -> Opnd enc -> (ifTrue, ifFalse : Label) ->
+    Terminator enc
   ||| Branch on an integer to the block of the matching case, or else to the
   ||| default. The scrutinee is a `W64`, such as a constructor id from
   ||| `LoadPart`, or a `Fix`, whose cases are fixnums, as integers; the

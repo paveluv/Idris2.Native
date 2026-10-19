@@ -49,7 +49,8 @@ data Pointee : Type where
 
 ||| A new pointer of the address, as ordinary code holds it.
 export %inline
-newPtr : {auto 0 rep : Represents Types.Kind.PTR a} -> (address : Runtime.Raw) -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform a)
+newPtr : {auto 0 rep : Represents Types.Kind.PTR a} -> (address : Runtime.Raw) ->
+         Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform a)
 newPtr address = do
   p <- Obj.allocate Types.Kind.PTR Types.Header.noParts
   Obj.store64 p 0 (Runtime.Raw.rawWord address)
@@ -57,7 +58,8 @@ newPtr address = do
 
 ||| The null pointer.
 export %inline
-nullPtr : {auto 0 rep : Represents Types.Kind.PTR a} -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform a)
+nullPtr : {auto 0 rep : Represents Types.Kind.PTR a} ->
+          Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform a)
 nullPtr = newPtr Runtime.Raw.null
 
 ||| A string given for a pointer to its bytes: the string itself.
@@ -70,7 +72,8 @@ stringPtr s = do
 ||| What a pointer is, by its object's kind; the program ends for one of
 ||| neither.
 export %inline
-pointee : {auto 0 objs : Objects a} -> {auto 0 str : Represents Types.Kind.STRING a} -> {auto 0 adr : Represents Types.Kind.PTR a} ->
+pointee : {auto 0 objs : Objects a} -> {auto 0 str : Represents Types.Kind.STRING a} ->
+          {auto 0 adr : Represents Types.Kind.PTR a} ->
           Flat.Uniform a -> Runtime.Ordo.Op Runtime.Ordo Pointee
 pointee v = do
   s <- Obj.asKind Types.Kind.STRING v

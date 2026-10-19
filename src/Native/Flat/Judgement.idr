@@ -161,7 +161,8 @@ mutual
     NPrimVal _ (PrT WorldType) => pure (LaidOut [])
     NPrimVal _ (PrT _) => pure (LaidOut [Exp.Word])
     NTCon _ n _ args
-       => if !(toFullNames n) == Exp.uniformType then pure (LaidOut [Exp.Uniform]) else judgeTyCon j n args
+       => if !(toFullNames n) == Exp.uniformType then pure (LaidOut [Exp.Uniform])
+         else judgeTyCon j n args
     NType {} => pure (Rejected Problem.RuntimeType)
     NBind _ _ (Pi {}) _ => pure (Rejected Problem.FunctionType)
     NDelayed {} => pure (Rejected Problem.LazyType)
@@ -190,7 +191,10 @@ mutual
                if natural cdefs then pure (Rejected (Problem.NaturalType tn)) else
                  if !(recursive tn) then pure (Rejected (Problem.RecursiveType tn)) else
                    case cdefs of
-                        [] => pure (if tyflags.external then Rejected (Problem.ExternalType tn) else LaidOut [])
+                        [] =>
+                          pure
+                            (if tyflags.external then Rejected (Problem.ExternalType tn)
+                             else LaidOut [])
                         [cdef] => judgeCon j cdef args
                         _ => do js <- traverse (\cdef => judgeCon j cdef args) cdefs
                                 pure (concatJudgements (LaidOut [Exp.Word] :: js))
@@ -356,10 +360,13 @@ checkFlatSignature fc fn
                argNF <- evalClosure defs aty
                argWhy <- if isErased rig then pure Nothing else reason j argNF
                case argWhy of
-                    Just why => pure (Just (Problem.InFunction (Just (i', x)) !(quote defs Env.empty argNF) why))
+                    Just why =>
+                      pure
+                        (Just (Problem.InFunction (Just (i', x)) !(quote defs Env.empty argNF) why))
                     Nothing =>
                       do let j' = if isErased rig then { deferred $= (x ::) } j else j
-                         function j' i' ns !(sc defs (toClosure defaultOpts Env.empty (Ref bfc Bound x)))
+                         function j' i' ns
+                           !(sc defs (toClosure defaultOpts Env.empty (Ref bfc Bound x)))
       function j i ns res
           = do Just (n, fnTy) <- newtypeOverFunction res
                  | Nothing => result
@@ -373,7 +380,8 @@ checkFlatSignature fc fn
 
     -- Judge an argument (`Just`) or the result (`Nothing`); an auto-implicit
     -- argument is not rejected here.
-    check : (autoImplicit : Bool) -> Judging -> Maybe (Nat, Name) -> ClosedNF -> Core (Maybe Problem.FlatError)
+    check : (autoImplicit : Bool) -> Judging -> Maybe (Nat, Name) -> ClosedNF ->
+            Core (Maybe Problem.FlatError)
     check autoImplicit j arg ty
         = do Just why <- reason j ty
                | Nothing => pure Nothing
@@ -385,7 +393,8 @@ checkFlatSignature fc fn
     -- `unfolded`: the newtypes over functions whose arguments the signature
     -- has taken already. Met again (a type such as `record Stream where next
     -- : Bits64 -> Stream`), one is judged as a value instead.
-    walk : Judging -> (unfolded : List Name) -> (explicit : Nat) -> ClosedNF -> Core (Maybe Problem.FlatError)
+    walk : Judging -> (unfolded : List Name) -> (explicit : Nat) -> ClosedNF ->
+           Core (Maybe Problem.FlatError)
     walk j ns i (NBind bfc x (Pi _ rig pinfo argTy) sc)
         = do defs <- get Ctxt
              let i' = case pinfo of

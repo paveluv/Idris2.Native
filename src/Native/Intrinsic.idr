@@ -73,7 +73,8 @@ port RuntimeArea = MkPort [] (Just Port.Raw)
 port ValueWord = MkPort [Port.Value] (Just Port.Word)
 port WordValue = MkPort [Port.Word] (Just Port.Value)
 port Syscall6 =
-  MkPort [Port.Word, Port.Word, Port.Word, Port.Word, Port.Word, Port.Word, Port.Word] (Just Port.Word)
+  MkPort [Port.Word, Port.Word, Port.Word, Port.Word, Port.Word, Port.Word, Port.Word]
+    (Just Port.Word)
 
 ||| Every intrinsic, once. The code generator pairs this list's term, as the
 ||| loaded runtime's context holds it, with its own copy, element by element:

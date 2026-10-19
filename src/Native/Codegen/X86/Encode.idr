@@ -57,8 +57,10 @@ encodeRaw pc rel instr = case instr of
   Asm.AluI op d i =>
         if fitsInt8 i then form [] True [0x83] (Asm.aluDigit op) (Left d) 0 False (Bytes.le8 i)
         else form [] True [0x81] (Asm.aluDigit op) (Left d) 0 False (Bytes.le32 i)
-  Asm.AluRM op d m => form [] True [0x03 + 8 * Asm.aluDigit op] (Asm.regNum d) (Right m) rel False []
-  Asm.AluMR op m s => form [] True [0x01 + 8 * Asm.aluDigit op] (Asm.regNum s) (Right m) rel False []
+  Asm.AluRM op d m =>
+    form [] True [0x03 + 8 * Asm.aluDigit op] (Asm.regNum d) (Right m) rel False []
+  Asm.AluMR op m s =>
+    form [] True [0x01 + 8 * Asm.aluDigit op] (Asm.regNum s) (Right m) rel False []
   Asm.Test a b => form [] True [0x85] (Asm.regNum b) (Left a) 0 False []
   Asm.TestI a i => form [] True [0xF7] 0 (Left a) 0 False (Bytes.le32 i)
   Asm.Imul d s => form [] True [0x0F, 0xAF] (Asm.regNum d) (Left s) 0 False []
@@ -87,7 +89,8 @@ encodeRaw pc rel instr = case instr of
   Asm.MovsdRM x m => form [0xF2] False [0x0F, 0x10] (Asm.xmmNum x) (Right m) rel False []
   Asm.MovsdMR m x => form [0xF2] False [0x0F, 0x11] (Asm.xmmNum x) (Right m) rel False []
   Asm.MovsdRR d s => form [0xF2] False [0x0F, 0x10] (Asm.xmmNum d) (Left (xmmAsReg s)) 0 False []
-  Asm.Sse op d s => form [0xF2] False [0x0F, Asm.sseOpcode op] (Asm.xmmNum d) (Left (xmmAsReg s)) 0 False []
+  Asm.Sse op d s =>
+    form [0xF2] False [0x0F, Asm.sseOpcode op] (Asm.xmmNum d) (Left (xmmAsReg s)) 0 False []
   Asm.Ucomisd a b => form [0x66] False [0x0F, 0x2E] (Asm.xmmNum a) (Left (xmmAsReg b)) 0 False []
   Asm.Cvtsi2sd x r => form [0xF2] True [0x0F, 0x2A] (Asm.xmmNum x) (Left r) 0 False []
   Asm.Cvttsd2si r x => form [0xF2] True [0x0F, 0x2C] (Asm.regNum r) (Left (xmmAsReg x)) 0 False []
@@ -300,5 +303,6 @@ assembleWith env base is =
 
 ||| Pass two with no external labels.
 export
-assemble : (base : Int) -> List Asm.Instr -> (SnocList Bits8, SortedMap Asm.Label Int, List AsmProblem)
+assemble : (base : Int) -> List Asm.Instr ->
+           (SnocList Bits8, SortedMap Asm.Label Int, List AsmProblem)
 assemble = assembleWith empty

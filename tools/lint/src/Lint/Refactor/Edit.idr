@@ -65,7 +65,9 @@ export
 apply : List Edit -> String -> Maybe String
 apply es t =
   let starts = lineStarts t
-      spans = sortBy (\a, b => compare (fst b) (fst a)) (map (\e => (offset t starts e.from, offset t starts e.to, e.text)) es)
+      spans =
+        sortBy (\a, b => compare (fst b) (fst a))
+          (map (\e => (offset t starts e.from, offset t starts e.to, e.text)) es)
   in if overlapping spans then Nothing else Just (foldl replace t spans)
   where
     overlapping : List (Nat, Nat, String) -> Bool
@@ -83,7 +85,8 @@ describe t e =
   let starts = lineStarts t
       s = offset t starts e.from
       old = substr s (offset t starts e.to `minus` s) t
-  in ("@@ line " ++ show (fst e.from + 1)) :: map (marked "-") (lines old) ++ map (marked "+") (lines e.text)
+  in ("@@ line " ++ show (fst e.from + 1)) :: map (marked "-") (lines old)
+    ++ map (marked "+") (lines e.text)
   where
     marked : String -> String -> String
     marked m l = if l == "" then m else m ++ " " ++ l
@@ -107,7 +110,9 @@ realigned t es =
 
     -- the edits within a line that change its length: line, column, growth
     grown : List (Int, Int, Int)
-    grown = [ (fst e.from, snd e.from, growth e) | e <- es, fst e.from == fst e.to, not (isInfixOf "\n" e.text), growth e /= 0 ]
+    grown =
+      [ (fst e.from, snd e.from, growth e) | e <- es, fst e.from == fst e.to,
+       not (isInfixOf "\n" e.text), growth e /= 0 ]
 
     indentOf : String -> Int
     indentOf l = cast (length (takeWhile (== ' ') (unpack l)))
@@ -140,7 +145,8 @@ realigned t es =
     moves ls =
       concat [ hanging ls here l
              | l <- nub (map fst grown), let here = [ (c, g) | (l', c, g) <- grown, l' == l ]
-             , opensBlock (fromMaybe "" (head' (drop (cast l) ls))) (foldr min 0x7FFFFFFF (map fst here)) ]
+             , opensBlock (fromMaybe "" (head' (drop (cast l) ls)))
+               (foldr min 0x7FFFFFFF (map fst here)) ]
 
     -- a line's moves made one edit at its start
     moved : List (Int, Int) -> Int -> Maybe Edit

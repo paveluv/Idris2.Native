@@ -41,7 +41,8 @@ reach roots p =
   let funs = fromList (map (\f => (f.name, f)) p.functions)
       stats = fromList (map (\s => (s.sym, s)) p.statics)
       start = p.entry :: [ f.name | f <- p.functions, roots f.name ]
-      (cs, ss, ts) = go funs stats (MkRefs start [] []) empty empty empty (length p.functions + length p.statics)
+      (cs, ss, ts) =
+        go funs stats (MkRefs start [] []) empty empty empty (length p.functions + length p.statics)
   in ({ functions := filter (\f => contains f.name cs) p.functions
       , statics := filter (\s => contains s.sym ss) p.statics } p, Data.SortedSet.toList ts)
   where
@@ -95,7 +96,8 @@ reach roots p =
     -- the names still to follow, and those reached; each name is followed
     -- once, so the fuel, every function and static once, is enough
     go : SortedMap Name (Function enc) -> SortedMap Name (Static enc) -> Refs ->
-         (code, statics, tables : SortedSet Name) -> (fuel : Nat) -> (SortedSet Name, SortedSet Name, SortedSet Name)
+         (code, statics, tables : SortedSet Name) -> (fuel : Nat) ->
+           (SortedSet Name, SortedSet Name, SortedSet Name)
     go funs stats (MkRefs [] [] ts) cs ss tables _ = (cs, ss, foldr insert tables ts)
     go funs stats _ cs ss tables Z = (cs, ss, tables)
     go funs stats (MkRefs (f :: fs) ss' ts) cs ss tables (S k) =

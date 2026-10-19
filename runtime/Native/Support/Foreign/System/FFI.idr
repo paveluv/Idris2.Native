@@ -51,7 +51,8 @@ prim__free p w = let (Runtime.MkOrdo # ()) = freeOp p Runtime.MkOrdo in MkIORes 
       case target of
         Address a =>
           if Runtime.Raw.isNull a then Runtime.Ordo.pure () else
-            -- lint: allow sealed-allocator: an address the program gives back, as C's free takes one; the allocator ends the program for one it did not give
+            -- lint: allow sealed-allocator: an address the program gives back, as C's free takes
+            -- one; the allocator ends the program for one it did not give
             Runtime.Alloc.Block.free (Runtime.Alloc.Block.adoptBlock a)
         -- the collector keeps an object of the heap given for a pointer
         HeapString _ => Runtime.Ordo.pure ()

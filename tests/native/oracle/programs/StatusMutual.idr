@@ -25,4 +25,5 @@ loop 0 acc = acc
 loop n acc = loop (n - 1) (acc + 3)
 
 main : IO ()
-main = exitCode ((if isEven 3000001 then 1 else 2) + (if isOdd 2999999 then 4 else 8) + loop 1000000 0)
+main =
+  exitCode ((if isEven 3000001 then 1 else 2) + (if isOdd 2999999 then 4 else 8) + loop 1000000 0)

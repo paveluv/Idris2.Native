@@ -36,3 +36,7 @@ twice s = case length s of
   Z => pure ()
   _ => do putStrLn (s ++ " and once more, the same text: " ++ s)
           putStrLn s
+
+-- a line wide only for its comment: the comment goes above, the code stays
+offset : Nat
+offset = 8 + 8 * 2 -- past the header and two fields, in bytes

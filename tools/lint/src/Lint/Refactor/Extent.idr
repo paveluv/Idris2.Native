@@ -37,12 +37,16 @@ record Extent where
 ||| line between, which move with the declaration below them.
 export
 attachedFrom : List String -> (line : Int) -> Int
-attachedFrom ls l = if l > 0 && maybe False attached (head' (drop (cast (l - 1)) ls)) then attachedFrom ls (l - 1) else l
+attachedFrom ls l = if l > 0 && maybe False attached (head' (drop (cast (l - 1)) ls))
+  then attachedFrom ls (l - 1) else l
   where
     -- a line of nothing but visibility and totality: `public export`,
     -- `export covering`, `total`
     modifiers : String -> Bool
-    modifiers t = t /= "" && all (`elem` the (List String) ["export", "public", "private", "total", "covering", "partial"]) (words t)
+    modifiers t = t /= ""
+      && all
+        (`elem` the (List String) ["export", "public", "private", "total", "covering", "partial"])
+          (words t)
 
     attached : String -> Bool
     attached x = let t = trim x in
@@ -71,13 +75,16 @@ extentOf s claim =
       defs = definitionsOf s claim
       spans = map (lineSpan . (.decl.fc)) defs
       end = foldl (\m, sp => max m (snd sp)) ce spans
-  in if not (all (\n => any (\d => n `elem` d.defines) defs) claim.defines) then Left "a name it declares has no definition"
+  in if not (all (\n => any (\d => n `elem` d.defines) defs) claim.defines)
+    then Left "a name it declares has no definition"
      else if any (\sp => fst sp < cs) spans then Left "it is defined before its claim"
-     else if any (between cs end) (filter (not . ours defs) s.declared) then Left "other declarations lie between its claim and its definition"
+     else if any (between cs end) (filter (not . ours defs) s.declared)
+       then Left "other declarations lie between its claim and its definition"
      else Right (piece (attachedFrom (linesOf s) cs) end)
   where
     ours : List Declared -> Declared -> Bool
-    ours defs d = lineSpan d.decl.fc == lineSpan claim.decl.fc || any (\o => lineSpan o.decl.fc == lineSpan d.decl.fc) defs
+    ours defs d = lineSpan d.decl.fc == lineSpan claim.decl.fc
+      || any (\o => lineSpan o.decl.fc == lineSpan d.decl.fc) defs
 
     between : Int -> Int -> Declared -> Bool
     between a b d = let l = fst (lineSpan d.decl.fc) in l >= a && l <= b
@@ -108,12 +115,14 @@ extentOf s claim =
     piece first last =
       let column = startColumn claim.decl.fc
           emptied = find (\(_, members) => any (\m => fst m >= first && fst m <= last) members
-                                           && all (\m => fst m >= first && fst m <= last) members) (blocksOf s.file.mod.decls)
+                                           && all (\m => fst m >= first && fst m <= last) members)
+                                             (blocksOf s.file.mod.decls)
       in case emptied of
            Nothing => MkExtent first last column (linesFrom first last) [(first, last)]
            Just (header, _) =>
              let above = attachedFrom (linesOf s) header in
-             MkExtent above last column (linesFrom above (header - 1) ++ linesFrom first last) [(above, header - 1), (first, last)]
+             MkExtent above last column (linesFrom above (header - 1) ++ linesFrom first last)
+               [(above, header - 1), (first, last)]
 
 ||| The edit that takes a function's lines out, and one blank line beside
 ||| them if they stood between two.
@@ -131,7 +140,8 @@ cut ls e =
 ||| file's with names renamed in place.
 export
 textOf : List String -> Extent -> List String
-textOf ls e = foldr (\(a, b), rest => take (cast (b - a + 1)) (drop (cast a) ls) ++ rest) [] e.segments
+textOf ls e =
+  foldr (\(a, b), rest => take (cast (b - a + 1)) (drop (cast a) ls) ++ rest) [] e.segments
 
 ||| Where a source line is in a function's text, if it is there.
 export
@@ -140,4 +150,5 @@ indexIn e l = go 0 e.segments
   where
     go : Int -> List (Int, Int) -> Maybe Int
     go _ [] = Nothing
-    go at ((a, b) :: more) = if l >= a && l <= b then Just (at + l - a) else go (at + b - a + 1) more
+    go at ((a, b) :: more) = if l >= a && l <= b then Just (at + l - a)
+      else go (at + b - a + 1) more

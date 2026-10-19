@@ -14,7 +14,8 @@ import Native.Support.Errno
 ||| library's error number plus 5 for any other (`Support.Errno`).
 export
 prim__fileErrno : PrimIO Int
-prim__fileErrno w = let (Runtime.MkOrdo # n) = Errno.lastErrno Runtime.MkOrdo in MkIORes (fileErrno (cast n)) w
+prim__fileErrno w = let (Runtime.MkOrdo # n) =
+                          Errno.lastErrno Runtime.MkOrdo in MkIORes (fileErrno (cast n)) w
   where
     fileErrno : Int -> Int
     fileErrno 2 = 2

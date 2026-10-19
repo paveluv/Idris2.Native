@@ -129,9 +129,11 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
       Right settings <- parseSettings <$> getDirectives Flat.Marked.markingCG
         | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
       Just table <- phase "the runtime loaded"
-        (Flat.Marked.markedForms Linkage.Realised.flatPrimitives (loadRuntime settings.platform settings.encodings))
+        (Flat.Marked.markedForms Linkage.Realised.flatPrimitives
+          (loadRuntime settings.platform settings.encodings))
         | Nothing => pure Nothing
-      Right realised <- phase "the contract realised" (Linkage.Realised.realise settings.platform settings.encodings)
+      Right realised <- phase "the contract realised"
+        (Linkage.Realised.realise settings.platform settings.encodings)
         | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
       whenJust settings.dumpFlat $ \f => dumpFlat f table
       whenJust settings.dumpForeign $ \f => dumpForeign settings.encodings realised f
@@ -146,9 +148,11 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
       let compiled = mergeLeft (fromList (map (\(n, _, d) => (n, d)) cdata.namedDefs)) tableForms
       image <- case settings.encodings of
         Types.MkEnc HeapObj.ValEnc.FixnumTag1 b s =>
-          pipeline (Types.MkEnc HeapObj.ValEnc.FixnumTag1 b s) settings realised table compiled (vmcode cdata)
+          pipeline (Types.MkEnc HeapObj.ValEnc.FixnumTag1 b s) settings realised table compiled
+            (vmcode cdata)
         Types.MkEnc HeapObj.ValEnc.FixnumTag0 b s =>
-          pipeline (Types.MkEnc HeapObj.ValEnc.FixnumTag0 b s) settings realised table compiled (vmcode cdata)
+          pipeline (Types.MkEnc HeapObj.ValEnc.FixnumTag0 b s) settings realised table compiled
+            (vmcode cdata)
         Types.MkEnc HeapObj.ValEnc.NoFixnums _ _ =>
           throw (GenericMsg EmptyFC "native: the encoding nofixnums is not implemented")
       coreLift_ $ mkdirAll outputDir
@@ -179,14 +183,18 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
               ["dump-foreign", path] => Right ({ dumpForeign := Just path } o)
               ["val-encoding", "tag1"] => Right ({ encodings.val := HeapObj.ValEnc.FixnumTag1 } o)
               ["val-encoding", "tag0"] => Right ({ encodings.val := HeapObj.ValEnc.FixnumTag0 } o)
-              ["val-encoding", "nofixnums"] => Left "the encoding nofixnums, every integer boxed, is not implemented"
-              ["val-encoding", v] => Left ("val-encoding= takes tag1, tag0 or nofixnums, not " ++ show v)
+              ["val-encoding", "nofixnums"] =>
+                Left "the encoding nofixnums, every integer boxed, is not implemented"
+              ["val-encoding", v] =>
+                Left ("val-encoding= takes tag1, tag0 or nofixnums, not " ++ show v)
               ["string-encoding", "utf8"] => Right ({ encodings.string := Types.StringEnc.Utf8 } o)
               ["string-encoding", "utf32"] => Left "the string encoding utf32 is not implemented"
-              ["string-encoding", v] => Left ("string-encoding= takes utf8 or utf32, not " ++ show v)
+              ["string-encoding", v] =>
+                Left ("string-encoding= takes utf8 or utf32, not " ++ show v)
               ["target", v] => case Platform.parsePlatform v of
                 Just p => if Platform.built p then Right ({ platform := p } o)
-                          else Left ("the target " ++ show p ++ " is not implemented; only x86_64-linux is")
+                          else Left
+                            ("the target " ++ show p ++ " is not implemented; only x86_64-linux is")
                 Nothing => Left ("target= takes <arch>-<os>, such as x86_64-linux, not " ++ show v)
               _ => Right o
 
@@ -202,7 +210,8 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
           addPkgDir "idris2-native" anyBounds
           u <- newRef UST initUState
           traverse_ (\ns => addImport (MkImport EmptyFC False (nsAsModuleIdent ns) ns))
-                    (Linkage.RuntimeModule.runtimeModule "" :: Linkage.RuntimeModule.supportModule ""
+                    (Linkage.RuntimeModule.runtimeModule ""
+                      :: Linkage.RuntimeModule.supportModule ""
                       :: toList (Linkage.OSService.platformModule platform)
                       ++ toList (Linkage.RuntimeModule.stringModule enc.string))
 
@@ -217,7 +226,8 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
           all <- traverse (\n => (n,) <$> lookupCtxtExact n (gamma defs)) !(allNames (gamma defs))
           entries <- traverse entry (mapMaybe library all)
           Right () <- coreLift
-            (Data.WriteBuilder.writeBuilder path (concatMap (\e => Data.Builder.single (e ++ "\n")) (sort entries)))
+            (Data.WriteBuilder.writeBuilder path
+              (concatMap (\e => Data.Builder.single (e ++ "\n")) (sort entries)))
             | Left err => throw (FileErr path err)
           pure ()
           where
@@ -235,16 +245,21 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
             contract n = isJust (lookup n realised.externs) || isJust (lookup n realised.services)
 
             library : (Name, Maybe GlobalDef) -> Maybe (Name, GlobalDef)
-            library (n, Just g) = if foreignOf g && not (inRuntime n || contract n) then Just (n, g) else Nothing
+            library (n, Just g) = if foreignOf g && not (inRuntime n || contract n) then Just (n, g)
+              else Nothing
             library (_, Nothing) = Nothing
 
             lowered : List String
-            lowered = ["prim__newArray", "prim__arrayGet", "prim__arraySet", "prim__newIORef", "prim__readIORef", "prim__writeIORef"]
+            lowered =
+              ["prim__newArray", "prim__arrayGet", "prim__arraySet", "prim__newIORef",
+               "prim__readIORef", "prim__writeIORef"]
 
             entry : (Name, GlobalDef) -> Core String
             entry (n, _) = do
               n' <- toFullNames n
-              pure $ (if elem n' (map fst (Linkage.ForeignFunctions.foreignFunctions enc)) then "runtime  "
+              pure $
+                (if elem n' (map fst (Linkage.ForeignFunctions.foreignFunctions enc))
+                 then "runtime  "
                       else if elem (nameRoot n') lowered then "lowered  "
                       else "missing  ") ++ show n'
 
@@ -262,16 +277,20 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
             t1 <- coreLift (clockTime Process)
             g1 <- coreLift (clockTime GCCPU)
             let collecting = case (g0, g1) of
-                               (Just a, Just b) => " (collecting " ++ seconds (timeDifference b a) ++ "s)"
+                               (Just a, Just b) => " (collecting " ++ seconds (timeDifference b a)
+                                 ++ "s)"
                                _ => ""
             coreLift_
-              (putStrLn ("TIMING ++ native: " ++ name ++ ": " ++ seconds (timeDifference t1 t0) ++ "s" ++ collecting))
+              (putStrLn
+                ("TIMING ++ native: " ++ name ++ ": " ++ seconds (timeDifference t1 t0) ++ "s"
+                 ++ collecting))
             pure res
           where
             seconds : Clock Duration -> String
             seconds d = let ms = toNano d `div` 1000000
                             frac = show (ms `mod` 1000)
-                        in show (ms `div` 1000) ++ "." ++ pack (replicate (minus 3 (length frac)) '0') ++ frac
+                        in show (ms `div` 1000) ++ "."
+                          ++ pack (replicate (minus 3 (length frac)) '0') ++ frac
 
         ||| From VMCode to the image, under encodings whose value encoding has
         ||| fixnums: produce the term, allocate its registers, render, link.
@@ -283,26 +302,35 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
           (forms, shapes) <- phase "flat inputs" $
                                flatInputs table (Data.SortedMap.toList realised.services)
                                           (map fst defs
-                                            ++ [r.name | r <- Linkage.Routine.routines {enc} realised]
+                                            ++
+                                              [r.name
+                                               | r <- Linkage.Routine.routines {enc} realised]
                                            ++ mapMaybe (foreignRoot {enc' = enc}) defs)
           -- each table's row, by its first: the lowering's reads of it
-          firsts <- phase "table rows" (traverse (\(n, (lo, _)) => tabulated (n, (lo, lo))) (reached forms))
+          firsts <- phase "table rows"
+            (traverse (\(n, (lo, _)) => tabulated (n, (lo, lo))) (reached forms))
           let tables = fromList [ (t.name, (t.lo, t.rowWords)) | t <- firsts ]
           Right (_ ** term) <- phase "lowering"
             (later (Lower.lowerProgram enc settings.platform realised forms shapes tables defs))
             | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
-          allocated <- phase "register allocation" (later (RegAlloc.allocRegs X86.Target.x86_64 term))
+          allocated <- phase "register allocation"
+            (later (RegAlloc.allocRegs X86.Target.x86_64 term))
           -- the image holds what the entry and the routines the seed reaches
           -- by symbol reach, and the tables of that alone
-          let (ir, readTables) = LocatedIR.Reach.reach (\n => isJust (Linkage.Routine.routineSymbol {enc} realised n)) allocated
-          rows <- phase "tables" (traverse tabulated (mapMaybe (\n => (n,) <$> lookup n realised.tables) readTables))
+          let (ir, readTables) =
+                LocatedIR.Reach.reach
+                  (\n => isJust (Linkage.Routine.routineSymbol {enc} realised n)) allocated
+          rows <- phase "tables"
+            (traverse tabulated (mapMaybe (\n => (n,) <$> lookup n realised.tables) readTables))
           case settings.dumpIr of
             Just path => do
-              Right () <- coreLift (Data.WriteBuilder.writeBuilder path (LocatedIR.Dump.dumpProgram ir))
+              Right () <- coreLift
+                (Data.WriteBuilder.writeBuilder path (LocatedIR.Dump.dumpProgram ir))
                 | Left err => throw (FileErr path err)
               pure ()
             Nothing => pure ()
-          Right rendered <- phase "rendering" (later (X86.Render.render enc realised (map (\t => (t.name, t.bytes)) rows) ir))
+          Right rendered <- phase "rendering"
+            (later (X86.Render.render enc realised (map (\t => (t.name, t.bytes)) rows) ir))
             | Left err => throw (InternalError ("native: " ++ err))
           case settings.dumpAsm of
             Just path => do
@@ -313,8 +341,10 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
               pure ()
             Nothing => pure ()
           Right image <- phase "linking"
-            (later (Link.linkProgram enc settings.window rendered.areas rendered.text rendered.rodata))
-            | Left problems => throw (InternalError ("native: the image cannot be assembled: " ++ show problems))
+            (later
+              (Link.linkProgram enc settings.window rendered.areas rendered.text rendered.rodata))
+            | Left problems =>
+              throw (InternalError ("native: the image cannot be assembled: " ++ show problems))
           pure image
           where
             ||| Of the flat forms, those of the functions named and of the forms they
@@ -325,7 +355,9 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
             flatInputs table services roots = do
               forms <- reach empty [<] roots
               let skeletons =
-                    nub (filter isData (toList (concatMap (Data.Builder.piece . Flat.Exp.formSkeletons) forms)))
+                    nub
+                      (filter isData
+                       (toList (concatMap (Data.Builder.piece . Flat.Exp.formSkeletons) forms)))
               shapes <- traverse (\sk => map (sk,) <$> Flat.Translate.shape sk) skeletons
               pure (forms, catMaybes shapes)
               where
@@ -334,7 +366,8 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
                 isData _ = False
 
                 -- the forms reached so far accumulate at their end, in the order reached
-                reach : SortedMap Name () -> SnocList Flat.Exp.FlatDef -> List Name -> Core (List Flat.Exp.FlatDef)
+                reach : SortedMap Name () -> SnocList Flat.Exp.FlatDef -> List Name ->
+                        Core (List Flat.Exp.FlatDef)
                 reach seen acc [] = pure (acc <>> [])
                 reach seen acc (n :: ns) =
                   if isJust (Data.SortedMap.lookup n seen) then reach seen acc ns else do
@@ -342,11 +375,15 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
                       | Nothing => reach (insert n () seen) acc ns
                     reach (insert n () seen) (acc :< fd)
                           (Flat.Exp.formCallees fd
-                            ++ mapMaybe (\p => Data.List.lookup p services) (Flat.Exp.formPrims fd) ++ ns)
+                            ++ mapMaybe (\p => Data.List.lookup p services) (Flat.Exp.formPrims fd)
+                              ++ ns)
 
             ||| The tables the forms reach, with their ranges.
             reached : List Flat.Exp.FlatDef -> List (Name, (Int, Int))
-            reached fs = nub (mapMaybe (\n => (n,) <$> lookup n realised.tables) (concatMap Flat.Exp.formPrims fs))
+            reached fs =
+              nub
+                (mapMaybe (\n => (n,) <$> lookup n realised.tables)
+                 (concatMap Flat.Exp.formPrims fs))
 
             ||| A table's rows, computed now (`Native.Codegen.Tabulate`).
             tabulated : (Name, (Int, Int)) -> Core Tabulate.Tabulated
@@ -363,7 +400,8 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
             ||| The runtime's function for a foreign function of the program it
             ||| implements.
             foreignRoot : {enc' : Types.Enc} -> (Name, VMDef) -> Maybe Name
-            foreignRoot (n, MkVMForeign {}) = lookup n (Linkage.ForeignFunctions.foreignFunctions enc')
+            foreignRoot (n, MkVMForeign {}) =
+              lookup n (Linkage.ForeignFunctions.foreignFunctions enc')
             foreignRoot _ = Nothing
 
     executeExpr : Ref Ctxt Defs -> Ref Syn SyntaxInfo ->

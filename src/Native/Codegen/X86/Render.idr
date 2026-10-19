@@ -168,8 +168,10 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
         -- and passes them as a call does, all `Val`s; a closure's arity is
         -- its function's number of parameters, and its function is CPS.
         arity = foldl max 0 [length f.params | f <- p.functions, f.conv == IRCommon.Conv.CPS]
-        applyAreas = Linkage.MkAreas (Target.argsWords abi (replicate arity Target.WordClass)) 0 arity
-    (s, _) <- runStateT (MkRS next2 funs params statics (fromList tableLabels) [<] [<] [<] applyAreas) $ do
+        applyAreas =
+          Linkage.MkAreas (Target.argsWords abi (replicate arity Target.WordClass)) 0 arity
+    (s, _) <- runStateT
+      (MkRS next2 funs params statics (fromList tableLabels) [<] [<] [<] applyAreas) $ do
       entry <- funLabel p.entry
       emits [Asm.Lbl (sym Linkage.Sym.SymMain), Asm.Jmp entry]
       traverse_ function p.functions
@@ -177,7 +179,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                            bytes <- staticBytes st
                            modify { rodata $= (:< (l, bytes)) })
                 p.statics
-      traverse_ (\((_, bytes), l) => modify { rodata $= (:< (l, bytes)) }) (zip tables (map snd tableLabels))
+      traverse_ (\((_, bytes), l) => modify { rodata $= (:< (l, bytes)) })
+        (zip tables (map snd tableLabels))
     pure (MkRendered (s.text <>> []) (s.rodata <>> []) s.areas)
     where
       Render : Types.Enc -> Type -> Type
@@ -196,7 +199,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
         where
           field : LocatedIR.Static.SField -> Render enc (List Bits8)
           field (LocatedIR.Static.SWord w) = pure (Bytes.le64 (cast w))
-          field _ = failWith ("the rendering does not support code or static references in statics yet")
+          field _ =
+            failWith ("the rendering does not support code or static references in statics yet")
 
       emit : Asm.Instr -> Render enc' ()
       emit i = modify { text $= (:< i) }
@@ -233,13 +237,15 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
             blk n = fromMaybe 0 (lookup n table)
         emits [Asm.Comment (show f.name), Asm.Lbl fl]
         -- a routine reached by symbol: the symbol is its entry too
-        whenJust (Linkage.Routine.routineSymbol {enc} realised f.name) $ \s => emit (Asm.Lbl (sym s))
+        whenJust (Linkage.Routine.routineSymbol {enc} realised f.name) $ \s =>
+          emit (Asm.Lbl (sym s))
         -- a machine call pushed a word: keep the stack 16-aligned inside; and
         -- below the stack limit, end the program
         case f.conv of
           IRCommon.Conv.Direct _ _ =>
             emits [ Asm.AluI Asm.SUB Asm.RSP 8,
-                   Asm.MovRM Asm.RAX (Asm.MRip (sym Linkage.Sym.SymStackLimit) 0), Asm.Alu Asm.CMP Asm.RSP Asm.RAX
+                   Asm.MovRM Asm.RAX (Asm.MRip (sym Linkage.Sym.SymStackLimit) 0),
+                     Asm.Alu Asm.CMP Asm.RSP Asm.RAX
                                             , Asm.Jcc Asm.B (sym Linkage.Sym.SymStackOverflow) ]
           IRCommon.Conv.CPS => pure ()
         emits setBase
@@ -254,15 +260,19 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
         where
           ||| The live values a resume block reloads, in the order its continuation
           ||| stores them, and the layout word for them.
-          resumes : LocatedIR.Function enc -> SortedMap LocatedIR.Label (List (LocatedIR.Reg enc), Integer)
+          resumes : LocatedIR.Function enc ->
+                    SortedMap LocatedIR.Label (List (LocatedIR.Reg enc), Integer)
           resumes f = fromList (mapMaybe resume f.blocks)
             where
-              resume : LocatedIR.Block enc -> Maybe (LocatedIR.Label, (List (LocatedIR.Reg enc), Integer))
+              resume : LocatedIR.Block enc ->
+                       Maybe (LocatedIR.Label, (List (LocatedIR.Reg enc), Integer))
               resume b = do
                 c <- LocatedIR.Terminator.termCont b.term
                 let vals = filter (IRCommon.Ty.gcVisible . LocatedIR.Reg.regTy) c.live
                     raws = filter (not . IRCommon.Ty.gcVisible . LocatedIR.Reg.regTy) c.live
-                pure (c.resume, (vals ++ raws, HeapObj.LayoutWord.layoutWord (cast (length vals)) (cast (length raws))))
+                pure (c.resume,
+                  (vals ++ raws,
+                   HeapObj.LayoutWord.layoutWord (cast (length vals)) (cast (length raws))))
 
           ||| Record that the code uses at least these areas.
           uses : Linkage.Areas -> Render enc ()
@@ -300,12 +310,17 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
             uses (Linkage.MkAreas (Target.argsWords abi (map IRCommon.Ty.classOf tys)) 0 0)
             traverse_ (\(l, d) => case l of
                                     Target.InWordReg r => store d (reg64 r)
-                                    Target.InFloatReg f => do n <- useSlot d; emit (Asm.MovsdMR (slotMem n) (xmm f))
+                                    Target.InFloatReg f => do n <- useSlot d
+                                                              emit (Asm.MovsdMR (slotMem n) (xmm f))
                                     Target.InArgs _ => pure ())
                       items
             traverse_ (\(l, d) => case l of
-                                    Target.InArgs i => do emit (Asm.Lea Asm.RAX (Asm.MRip (sym Linkage.Sym.SymArgs) 0))
-                                                          emit (Asm.MovRM Asm.RCX (Asm.MBase Asm.RAX (cast (8 * i))))
+                                    Target.InArgs i => do emit
+                                                            (Asm.Lea Asm.RAX
+                                                             (Asm.MRip (sym Linkage.Sym.SymArgs) 0))
+                                                          emit
+                                                            (Asm.MovRM Asm.RCX
+                                                             (Asm.MBase Asm.RAX (cast (8 * i))))
                                                           store d Asm.RCX
                                     _ => pure ())
                       items
@@ -353,7 +368,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
           ||| Load an operand where a value of the type is expected.
           loadAs : IRCommon.Ty enc -> Asm.Reg64 -> LocatedIR.Opnd enc -> Render enc ()
           loadAs t r (LocatedIR.Opnd.Imm i) = emit (Asm.MovRI r (immWord t i))
-          loadAs _ r (LocatedIR.Opnd.StaticRef s) = do l <- staticLabel s; emit (Asm.Lea r (Asm.MRip l ptag))
+          loadAs _ r (LocatedIR.Opnd.StaticRef s) = do l <- staticLabel s
+                                                       emit (Asm.Lea r (Asm.MRip l ptag))
           loadAs _ r (LocatedIR.Opnd.R x) = do n <- useSlot x; emit (Asm.MovRM r (slotMem n))
 
           ||| Load a raw operand.
@@ -374,7 +390,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
             if w == 0 then emit (Asm.Test Asm.RAX Asm.RAX)
             else if fitsImm32 w then emit (Asm.AluI Asm.CMP Asm.RAX (cast w))
             else emits [Asm.MovRI Asm.RCX w, Asm.Alu Asm.CMP Asm.RAX Asm.RCX]
-          compareWith _ (LocatedIR.Opnd.R y) = do loadReg Asm.RCX y; emit (Asm.Alu Asm.CMP Asm.RAX Asm.RCX)
+          compareWith _ (LocatedIR.Opnd.R y) = do loadReg Asm.RCX y
+                                                  emit (Asm.Alu Asm.CMP Asm.RAX Asm.RCX)
           compareWith _ (LocatedIR.Opnd.StaticRef s) = do l <- staticLabel s
                                                           emits [Asm.Lea Asm.RCX (Asm.MRip l ptag),
                                                                  Asm.Alu Asm.CMP Asm.RAX Asm.RCX]
@@ -397,7 +414,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
           ||| Across a call that can collect, the GC-visible ones go to ROOTS, where
           ||| the collector updates them; across one that cannot, every one goes to
           ||| the stack, since nothing moves.
-          saved : (collects : Bool) -> List (LocatedIR.Reg enc) -> (List (LocatedIR.Reg enc), List (LocatedIR.Reg enc))
+          saved : (collects : Bool) -> List (LocatedIR.Reg enc) ->
+                  (List (LocatedIR.Reg enc), List (LocatedIR.Reg enc))
           saved False live = ([], live)
           saved True live =
             (filter (IRCommon.Ty.gcVisible . LocatedIR.Reg.regTy) live,
@@ -406,7 +424,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
           ||| Save the live slots across a call, as `saved` divides them, the ones on
           ||| the stack with a padding word when their number is odd so the call sees
           ||| a 16-aligned stack.
-          saveLive : (collects : Bool) -> (Asm.Instr -> Render enc ()) -> List (LocatedIR.Reg enc) -> Render enc ()
+          saveLive : (collects : Bool) -> (Asm.Instr -> Render enc ()) ->
+                     List (LocatedIR.Reg enc) -> Render enc ()
           saveLive collects out live = do
             let (gc, raw) = saved collects live
             uses (Linkage.MkAreas 0 (length gc) 0)
@@ -419,7 +438,10 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
               out (Asm.Alu Asm.ADD Asm.RDI Asm.RCX)
               traverse_ (\(j, r) => do n <- useSlot r
                                        out (Asm.MovRM Asm.RCX (slotMem n))
-                                       out (Asm.MovMR (Asm.MBase Asm.RDI (cast (Area.rootOffset (cast j)))) Asm.RCX))
+                                       out
+                                         (Asm.MovMR
+                                           (Asm.MBase Asm.RDI (cast (Area.rootOffset (cast j))))
+                                          Asm.RCX))
                         (zip (indices gc) gc)
               out (Asm.AluI Asm.ADD Asm.RDX (cast (length gc)))
               out (Asm.MovMR (Asm.MBase Asm.RSI 0) Asm.RDX)
@@ -438,7 +460,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
           setBase = [Asm.Lea Asm.RBX (Asm.MRip (sym Linkage.Sym.SymScratch) 0)]
 
           ||| Restore what `saveLive` saved, leaving rax alone.
-          restoreLive : (collects : Bool) -> (Asm.Instr -> Render enc ()) -> List (LocatedIR.Reg enc) -> Render enc ()
+          restoreLive : (collects : Bool) -> (Asm.Instr -> Render enc ()) ->
+                        List (LocatedIR.Reg enc) -> Render enc ()
           restoreLive collects out live = do
             let (gc, raw) = saved collects live
             traverse_ out setBase
@@ -455,7 +478,9 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
               out (Asm.Lea Asm.RDI (Asm.MRip (sym Linkage.Sym.SymRoots) 0))
               out (Asm.Alu Asm.ADD Asm.RDI Asm.RDX)
               traverse_ (\(j, r) => do n <- useSlot r
-                                       out (Asm.MovRM Asm.RCX (Asm.MBase Asm.RDI (cast (Area.rootOffset (cast j)))))
+                                       out
+                                         (Asm.MovRM Asm.RCX
+                                          (Asm.MBase Asm.RDI (cast (Area.rootOffset (cast j)))))
                                        out (Asm.MovMR (slotMem n) Asm.RCX))
                         (zip (indices gc) gc)
             where
@@ -472,13 +497,14 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
             slow <- fresh
             done <- fresh
             emits [ Asm.MovRR Asm.RAX Asm.R15,
-                   Asm.Lea Asm.RCX (Asm.MBase Asm.R15 (cast bytes)), Asm.Alu Asm.CMP Asm.RCX Asm.R14, Asm.Jcc Asm.A slow
+                   Asm.Lea Asm.RCX (Asm.MBase Asm.R15 (cast bytes)),
+                     Asm.Alu Asm.CMP Asm.RCX Asm.R14, Asm.Jcc Asm.A slow
                   , Asm.MovRR Asm.R15 Asm.RCX, Asm.Lbl done ]
             coldEmit (Asm.Lbl slow)
             saveLive True coldEmit live
             coldEmit (Asm.MovRI Asm.RDI (cast bytes))
             coldEmit (Asm.Call (sym Linkage.Sym.SymAllocSlow))
-            coldEmit (Asm.MovRR Asm.RAX Asm.RDI)                   -- the routine's result, where a Direct result goes
+            coldEmit (Asm.MovRR Asm.RAX Asm.RDI) -- the routine's result, where a Direct result goes
             restoreLive True coldEmit live
             coldEmit (Asm.Jmp done)
 
@@ -486,7 +512,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
           ||| immediate's word, through rax.
           loadFloat : Asm.Xmm -> LocatedIR.Opnd enc -> Render enc ()
           loadFloat x (LocatedIR.Opnd.R r) = do n <- useSlot r; emit (Asm.MovsdRM x (slotMem n))
-          loadFloat x (LocatedIR.Opnd.Imm i) = emits [Asm.MovRI Asm.RAX (cast i), Asm.MovqXR x Asm.RAX]
+          loadFloat x (LocatedIR.Opnd.Imm i) =
+            emits [Asm.MovRI Asm.RAX (cast i), Asm.MovqXR x Asm.RAX]
           loadFloat x (LocatedIR.Opnd.StaticRef _) = failWith "a static where a double is expected"
 
           ||| Pass values of the types where `place` puts them, for a call or a
@@ -498,9 +525,14 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
             let items = zip3 (placeTys tys) tys xs
             traverse_ (\(l, t, x) => case l of
                                        Target.InArgs i => do emit
-                                                               (Asm.Lea Asm.RAX (Asm.MRip (sym Linkage.Sym.SymArgs) 0))
+                                                               (Asm.Lea Asm.RAX
+                                                                 (Asm.MRip (sym Linkage.Sym.SymArgs)
+                                                                  0))
                                                              loadAs t Asm.RCX x
-                                                             emit (Asm.MovMR (Asm.MBase Asm.RAX (cast (8 * i))) Asm.RCX)
+                                                             emit
+                                                               (Asm.MovMR
+                                                                 (Asm.MBase Asm.RAX (cast (8 * i)))
+                                                                Asm.RCX)
                                        _ => pure ())
                       items
             traverse_ (\(l, t, x) => case l of
@@ -525,7 +557,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
               opTy (LocatedIR.Opnd.Imm _) = IRCommon.Ty.W64
               opTy (LocatedIR.Opnd.StaticRef _) = IRCommon.Ty.Val
 
-          term : (LocatedIR.Label -> Asm.Label) -> (results : List (IRCommon.Ty enc)) -> LocatedIR.Terminator enc ->
+          term : (LocatedIR.Label -> Asm.Label) -> (results : List (IRCommon.Ty enc)) ->
+                 LocatedIR.Terminator enc ->
                  Render enc ()
           term blk res terminator = case terminator of
             LocatedIR.Terminator.Jump l => emit (Asm.Jmp (blk l))
@@ -540,12 +573,16 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                        traverse_ (\x => do loadReg Asm.RCX x
                                                            emit
                                                              (Asm.Alu
-                                                               (if HeapObj.ValEnc.fixnumTag enc.val == 0 then Asm.OR
+                                                               (if HeapObj.ValEnc.fixnumTag enc.val
+                                                                 == 0 then Asm.OR
                                                                 else Asm.AND)
                                                               Asm.RAX Asm.RCX))
                                                                more
                                    emits [Asm.TestI Asm.RAX 1,
-                                     Asm.Jcc (if HeapObj.ValEnc.fixnumTag enc.val == 0 then Asm.E else Asm.NE) (blk y),
+                                     Asm.Jcc
+                                       (if HeapObj.ValEnc.fixnumTag enc.val == 0 then Asm.E
+                                        else Asm.NE)
+                                         (blk y),
                                           Asm.Jmp (blk n)]
             LocatedIR.Terminator.Branch r x y t f => do
                                    loadAs (pairTy x y) Asm.RAX x
@@ -553,7 +590,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                    emits [Asm.Jcc (cond r) (blk t), Asm.Jmp (blk f)]
             LocatedIR.Terminator.Switch r cs d => do
                                    loadReg Asm.RAX r
-                                   traverse_ (\(v, l) => do compareWith (LocatedIR.Reg.regTy r) (LocatedIR.Opnd.Imm v)
+                                   traverse_ (\(v, l) => do compareWith (LocatedIR.Reg.regTy r)
+                                                              (LocatedIR.Opnd.Imm v)
                                                             emit (Asm.Jcc Asm.E (blk l))) cs
                                    emit (Asm.Jmp (blk d))
             LocatedIR.Terminator.Call f args c => do
@@ -582,18 +620,27 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                    let bytes = map (cast . ord) (unpack (msg ++ "\n"))
                                    modify { rodata $= (:< (l, bytes)) }
                                    emits [Asm.Lea Asm.RDI (Asm.MRip l 0),
-                                          Asm.MovRI Asm.RSI (cast (length bytes)), Asm.Jmp (sym Linkage.Sym.SymCrash)]
+                                          Asm.MovRI Asm.RSI (cast (length bytes)),
+                                            Asm.Jmp (sym Linkage.Sym.SymCrash)]
             -- what is not lowered, and the function it stands in
             LocatedIR.Terminator.Unsupported what => do
                                    l <- fresh
-                                   let bytes = map (cast . ord) (unpack ("idris: unsupported: " ++ what ++ ", in " ++ show f.name ++ "\n"))
+                                   let bytes =
+                                         map (cast . ord)
+                                           (unpack
+                                             ("idris: unsupported: " ++ what ++ ", in "
+                                              ++ show f.name ++ "\n"))
                                    modify { rodata $= (:< (l, bytes)) }
                                    emits [Asm.Lea Asm.RDI (Asm.MRip l 0),
-                                          Asm.MovRI Asm.RSI (cast (length bytes)), Asm.Jmp (sym Linkage.Sym.SymUnsupported)]
+                                          Asm.MovRI Asm.RSI (cast (length bytes)),
+                                            Asm.Jmp (sym Linkage.Sym.SymUnsupported)]
             LocatedIR.Terminator.Ret xs => do
               putValues res xs
               emits [Asm.AluI Asm.ADD Asm.RSP 8, Asm.Ret]
-            t => failWith ("the rendering does not support " ++ show (LocatedIR.Terminator.termName t) ++ " yet")
+            t =>
+              failWith
+                ("the rendering does not support " ++ show (LocatedIR.Terminator.termName t)
+                 ++ " yet")
             where
               argRegsOf : List (LocatedIR.Opnd enc) -> List (LocatedIR.Reg enc)
               argRegsOf = Data.Builder.joinMap LocatedIR.Opnd.opRegs
@@ -610,16 +657,20 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                 when (length vals >= 16777216 || length raws >= 16777216) $
                   failWith "a continuation keeps more values than its layout word counts"
                 allocate (16 + 8 * length c.live) (c.live ++ alsoLive)
-                emits [ Asm.Lea Asm.RDX (Asm.MRip (blk c.resume) 0), Asm.MovMR (Asm.MBase Asm.RAX 0) Asm.RDX
+                emits [ Asm.Lea Asm.RDX (Asm.MRip (blk c.resume) 0),
+                       Asm.MovMR (Asm.MBase Asm.RAX 0) Asm.RDX
                       , Asm.MovMR (Asm.MBase Asm.RAX 8) Asm.R12 ]
                 traverse_ (\(i, r) => do n <- useSlot r
                                          emit (Asm.MovRM Asm.RDX (slotMem n))
-                                         emit (Asm.MovMR (Asm.MBase Asm.RAX (cast (16 + 8 * i))) Asm.RDX))
+                                         emit
+                                           (Asm.MovMR (Asm.MBase Asm.RAX (cast (16 + 8 * i)))
+                                            Asm.RDX))
                           (zip [0 .. length c.live] (vals ++ raws))
                 emits (tagPointer Asm.R12 Asm.RAX)
 
           block : (LocatedIR.Label -> Asm.Label) -> (results : List (IRCommon.Ty enc)) ->
-                  SortedMap LocatedIR.Label (List (LocatedIR.Reg enc), Integer) -> LocatedIR.Block enc -> Render enc ()
+                  SortedMap LocatedIR.Label (List (LocatedIR.Reg enc), Integer) ->
+                    LocatedIR.Block enc -> Render enc ()
           block blk res rs b = do
             case lookup b.label rs of
               Just (live, word) => do
@@ -629,7 +680,9 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                   (result :: _) => store result Asm.RAX
                   [] => pure ()
                 traverse_ (\(i, r) => do n <- useSlot r
-                                         emit (Asm.MovRM Asm.RCX (Asm.MBase Asm.R12 (cast (16 + 8 * i) - ptag)))
+                                         emit
+                                           (Asm.MovRM Asm.RCX
+                                            (Asm.MBase Asm.R12 (cast (16 + 8 * i) - ptag)))
                                          emit (Asm.MovMR (slotMem n) Asm.RCX))
                           (zip [0 .. length live] live)
                 emit (Asm.MovRM Asm.R12 (Asm.MBase Asm.R12 (8 - ptag)))
@@ -639,7 +692,9 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
             where
               instr : (LocatedIR.Label -> Asm.Label) -> LocatedIR.Instr enc -> Render enc ()
               instr blk instr' = case instr' of
-                LocatedIR.Instr.Const d c => do emit (Asm.MovRI Asm.RAX (immWord (LocatedIR.Reg.regTy d) c))
+                LocatedIR.Instr.Const d c => do emit
+                                                  (Asm.MovRI Asm.RAX
+                                                   (immWord (LocatedIR.Reg.regTy d) c))
                                                 store d Asm.RAX
                 LocatedIR.Instr.CodeAddr d f => do l <- funLabel f
                                                    emit (Asm.Lea Asm.RAX (Asm.MRip l 0))
@@ -693,7 +748,9 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                   store d Asm.RAX
                 LocatedIR.Instr.TagOv {fx} d x l => do
                                   loadReg Asm.RAX x
-                                  emits ([Asm.Alu Asm.ADD Asm.RAX Asm.RAX, Asm.Jcc Asm.O (blk l)] ++ addTag Asm.RAX)
+                                  emits
+                                    ([Asm.Alu Asm.ADD Asm.RAX Asm.RAX, Asm.Jcc Asm.O (blk l)]
+                                     ++ addTag Asm.RAX)
                                   store d Asm.RAX
                 -- A narrowing reads the low part of the slot, which a little-endian word
                 -- keeps first, extending it as it loads.
@@ -719,17 +776,23 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                 LocatedIR.Instr.AllocObj {k} d h fs live => do
                                   if mutableKind k
                                      then allocateMutable
-                                       (\r => emit (Asm.MovRI r (cast (8 * Types.Header.objectWords h)))) live
+                                       (\r =>
+                                         emit (Asm.MovRI r (cast (8 * Types.Header.objectWords h))))
+                                         live
                                      else allocate (8 * Types.Header.objectWords h) live
                                   emits [Asm.MovRI Asm.RDX (cast (Types.Header.encodeHeader h)),
                                          Asm.MovMR (Asm.MBase Asm.RAX 0) Asm.RDX]
                                   let (from, count) = Types.Header.scanned h
                                       fieldTy : Nat -> IRCommon.Ty enc
-                                      fieldTy i = if S i >= from && S i < from + count then IRCommon.Ty.Val
+                                      fieldTy i = if S i >= from && S i < from + count
+                                        then IRCommon.Ty.Val
                                         else IRCommon.Ty.W64
                                   traverse_ (\(i, f) => do loadAs (fieldTy i) Asm.RDX f
                                                            emit
-                                                             (Asm.MovMR (Asm.MBase Asm.RAX (cast (8 * (S i)))) Asm.RDX))
+                                                             (Asm.MovMR
+                                                               (Asm.MBase Asm.RAX
+                                                                (cast (8 * (S i))))
+                                                               Asm.RDX))
                                             (zip [0 .. length fs] fs)
                                   emits (tagPointer Asm.RAX Asm.RAX)
                                   store d Asm.RAX
@@ -750,7 +813,9 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                   loadReg Asm.RCX count
                                   emits
                                     [Asm.MovRI Asm.RDX
-                                      (cast (prim__shl_Integer 1 (cast (snd (Types.Header.place p))) - 1)),
+                                      (cast
+                                        (prim__shl_Integer 1 (cast (snd (Types.Header.place p)))
+                                         - 1)),
                                      Asm.Alu Asm.CMP Asm.RCX Asm.RDX, Asm.Jcc Asm.A big]
                                   size <- sizeOf p
                                   if mutableKind k
@@ -759,7 +824,9 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                                                     emits (size r)) live
                                      else allocateSized count size live
                                   loadReg Asm.RDX count
-                                  emits [ Asm.ShiftI Asm.SHL Asm.RDX (cast (fst (Types.Header.place p))),
+                                  emits
+                                    [ Asm.ShiftI Asm.SHL Asm.RDX
+                                     (cast (fst (Types.Header.place p))),
                                          Asm.AluI Asm.ADD Asm.RDX (cast (Types.Header.fixedWord k))
                                         , Asm.MovMR (Asm.MBase Asm.RAX 0) Asm.RDX ]
                                   case fill of
@@ -770,9 +837,12 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                       loadReg Asm.RCX count
                                       loadAs IRCommon.Ty.Val Asm.RDX f
                                       emits [ Asm.Lea Asm.RDI (Asm.MBase Asm.RAX 8),
-                                             Asm.Lbl loop, Asm.Test Asm.RCX Asm.RCX, Asm.Jcc Asm.E end
-                                            , Asm.MovMR (Asm.MBase Asm.RDI 0) Asm.RDX, Asm.AluI Asm.ADD Asm.RDI 8,
-                                              Asm.AluI Asm.SUB Asm.RCX 1, Asm.Jmp loop, Asm.Lbl end ]
+                                             Asm.Lbl loop, Asm.Test Asm.RCX Asm.RCX,
+                                               Asm.Jcc Asm.E end
+                                            , Asm.MovMR (Asm.MBase Asm.RDI 0) Asm.RDX,
+                                              Asm.AluI Asm.ADD Asm.RDI 8,
+                                              Asm.AluI Asm.SUB Asm.RCX 1, Asm.Jmp loop,
+                                                Asm.Lbl end ]
                                   emits (tagPointer Asm.RAX Asm.RAX)
                                   store d Asm.RAX
                 LocatedIR.Instr.DirectCall f args ds collects live => do
@@ -808,7 +878,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                   store d Asm.RAX
                 LocatedIR.Instr.FNeg d x => do
                                   loadReg Asm.RAX x
-                                  emits [Asm.MovRI Asm.RCX 0x8000000000000000, Asm.Alu Asm.XOR Asm.RAX Asm.RCX]
+                                  emits [Asm.MovRI Asm.RCX 0x8000000000000000,
+                                         Asm.Alu Asm.XOR Asm.RAX Asm.RCX]
                                   store d Asm.RAX
                 LocatedIR.Instr.FArith o d x y => do
                                   loadFloat Asm.XMM0 (LocatedIR.Opnd.R x)
@@ -817,7 +888,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                     (Asm.Sse (case o of IRCommon.Op.FAdd => Asm.ADDSD
                                                         IRCommon.Op.FSub => Asm.SUBSD
                                                         IRCommon.Op.FMul => Asm.MULSD
-                                                        IRCommon.Op.FDiv => Asm.DIVSD) Asm.XMM0 Asm.XMM1)
+                                                        IRCommon.Op.FDiv =>
+                                                          Asm.DIVSD) Asm.XMM0 Asm.XMM1)
                                   n <- useSlot d
                                   emit (Asm.MovsdMR (slotMem n) Asm.XMM0)
                 -- `ucomisd a, b` sets the flags as an unsigned comparison of a with b,
@@ -825,33 +897,48 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                 -- x <= y is y above or equal to x, which the NaN case fails; equality also
                 -- needs PF clear, and inequality holds when PF is set.
                 LocatedIR.Instr.FCmp r d x y => do
-                                  emits [Asm.Alu Asm.XOR Asm.RDX Asm.RDX, Asm.Alu Asm.XOR Asm.RCX Asm.RCX]
+                                  emits [Asm.Alu Asm.XOR Asm.RDX Asm.RDX,
+                                         Asm.Alu Asm.XOR Asm.RCX Asm.RCX]
                                   loadFloat Asm.XMM0 (LocatedIR.Opnd.R x)
                                   loadFloat Asm.XMM1 (LocatedIR.Opnd.R y)
                                   emits $ case r of
                                     IRCommon.Op.EqR =>
-                                      [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.E Asm.RDX, Asm.Setcc Asm.NP Asm.RCX,
+                                      [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.E Asm.RDX,
+                                        Asm.Setcc Asm.NP Asm.RCX,
                                        Asm.Alu Asm.AND Asm.RDX Asm.RCX]
                                     IRCommon.Op.NeR =>
-                                      [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.NE Asm.RDX, Asm.Setcc Asm.P Asm.RCX,
+                                      [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.NE Asm.RDX,
+                                        Asm.Setcc Asm.P Asm.RCX,
                                        Asm.Alu Asm.OR Asm.RDX Asm.RCX]
-                                    IRCommon.Op.LtS => [Asm.Ucomisd Asm.XMM1 Asm.XMM0, Asm.Setcc Asm.A Asm.RDX]
-                                    IRCommon.Op.LtU => [Asm.Ucomisd Asm.XMM1 Asm.XMM0, Asm.Setcc Asm.A Asm.RDX]
-                                    IRCommon.Op.LeS => [Asm.Ucomisd Asm.XMM1 Asm.XMM0, Asm.Setcc Asm.AE Asm.RDX]
-                                    IRCommon.Op.LeU => [Asm.Ucomisd Asm.XMM1 Asm.XMM0, Asm.Setcc Asm.AE Asm.RDX]
-                                    IRCommon.Op.GtS => [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.A Asm.RDX]
-                                    IRCommon.Op.GtU => [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.A Asm.RDX]
-                                    IRCommon.Op.GeS => [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.AE Asm.RDX]
-                                    IRCommon.Op.GeU => [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.AE Asm.RDX]
+                                    IRCommon.Op.LtS =>
+                                      [Asm.Ucomisd Asm.XMM1 Asm.XMM0, Asm.Setcc Asm.A Asm.RDX]
+                                    IRCommon.Op.LtU =>
+                                      [Asm.Ucomisd Asm.XMM1 Asm.XMM0, Asm.Setcc Asm.A Asm.RDX]
+                                    IRCommon.Op.LeS =>
+                                      [Asm.Ucomisd Asm.XMM1 Asm.XMM0, Asm.Setcc Asm.AE Asm.RDX]
+                                    IRCommon.Op.LeU =>
+                                      [Asm.Ucomisd Asm.XMM1 Asm.XMM0, Asm.Setcc Asm.AE Asm.RDX]
+                                    IRCommon.Op.GtS =>
+                                      [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.A Asm.RDX]
+                                    IRCommon.Op.GtU =>
+                                      [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.A Asm.RDX]
+                                    IRCommon.Op.GeS =>
+                                      [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.AE Asm.RDX]
+                                    IRCommon.Op.GeU =>
+                                      [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.AE Asm.RDX]
                                   store d Asm.RDX
                 LocatedIR.Instr.LoadN sw s d m => do
                                   address Asm.RAX m (IRCommon.Op.subWordBytes sw)
-                                  emit (Asm.Load (width sw) s Asm.RCX (Asm.MBase Asm.RAX (m.offset - baseTag m.base)))
+                                  emit
+                                    (Asm.Load (width sw) s Asm.RCX
+                                     (Asm.MBase Asm.RAX (m.offset - baseTag m.base)))
                                   store d Asm.RCX
                 LocatedIR.Instr.StoreN sw m x => do
                                   address Asm.RAX m (IRCommon.Op.subWordBytes sw)
                                   loadReg Asm.RCX x
-                                  emit (Asm.Store (width sw) (Asm.MBase Asm.RAX (m.offset - baseTag m.base)) Asm.RCX)
+                                  emit
+                                    (Asm.Store (width sw)
+                                     (Asm.MBase Asm.RAX (m.offset - baseTag m.base)) Asm.RCX)
                 -- The number in rax and the arguments where Linux takes them. The kernel
                 -- keeps every register but rcx and r11, and the result is in rax.
                 LocatedIR.Instr.TableAddr d n => do
@@ -869,14 +956,18 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                 -- Linux's system call on x86-64: the number in rax, the arguments in rdi,
                 -- rsi, rdx, r10, r8 and r9, the result in rax
                 LocatedIR.Instr.SystemCall d (n :: args) =>
-                  if length args > 6 then failWith "a system call of more than six arguments" else do
-                    traverse_ (\(r, x) => load r x) (zip [Asm.RDI, Asm.RSI, Asm.RDX, Asm.R10, Asm.R8, Asm.R9] args)
+                  if length args > 6 then failWith "a system call of more than six arguments"
+                    else do
+                    traverse_ (\(r, x) => load r x)
+                      (zip [Asm.RDI, Asm.RSI, Asm.RDX, Asm.R10, Asm.R8, Asm.R9] args)
                     load Asm.RAX n
                     emits [Asm.Syscall]
                     store d Asm.RAX
                 LocatedIR.Instr.Loc _ => pure ()
                 LocatedIR.Instr.Comment s => emit (Asm.Comment s)
-                i => failWith ("the rendering does not support " ++ LocatedIR.Instr.instrName i ++ " yet")
+                i =>
+                  failWith
+                    ("the rendering does not support " ++ LocatedIR.Instr.instrName i ++ " yet")
                 where
                   -- The register each pinned register is.
                   pinnedReg : IRCommon.Pinned -> Asm.Reg64
@@ -887,16 +978,19 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                   -- The bytes of an object of `r` bytes of data: the header word, then the
                   -- data rounded up to words.
                   bytesSize : Asm.Reg64 -> List Asm.Instr
-                  bytesSize r = [Asm.AluI Asm.ADD r 15, Asm.ShiftI Asm.SHR r 3, Asm.ShiftI Asm.SHL r 3]
+                  bytesSize r =
+                    [Asm.AluI Asm.ADD r 15, Asm.ShiftI Asm.SHR r 3, Asm.ShiftI Asm.SHL r 3]
 
                   -- The object's bytes, from the count in `r`: the header word, then the
                   -- elements as words, or the bytes rounded up to words.
                   sizeOf : Types.Header.HeaderPart k' -> Render enc (Asm.Reg64 -> List Asm.Instr)
-                  sizeOf Types.Header.ArrayElems = pure (\r => [Asm.ShiftI Asm.SHL r 3, Asm.AluI Asm.ADD r 8])
+                  sizeOf Types.Header.ArrayElems =
+                    pure (\r => [Asm.ShiftI Asm.SHL r 3, Asm.AluI Asm.ADD r 8])
                   -- a string made by its count is not known to be ASCII: its bit is 0,
                   -- which only costs the fast paths
                   sizeOf Types.Header.StringBytes = pure bytesSize
-                  sizeOf Types.Header.StringChars = pure (\r => Asm.ShiftI Asm.SHL r 2 :: bytesSize r)
+                  sizeOf Types.Header.StringChars =
+                    pure (\r => Asm.ShiftI Asm.SHL r 2 :: bytesSize r)
                   sizeOf Types.Header.BufferBytes = pure bytesSize
                   sizeOf q = failWith ("AllocSized cannot size an object by " ++ show q)
 
@@ -905,7 +999,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                   ||| slow path computes the size again from the count's slot, after saving
                   ||| `live`, which holds the count. Leaves rax pointing at the uninitialised
                   ||| object.
-                  allocateSized : (count : LocatedIR.Reg enc) -> (size : Asm.Reg64 -> List Asm.Instr) ->
+                  allocateSized : (count : LocatedIR.Reg enc) ->
+                                  (size : Asm.Reg64 -> List Asm.Instr) ->
                                   (live : List (LocatedIR.Reg enc)) -> Render enc ()
                   allocateSized count size live = do
                     slow <- fresh
@@ -913,7 +1008,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                     loadReg Asm.RDX count
                     emits (size Asm.RDX)
                     emits [ Asm.MovRR Asm.RAX Asm.R15,
-                      Asm.MovRR Asm.RCX Asm.R15, Asm.Alu Asm.ADD Asm.RCX Asm.RDX, Asm.Alu Asm.CMP Asm.RCX Asm.R14,
+                      Asm.MovRR Asm.RCX Asm.R15, Asm.Alu Asm.ADD Asm.RCX Asm.RDX,
+                        Asm.Alu Asm.CMP Asm.RCX Asm.R14,
                            Asm.Jcc Asm.A slow
                           , Asm.MovRR Asm.R15 Asm.RCX, Asm.Lbl done ]
                     coldEmit (Asm.Lbl slow)
@@ -953,15 +1049,18 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                       IRCommon.Op.Shr => emit (Asm.ShiftCl Asm.SHR Asm.RAX)
                       IRCommon.Op.Sar => emit (Asm.ShiftCl Asm.SAR Asm.RAX)
                       IRCommon.Op.DivS => emits [Asm.Cqo, Asm.Idiv Asm.RCX]
-                      IRCommon.Op.RemS => emits [Asm.Cqo, Asm.Idiv Asm.RCX, Asm.MovRR Asm.RAX Asm.RDX]
+                      IRCommon.Op.RemS =>
+                        emits [Asm.Cqo, Asm.Idiv Asm.RCX, Asm.MovRR Asm.RAX Asm.RDX]
                       IRCommon.Op.DivU => emits [Asm.Alu Asm.XOR Asm.RDX Asm.RDX, Asm.DivU Asm.RCX]
                       IRCommon.Op.RemU =>
-                        emits [Asm.Alu Asm.XOR Asm.RDX Asm.RDX, Asm.DivU Asm.RCX, Asm.MovRR Asm.RAX Asm.RDX]
+                        emits [Asm.Alu Asm.XOR Asm.RDX Asm.RDX,
+                               Asm.DivU Asm.RCX, Asm.MovRR Asm.RAX Asm.RDX]
                     maybe (pure ()) (\l => emit (Asm.Jcc Asm.O l)) ov
 
                   ||| Turn twice a value, in the register, into the fixnum's word: `or` in
                   ||| the fixnum tag, since the low bit is clear.
-                  addTag : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Asm.Reg64 -> List Asm.Instr
+                  addTag : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Asm.Reg64 ->
+                           List Asm.Instr
                   addTag r = if HeapObj.ValEnc.fixnumTag enc.val == 0 then []
                     else [Asm.AluI Asm.OR r (cast (HeapObj.ValEnc.fixnumTag enc.val))]
 
@@ -972,8 +1071,10 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                   ||| subtraction and multiplication overflows exactly when its result is
                   ||| outside the fixnum range. A shift has no such identity: it takes the
                   ||| values, shifts and tags.
-                  fixArith : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> IRCommon.Op.ArithOp ->
-                             LocatedIR.Opnd enc -> LocatedIR.Opnd enc -> (overflow : Maybe Asm.Label) -> Render enc ()
+                  fixArith : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} ->
+                             IRCommon.Op.ArithOp ->
+                             LocatedIR.Opnd enc -> LocatedIR.Opnd enc ->
+                               (overflow : Maybe Asm.Label) -> Render enc ()
                   fixArith o x y ov = case o of
                       IRCommon.Op.Add => do loadAs IRCommon.Ty.Fix Asm.RAX x; aluTwice Asm.ADD y; jo
                       IRCommon.Op.Sub => do loadAs IRCommon.Ty.Fix Asm.RAX x; aluTwice Asm.SUB y; jo
@@ -1001,8 +1102,10 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                       ||| Load a fixnum's value.
                       loadValue : Asm.Reg64 -> LocatedIR.Opnd enc -> Render enc ()
                       loadValue r (LocatedIR.Opnd.Imm c) = emit (Asm.MovRI r (cast c))
-                      loadValue r (LocatedIR.Opnd.StaticRef _) = failWith "a static where a fixnum is expected"
-                      loadValue r (LocatedIR.Opnd.R x) = do loadReg r x; emit (Asm.ShiftI Asm.SAR r 1)
+                      loadValue r (LocatedIR.Opnd.StaticRef _) =
+                        failWith "a static where a fixnum is expected"
+                      loadValue r (LocatedIR.Opnd.R x) = do loadReg r x
+                                                            emit (Asm.ShiftI Asm.SAR r 1)
 
                       shift : Asm.ShiftOp -> Render enc ()
                       shift sh = do
@@ -1015,7 +1118,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                       ||| immediate doubled.
                       loadTwice : Asm.Reg64 -> LocatedIR.Opnd enc -> Render enc ()
                       loadTwice r (LocatedIR.Opnd.Imm c) = emit (Asm.MovRI r (2 * cast c))
-                      loadTwice r (LocatedIR.Opnd.StaticRef _) = failWith "a static where a fixnum is expected"
+                      loadTwice r (LocatedIR.Opnd.StaticRef _) =
+                        failWith "a static where a fixnum is expected"
                       loadTwice r (LocatedIR.Opnd.R x) = do
                         loadReg r x
                         when (HeapObj.ValEnc.fixnumTag enc.val /= 0) $
@@ -1043,7 +1147,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                   ||| Allocate a mutable object of the bytes `bytesInto` computes into a
                   ||| register, by a call to `idris_alloc_mutable` with `live` saved across it.
                   ||| Leaves rax pointing at the uninitialised object.
-                  allocateMutable : (bytesInto : Asm.Reg64 -> Render enc ()) -> (live : List (LocatedIR.Reg enc)) ->
+                  allocateMutable : (bytesInto : Asm.Reg64 -> Render enc ()) ->
+                                    (live : List (LocatedIR.Reg enc)) ->
                                     Render enc ()
                   allocateMutable bytesInto live = do
                     saveLive True emit live
@@ -1061,7 +1166,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                     case m.index of
                       Nothing => pure ()
                       Just i => do loadReg Asm.RDX i
-                                   emits [Asm.ShiftI Asm.SHL Asm.RDX (shiftFor width), Asm.Alu Asm.ADD r Asm.RDX]
+                                   emits [Asm.ShiftI Asm.SHL Asm.RDX (shiftFor width),
+                                          Asm.Alu Asm.ADD r Asm.RDX]
                     where
                       shiftFor : Nat -> Bits8
                       shiftFor 1 = 0
