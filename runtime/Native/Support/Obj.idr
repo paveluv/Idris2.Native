@@ -22,14 +22,9 @@
 ||| only here, which the linter checks.
 module Native.Support.Obj
 
--- lint: allow public-import: the flat translation reaches through this module
--- (checking an importer's flat functions, it reaches the inline wrappers'
--- bodies, which use the core's accesses, so it is loaded wherever this
--- module is)
-import public Native.Runtime.Memory
-
 import Native.Flat.Uniform as Flat
 import Native.HeapObj.Shape as HeapObj
+import Native.Runtime.Memory
 import Native.Runtime.Ordo as Runtime
 import Native.Runtime.Raw as Runtime
 import Native.Runtime.Space

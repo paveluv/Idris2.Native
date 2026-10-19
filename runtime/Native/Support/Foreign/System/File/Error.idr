@@ -3,15 +3,7 @@
 ||| (`Native.Support.Foreign.System` says how they are bound).
 module Native.Support.Foreign.System.File.Error
 
--- lint: allow import-unused: the flat check reaches through lastErrno's body, which compares failures by their codes
-import Native.Failure
--- lint: allow import-unused: the flat check reaches through lastErrno's body, which reads the state's raw memory
-import Native.Runtime.Memory
 import Native.Runtime.Ordo as Runtime
--- lint: allow import-unused: the flat check reaches through lastErrno's body, which reads the state's raw memory
-import Native.Runtime.Raw as Runtime
--- lint: allow import-unused: the flat check reaches through lastErrno's body, which reads the runtime's last failure
-import Native.Runtime.State
 import Native.Support.Errno
 
 %default total

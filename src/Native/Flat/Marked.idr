@@ -22,6 +22,8 @@ import Native.Flat.Report
 import Native.Flat.Translate
 
 import Compiler.Common
+import Core.Binary
+import Core.Binary.Prims
 import Core.Context
 import Core.Context.Context
 import Core.Core
@@ -30,6 +32,8 @@ import Core.FC
 import Core.Name
 import Core.Name.Namespace
 import Core.Options
+import Core.TTC
+import Core.UnifyState
 import Data.List
 import Data.Maybe
 import Data.Zippable
@@ -37,9 +41,12 @@ import Idris.Error
 import Idris.Pretty
 import Idris.REPL.Opts
 import Idris.Syntax
+import Idris.Syntax.TTC
 import Libraries.Data.NameMap
 import Libraries.Text.PrettyPrint.Prettyprinter.Doc
 import Libraries.Text.PrettyPrint.Prettyprinter.Render.String
+import Libraries.Utils.Binary
+import System.File
 
 %default covering
 
@@ -143,6 +150,19 @@ markedForms primitives load
 ||| the term, as an error of the module's own. A name a directive gives that
 ||| names no function, or more than one, is left to the compilation of a
 ||| program, since a directive does not say which module wrote it.
+|||
+||| A flat function's body reaches the bodies of what it calls, in other
+||| modules, and theirs in turn, which name modules the checked one does not
+||| import. Idris builds a module with its imports loaded but not theirs, but
+||| for those re-exported, so the check loads every module the module imports
+||| transitively first (`loadAll`), as a program's compilation does, and puts
+||| back after it what the TTC is written from: the module's imports, its
+||| hints to save, its directives and its namespace (`Defs` but its
+||| context). The definitions it loaded stay in the context until Idris
+||| clears it for the next module. The backend's primitives are found after
+||| the loading, as a module loaded may define one (`Mul128`): before it, a
+||| primitive's meaning-body would be translated for it. So a module imports
+||| only what it uses.
 export
 checkModule : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} ->
               (primitives : Ref Ctxt Defs -> Core (List Name)) -> (sourceFile : String) -> Core ()
@@ -150,10 +170,57 @@ checkModule primitives sourceFile
     = do here <- ctxtPathToNS sourceFile
          marked <- Translate.flatNames !(getDirectives markingCG)
          mine <- filterM (definedIn here) (fst marked)
-         (_, errs) <- Translate.flatForms !(primitives c) mine
+         before <- get Ctxt
+         loadAll before
+         -- the backend's primitives, those of the modules loaded too
+         prims <- primitives c
+         (_, errs) <- Translate.flatForms prims mine
+         loaded <- get Ctxt
+         put Ctxt ({ gamma := loaded.gamma } before)
          unless (null errs) $ setSession ({ directives $= (reportedMark ::) } !getSession)
          report errs
   where
+    ||| The modules a module's TTC says it imports, each with whether it
+    ||| re-exports it and the namespace it imports it as: read from the TTC's
+    ||| start, as Idris's `readTTCFile` reads it, and as it reads it only in
+    ||| full for a module not yet loaded. The fields before the imports are
+    ||| the pinned Idris's TTC's, in its order.
+    importsIn : String -> Core (List (ModuleIdent, Namespace))
+    importsIn fname
+        = do Right buffer <- coreLift (readFromFile fname)
+               | Left _ => pure []
+             b <- newRef Bin buffer
+             catch (do ignore (getHashes fname b)
+                       ignore (the (Core (List (Namespace, Int))) fromBuf)
+                       ignore (the (Core (List (CG, String, List String))) fromBuf)
+                       ims <- the (Core (List (ModuleIdent, Bool, Namespace))) fromBuf
+                       pure (map (\(m, _, as) => (m, as)) ims))
+                   (\_ => pure [])
+
+    ||| Every module the module imports, and theirs, loaded, as a program's
+    ||| compilation loads them: the import graph walked from the module's
+    ||| imports, each module's own read from its TTC (`importsIn`), and each
+    ||| module not yet loaded read in (`readFromTTC`), as an import that is
+    ||| not visible. A module loaded already is not read in again, which
+    ||| would add its definitions twice. `Defs` but the context is put back
+    ||| after.
+    loadAll : Defs -> Core ()
+    loadAll defs
+        = do u <- newRef UST initUState
+             go [] [ (m, as) | (m, _, as) <- imported defs ]
+      where
+        go : {auto u : Ref UST UState} -> (seen : List ModuleIdent) -> List (ModuleIdent, Namespace) -> Core ()
+        go seen [] = pure ()
+        go seen ((m, as) :: ms)
+            = if m `elem` seen then go seen ms else do
+                Right fname <- nsToPath EmptyFC m
+                  | Left _ => go (m :: seen) ms
+                loaded <- get Ctxt
+                unless (m `elem` map (fst . snd) (allImported loaded)) $
+                  ignore (readFromTTC {extra = SyntaxInfo} False EmptyFC False fname m as)
+                more <- importsIn fname
+                go (m :: seen) (more ++ ms)
+
     definedIn : ModuleIdent -> Name -> Core Bool
     definedIn here n
         = do defs <- get Ctxt

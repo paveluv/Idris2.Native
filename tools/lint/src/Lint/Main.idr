@@ -50,7 +50,9 @@
 ||| each use (`ResolvedRules.oneUseRules`), it covers only the first finding
 ||| from where it stands, so that each use has a reason of its own; of a
 ||| rule no suppression lifts (`Rules.unsuppressibleRules`), it is a
-||| finding itself. A suppression without a
+||| finding itself, and so is one of an unused or public import for the flat
+||| check, which loads every module a flat function reaches. A suppression
+||| without a
 ||| reason, of no rule, or that suppresses nothing, is a finding itself. A
 ||| module is left out of a component of the score by another comment,
 ||| `-- lint: exclude <component>: <reason>` (`Exclusion`).
@@ -240,6 +242,10 @@ main = do
               kept = filter (\fi => fi.path /= f.path || not (any (\s => covers s fi) ss)) fs
           in kept ++ joined (map (check fs) ss)
           where
+            -- whether a reason is the flat check's, or the flat translation's
+            forTheFlatCheck : String -> Bool
+            forTheFlatCheck r = isInfixOf "flat check" r || isInfixOf "flat translation" r
+
             covers : Suppression -> Finding -> Bool
             covers s fi =
               fi.rule == s.rule && fi.line >= s.line && fi.line <= s.through
@@ -256,6 +262,8 @@ main = do
               let at = MkFinding "suppression" f.path s.line s.col s.rule in
               if not (s.rule `elem` ruleNames ++ resolvedRuleNames) then [at ("no rule `" ++ s.rule ++ "`")]
               else if s.rule `elem` unsuppressibleRules then [at ("`" ++ s.rule ++ "` is not to be suppressed: change what it reports")]
+              else if (s.rule == "import-unused" || s.rule == "public-import") && forTheFlatCheck s.reason
+                then [at ("the flat check loads every module a flat function reaches: no import is kept, nor re-exported, for it")]
               else if s.reason == "" then [at ("a suppression of `" ++ s.rule ++ "` says why")]
               else if not ran && (s.rule `elem` resolvedRuleNames) then []
               else if not (any (\fi => fi.path == f.path && covers s fi) fs) then [at ("the suppression of `" ++ s.rule ++ "` suppresses nothing")]

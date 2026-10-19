@@ -5,14 +5,10 @@
 ||| program's string encoding.
 module Native.Support.CodePoint
 
--- lint: allow public-import: the flat translation reaches through this module
--- (checking an importer's flat functions, it reaches the bodies here, which
--- use the bit operations, so it is loaded wherever this module is)
-import public Native.Runtime.Bits
-
 import Native.Support.Obj
 
 import Native.HeapObj.Shape as HeapObj
+import Native.Runtime.Bits
 import Native.Runtime.Ordo as Runtime
 import Native.Types.Kind as Types
 

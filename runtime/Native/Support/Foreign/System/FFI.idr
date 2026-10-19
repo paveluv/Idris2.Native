@@ -7,30 +7,10 @@
 module Native.Support.Foreign.System.FFI
 
 import Native.Flat.Uniform as Flat
--- lint: allow import-unused: the flat check reaches through newPtr's body, whose header has a shape
-import Native.HeapObj.Shape as HeapObj
--- lint: allow import-unused: the flat check reaches through the allocator's bodies, which hold its records
-import Native.Runtime.Alloc.Allocator
-import Native.Runtime.Alloc.Arena
 import Native.Runtime.Alloc.Block
-import Native.Runtime.Alloc.Chunks
-import Native.Runtime.Alloc.Config
-import Native.Runtime.Alloc.Pages
-import Native.Runtime.Alloc.SizeClasses
-import Native.Runtime.Alloc.System
--- lint: allow import-unused: the flat check reaches through the allocator's bodies, which use the word operations
-import Native.Runtime.Bits
-import Native.Runtime.Memory
 import Native.Runtime.Ordo as Runtime
 import Native.Runtime.Raw as Runtime
--- lint: allow import-unused: the flat check reaches through newPtr's body, which allocates the pointer's object
-import Native.Runtime.Space
--- lint: allow import-unused: the flat check reaches through pointee's body, which reads the pointer's object
-import Native.Support.Obj
 import Native.Support.Ptr
--- lint: allow import-unused: the flat check reaches through newPtr's body, which writes the pointer's header
-import Native.Types.Header
-import Native.Types.Kind
 import Native.Types.Represents
 
 %hide Prelude.Interfaces.(>>=)

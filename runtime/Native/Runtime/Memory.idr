@@ -11,24 +11,17 @@
 ||| rest of the runtime; the code generator finds each by that type.
 module Native.Runtime.Memory
 
--- lint: allow public-import: the flat translation reaches through this module
--- (checking an importer's flat functions, it reaches this module's bodies,
--- which use it, so it is loaded wherever this module is)
-import public Native.Intrinsic
-import public Native.Port
-import public Native.Runtime.OS
--- lint: allow public-import: an extern's type, written by its port, reduces only
--- where the port and its reading are visible, so they are wherever this
--- module is, whose wrappers the flat translation unfolds into its importers
-import public Native.Runtime.PortTy
-
 -- the runtime's own, never re-exported: each module that uses it imports it
 import Native.Runtime.Bits
 import Native.Runtime.Ordo
+import Native.Runtime.OS
+import Native.Runtime.PortTy
 import Native.Runtime.Raw
 
 import Native.Flat.Uniform as Flat
 import Native.HeapObj.Shape as HeapObj
+import Native.Intrinsic
+import Native.Port
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)

@@ -14,8 +14,6 @@ import Native.Runtime.Alloc.Config
 import Native.Runtime.Alloc.Pages
 import Native.Runtime.Alloc.SizeClasses
 
--- lint: allow import-unused: the flat check reaches through the allocator's bodies, which use the word operations
-import Native.Runtime.Bits
 import Native.Runtime.Memory
 import Native.Runtime.Ordo
 import Native.Runtime.OS

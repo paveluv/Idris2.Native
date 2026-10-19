@@ -5,43 +5,13 @@
 ||| every encoding.
 module Native.Support.Foreign.System.Directory
 
--- lint: allow import-unused: the flat check reaches through withText's body, which records the failure of no memory
-import Native.Failure
 import Native.Flat.Uniform as Flat
--- lint: allow import-unused: the flat check reaches through pointee's body, which reads the pointer's object by its kind
-import Native.HeapObj.Shape as HeapObj
--- lint: allow import-unused: the flat check reaches through withText's body, which copies a string into a block outside the heap
-import Native.Runtime.Alloc.Allocator
--- lint: allow import-unused: the flat check reaches through withText's body, which copies a string into a block outside the heap
-import Native.Runtime.Alloc.Arena
 import Native.Runtime.Alloc.Block
--- lint: allow import-unused: the flat check reaches through withText's body, which copies a string into a block outside the heap
-import Native.Runtime.Alloc.Chunks
--- lint: allow import-unused: the flat check reaches through withText's body, which copies a string into a block outside the heap
-import Native.Runtime.Alloc.Config
--- lint: allow import-unused: the flat check reaches through withText's body, which copies a string into a block outside the heap
-import Native.Runtime.Alloc.Pages
--- lint: allow import-unused: the flat check reaches through withText's body, which copies a string into a block outside the heap
-import Native.Runtime.Alloc.SizeClasses
--- lint: allow import-unused: the flat check reaches through withText's body, which copies a string into a block outside the heap
-import Native.Runtime.Alloc.System
--- lint: allow import-unused: the flat check reaches through the allocator's bodies, which use the word operations
-import Native.Runtime.Bits
 import Native.Runtime.Ordo as Runtime
 import Native.Runtime.OS
 import Native.Runtime.Raw as Runtime
--- lint: allow import-unused: the flat check reaches through newPtr's body, which allocates the pointer's object
-import Native.Runtime.Space
--- lint: allow import-unused: the flat check reaches through withText's body, which records the failure of no memory
-import Native.Runtime.State
--- lint: allow import-unused: the flat check reaches through pointee's body, which reads the pointer's object by its kind
-import Native.Support.Obj
 import Native.Support.Ptr
 import Native.Support.Text
--- lint: allow import-unused: the flat check reaches through newPtr's body, which writes the pointer's header
-import Native.Types.Header
--- lint: allow import-unused: the flat check reaches through pointee's body, which reads the pointer's object by its kind
-import Native.Types.Kind
 import Native.Types.Represents
 
 %hide Prelude.Interfaces.(>>=)

@@ -15,22 +15,15 @@
 -- be the one that collects, before the second look.
 module Probe
 
--- the runtime's functions use its own bit operations, which it does not
--- re-export; flat code that reaches into them imports those too
 import Native.Flat.Uniform
-import Native.HeapObj.Shape
-import Native.Runtime.Bits
 import Native.Runtime.Memory
 import Native.Runtime.Ordo
 import Native.Runtime.Raw
-import Native.Runtime.Space
 import Native.Runtime.State
 import Native.Support.Obj
 import Native.Support.String.Utf8
-import Native.Types.ConstructorId
 import Native.Types.Header
 import Native.Types.Kind
-import Native.Types.Represents
 
 -- this module's `do` is the runtime's, over the token
 %hide Prelude.Interfaces.(>>=)

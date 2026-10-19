@@ -3,13 +3,11 @@
 ||| point halfway between them, the decimal in limbs (`Limbs`).
 module Native.Support.Double.Between
 
--- lint: allow public-import: the flat translation reaches through this module
--- (checking an importer's flat functions, it reaches this module's bodies,
--- which use them, so they are loaded wherever this module is)
-import public Native.Support.Double.Limbs
+import Native.Support.Double.Limbs
 
 import Native.Runtime.Bits
 import Native.Runtime.Ordo as Runtime
+import Native.Support.Obj
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)

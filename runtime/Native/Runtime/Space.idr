@@ -20,17 +20,13 @@
 ||| allocate in the spaces the core has, and never make one.
 module Native.Runtime.Space
 
--- lint: allow public-import: the flat translation reaches through this module
--- (checking an importer's flat functions, it reaches this module's bodies,
--- which use it, so it is loaded wherever this module is)
-import public Native.Runtime.State
-
 import Native.Runtime.Bits
 import Native.Runtime.Collect
 import Native.Runtime.Memory
 import Native.Runtime.Ordo
 import Native.Runtime.PortTy
 import Native.Runtime.Raw
+import Native.Runtime.State
 
 import Native.Area
 import Native.HeapObj.LayoutWord

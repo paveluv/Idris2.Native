@@ -7,15 +7,12 @@
 ||| the primitive `mul128`.
 module Native.Support.Double.Nearest
 
--- lint: allow public-import: the flat translation reaches through this module
--- (checking an importer's flat functions, it reaches this module's bodies,
--- which use them, so they are loaded wherever this module is)
-import public Native.Primitive.DoubleBits
-import public Native.Primitive.Mul128
-import public Native.Support.Double.PowerOfTen
-import public Native.Table
+import Native.Support.Double.PowerOfTen
 
+import Native.Primitive.DoubleBits
+import Native.Primitive.Mul128
 import Native.Runtime.Bits
+import Native.Table
 
 %default total
 

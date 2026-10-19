@@ -4,27 +4,7 @@
 ||| the system's text through `Support.Text`, for every encoding.
 module Native.Support.Foreign.Prelude.IO
 
--- lint: allow import-unused: the flat check reaches through withText's body, which records the failure of no memory
-import Native.Failure
 import Native.Flat.Uniform as Flat
--- lint: allow import-unused: the flat check reaches through pointee's body, which reads the pointer's object by its kind
-import Native.HeapObj.Shape as HeapObj
--- lint: allow import-unused: the flat check reaches through withText's body, which copies a string into a block outside the heap
-import Native.Runtime.Alloc.Allocator
--- lint: allow import-unused: the flat check reaches through withText's body, which copies a string into a block outside the heap
-import Native.Runtime.Alloc.Arena
--- lint: allow import-unused: the flat check reaches through withText's body, which copies a string into a block outside the heap
-import Native.Runtime.Alloc.Block
--- lint: allow import-unused: the flat check reaches through withText's body, which copies a string into a block outside the heap
-import Native.Runtime.Alloc.Chunks
--- lint: allow import-unused: the flat check reaches through withText's body, which copies a string into a block outside the heap
-import Native.Runtime.Alloc.Config
--- lint: allow import-unused: the flat check reaches through withText's body, which copies a string into a block outside the heap
-import Native.Runtime.Alloc.Pages
--- lint: allow import-unused: the flat check reaches through withText's body, which copies a string into a block outside the heap
-import Native.Runtime.Alloc.SizeClasses
--- lint: allow import-unused: the flat check reaches through withText's body, which copies a string into a block outside the heap
-import Native.Runtime.Alloc.System
 import Native.Runtime.Memory
 import Native.Runtime.Ordo as Runtime
 import Native.Runtime.OS

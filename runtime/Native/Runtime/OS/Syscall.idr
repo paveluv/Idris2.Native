@@ -7,14 +7,9 @@
 ||| here, privately, by its port.
 module Native.Runtime.OS.Syscall
 
--- lint: allow public-import: an extern's type, written by its port, reduces only
--- where the port and its reading are visible, so they are wherever this
--- module is, whose wrapper the flat translation unfolds into its importers
-import public Native.Intrinsic
-import public Native.Port
-import public Native.Runtime.PortTy
-
+import Native.Intrinsic
 import Native.Runtime.Ordo
+import Native.Runtime.PortTy
 
 %default total
 

@@ -4,12 +4,15 @@
 ||| the ports as data and never needs their types, so this is the runtime's.
 module Native.Runtime.PortTy
 
+-- lint: allow public-import: a `PortTy` reduces through the port's reading
+-- (`Native.Port`), which every module that writes one in a signature needs
+import public Native.Port
+
 import Native.Runtime.Ordo
 import Native.Runtime.Raw
 
 import Native.Flat.Uniform as Flat
 import Native.HeapObj.Shape as HeapObj
-import Native.Port
 
 %default total
 

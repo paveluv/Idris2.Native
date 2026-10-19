@@ -21,6 +21,7 @@
 module Native.Runtime.Alloc.Block
 
 import Native.Runtime.Alloc.System
+
 import Native.Runtime.Memory
 import Native.Runtime.Ordo
 import Native.Runtime.Raw

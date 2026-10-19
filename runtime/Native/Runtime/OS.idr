@@ -10,15 +10,11 @@
 ||| (`State.lastFailure`); the caller decides what a failure means.
 module Native.Runtime.OS
 
--- lint: allow public-import: an extern's type, written by its port, reduces only
--- where the port and its reading are visible, so they are wherever this
--- module is, whose wrappers the flat translation unfolds into its importers
-import public Native.Port
-import public Native.Runtime.PortTy
-import public Native.Service
-
 import Native.Runtime.Ordo
+import Native.Runtime.PortTy
 import Native.Runtime.Raw
+
+import Native.Service
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)

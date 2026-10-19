@@ -33,16 +33,12 @@ import Native.Runtime.Memory
 import Native.Runtime.Ordo as Runtime
 import Native.Runtime.PortTy as Runtime
 import Native.Runtime.Raw as Runtime
--- lint: allow import-unused: the flat check reaches through Obj's allocate and constructors, which allocate on the heap
-import Native.Runtime.Space
 import Native.Support.CodePoint
 import Native.Support.Double.Between
 import Native.Support.Double.Limbs
 import Native.Support.Double.Nearest
 import Native.Support.Double.Shortest
 import Native.Support.Obj
--- lint: allow import-unused: the flat check reaches through Obj's constructor views, which compare constructor ids
-import Native.Types.ConstructorId
 import Native.Types.Header
 import Native.Types.Kind
 import Native.Types.Represents

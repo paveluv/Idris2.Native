@@ -4,15 +4,9 @@
 module Native.Support.Foreign.PrimIO
 
 import Native.Flat.Uniform as Flat
--- lint: allow import-unused: the flat check reaches through pointee's body, which compares a header's kind code
-import Native.HeapObj.Shape as HeapObj
 import Native.Runtime.Ordo as Runtime
 import Native.Runtime.Raw as Runtime
--- lint: allow import-unused: the flat check reaches through pointee's body, which reads the pointer's object
-import Native.Support.Obj
 import Native.Support.Ptr
--- lint: allow import-unused: the flat check reaches through pointee's body, which compares a header's kind code
-import Native.Types.Kind
 import Native.Types.Represents
 
 %hide Prelude.Interfaces.(>>=)

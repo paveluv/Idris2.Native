@@ -12,21 +12,17 @@
 ||| over these, for every encoding.
 module Native.Support.Text
 
--- lint: allow public-import: an extern's type, written by its port, reduces only
--- where the port and its reading are visible, so they are wherever this
--- module is, whose wrappers the flat translation unfolds into its importers
-import public Native.Port
-import public Native.Runtime.PortTy
-import public Native.Types.StringRoutine
-
 import Native.Failure
 import Native.Flat.Uniform as Flat
 import Native.HeapObj.Shape as HeapObj
+import Native.Port
 import Native.Runtime.Alloc.Block
 import Native.Runtime.Memory
 import Native.Runtime.Ordo as Runtime
+import Native.Runtime.PortTy
 import Native.Runtime.Raw as Runtime
 import Native.Runtime.State
+import Native.Types.StringRoutine
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)

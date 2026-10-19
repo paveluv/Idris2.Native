@@ -1,17 +1,10 @@
 ||| The routines that end the program.
 module Native.Runtime.System
 
--- lint: allow public-import: the flat translation reaches through this module
--- (checking an importer's flat functions, it reaches this module's bodies,
--- which use it, so it is loaded wherever this module is)
-import public Native.Runtime.OS
-
 import Native.Runtime.Memory
 import Native.Runtime.Ordo
+import Native.Runtime.OS
 import Native.Runtime.PortTy
--- lint: allow import-unused: the flat translation judges the port's raw address, which
--- it reduces only where `Native.Runtime.Raw` is imported
-import Native.Runtime.Raw
 
 import Native.HeapObj.Shape
 import Native.Routine

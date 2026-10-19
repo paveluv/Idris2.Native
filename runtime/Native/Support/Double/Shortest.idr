@@ -6,12 +6,9 @@
 ||| the primitive `mul128`.
 module Native.Support.Double.Shortest
 
--- lint: allow public-import: the flat translation reaches through this module
--- (checking an importer's flat functions, it reaches this module's bodies,
--- which use them, so they are loaded wherever this module is)
-import public Native.Primitive.Mul128
-import public Native.Support.Double.PowerOfTen
+import Native.Support.Double.PowerOfTen
 
+import Native.Primitive.Mul128
 import Native.Runtime.Bits
 
 %default total
