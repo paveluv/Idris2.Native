@@ -142,13 +142,13 @@ fieldBits f v = prim__shl_Bits64 v (fst (place f))
 ||| Bits 0..3 of an object's first word: a shape's id, the forwarding id,
 ||| or 0 for a continuation.
 public export %inline
-shapeIdOf : (first : Bits64) -> Bits64
-shapeIdOf h = prim__and_Bits64 h (prim__shl_Bits64 1 idWidth - 1)
+headerShapeId : (first : Bits64) -> Bits64
+headerShapeId h = prim__and_Bits64 h (prim__shl_Bits64 1 idWidth - 1)
 
 ||| Whether an object's first word is a continuation's resume address.
 export
 isFrame : (first : Bits64) -> Bool
-isFrame h = shapeIdOf h == 0
+isFrame h = headerShapeId h == 0
 
 export
 forwardingHeader : (to : Bits64) -> Bits64
@@ -156,7 +156,7 @@ forwardingHeader to = prim__or_Bits64 (prim__shl_Bits64 to idWidth) forwardingId
 
 export
 isForwarding : (first : Bits64) -> Bool
-isForwarding h = shapeIdOf h == forwardingId
+isForwarding h = headerShapeId h == forwardingId
 
 export
 forwardedTo : (header : Bits64) -> Bits64
@@ -165,25 +165,25 @@ forwardedTo h = prim__shr_Bits64 h idWidth
 ||| The words of an object with a header, the header included, by its header
 ||| word, as `fieldWords` gives them; 0 for a word that is no shape's.
 export
-objectWordsOf : (header : Bits64) -> Bits64
-objectWordsOf h =
-  let s = shapeIdOf h in
+headerObjectWords : (header : Bits64) -> Bits64
+headerObjectWords h =
+  let s = headerShapeId h in
   if s == shapeId VALUES then 1 + field Values h
-  else if s == shapeId RAW then 1 + byteWordsOf (field Bytes h)
+  else if s == shapeId RAW then 1 + bytesWords (field Bytes h)
   else if s == shapeId MIXED then 1 + field Raws h + field MixedValues h
   else 0
   where
     ||| The words that `bytes` fill, padded to whole words.
     %inline
-    byteWordsOf : (bytes : Bits64) -> Bits64
-    byteWordsOf b = prim__shr_Bits64 (b + 7) 3
+    bytesWords : (bytes : Bits64) -> Bits64
+    bytesWords b = prim__shr_Bits64 (b + 7) 3
 
 ||| The words of an object with a header that hold values, by its header
 ||| word, as `scanned` gives them: the first, and how many.
 export
-scannedOf : (header : Bits64) -> (Bits64, Bits64)
-scannedOf h =
-  let s = shapeIdOf h in
+headerScanned : (header : Bits64) -> (Bits64, Bits64)
+headerScanned h =
+  let s = headerShapeId h in
   if s == shapeId VALUES then (1, field Values h)
   else if s == shapeId MIXED then (1 + field Raws h, field MixedValues h)
   else (1, 0)

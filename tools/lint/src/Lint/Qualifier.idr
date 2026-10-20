@@ -1,5 +1,5 @@
 ||| How a module of ours writes a name another of ours defines
-||| (`qualifierOf`): with the defining module's path past what the two
+||| (`pathQualifier`): with the defining module's path past what the two
 ||| modules' names share. One rule, which the refactoring `qualify-names`
 ||| writes by and `import-alias` checks.
 |||
@@ -23,8 +23,8 @@ import Data.String
 ||| two names begin with alike; its own last name if that leaves nothing.
 export
 pathFrom : (importer, defining : String) -> List String
-pathFrom importer m = case dropShared (partsOf importer) (partsOf m) of
-  [] => maybe [] (\x => [x]) (last' (partsOf m))
+pathFrom importer m = case dropShared (nameParts importer) (nameParts m) of
+  [] => maybe [] (\x => [x]) (last' (nameParts m))
   rest => rest
   where
     dropShared : List String -> List String -> List String
@@ -32,8 +32,8 @@ pathFrom importer m = case dropShared (partsOf importer) (partsOf m) of
     dropShared _ bs = bs
 
     ||| The parts of a dotted name.
-    partsOf : String -> List String
-    partsOf m = forget (split (== '.') m)
+    nameParts : String -> List String
+    nameParts m = forget (split (== '.') m)
 
 ||| Whether a name is a module's key type, of its last name `m`, or the
 ||| type's constructor, `MkX` for `X`.
@@ -46,8 +46,8 @@ keyNamed m n = n == m || n == "Mk" ++ m
 ||| `MkX` (`keyNamed`), the path but its last part, none if that leaves
 ||| nothing.
 export
-qualifierOf : (path : List String) -> (name : String) -> Maybe String
-qualifierOf path n = case reverse path of
+pathQualifier : (path : List String) -> (name : String) -> Maybe String
+pathQualifier path n = case reverse path of
   (m :: rest) =>
     if keyNamed m n then (if null rest then Nothing else Just (joinBy "." (reverse rest)))
     else Just (joinBy "." path)
@@ -56,7 +56,7 @@ qualifierOf path n = case reverse path of
 ||| A name as written with its qualifier.
 export
 qualifiedName : (path : List String) -> (name : String) -> String
-qualifiedName path n = maybe n (\q => q ++ "." ++ n) (qualifierOf path n)
+qualifiedName path n = maybe n (\q => q ++ "." ++ n) (pathQualifier path n)
 
 ||| The alias the module at a path is imported under where its key type is
 ||| written: the path but its last part, if more than that is left.

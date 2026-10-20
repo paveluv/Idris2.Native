@@ -199,8 +199,8 @@ main = do
         exitWith (ExitFailure 2)
       pure False
     Just (Right r) =>
-      healthOf o scored (Just ({ modules $= filter (\rm => rm.path `elem` map (.path) fs) } r))
-    Nothing => healthOf o scored Nothing
+      reportHealth o scored (Just ({ modules $= filter (\rm => rm.path `elem` map (.path) fs) } r))
+    Nothing => reportHealth o scored Nothing
   when (not o.golden && (not (null findings) || low)) $ exitWith (ExitFailure 1)
   where
     request : List String -> Request
@@ -248,14 +248,14 @@ main = do
             Just (Left problems) => problems
             Just (Right r) => ResolvedRules.resolvedRules fdms programNames r
           ours = the (SortedSet String) (fromList (map (\f => show f.mod.moduleNS) fs))
-          exportsOf =
+          ourExports =
             the (SortedMap String (List String))
               (fromList
                 [ (show f.mod.moduleNS, Finding.joined (map (.visible) ds)) | (f, ds) <- fds ])
           aliases =
             Finding.joined
               (map
-                (\(f, ds, ms) => Graph.importAlias exportsOf f ms.refs
+                (\(f, ds, ms) => Graph.importAlias ourExports f ms.refs
                  ++ Graph.selfQualified f (Finding.joined (map (.defines) ds)) ms.refs)
                fdms)
           all = Finding.joined (map (\(f, ds, ms) => Rules.fileRules f ms ds) fdms)
@@ -374,10 +374,11 @@ main = do
 
     ||| The modules of the packages beside the roots, but the run's own files,
     ||| parsed.
-    contextOf : (roots, paths : List String) -> IO (List Refactor.Subject)
-    contextOf roots paths = do
+    rootsContext : (roots, paths : List String) -> IO (List Refactor.Subject)
+    rootsContext roots paths = do
       packages <- Refactor.Project.packagesNear roots
-      others <- Finding.joined <$> traverse (\(pp, t) => files (Refactor.Project.sourceDirOf pp t))
+      others <- Finding.joined <$> traverse
+        (\(pp, t) => files (Refactor.Project.packageSourceDir pp t))
         packages
       rights <$> traverse Refactor.Subject.load (filter (\o => not (o `elem` paths)) (nub others))
 
@@ -408,7 +409,7 @@ main = do
       res <- if r.wide then resolvedFrom paths else pure Nothing
       -- the modules of the packages beside the roots that the run's files
       -- may import, read once, as the run does not change them
-      context <- if r.wide then contextOf roots paths else pure []
+      context <- if r.wide then rootsContext roots paths else pure []
       for_ paths $ \p => do
         rep <- Refactor.Refactoring.refactor dryRun check r (projectOnce cache roots res context)
           (writeIORef cache Nothing) p
@@ -471,9 +472,9 @@ main = do
 
     ||| The health score of the files, with its groups and their components,
     ||| printed; whether it is below the minimum asked for.
-    healthOf : Request -> List (Source.SourceFile, List Rules.Declared, Rules.Mentions) ->
-               Maybe Resolution -> IO Bool
-    healthOf o fdms r = do
+    reportHealth : Request -> List (Source.SourceFile, List Rules.Declared, Rules.Mentions) ->
+                   Maybe Resolution -> IO Bool
+    reportHealth o fdms r = do
       let fds = map (\(f, ds, _) => (f, ds)) fdms
           cs = health fds ++ [Distinction.distinction fds]
             ++ maybe [] (ResolvedRules.resolvedHealth fdms) r

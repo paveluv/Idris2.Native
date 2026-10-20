@@ -69,9 +69,9 @@ record Linted where
   privateImports : List (Import, Usage)
 
 ||| Our modules, each with its file and what it writes.
-modulesOf : List (Source.SourceFile, List Rules.Declared, Rules.Mentions) -> Resolution ->
-            List Linted
-modulesOf fms r =
+lintedModules : List (Source.SourceFile, List Rules.Declared, Rules.Mentions) -> Resolution ->
+                List Linted
+lintedModules fms r =
   let byPath =
         the (SortedMap String Resolution.ResolvedModule)
           (fromList (map (\rm => (rm.path, rm)) r.modules))
@@ -93,19 +93,19 @@ modulesOf fms r =
             reached = foldl Data.SortedSet.union empty
                             (map
                               (\(i, _) => if i == "Prelude"
-                               then Resolution.visibleThrough r.importsOf (const True) i
+                               then Resolution.visibleThrough r.moduleImports (const True) i
                                  else singleton i)
                               rm.imports)
             direct = the (SortedSet String) (fromList (map (show . (.path)) f.mod.imports))
             usage : String -> Usage
             usage p =
               case filter (\v => contains v used)
-                (Prelude.toList (Resolution.visibleThrough r.importsOf (const True) p)) of
+                (Prelude.toList (Resolution.visibleThrough r.moduleImports (const True) p)) of
               [] => Unused
               vs => if any (\v => v == p || not (contains v direct)) vs then Needed
                 else Redundant vs
             privates = [ (i, usage (show i.path)) | i <- f.mod.imports, not i.reexport ]
-        in Just (MkLinted f rm ws reached (Rules.typesOf ds) privates)
+        in Just (MkLinted f rm ws reached (Rules.declaredTypes ds) privates)
 
 ------------------------------------------------------------------------------
 -- The rules
@@ -130,15 +130,16 @@ resolvedRules : List (Source.SourceFile, List Rules.Declared, Rules.Mentions) ->
                 (programNames : SortedSet String) ->
                 Resolution -> List Finding
 resolvedRules fms programNames r =
-  Finding.joined [ importUnused m ++ importIndirect r m ++ genericExport m | m <- modulesOf fms r ]
+  Finding.joined
+    [ importUnused m ++ importIndirect r m ++ genericExport m | m <- lintedModules fms r ]
   ++ Finding.joined
     [ publicUnneeded f ds ++ byteAddrMaker f ++ sealedAllocator f ds ms ++ sealedValues f ms
       ++ unqualifiedNames f ds ms
      | (f, ds, ms) <- fms ]
   where
     ||| What each of our modules exports.
-    exportsOf : SortedMap String (List String)
-    exportsOf =
+    ourExports : SortedMap String (List String)
+    ourExports =
       fromList [ (show f.mod.moduleNS, Finding.joined (map (.visible) ds)) | (f, ds, _) <- fms ]
 
     ||| `unqualified`: a name another of our modules defines, written bare
@@ -152,7 +153,7 @@ resolvedRules fms programNames r =
         let uses = [ (u.definer, u.name) | u <- rm.uses, not u.searched ] in
         [ MkFinding "unqualified" f.path (fst e.from) (snd e.from) e.text
             ("`" ++ bare e.text ++ "` is written bare: write `" ++ e.text ++ "`")
-        | e <- Qualification.unqualified uses (Qualification.importedFrom exportsOf f) f ds
+        | e <- Qualification.unqualified uses (Qualification.importedFrom ourExports f) f ds
           ms.refs ]
       where
         -- the name a qualified name qualifies
@@ -265,7 +266,8 @@ resolvedRules fms programNames r =
         [ Rules.finding f "byte-addr-maker" f.mod.headerLoc u.name
             ("`" ++ m
               ++
-                ("` makes a byte address from a word, which only the modules that keep addresses " ++
+                ("` makes a byte address from a word, which only the modules that keep addresses "
+                  ++
                  "as words do"))
         | rm <- r.modules, rm.name == m, u <- rm.uses, u.name == "fromWord",
           u.definer == "Native.Runtime.ByteAddr" ]
@@ -361,7 +363,9 @@ resolvedRules fms programNames r =
       where
         through : String -> Maybe Import
         through u =
-          find (\i => contains u (Resolution.visibleThrough r.importsOf (const True) (show i.path)))
+          find
+            (\i =>
+             contains u (Resolution.visibleThrough r.moduleImports (const True) (show i.path)))
             m.file.mod.imports
 
         report : (String, List String) -> Maybe Finding
@@ -412,7 +416,7 @@ resolvedHealth : List (Source.SourceFile, List Rules.Declared, Rules.Mentions) -
                  List Graph.Component
 resolvedHealth fms r =
   let fds = map (\(f, ds, _) => (f, ds)) fms
-      ms = modulesOf fms r
+      ms = lintedModules fms r
       pairs = Finding.joined [ map (m,) (keys m.writtenUses) | m <- ms ]
       indirect = [ (m, u) | (m, u) <- pairs, not (contains u m.reached) ]
       imports = Finding.joined [ map (m,) m.privateImports | m <- ms, not (Rules.facade m.file) ]

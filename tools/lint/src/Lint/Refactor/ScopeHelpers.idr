@@ -57,8 +57,8 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
   candidates
   where
     ||| The names the module defines: globals, never variables of a type.
-    globalsOf : Subject -> SortedSet String
-    globalsOf s = fromList (foldr (\d, rest => d.defines ++ rest) [] s.declared)
+    subjectGlobals : Subject -> SortedSet String
+    subjectGlobals s = fromList (foldr (\d, rest => d.defines ++ rest) [] s.declared)
 
     ||| The change that moves a helper into the clause of its user that uses it,
     ||| or why it stays; and the one to prefer, if it differs: the helper at
@@ -67,26 +67,29 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
     ||| since the helper may be used at other types than its user's.
     plan : Subject -> (helper, user : Rules.Declared) -> Either String (Change, Maybe Change)
     plan s h u = do
-      (cls, aroundUser) <- clausesOf s u
+      (cls, aroundUser) <- userClauses s u
       cl <- clauseUsing cls
-      extent <- Extent.extentOf s h
+      extent <- Extent.claimExtent s h
       (aroundBlock, lifted, userBlock, ownBlock) <- placement extent cl
-      let values = union (boundOf cl) (union aroundBlock (whereNames cl))
+      let values = union (clauseBound cl) (union aroundBlock (whereNames cl))
           own = maybe empty (.names) ownBlock
       noCapture values aroundUser
       (text, calls) <- adjust cl (union values aroundUser) lifted userBlock own extent
-      insert <- Where.intoWhere (Subject.linesOf s) cl h.defines (helperFree s h) extent.column text
+      insert <- Where.intoWhere (Subject.subjectLines s) cl h.defines (helperFree s h) extent.column
+        text
       let safe =
-            Change.inFile s.file.path ([insert, Extent.cut (Subject.linesOf s) extent] ++ calls)
+            Change.inFile s.file.path
+              ([insert, Extent.cut (Subject.subjectLines s) extent] ++ calls)
           preferred = do
             (text', calls') <- eitherToMaybe (adjust cl values lifted userBlock own extent)
             if text' == text then Nothing else do
               insert' <- eitherToMaybe
-                (Where.intoWhere (Subject.linesOf s) cl h.defines (helperFree s h) extent.column
+                (Where.intoWhere (Subject.subjectLines s) cl h.defines (helperFree s h)
+                  extent.column
                   text')
               Just
                 (Change.inFile s.file.path
-                 ([insert', Extent.cut (Subject.linesOf s) extent] ++ calls'))
+                 ([insert', Extent.cut (Subject.subjectLines s) extent] ++ calls'))
       pure (safe, preferred)
       where
         -- the constraints the user has, as written: its claim's, or its
@@ -94,11 +97,11 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
         userConstraints : List String
         userConstraints = case u.decl.val of
           PImplementation _ _ _ _ cs _ _ _ _ _ =>
-            foldr (\c, rest => Constraints.writtenAs (Subject.linesOf s) (snd c) ++ rest) [] cs
+            foldr (\c, rest => Constraints.writtenAs (Subject.subjectLines s) (snd c) ++ rest) [] cs
           _ => foldr (\d, rest => case d.decl.val of
                                      PClaim c => if any (`elem` u.defines) d.defines
-                                                   then Constraints.constraintsOf
-                                                     (Subject.linesOf s) c.type.val.type
+                                                   then Constraints.typeConstraints
+                                                     (Subject.subjectLines s) c.type.val.type
                                                      ++ rest else rest
                                      _ => rest) [] s.declared
 
@@ -108,9 +111,10 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
           case filter (\cl => any (\n => contains n (Free.inClause cl)) h.defines) cls of
           [cl] => Right cl
           [] =>
-            Left ("it is unused: `" ++ Refactoring.labelOf u ++ "` mentions only a name of its own")
+            Left
+              ("it is unused: `" ++ Refactoring.declLabel u ++ "` mentions only a name of its own")
           more =>
-            Left (show (length more) ++ " clauses of `" ++ Refactoring.labelOf u ++ "` use it")
+            Left (show (length more) ++ " clauses of `" ++ Refactoring.declLabel u ++ "` use it")
 
         -- the names a `parameters` block binds around the clause and not
         -- around the helper; the block the helper leaves, if it does, whose
@@ -120,7 +124,7 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
                     (SortedSet String, Maybe ParameterBlock, Maybe ParameterBlock,
                      Maybe ParameterBlock)
         placement extent cl =
-          let blocks = ParameterBlock.parameterBlocks (Subject.linesOf s) s.file.mod.decls in
+          let blocks = ParameterBlock.parameterBlocks (Subject.subjectLines s) s.file.mod.decls in
           case (ParameterBlock.blockAt blocks (fst (Span.lineSpan h.decl.fc)),
                 ParameterBlock.blockAt blocks (fst (Span.lineSpan (Where.clauseLoc cl)))) of
             (Nothing, Nothing) => Right (empty, Nothing, Nothing, Nothing)
@@ -134,10 +138,10 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
                 "it would leave a `parameters` block whose explicit parameters its calls pass"
 
         -- the lines of a declaration's source
-        sourceOf : Rules.Declared -> List String
-        sourceOf d = let (a, b) =
+        declSource : Rules.Declared -> List String
+        declSource d = let (a, b) =
                            Span.lineSpan d.decl.fc in List.take (cast (b - a + 1))
-                             (List.drop (cast a) (Subject.linesOf s))
+                             (List.drop (cast a) (Subject.subjectLines s))
 
         -- the auto-implicits around the clause: its user's type's, and its
         -- user's `parameters` block's
@@ -148,7 +152,8 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
                                         _ => False) s.declared
               ofClaims =
                 foldr (\d,
-                       rest => map snd (Binders.binderGroups (joinBy "\n" (sourceOf d))) ++ rest) []
+                       rest => map snd (Binders.binderGroups (joinBy "\n" (declSource d)))
+                         ++ rest) []
                   claims
           in mapMaybe Binders.autoBinder (ofClaims ++ maybe [] (.binders) userBlock)
 
@@ -185,26 +190,26 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
                               (foldr (\b, rest => calls [cl] b ++ rest) [] binders)
           pure
             (splice (Extent.indexIn extent cs) (ce - cs + 1) claimed
-             (Extent.textOf (lines renamed) extent),
+             (Extent.extentText (lines renamed) extent),
                 userEdits)
           where
             clausesOfHelper : List PClause
             clausesOfHelper = foldr (\d, rest => case d.decl.val of
                                                    PDef cs => cs ++ rest
-                                                   _ => rest) [] (Extent.definitionsOf s h)
+                                                   _ => rest) [] (Extent.claimDefinitions s h)
 
             -- the calls of the helper among clauses that name a binder:
             -- where the name is, whether it is written short, and the rename
             calls : List PClause -> (String, String, List (Int, Int)) ->
                     List ((Int, Int), Bool, (String, String))
             calls cls (n, to, _) =
-              let occ = Free.allOf (map Free.clauseAt cls) in
+              let occ = Free.combined (map Free.clauseAt cls) in
               foldr (\f,
                 rest =>
                   foldr (\p,
                     more =>
                       map (\(q, short) => (q, short, (n, to)))
-                        (NamedArguments.namedArguments (Subject.linesOf s) p f n)
+                        (NamedArguments.namedArguments (Subject.subjectLines s) p f n)
                          ++ more)
                                        rest (fromMaybe [] (lookup f occ))) [] h.defines
 
@@ -232,7 +237,8 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
             withoutShared : (renamed : List String) -> List String -> List String
             withoutShared renamed ls =
               let theirs = map Constraints.tidy userConstraints
-                  mine = maybe [] (Constraints.constraintsOf (Subject.linesOf s)) (claimType h)
+                  mine =
+                    maybe [] (Constraints.typeConstraints (Subject.subjectLines s)) (claimType h)
                   dropped =
                     List.filter
                       (\w => elem (Constraints.tidy w) theirs
@@ -270,13 +276,14 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
                          (List (String, String, List (Int, Int)),
                           List (String, String, List (Int, Int)))
             renamesFor bound taken =
-              let globals = globalsOf s
-                  defs = foldr (\d, rest => clausesIn d ++ rest) [] (Extent.definitionsOf s h)
+              let globals = subjectGlobals s
+                  defs = foldr (\d, rest => clausesIn d ++ rest) [] (Extent.claimDefinitions s h)
                   ty = claimType h
-                  topOcc = Free.allOf (maybe empty Free.occurrences ty :: map Free.clauseAt defs)
+                  topOcc = Free.combined (maybe empty Free.occurrences ty :: map Free.clauseAt defs)
                   avoid =
                     union bound
-                      (union globals (union (Free.namesOf topOcc) (maybe empty Free.typeNames ty)))
+                      (union globals
+                        (union (Free.occurrenceNames topOcc) (maybe empty Free.typeNames ty)))
                   topVars =
                     maybe empty (\t => intersection (Free.free t) (Free.typeVariables globals t)) ty
                   top = map (\n => (n, freshFor avoid n, fromMaybe [] (lookup n topOcc)))
@@ -298,19 +305,21 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
                 autos =
                   fromList
                     (mapMaybe (\g => map fst (Binders.autoBinder (snd g)))
-                     (Binders.binderGroups (joinBy "\n" (sourceOf h))))
+                     (Binders.binderGroups (joinBy "\n" (declSource h))))
 
                 binderRename : List PClause -> PTerm -> String -> List (Int, Int)
                 binderRename defs t n =
-                  if any (\cl => contains n (Free.boundBy (Rules.lhsOf cl))) defs then [(-1, -1)]
+                  if any (\cl => contains n (Free.boundBy (Rules.clauseLhs cl))) defs
+                    then [(-1, -1)]
                   else Free.implicitSites n t
-                    ++ fromMaybe [] (lookup n (Free.allOf (map Free.clauseAt defs)))
+                    ++ fromMaybe [] (lookup n (Free.combined (map Free.clauseAt defs)))
 
 
                 innerRenames : SortedSet String -> Free.InnerClaim ->
                                List (String, String, List (Int, Int))
                 innerRenames avoid ic =
-                  let occ = Free.allOf (Free.occurrences ic.type :: map Free.clauseAt ic.clauses) in
+                  let occ =
+                        Free.combined (Free.occurrences ic.type :: map Free.clauseAt ic.clauses) in
                   map
                     (\n =>
                       the (String, String, List (Int, Int))
@@ -330,7 +339,7 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
               where
                 short : Int -> Int -> Bool
                 short l c =
-                  let line = fromMaybe "" (head' (List.drop (cast l) (Subject.linesOf s)))
+                  let line = fromMaybe "" (head' (List.drop (cast l) (Subject.subjectLines s)))
                       before = trim (substr 0 (cast c) line)
                       after = trim (substr (cast c + length n) (length line) line)
                   in isSuffixOf "{" before && isPrefixOf "}" after
@@ -399,7 +408,7 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
         ||| clauses, its own names aside.
         helperFree : Subject -> (claim : Rules.Declared) -> SortedSet String
         helperFree s claim =
-          let defs = Extent.definitionsOf s claim
+          let defs = Extent.claimDefinitions s claim
               ofClaim = case claim.decl.val of
                 PClaim c => Free.free c.type.val.type
                 _ => singleton Free.unknown
@@ -415,7 +424,7 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
                 _ => empty
               ofDefs =
                 foldr (\d, rest => union (Free.inDecl d.decl) rest) empty
-                  (Extent.definitionsOf s claim)
+                  (Extent.claimDefinitions s claim)
           in difference ofDefs (union ofClaim (fromList claim.defines))
 
         -- no name the helper's clauses refer to beyond its type's bound as a
@@ -430,26 +439,26 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
               [] => Right ()
               captured =>
                 Left
-                  ("it would be captured in `" ++ Refactoring.labelOf u ++ "` by "
+                  ("it would be captured in `" ++ Refactoring.declLabel u ++ "` by "
                    ++ fastConcat (intersperse ", " (map (\n => "`" ++ n ++ "`") captured)))
 
         -- the left-hand side's variables, its head, the function or method it
         -- defines, aside
-        boundOf : PClause -> SortedSet String
-        boundOf cl =
-          difference (Free.boundBy (Rules.lhsOf cl))
-            (maybe empty (\n => singleton (nameRoot n)) (Rules.clauseName (Rules.lhsOf cl)))
+        clauseBound : PClause -> SortedSet String
+        clauseBound cl =
+          difference (Free.boundBy (Rules.clauseLhs cl))
+            (maybe empty (\n => singleton (nameRoot n)) (Rules.clauseName (Rules.clauseLhs cl)))
 
         whereNames : PClause -> SortedSet String
         whereNames (MkPatClause _ _ _ wh) =
-          fromList (foldr (\d, rest => Rules.definesOf d ++ rest) [] wh)
+          fromList (foldr (\d, rest => Rules.declDefines d ++ rest) [] wh)
         whereNames _ = empty
 
         ||| The clauses of a declaration that a helper could move into: a
         ||| function's, or those of an implementation's methods; and the names the
         ||| declaration binds around them, its type's or its parameters'.
-        clausesOf : Subject -> Rules.Declared -> Either String (List PClause, SortedSet String)
-        clausesOf s u = case u.decl.val of
+        userClauses : Subject -> Rules.Declared -> Either String (List PClause, SortedSet String)
+        userClauses s u = case u.decl.val of
           PDef cls => Right (cls, ofClaim)
           PImplementation _ _ _ _ cs _ ps _ _ (Just body) =>
             Right (foldr (\d, rest => methodClauses d ++ rest) [] body,
@@ -469,7 +478,8 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
             ofClaim = foldr (\d, rest => case d.decl.val of
                                            PClaim c => if any (`elem` u.defines) d.defines
                                              then union
-                                               (Free.typeVariables (globalsOf s) c.type.val.type)
+                                               (Free.typeVariables (subjectGlobals s)
+                                                 c.type.val.type)
                                                  rest
                                                  else rest
                                            _ => rest) empty s.declared
@@ -479,7 +489,7 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
       let pairs = fst (Rules.helpers s.declared)
           users = foldr (\p, rest => (snd p).defines ++ rest) [] pairs
           ready = filter (\p => not (any (`elem` users) (fst p).defines)) pairs
-      in map (\p => offer (Refactoring.labelOf (fst p)) (plan s (fst p) (snd p))) ready
+      in map (\p => offer (Refactoring.declLabel (fst p)) (plan s (fst p) (snd p))) ready
       where
         offer : String -> Either String (Change, Maybe Change) -> Refactoring.Candidate
         offer l (Left why) = Refactoring.candidate l (Left why)

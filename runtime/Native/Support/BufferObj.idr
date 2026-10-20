@@ -31,12 +31,12 @@ import Native.Types.Represents
 
 ||| The buffer's object.
 %inline
-objectOf : Flat.Uniform Buffer -> Runtime.Ordo.Op Runtime.Ordo (Obj Types.Kind.BUFFER)
-objectOf = Obj.valueObject
+bufferObject : Flat.Uniform Buffer -> Runtime.Ordo.Op Runtime.Ordo (Obj Types.Kind.BUFFER)
+bufferObject = Obj.valueObject
 
 ||| The bytes of a buffer's object.
-bytesOf : Obj Types.Kind.BUFFER -> Runtime.Ordo.Op Runtime.Ordo Bits64
-bytesOf o = do
+objectSize : Obj Types.Kind.BUFFER -> Runtime.Ordo.Op Runtime.Ordo Bits64
+objectSize o = do
   h <- Obj.header o
   Runtime.Ordo.pure (Types.Header.readPart Types.Header.BufferBytes h)
 
@@ -53,16 +53,16 @@ zeroBuffer n = do
 export
 size : Flat.Uniform Buffer -> Runtime.Ordo.Op Runtime.Ordo Bits64
 size b = do
-  o <- objectOf b
-  bytesOf o
+  o <- bufferObject b
+  objectSize o
 
 ||| The buffer's object, if its `n` bytes from the offset lie inside it;
 ||| the end of the program if not.
 inside : Flat.Uniform Buffer -> (offset, n : Int) ->
          Runtime.Ordo.Op Runtime.Ordo (Obj Types.Kind.BUFFER)
 inside b offset n = do
-  o <- objectOf b
-  all <- bytesOf o
+  o <- bufferObject b
+  all <- objectSize o
   if offset < 0 || n < 0 || cast offset > all || cast n > all - cast offset
     then Runtime.Ordo.crashOp "idris: bytes outside a buffer"
     else Runtime.Ordo.pure o

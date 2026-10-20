@@ -54,8 +54,8 @@ attachedFrom ls l = if l > 0 && maybe False attached (head' (drop (cast (l - 1))
 
 ||| The definitions of the names a claim declares, in the order written.
 export
-definitionsOf : Subject -> (claim : Rules.Declared) -> List Rules.Declared
-definitionsOf s claim = filter defines s.declared
+claimDefinitions : Subject -> (claim : Rules.Declared) -> List Rules.Declared
+claimDefinitions s claim = filter defines s.declared
   where
     defines : Rules.Declared -> Bool
     defines d = case d.decl.val of
@@ -69,10 +69,10 @@ definitionsOf s claim = filter defines s.declared
 ||| block (`mutual`, `parameters`, ...), the block's header goes, and the
 ||| comments above the header, which are about the block, move with it.
 export
-extentOf : Subject -> (claim : Rules.Declared) -> Either String Extent
-extentOf s claim =
+claimExtent : Subject -> (claim : Rules.Declared) -> Either String Extent
+claimExtent s claim =
   let (cs, ce) = Span.lineSpan claim.decl.fc
-      defs = definitionsOf s claim
+      defs = claimDefinitions s claim
       spans = map (Span.lineSpan . (.decl.fc)) defs
       end = foldl (\m, sp => max m (snd sp)) ce spans
   in if not (all (\n => any (\d => n `elem` d.defines) defs) claim.defines)
@@ -80,7 +80,7 @@ extentOf s claim =
      else if any (\sp => fst sp < cs) spans then Left "it is defined before its claim"
      else if any (between cs end) (filter (not . ours defs) s.declared)
        then Left "other declarations lie between its claim and its definition"
-     else Right (piece (attachedFrom (Subject.linesOf s) cs) end)
+     else Right (piece (attachedFrom (Subject.subjectLines s) cs) end)
   where
     ours : List Rules.Declared -> Rules.Declared -> Bool
     ours defs d = Span.lineSpan d.decl.fc == Span.lineSpan claim.decl.fc
@@ -90,16 +90,16 @@ extentOf s claim =
     between a b d = let l = fst (Span.lineSpan d.decl.fc) in l >= a && l <= b
 
     linesFrom : Int -> Int -> List String
-    linesFrom a b = take (cast (b - a + 1)) (drop (cast a) (Subject.linesOf s))
+    linesFrom a b = take (cast (b - a + 1)) (drop (cast a) (Subject.subjectLines s))
 
     ||| The blocks of a list of declarations, at any depth (`mutual`,
     ||| `parameters`, `namespace`, `using`): the line each starts at, and the
     ||| lines each of its declarations spans.
-    blocksOf : List PDecl -> List (Int, List (Int, Int))
-    blocksOf = foldr (\d, rest => here d ++ rest) []
+    declBlocks : List PDecl -> List (Int, List (Int, Int))
+    declBlocks = foldr (\d, rest => here d ++ rest) []
       where
         block : PDecl -> List PDecl -> List (Int, List (Int, Int))
-        block d ds = (fst (Span.lineSpan d.fc), map (Span.lineSpan . (.fc)) ds) :: blocksOf ds
+        block d ds = (fst (Span.lineSpan d.fc), map (Span.lineSpan . (.fc)) ds) :: declBlocks ds
 
         here : PDecl -> List (Int, List (Int, Int))
         here d = case d.val of
@@ -116,11 +116,11 @@ extentOf s claim =
       let column = Span.startColumn claim.decl.fc
           emptied = find (\(_, members) => any (\m => fst m >= first && fst m <= last) members
                                            && all (\m => fst m >= first && fst m <= last) members)
-                                             (blocksOf s.file.mod.decls)
+                                             (declBlocks s.file.mod.decls)
       in case emptied of
            Nothing => MkExtent first last column (linesFrom first last) [(first, last)]
            Just (header, _) =>
-             let above = attachedFrom (Subject.linesOf s) header in
+             let above = attachedFrom (Subject.subjectLines s) header in
              MkExtent above last column (linesFrom above (header - 1) ++ linesFrom first last)
                [(above, header - 1), (first, last)]
 
@@ -139,8 +139,8 @@ cut ls e =
 ||| A function's text taken from other lines of the same shape, such as the
 ||| file's with names renamed in place.
 export
-textOf : List String -> Extent -> List String
-textOf ls e =
+extentText : List String -> Extent -> List String
+extentText ls e =
   foldr (\(a, b), rest => take (cast (b - a + 1)) (drop (cast a) ls) ++ rest) [] e.segments
 
 ||| Where a source line is in a function's text, if it is there.

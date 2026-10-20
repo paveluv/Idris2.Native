@@ -20,8 +20,8 @@ import Native.Runtime.State
 
 ||| The C library's number for a reason's code (`Native.Failure`).
 export
-errnoOf : (code : Bits64) -> Bits64
-errnoOf c =
+failureErrno : (code : Bits64) -> Bits64
+failureErrno c =
   if c == 0 then 0
   else if c == Failure.code Failure.NotFound then 2 -- ENOENT
   else if c == Failure.code Failure.PermissionDenied then 13 -- EACCES
@@ -50,4 +50,4 @@ export
 lastErrno : Runtime.Ordo.Op Runtime.Ordo Bits64
 lastErrno = do
   c <- Runtime.State.getState Runtime.State.lastFailure
-  Runtime.Ordo.pure (errnoOf c)
+  Runtime.Ordo.pure (failureErrno c)

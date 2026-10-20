@@ -221,7 +221,7 @@ mainBody = build $ \[] => do
   results indices rs
 
 classOfIndex : Nat -> RegClass
-classOfIndex i = classOf (tyOf i)
+classOfIndex i = class (tyOf i)
 
 covering
 main : IO ()

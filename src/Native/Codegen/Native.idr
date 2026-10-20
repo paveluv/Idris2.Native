@@ -344,8 +344,8 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
             | Left err => throw (FileErr path err)
           pure ()
           where
-            foreignOf : GlobalDef -> Bool
-            foreignOf g = case definition g of
+            isForeign : GlobalDef -> Bool
+            isForeign g = case definition g of
               ForeignDef _ _ => True
               ExternDef _ => True
               _ => False
@@ -358,7 +358,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
             contract n = isJust (lookup n realised.externs) || isJust (lookup n realised.services)
 
             library : (Name, Maybe GlobalDef) -> Maybe (Name, GlobalDef)
-            library (n, Just g) = if foreignOf g && not (inRuntime n || contract n) then Just (n, g)
+            library (n, Just g) = if isForeign g && not (inRuntime n || contract n) then Just (n, g)
               else Nothing
             library (_, Nothing) = Nothing
 

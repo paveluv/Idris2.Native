@@ -105,19 +105,19 @@ mergeClauses = Refactoring.fileRefactoring "merge-clauses"
     ||| A clause taken apart, or why it cannot be: a `with` clause, an
     ||| impossible one, a left-hand side over several lines, or a `where`
     ||| written after code on its line.
-    partsOf : List String -> PClause -> Either String Parts
-    partsOf _ (MkWithClause fc _ _ _ _) =
+    clauseParts : List String -> PClause -> Either String Parts
+    clauseParts _ (MkWithClause fc _ _ _ _) =
       Left ("its clause at line " ++ show (fst (Span.lineSpan fc) + 1) ++ " is a `with` clause")
-    partsOf _ (MkImpossible fc _) =
+    clauseParts _ (MkImpossible fc _) =
       Left ("its clause at line " ++ show (fst (Span.lineSpan fc) + 1) ++ " is impossible")
-    partsOf ls cl@(MkPatClause fc lhs _ wh) = do
+    clauseParts ls cl@(MkPatClause fc lhs _ wh) = do
       ((l0, c0), _) <- maybe (Left "a clause has no place in the source") Right (Span.bounds fc)
       ((ll, _), (le, lce)) <- maybe (Left "a left-hand side has no place in the source") Right
         (Span.bounds (getPTermLoc lhs))
       when (ll /= le) $ Left ("the left-hand side at line " ++ show (ll + 1) ++ " spans lines")
       (h, args) <- spine ls lhs
       let last = foldr (\d, m => max m (snd (Span.lineSpan d.fc))) (snd (Span.lineSpan fc)) wh
-      (bodyLast, wtext, wcol) <- whereOf l0 last
+      (bodyLast, wtext, wcol) <- whereLines l0 last
       pure (MkParts h (args <>> []) l0 c0 lce bodyLast last wh wtext wcol cl)
       where
         ||| The last line from `l` down to `lo` with something on it, or `lo`.
@@ -127,8 +127,8 @@ mergeClauses = Refactoring.fileRefactoring "merge-clauses"
 
         -- the last line of the body; the `where` block's lines, from the
         -- comments above its first declaration; and its column
-        whereOf : (first, last : Int) -> Either String (Int, List String, Int)
-        whereOf first last = case sort (map (fst . Span.lineSpan . (.fc)) wh) of
+        whereLines : (first, last : Int) -> Either String (Int, List String, Int)
+        whereLines first last = case sort (map (fst . Span.lineSpan . (.fc)) wh) of
           [] => Right (lastWritten ls first last, [], 0)
           (top :: _) =>
             let from = Extent.attachedFrom ls top
@@ -191,19 +191,19 @@ mergeClauses = Refactoring.fileRefactoring "merge-clauses"
     positions parts shape = zipWith decide [0 .. length shape] shape
       where
         ||| A pattern as a variable, if it is one.
-        variableOf : PTerm -> Maybe String
-        variableOf (PRef _ (UN (Basic v))) = if Free.isVariable v then Just v else Nothing
-        variableOf _ = Nothing
+        termVariable : PTerm -> Maybe String
+        termVariable (PRef _ (UN (Basic v))) = if Free.isVariable v then Just v else Nothing
+        termVariable _ = Nothing
 
         plain : PTerm -> Bool
         plain (PImplicit _) = True
-        plain t = isJust (variableOf t)
+        plain t = isJust (termVariable t)
 
         decide : Nat -> Maybe String -> Position
         decide _ (Just t) = Fixed t
         decide i Nothing =
           let pats = mapMaybe (patternAt i) parts
-              names = nub (mapMaybe variableOf pats)
+              names = nub (mapMaybe termVariable pats)
           in if all plain pats && null (drop 1 names) then Kept (fromMaybe "_" (head' names))
             else Matched
 
@@ -279,16 +279,16 @@ mergeClauses = Refactoring.fileRefactoring "merge-clauses"
         ||| `reason` for a `NotFlatReason`, `instr` for an `Instr`.
         typeWord : PTerm -> Maybe String
         typeWord t = do
-          h <- headOf t
+          h <- termHead t
           let w = lastWord (unpack h)
           if null w then Nothing else Just (toLower (pack w))
           where
-            headOf : PTerm -> Maybe String
-            headOf (PRef _ n) = Just (nameRoot n)
-            headOf (PApp _ f _) = headOf f
-            headOf (PNamedApp _ f _ _) = headOf f
-            headOf (PBracketed _ x) = headOf x
-            headOf _ = Nothing
+            termHead : PTerm -> Maybe String
+            termHead (PRef _ n) = Just (nameRoot n)
+            termHead (PApp _ f _) = termHead f
+            termHead (PNamedApp _ f _ _) = termHead f
+            termHead (PBracketed _ x) = termHead x
+            termHead _ = Nothing
 
             lastWord : List Char -> List Char
             lastWord cs = let (low, rest) =
@@ -378,7 +378,7 @@ mergeClauses = Refactoring.fileRefactoring "merge-clauses"
     plan : Subject -> (user : Rules.Declared) -> List PClause -> (type : Maybe PTerm) ->
            Either String Change
     plan s u cls ty = do
-      parts <- traverse (partsOf ls) cls
+      parts <- traverse (clauseParts ls) cls
       shape <- sameShape parts
       c <- oneColumn parts
       let ps = positions parts shape
@@ -399,7 +399,7 @@ mergeClauses = Refactoring.fileRefactoring "merge-clauses"
            (header :: joinAlts parts alts ++ whereBlock c parts)])
       where
         ls : List String
-        ls = Subject.linesOf s
+        ls = Subject.subjectLines s
 
         isMatched : Position -> Bool
         isMatched Matched = True
@@ -565,17 +565,18 @@ mergeClauses = Refactoring.fileRefactoring "merge-clauses"
 
     -- the functions a helper's one user has that several clauses of use it:
     -- the user, or methods of it if it is an implementation
-    targetsOf : Subject -> (Rules.Declared, Rules.Declared) -> List Refactoring.Candidate
-    targetsOf s (h, u) = case u.decl.val of
+    helperTargets : Subject -> (Rules.Declared, Rules.Declared) -> List Refactoring.Candidate
+    helperTargets s (h, u) = case u.decl.val of
       PDef cls => if usedBy cls >= 2
-        then [Refactoring.candidate (Refactoring.labelOf u) (plan s u cls (claimType s u))]
+        then [Refactoring.candidate (Refactoring.declLabel u) (plan s u cls (claimType s u))]
         else []
       PImplementation _ _ _ _ _ _ _ _ _ (Just body) =>
         mapMaybe (\d => case d.val of
                           PDef cls => if usedBy cls >= 2
                             then Just
                               (Refactoring.candidate
-                                (fastConcat (Rules.definesOf d) ++ " of " ++ Refactoring.labelOf u)
+                                (fastConcat (Rules.declDefines d) ++ " of "
+                                  ++ Refactoring.declLabel u)
                                (plan s u cls Nothing))
                                 else Nothing
                           _ => Nothing) (foldr (\d, rest => Rules.byFunction d ++ rest) [] body)
@@ -588,4 +589,4 @@ mergeClauses = Refactoring.fileRefactoring "merge-clauses"
     candidates : Subject -> List Refactoring.Candidate
     candidates s =
       nubBy (\a, b => a.label == b.label)
-        (foldr (\p, rest => targetsOf s p ++ rest) [] (fst (Rules.helpers s.declared)))
+        (foldr (\p, rest => helperTargets s p ++ rest) [] (fst (Rules.helpers s.declared)))

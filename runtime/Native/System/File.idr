@@ -133,8 +133,8 @@ standard n = (Call.handlePointer n).value
 ||| The slot and the file of a pointer `base` gives back; none for a pointer
 ||| that is no handle, or the handle of a file closed since.
 export covering
-fileOf : AnyPtr -> IO (Maybe (Int, File))
-fileOf p =
+pointerFile : AnyPtr -> IO (Maybe (Int, File))
+pointerFile p =
   let n = Call.pointerHandle (Flat.MkUniform p)
       slot = n `mod` slotSpan in
   if n < 0 then pure Nothing else do
@@ -344,7 +344,7 @@ readInto f dst offset n = do
 export covering
 withFile : AnyPtr -> (none : a) -> (use : Int -> File -> IO a) -> IO a
 withFile p none use = do
-  Just (slot, f) <- fileOf p
+  Just (slot, f) <- pointerFile p
     | Nothing => do
         Call.recordFailure (Failure.code Failure.BadHandle)
         pure none

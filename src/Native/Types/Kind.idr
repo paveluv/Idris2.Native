@@ -71,35 +71,35 @@ data Kind
 ||| The shape a kind's objects have (`HeapObj.Shape`); a continuation has no
 ||| header, and so no shape.
 public export
-shapeOf : Kind -> Maybe HeapObj.Shape
-shapeOf CON = Just HeapObj.Shape.VALUES
-shapeOf IOREF = Just HeapObj.Shape.VALUES
-shapeOf ARRAY = Just HeapObj.Shape.VALUES
-shapeOf CLOSURE = Just HeapObj.Shape.MIXED
-shapeOf STRUCT = Just HeapObj.Shape.MIXED
-shapeOf INT64 = Just HeapObj.Shape.RAW
-shapeOf DOUBLE = Just HeapObj.Shape.RAW
-shapeOf PTR = Just HeapObj.Shape.RAW
-shapeOf STRING = Just HeapObj.Shape.RAW
-shapeOf BUFFER = Just HeapObj.Shape.RAW
-shapeOf BIGNUM = Just HeapObj.Shape.RAW
-shapeOf CONT = Nothing
+shape : Kind -> Maybe HeapObj.Shape
+shape CON = Just HeapObj.Shape.VALUES
+shape IOREF = Just HeapObj.Shape.VALUES
+shape ARRAY = Just HeapObj.Shape.VALUES
+shape CLOSURE = Just HeapObj.Shape.MIXED
+shape STRUCT = Just HeapObj.Shape.MIXED
+shape INT64 = Just HeapObj.Shape.RAW
+shape DOUBLE = Just HeapObj.Shape.RAW
+shape PTR = Just HeapObj.Shape.RAW
+shape STRING = Just HeapObj.Shape.RAW
+shape BUFFER = Just HeapObj.Shape.RAW
+shape BIGNUM = Just HeapObj.Shape.RAW
+shape CONT = Nothing
 
 ||| The kind's tag, which tells it apart from the other kinds of its shape.
 public export
-tagOf : Kind -> Bits64
-tagOf CON = 0
-tagOf IOREF = 1
-tagOf ARRAY = 2
-tagOf CLOSURE = 0
-tagOf STRUCT = 1
-tagOf INT64 = 0
-tagOf DOUBLE = 1
-tagOf PTR = 2
-tagOf STRING = 3
-tagOf BUFFER = 4
-tagOf BIGNUM = 5
-tagOf CONT = 0
+tag : Kind -> Bits64
+tag CON = 0
+tag IOREF = 1
+tag ARRAY = 2
+tag CLOSURE = 0
+tag STRUCT = 1
+tag INT64 = 0
+tag DOUBLE = 1
+tag PTR = 2
+tag STRING = 3
+tag BUFFER = 4
+tag BIGNUM = 5
+tag CONT = 0
 
 ||| The kind's code: bits 0..15 of each of its headers, its shape's id and
 ||| its tag with the flags 0, as the word the runtime's code compares them
@@ -107,41 +107,41 @@ tagOf CONT = 0
 public export
 code : Kind -> Bits64
 code k =
-  maybe 0 (\s => HeapObj.Shape.shapeId s + HeapObj.Shape.fieldBits {s} HeapObj.Shape.Tag (tagOf k))
-    (shapeOf k)
+  maybe 0 (\s => HeapObj.Shape.shapeId s + HeapObj.Shape.fieldBits {s} HeapObj.Shape.Tag (tag k))
+    (shape k)
 
 ||| The kind with this code, if any.
 public export
-kindOfCode : Bits64 -> Maybe Kind
-kindOfCode 0x001 = Just CON
-kindOfCode 0x101 = Just IOREF
-kindOfCode 0x201 = Just ARRAY
-kindOfCode 0x003 = Just CLOSURE
-kindOfCode 0x103 = Just STRUCT
-kindOfCode 0x002 = Just INT64
-kindOfCode 0x102 = Just DOUBLE
-kindOfCode 0x202 = Just PTR
-kindOfCode 0x302 = Just STRING
-kindOfCode 0x402 = Just BUFFER
-kindOfCode 0x502 = Just BIGNUM
-kindOfCode 0 = Just CONT
-kindOfCode _ = Nothing
+fromCode : Bits64 -> Maybe Kind
+fromCode 0x001 = Just CON
+fromCode 0x101 = Just IOREF
+fromCode 0x201 = Just ARRAY
+fromCode 0x003 = Just CLOSURE
+fromCode 0x103 = Just STRUCT
+fromCode 0x002 = Just INT64
+fromCode 0x102 = Just DOUBLE
+fromCode 0x202 = Just PTR
+fromCode 0x302 = Just STRING
+fromCode 0x402 = Just BUFFER
+fromCode 0x502 = Just BIGNUM
+fromCode 0 = Just CONT
+fromCode _ = Nothing
 
 public export
 Eq Kind where
   a == b = code a == code b
 
-||| Equal kinds have equal codes, since `kindOfCode` inverts `code`.
+||| Equal kinds have equal codes, since `fromCode` inverts `code`.
 public export
 DecEq Kind where
   decEq a b = case decEq (code a) (code b) of
     Yes p =>
       Yes
         (justInjective
-         (trans (sym (kindRoundTrip a)) (trans (cong kindOfCode p) (kindRoundTrip b))))
+         (trans (sym (kindRoundTrip a)) (trans (cong fromCode p) (kindRoundTrip b))))
     No c => No (\q => c (cong code q))
     where
-      kindRoundTrip : (k : Kind) -> kindOfCode (code k) = Just k
+      kindRoundTrip : (k : Kind) -> fromCode (code k) = Just k
       kindRoundTrip CON = Refl
       kindRoundTrip CLOSURE = Refl
       kindRoundTrip INT64 = Refl
@@ -179,6 +179,6 @@ Show Kind where
 public export %inline
 headerCode : (header : Bits64) -> Bits64
 headerCode h =
-  HeapObj.Shape.shapeIdOf h
+  HeapObj.Shape.headerShapeId h
     + HeapObj.Shape.fieldBits {s = HeapObj.Shape.VALUES} HeapObj.Shape.Tag
         (HeapObj.Shape.field {s = HeapObj.Shape.VALUES} HeapObj.Shape.Tag h)

@@ -51,13 +51,13 @@ import Native.Types.Struct as Types
 ||| shape.
 export
 data Obj : (0 k : Types.Kind) -> Type where
-  MkObj : {0 s : HeapObj.Shape} -> (0 shaped : Types.Kind.shapeOf k = Just s) ->
+  MkObj : {0 s : HeapObj.Shape} -> (0 shaped : Types.Kind.shape k = Just s) ->
           Runtime.Memory.Addr s -> Obj k
 
 ||| The word, or 32, 16 or 8 bits of it, at the offset into the payload of
 ||| an object of the raw shape.
 export %inline
-load64, load32, load16, load8 : {auto 0 raw : Types.Kind.shapeOf k = Just HeapObj.Shape.RAW} ->
+load64, load32, load16, load8 : {auto 0 raw : Types.Kind.shape k = Just HeapObj.Shape.RAW} ->
                                 Obj k -> (offset : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
 load64 (MkObj _ a) n = Runtime.Memory.load64 a (8 + n)
 load32 (MkObj _ a) n = Runtime.Memory.load32 a (8 + n)
@@ -67,7 +67,7 @@ load8 (MkObj _ a) n = Runtime.Memory.load8 a (8 + n)
 ||| Store the word, or its low 32, 16 or 8 bits, at the offset into the
 ||| payload of an object of the raw shape.
 export %inline
-store64, store32, store16, store8 : {auto 0 raw : Types.Kind.shapeOf k = Just HeapObj.Shape.RAW} ->
+store64, store32, store16, store8 : {auto 0 raw : Types.Kind.shape k = Just HeapObj.Shape.RAW} ->
                                     Obj k -> (offset, value : Bits64) ->
                                     Runtime.Ordo.Op Runtime.Ordo ()
 store64 (MkObj _ a) n = Runtime.Memory.store64 a (8 + n)
@@ -92,11 +92,11 @@ checked k ps =
 ||| so that a string's padding is; the payload still to be written. The
 ||| program ends for a part too large for its field.
 export %inline
-allocate : (k : Types.Kind) -> {auto 0 raw : Types.Kind.shapeOf k = Just HeapObj.Shape.RAW} ->
+allocate : (k : Types.Kind) -> {auto 0 raw : Types.Kind.shape k = Just HeapObj.Shape.RAW} ->
            Types.Header.Parts k -> Runtime.Ordo.Op Runtime.Ordo (Obj k)
 allocate k ps = do
   h <- checked k ps
-  let words = HeapObj.Shape.objectWordsOf h
+  let words = HeapObj.Shape.headerObjectWords h
   a <- Runtime.Space.allocate (8 * words)
   let o = Runtime.Memory.objectAt a
   Runtime.Memory.store64 o 0 h
@@ -108,7 +108,7 @@ allocate k ps = do
 ||| size, as a string's is once its bytes are known to be ASCII or not.
 ||| The program ends for a part too large for its field.
 export %inline
-setHeader : {k : Types.Kind} -> {auto 0 raw : Types.Kind.shapeOf k = Just HeapObj.Shape.RAW} ->
+setHeader : {k : Types.Kind} -> {auto 0 raw : Types.Kind.shape k = Just HeapObj.Shape.RAW} ->
             Obj k -> Types.Header.Parts k -> Runtime.Ordo.Op Runtime.Ordo ()
 setHeader (MkObj _ a) ps = do
   h <- checked k ps
@@ -123,7 +123,7 @@ objectBytes (MkObj _ a) n = Runtime.Memory.objectBytes a (8 + n)
 ||| The object a value is, of a kind that holds every value of its type.
 export %inline
 valueObject : {auto 0 only : Types.Represents.Only k a} ->
-              {auto 0 shaped : Types.Kind.shapeOf k = Just s} ->
+              {auto 0 shaped : Types.Kind.shape k = Just s} ->
               Flat.Uniform a -> Runtime.Ordo.Op Runtime.Ordo (Obj k)
 valueObject v = do
   a <- Runtime.Memory.valueObject v
@@ -141,7 +141,7 @@ objectValue (MkObj _ a) = Runtime.Memory.objectValue a
 export %inline
 asKind : (k : Types.Kind) -> {auto 0 objs : Types.Represents.Objects a} ->
          {auto 0 rep : Types.Represents k a} ->
-         {auto 0 shaped : Types.Kind.shapeOf k = Just s} -> Flat.Uniform a ->
+         {auto 0 shaped : Types.Kind.shape k = Just s} -> Flat.Uniform a ->
          Runtime.Ordo.Op Runtime.Ordo (Maybe (Obj k))
 asKind k v = do
   w <- Runtime.Memory.valueWord v
@@ -163,7 +163,7 @@ valueHandle : {auto 0 hs : Types.Represents.Handles a} -> Flat.Uniform a ->
 valueHandle v = do
   w <- Runtime.Memory.valueWord v
   pointer <- Runtime.Memory.isPointer w
-  Runtime.Ordo.pure (if pointer then Nothing else Just (Runtime.Memory.fixnumOf w))
+  Runtime.Ordo.pure (if pointer then Nothing else Just (Runtime.Memory.wordFixnum w))
 
 export %inline
 handleValue : {auto 0 hs : Types.Represents.Handles a} -> (number : Bits64) ->
@@ -179,7 +179,7 @@ immediate : {auto 0 imm : Types.Represents.Immediate t} -> Flat.Uniform t ->
             Runtime.Ordo.Op Runtime.Ordo Bits64
 immediate v = do
   w <- Runtime.Memory.valueWord v
-  Runtime.Ordo.pure (Runtime.Memory.fixnumOf w)
+  Runtime.Ordo.pure (Runtime.Memory.wordFixnum w)
 
 export %inline
 ofImmediate : {auto 0 imm : Types.Represents.Immediate t} -> Bits64 ->
@@ -202,7 +202,7 @@ asCon : (c : Types.ConstructorId) -> {auto 0 only : Types.Represents.Only Types.
 asCon c v = do
   a <- Runtime.Memory.valueObject {s = HeapObj.Shape.VALUES} v
   h <- Runtime.Memory.load64 a 0
-  if Types.ConstructorId.ofHeader h == c then Runtime.Ordo.pure (Just (MkCon a))
+  if Types.ConstructorId.fromHeader h == c then Runtime.Ordo.pure (Just (MkCon a))
     else Runtime.Ordo.pure Nothing
 
 ||| Field `i` of a constructor, as the value it holds.
@@ -263,7 +263,7 @@ beginStruct raws values _ _ = do
   h <- checked Types.Kind.STRUCT
          (Types.Header.withPart Types.Header.StructRaws raws
            (Types.Header.withPart Types.Header.StructValues values Types.Header.noParts))
-  let words = HeapObj.Shape.objectWordsOf h
+  let words = HeapObj.Shape.headerObjectWords h
   a <- Runtime.Space.allocate (8 * words)
   let o = Runtime.Memory.objectAt {s = HeapObj.Shape.MIXED} a
   Runtime.Memory.store64 o 0 h

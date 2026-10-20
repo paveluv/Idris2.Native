@@ -126,6 +126,6 @@ Pages h => Chunks h Buddy where
     let c = b.config
         a = b.arena
     Pages.release addr (Config.chunkBytes c o)
-    g <- Arena.granuleOf c a addr
+    g <- Arena.addressGranule c a addr
     Arena.setEntry a g Arena.kind Arena.unusedKind
     join c a g o

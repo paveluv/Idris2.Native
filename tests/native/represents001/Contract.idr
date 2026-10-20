@@ -91,7 +91,7 @@ failing "Can't find an implementation for Immediate String"
   stringAsFixnum : Flat.Uniform String -> Op Ordo Bits64
   stringAsFixnum s = immediate s
 
-failing "Can't find an implementation for shapeOf CON = Just RAW"
+failing "Can't find an implementation for shape CON = Just RAW"
   -- a list's cell holds values the collector follows: no word is stored
   -- in it but through its constructor
   cellWritten : Flat.Uniform (List Char) -> Op Ordo ()

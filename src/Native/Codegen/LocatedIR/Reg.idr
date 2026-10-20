@@ -30,10 +30,10 @@ Show (Reg enc) where
   show (Slot n t) = "slot" ++ show n ++ ":" ++ show t
 
 public export
-regTy : Reg enc -> IRCommon.Ty enc
-regTy (Slot _ t) = t
+ty : Reg enc -> IRCommon.Ty enc
+ty (Slot _ t) = t
 
 ||| The slot's number: the register's identity.
 public export
-slotOf : Reg enc -> Nat
-slotOf (Slot n _) = n
+slot : Reg enc -> Nat
+slot (Slot n _) = n

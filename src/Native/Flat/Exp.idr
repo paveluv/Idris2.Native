@@ -180,9 +180,9 @@ Shapes = List (Skeleton, Shape)
 
 ||| A type's shape: a primitive's is its own.
 export
-shapeOf : Shapes -> Skeleton -> Maybe Shape
-shapeOf ss (SPrim t) = Just (PrimShape t)
-shapeOf ss sk = lookup sk ss
+skeletonShape : Shapes -> Skeleton -> Maybe Shape
+skeletonShape ss (SPrim t) = Just (PrimShape t)
+skeletonShape ss sk = lookup sk ss
 
 ||| Where the fields of a data type's `i`-th constructor lie among the
 ||| registers that follow its tag: those before them, theirs, and those

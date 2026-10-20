@@ -36,8 +36,8 @@ interface Memory (0 h : Type) where
   ||| Whether a word is a pointer to an object in the space being collected.
   collectable : Bits64 -> Ordo.Op h Bool
   ||| The address a pointer word points to, and the pointer word of an address.
-  addressOf : Bits64 -> Ordo.Op h Bits64
-  pointerOf : Bits64 -> Ordo.Op h Bits64
+  pointerAddress : Bits64 -> Ordo.Op h Bits64
+  addressPointer : Bits64 -> Ordo.Op h Bits64
   ||| The words of the object at the address, and which of them hold values:
   ||| the first and how many.
   objectSize : Bits64 -> Ordo.Op h Bits64
@@ -87,16 +87,16 @@ forward : Memory h => Bits64 -> Ordo.Op h Bits64
 forward v = do
   c <- collectable v
   if not c then Ordo.pure v else do
-    a <- addressOf v
+    a <- pointerAddress v
     moved <- forwarded a
     case moved of
-      Just to => pointerOf to
+      Just to => addressPointer to
       Nothing => do
         n <- objectSize a
         to <- reserve n
         copyWords a to 0 n
         setForwarded a to
-        pointerOf to
+        addressPointer to
 
 ||| Forward the words of the copy at the address that hold values, from
 ||| word `i` to the end.

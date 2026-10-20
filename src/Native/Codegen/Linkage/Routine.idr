@@ -112,15 +112,15 @@ routines r =
     ++ integers
   where
     ||| The symbol the rendering and the seed reach a routine of the core by.
-    symbolOf : Routine -> Sym
-    symbolOf Routine.Start = Sym.SymRuntimeStart
-    symbolOf Routine.AllocSlow = Sym.SymAllocSlow
-    symbolOf Routine.AllocMutable = Sym.SymAllocMutable
-    symbolOf Routine.Crash = Sym.SymCrash
+    coreSymbol : Routine -> Sym
+    coreSymbol Routine.Start = Sym.SymRuntimeStart
+    coreSymbol Routine.AllocSlow = Sym.SymAllocSlow
+    coreSymbol Routine.AllocMutable = Sym.SymAllocMutable
+    coreSymbol Routine.Crash = Sym.SymCrash
 
     generic : (Name, Routine) -> RoutineCall enc
     generic (n, c) =
-      MkRoutineCall n (Just (symbolOf c)) (portResults (Routine.port c))
+      MkRoutineCall n (Just (coreSymbol c)) (portResults (Routine.port c))
         (portParams (Routine.port c))
 
     string : (Name, Types.StringRoutine) -> RoutineCall enc

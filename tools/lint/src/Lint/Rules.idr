@@ -202,10 +202,10 @@ record Declared where
 
 ||| A clause's left-hand side.
 export
-lhsOf : PClause -> PTerm
-lhsOf (MkPatClause _ lhs _ _) = lhs
-lhsOf (MkWithClause _ lhs _ _ _) = lhs
-lhsOf (MkImpossible _ lhs) = lhs
+clauseLhs : PClause -> PTerm
+clauseLhs (MkPatClause _ lhs _ _) = lhs
+clauseLhs (MkWithClause _ lhs _ _ _) = lhs
+clauseLhs (MkImpossible _ lhs) = lhs
 
 ||| The name a clause defines: the head of its left-hand side.
 export
@@ -218,12 +218,12 @@ clauseName (PWithApp _ f _) = clauseName f
 clauseName _ = Nothing
 
 export
-definesOf : PDecl -> List String
-definesOf d = case d.val of
+declDefines : PDecl -> List String
+declDefines d = case d.val of
   PClaim c => map (nameRoot . (.val) . snd) (forget c.type.val.names)
   -- the parser keeps clauses written one after another together, whatever
   -- they define: `x = 1` then `y = 2` is one definition of both
-  PDef cls => nub (mapMaybe (map nameRoot . clauseName . lhsOf) cls)
+  PDef cls => nub (mapMaybe (map nameRoot . clauseName . clauseLhs) cls)
   PData _ _ _ (MkPData _ n _ _ _) => [nameRoot n]
   PData _ _ _ (MkPLater _ n _) => [nameRoot n]
   PRecord _ _ _ (MkPRecord n _ _ _ _) => [nameRoot n]
@@ -260,7 +260,7 @@ lastPart m = maybe m id (last' (forget (split (== '.') m)))
 export
 byFunction : PDecl -> List PDecl
 byFunction d = case d.val of
-  PDef cls => case groupBy (\a, b => clauseName (lhsOf a) == clauseName (lhsOf b)) cls of
+  PDef cls => case groupBy (\a, b => clauseName (clauseLhs a) == clauseName (clauseLhs b)) cls of
     [_] => [d]
     runs => map (\run => MkFCVal (spanning (forget run)) (PDef (forget run))) runs
   _ => [d]
@@ -309,8 +309,8 @@ declared f = coreRun (traverse one leaves) (\_ => pure []) pure
     unqualified (NS _ _) = False
     unqualified _ = True
 
-    visibleOf : PDecl -> List String
-    visibleOf d = case d.val of
+    declVisible : PDecl -> List String
+    declVisible d = case d.val of
       PClaim c => if exported c.vis then map (nameRoot . (.val) . snd) (forget c.type.val.names)
         else []
       PData _ v _ (MkPData _ n _ _ cons) =>
@@ -349,12 +349,12 @@ declared f = coreRun (traverse one leaves) (\_ => pure []) pure
           ps <- traverse namesIn params
           pure (Just (nameRoot iface, foldr (++) [] ps))
         _ => pure Nothing
-      pure (MkDeclared d (definesOf d) ms impl (visibleOf d) bareNames ns)
+      pure (MkDeclared d (declDefines d) ms impl (declVisible d) bareNames ns)
 
 ||| The types a file defines (data types and records), by name.
 export
-typesOf : List Declared -> List String
-typesOf ds = foldr (\d, rest => case d.decl.val of
+declaredTypes : List Declared -> List String
+declaredTypes ds = foldr (\d, rest => case d.decl.val of
                                    PData _ _ _ _ => d.defines ++ rest
                                    PRecord _ _ _ _ => d.defines ++ rest
                                    _ => rest) [] ds
@@ -380,7 +380,7 @@ export
 adjacency : List Declared -> List Adjacency
 adjacency ds =
   let indexed = zip [0 .. length ds] ds
-      types = typesOf ds
+      types = declaredTypes ds
   in foldr (\(j, d), rest => case d.implementing of
        Nothing => rest
        Just (_, params) =>
@@ -578,6 +578,38 @@ export
 programRules : Source.SourceFile -> List Finding
 programRules f = importOrder f ++ citesPlan f ++ todo f ++ headerComment f
 
+||| The functions a file declares, each named where its claim names it: at
+||| the top, in a `where` block at any depth, in a `mutual` block, a
+||| namespace, a parameter block, an interface's or an implementation's
+||| body, and a record's fields. Not a `failing` block's, whose code is
+||| refused on purpose.
+export
+functionNames : List PDecl -> List (FC, String)
+functionNames ds = foldr (\d, rest => decl d ++ rest) [] ds
+  where
+    named : WithFC Name -> List (FC, String)
+    named n = [(n.fc, nameRoot n.val)]
+
+    mutual
+      decl : PDecl -> List (FC, String)
+      decl d = case d.val of
+        PClaim c => foldr (\(_, n), rest => named n ++ rest) [] (forget c.type.val.names)
+        PDef cs => foldr (\c, rest => clause c ++ rest) [] cs
+        PRecord _ _ _ (MkPRecord _ _ _ _ fields) =>
+          foldr (\fd, rest => foldr (\n, r => named n ++ r) [] fd.names ++ rest) [] fields
+        PMutual ds => functionNames ds
+        PNamespace _ ds => functionNames ds
+        PParameters _ ds => functionNames ds
+        PUsing _ ds => functionNames ds
+        PInterface _ _ _ _ _ _ _ ds => functionNames ds
+        PImplementation _ _ _ _ _ _ _ _ _ (Just ds) => functionNames ds
+        _ => []
+
+      clause : PClause -> List (FC, String)
+      clause (MkPatClause _ _ _ wh) = functionNames wh
+      clause (MkWithClause _ _ _ _ cs) = foldr (\c, rest => clause c ++ rest) [] cs
+      clause (MkImpossible _ _) = []
+
 ||| The rules over one file of the product.
 export
 fileRules : Source.SourceFile -> Mentions -> List Declared -> List Finding
@@ -585,8 +617,31 @@ fileRules f ms ds =
   importOrder f ++ publicImport f ++ defaultTotality f ++ elabReflection f ms
   ++ trustEscape f ms ++ casts f ms ++ citesPlan f ++ todo f ++ headerComment f
   ++ implementationAdjacent f ds ++ moduleType f ds
-  ++ recordConstructor f ds ++ externName f ds ms
+  ++ recordConstructor f ds ++ externName f ds ms ++ ofName f
   where
+    ||| `of-name`: no function is named with `Of` after what it gives
+    ||| (`shapeOf`). A function is named for what it gives, and the module it
+    ||| is written qualified by says whose: `Kind.shape k`, not
+    ||| `Kind.shapeOf k`. Where the module is not its argument type's own, a
+    ||| compound says what the qualifier cannot, the argument then the
+    ||| result (`primLayout`, `headerShapeId`). Every function is held to it:
+    ||| one at the top, in a `where` block, a method, a record's field.
+    ||| Types and constructors are not (`ValueOf t`): their `Of` introduces
+    ||| the arguments that follow.
+    ofName : Source.SourceFile -> List Finding
+    ofName f = mapMaybe one (functionNames f.mod.decls)
+      where
+        ofSuffixed : String -> Bool
+        ofSuffixed n = isSuffixOf "Of" (pack (reverse (dropWhile (== '\'') (reverse (unpack n)))))
+
+        one : (FC, String) -> Maybe Finding
+        one (fc, n) =
+          if not (ofSuffixed n) then Nothing else
+            Just (finding f "of-name" fc n
+                   ("`" ++ n ++ "` is named with Of: name it for what it gives, as its module's"
+                    ++ " qualifier says whose, or by its argument then its result where the"
+                    ++ " module is not its argument's"))
+
     ||| `extern-name`: an `%extern` of the runtime is named by the contract
     ||| it belongs to, so a reader knows from its name what kind of entry it
     ||| is: `intrinsic__` for an inline extern, whose type is an intrinsic's
@@ -615,14 +670,14 @@ fileRules f ms ds =
         written : FC -> List String
         written fc = [ show n | (at, n) <- ms.refs, inside at fc ]
 
-        portOf : String -> List String -> Bool
-        portOf contract ns =
+        writesPort : String -> List String -> Bool
+        writesPort contract ns =
           any (\n => n == contract ++ ".port" || isSuffixOf ("." ++ contract ++ ".port") n) ns
 
         named : String -> List String -> Bool
-        named n ns = (isPrefixOf "intrinsic__" n && portOf "Intrinsic" ns)
-          || (isPrefixOf "service__" n && portOf "Service" ns)
-                     || (isPrefixOf "string__" n && portOf "StringRoutine" ns)
+        named n ns = (isPrefixOf "intrinsic__" n && writesPort "Intrinsic" ns)
+          || (isPrefixOf "service__" n && writesPort "Service" ns)
+                     || (isPrefixOf "string__" n && writesPort "StringRoutine" ns)
 
         one : Declared -> List Finding
         one d = case d.decl.val of
@@ -651,12 +706,12 @@ fileRules f ms ds =
         [ finding f "module-type" f.mod.headerLoc (show f.mod.moduleNS)
             ("`" ++ show f.mod.moduleNS ++ "` is named almost after its type `" ++ t
               ++ "`: it is named `" ++ t ++ "`")
-        | t <- concatMap typeOf ds,
+        | t <- concatMap exportedTypes ds,
           isPrefixOf (toLower t) (toLower (lastPart (show f.mod.moduleNS))) ]
       where
         -- the exported types a declaration defines
-        typeOf : Declared -> List String
-        typeOf d = case d.decl.val of
+        exportedTypes : Declared -> List String
+        exportedTypes d = case d.decl.val of
           PData _ _ _ _ => filter (`elem` d.visible) d.defines
           PRecord _ _ _ _ => filter (`elem` d.visible) d.defines
           _ => []
@@ -770,7 +825,7 @@ fileRules f ms ds =
 ||| The rules no suppression lifts: what they report is to be changed.
 export
 unsuppressibleRules : List String
-unsuppressibleRules = ["cast", "sealed-boundary", "sealed-values"]
+unsuppressibleRules = ["cast", "sealed-boundary", "sealed-values", "of-name"]
 
 ||| The names of the rules over the text, those over the graph included;
 ||| `ResolvedRules.resolvedRuleNames` are the others.
@@ -780,4 +835,4 @@ ruleNames =
   [ "import-order", "public-import", "default-totality", "elab-reflection"
   , "trust-escape", "cast", "cites-plan", "todo", "header-comment", "implementation-adjacent"
   , "layering", "syscall", "import-alias", "self-qualified", "record-constructor", "module-type",
-    "extern-name" ]
+    "extern-name", "of-name" ]

@@ -51,28 +51,28 @@ renameModule args =
     True False candidates
   where
     ||| A module's name.
-    nameOf : Subject -> String
-    nameOf s = show s.file.mod.moduleNS
+    subjectModule : Subject -> String
+    subjectModule s = show s.file.mod.moduleNS
 
     ||| The parts of a dotted name.
-    partsOf : String -> List String
-    partsOf m = forget (split (== '.') m)
+    nameParts : String -> List String
+    nameParts m = forget (split (== '.') m)
 
     -- a name written qualified by the old module's last parts, written
     -- with as many of the new one's
     requalified : (old, new : String) -> (exports : List String) -> Subject -> (FC, Name) ->
                   List Edit
     requalified old new exports t (fc, NS ns (UN (Basic n))) =
-      let q = partsOf (show ns)
+      let q = nameParts (show ns)
           k = length q
       in case Span.bounds fc of
            Just ((l, c), (l', c')) =>
-             let shown = substr (cast c) (cast (c' - c)) (Subject.lineOf t l) in
-             if l /= l' || not (n `elem` exports) || not (isSuffixOf q (partsOf old)) || shown
+             let shown = substr (cast c) (cast (c' - c)) (Subject.subjectLine t l) in
+             if l /= l' || not (n `elem` exports) || not (isSuffixOf q (nameParts old)) || shown
                /= show ns ++ "." ++ n then []
              else
                [MkEdit (l, c) (l', c')
-                (joinBy "." (drop (length (partsOf new) `minus` k) (partsOf new)) ++ "." ++ n)]
+                (joinBy "." (drop (length (nameParts new) `minus` k) (nameParts new)) ++ "." ++ n)]
            Nothing => []
     requalified _ _ _ _ _ = []
 
@@ -91,7 +91,7 @@ renameModule args =
         importEdit : Import -> Edit
         importEdit i =
           let at = fst (Span.lineSpan i.loc)
-              l = Subject.lineOf t at
+              l = Subject.subjectLine t at
               ws = words l
               after = drop 1 (dropWhile (/= old) ws)
               public' = if i.reexport then "public " else ""
@@ -100,15 +100,15 @@ renameModule args =
     -- the module renamed, or why not
     plan : Project -> Subject -> (old, new : String) -> Either String Change
     plan p s old new = do
-      when (any (\t => nameOf t == new) p.files) $
+      when (any (\t => subjectModule t == new) p.files) $
         Left ("`" ++ new ++ "` is among the files already")
-      l <- Listing.listingOf p.packages old new
+      l <- Listing.packageListing p.packages old new
       ptext <- maybe (Left "the package's text cannot be read") Right (lookup l.package p.packages)
       let exports = nub (concatMap (.visible) s.declared)
           header =
             maybe (-1) fst
               (find (isPrefixOf "module " . snd)
-                (zip [0 .. cast (length (Subject.linesOf s))] (Subject.linesOf s)))
+                (zip [0 .. cast (length (Subject.subjectLines s))] (Subject.subjectLines s)))
           own = MkEdit (header, 0) (header + 1, 0) ("module " ++ new ++ "\n")
             :: concatMap (requalified old new exports s) s.written
           entry = l.indent ++ new ++ (if l.lastInList then "" else ",")
@@ -125,7 +125,7 @@ renameModule args =
       pure (MkChange
               ((l.package, [listed])
                :: mapMaybe (importerEdits old new exports)
-                 (List.filter (\t => nameOf t /= old) p.files))
+                 (List.filter (\t => subjectModule t /= old) p.files))
               [(l.newPath, text)]
               [s.file.path])
 
@@ -139,8 +139,9 @@ renameModule args =
 
     candidates : Project -> Subject -> List Refactoring.Candidate
     candidates p s = case args of
-      [old, new] => case renamed old new (nameOf s) of
+      [old, new] => case renamed old new (subjectModule s) of
         Just m =>
-          [Refactoring.candidate ("rename " ++ nameOf s ++ " to " ++ m) (plan p s (nameOf s) m)]
+          [Refactoring.candidate ("rename " ++ subjectModule s ++ " to " ++ m)
+            (plan p s (subjectModule s) m)]
         Nothing => []
       _ => []

@@ -41,7 +41,7 @@ hdr h = cast (encodeHeader h)
 -- whose value is 42: it returns by jumping to its continuation, whose
 -- address is the first word of the continuation object in r12.
 exitProg : List Instr
-exitProg = [Lbl (symLabel SymMain), MovRI RAX (fix 42), JmpM (MBase R12 0)]
+exitProg = [Lbl (label SymMain), MovRI RAX (fix 42), JmpM (MBase R12 0)]
 
 -- 2. main hits the abort stub, as a program does at the first construct
 -- the backend does not lower, with the message that says which and where,
@@ -51,9 +51,9 @@ unsupportedMsg = map (cast . ord) (unpack "idris: unsupported: a construct, in M
 
 unsupportedProg : List Instr
 unsupportedProg =
-  [ Lbl (symLabel SymMain)
+  [ Lbl (label SymMain)
   , Lea RDI (MRip reservedLabels 0), MovRI RSI (cast (length unsupportedMsg)),
-    Jmp (symLabel SymUnsupported) ]
+    Jmp (label SymUnsupported) ]
 
 -- 3. A (3 words) via the slow path; B (8 MiB, larger than a window) via the
 -- slow path, filling its window exactly; C through the inline fast path (lea,
@@ -70,17 +70,17 @@ done = reservedLabels + 1
 
 allocProg : List Instr
 allocProg =
-  [ Lbl (symLabel SymMain)
-  , MovRI RDI 24, Call (symLabel SymAllocSlow)
+  [ Lbl (label SymMain)
+  , MovRI RDI 24, Call (label SymAllocSlow)
   , MovRI RDX (hdr (ConH 1 2)), MovMR (MBase RAX 0) RDX        -- a CON of id 1 and 2 fields
   , MovRI RDX (fix 42), MovMR (MBase RAX 8) RDX
   , MovMI (MBase RAX 16) 0
   , MovRR RBX RAX                                              -- A
-  , MovRI RDI 0x800000, Call (symLabel SymAllocSlow)
+  , MovRI RDI 0x800000, Call (label SymAllocSlow)
   , MovRI RDX 7, MovMR (MBase RAX 0x7FFFF8) RDX                -- B's last word
   , Lea RCX (MBase R15 16), Alu CMP RCX R14, Jcc A slow        -- fast path for C (16 bytes)
   , MovRR RAX R15, MovRR R15 RCX, Jmp done
-  , Lbl slow, MovRI RDI 16, Call (symLabel SymAllocSlow)
+  , Lbl slow, MovRI RDI 16, Call (label SymAllocSlow)
   , Lbl done
   , MovRI RDX (hdr (ConH 2 1)), MovMR (MBase RAX 0) RDX        -- a CON of id 2 and 1 field
   , MovMR (MBase RAX 8) RBX                                    -- C.0 := A
@@ -91,7 +91,7 @@ allocProg =
 ||| then exit_group(1).
 crashByHand : List Instr
 crashByHand =
-  [ Lbl (symLabel SymCrash)
+  [ Lbl (label SymCrash)
   , MovRR RDX RSI, MovRR RSI RDI, MovRI RDI 2, MovRI RAX 1, Syscall
   , MovRI RDI 1, MovRI RAX 231, Syscall ]
 
@@ -101,7 +101,7 @@ crashByHand =
 ||| limit. The system call keeps rsi.
 startByHand : List Instr
 startByHand =
-  [ Lbl (symLabel SymRuntimeStart)
+  [ Lbl (label SymRuntimeStart)
   , MovRI RAX 9, MovRI RDI 0, MovRI RDX 3, MovRI R10 0x22, MovRI R8 (-1), MovRI R9 0, Syscall
   , MovRR R15 RAX, MovRR R14 RAX, Alu ADD R14 RSI
   , Ret ]
@@ -112,7 +112,7 @@ startByHand =
 ||| result goes. r13 keeps `n` across the system call, which keeps it.
 allocSlowByHand : List Instr
 allocSlowByHand =
-  [ Lbl (symLabel SymAllocSlow)
+  [ Lbl (label SymAllocSlow)
   , MovRR R13 RDI
   , Lea RSI (MBase RDI 1048576)
   , MovRI RAX 9, MovRI RDI 0, MovRI RDX 3, MovRI R10 0x22, MovRI R8 (-1), MovRI R9 0, Syscall

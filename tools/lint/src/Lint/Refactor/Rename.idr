@@ -16,6 +16,14 @@
 ||| a rename made before, it renames the uses left, such as a program's
 ||| that was not among the files.
 |||
+|||
+||| It takes any number of renames at once, name and new name in turn, all
+||| made in one run, against one resolution read before it, so that a
+||| rename does not wait for a build after the one before. A name a
+||| function's `where` block defines, or a record's field, is renamed too:
+||| a local one in its module alone, where it is all that the name can mean,
+||| unless the new name occurs in the module already.
+|||
 ||| What it leaves for after: the comments that name the old name, which
 ||| only a person can tell from prose, and the module's own name, which
 ||| `rename-module` changes.
@@ -50,7 +58,8 @@ export
 rename : (arguments : List String) -> Refactoring
 rename args =
   MkRefactoring "rename"
-    "rename a name a module defines (--arg MODULE.NAME --arg NEW), at its definition and every use"
+    ("rename names a module defines (--arg MODULE.NAME --arg NEW, any number of pairs), at "
+     ++ "their definitions and every use")
     True False candidates
   where
     ||| The names a declaration defines: its own, those it exports, and a
@@ -105,7 +114,7 @@ rename args =
     ownEdits : (old, new : String) -> Subject -> List Edit
     ownEdits old new s =
       [ MkEdit (l, c) (l, c + cast (length old)) new
-        | (l, line) <- zip [0 .. cast (length (Subject.linesOf s))] (Subject.linesOf s),
+        | (l, line) <- zip [0 .. cast (length (Subject.subjectLines s))] (Subject.subjectLines s),
           c <- wordsAt old line ]
 
     ||| Whether a qualifier as written names the module: its alias in the
@@ -123,7 +132,7 @@ rename args =
         root : FC -> Maybe Edit
         root fc = case Span.bounds fc of
           Just ((l, c), (l', c')) =>
-            if substr (cast (c' - cast (length old))) (length old) (Subject.lineOf s l') == old
+            if substr (cast (c' - cast (length old))) (length old) (Subject.subjectLine s l') == old
                then Just (MkEdit (l', c' - cast (length old)) (l', c') new) else Nothing
           Nothing => Nothing
 
@@ -165,28 +174,48 @@ rename args =
       pure (MkChange ((s.file.path, ownEdits old new s) :: List.filter (\(_, es) => not (isNil es))
                         (map (\t => (t.file.path, useEdits m old new t)) users)) [] [])
 
+    ||| The renames asked: each name with its module's path, and its new name.
+    pairs : List String -> List (String, String)
+    pairs (q :: new :: rest) = (q, new) :: pairs rest
+    pairs _ = []
+
+    ||| A name a `where` block or a record defines, not the module at its
+    ||| top, renamed: in its module alone, as no other module can use it,
+    ||| unless the new name occurs there already.
+    local : (old, new : String) -> Subject -> Either String Change
+    local old new s =
+      if any (not . isNil . wordsAt new) (Subject.subjectLines s)
+        then Left ("`" ++ new ++ "` occurs in its module already")
+        else Right (Change.inFile s.file.path (ownEdits old new s))
+
     candidates : Project -> Subject -> List Refactoring.Candidate
-    candidates p s = case (args, p.resolution) of
-      ([q, new], Just r) => case split' q of
-        Just (m, old) =>
-          let defined = Finding.joined (map definedBy s.declared)
-              label = "rename " ++ q ++ " to " ++ new
-          in if show s.file.mod.moduleNS /= m then []
-             else case (old `elem` defined, new `elem` defined) of
-               (True, True) =>
-                 [Refactoring.candidate label
-                   (Left ("`" ++ new ++ "` is defined in its module already"))]
-               (True, False) => [Refactoring.candidate label (plan p r m old new s)]
-               -- renamed in the module already: the uses left, if any
-               (False, True) => case plan p r m old new s of
-                 Right ch => if all (\(_, es) => isNil es) ch.edits then []
-                   else [Refactoring.candidate label (Right ch)]
-                 Left why => [Refactoring.candidate label (Left why)]
-               (False, False) => []
-        Nothing =>
-          [Refactoring.candidate "rename"
-            (Left ("`" ++ q ++ "` is not a name with its module's path"))]
-      ([_, _], Nothing) =>
+    candidates p s = case (pairs args, p.resolution) of
+      ([], _) => []
+      (_, Nothing) =>
         [Refactoring.candidate "rename"
           (Left "the modules' uses cannot be resolved: build them first")]
-      _ => []
+      (ps, Just r) => Finding.joined (map (one r) ps)
+      where
+        one : Resolution -> (String, String) -> List Refactoring.Candidate
+        one r (q, new) = case split' q of
+          Just (m, old) =>
+            let defined = Finding.joined (map definedBy s.declared)
+                declared = map snd (Rules.functionNames s.file.mod.decls)
+                label = "rename " ++ q ++ " to " ++ new
+            in if show s.file.mod.moduleNS /= m then []
+               else if elem old declared && not (elem old defined)
+                 then [Refactoring.candidate label (local old new s)]
+               else case (old `elem` defined, new `elem` defined) of
+                 (True, True) =>
+                   [Refactoring.candidate label
+                     (Left ("`" ++ new ++ "` is defined in its module already"))]
+                 (True, False) => [Refactoring.candidate label (plan p r m old new s)]
+                 -- renamed in the module already: the uses left, if any
+                 (False, True) => case plan p r m old new s of
+                   Right ch => if all (\(_, es) => isNil es) ch.edits then []
+                     else [Refactoring.candidate label (Right ch)]
+                   Left why => [Refactoring.candidate label (Left why)]
+                 (False, False) => []
+          Nothing =>
+            [Refactoring.candidate "rename"
+              (Left ("`" ++ q ++ "` is not a name with its module's path"))]

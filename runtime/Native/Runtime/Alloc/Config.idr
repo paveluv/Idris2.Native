@@ -67,8 +67,8 @@ steps c = 1 `shiftL` c.stepShift
 ||| holds: in the linear start, the multiple of the smallest block it rounds
 ||| up to; past it, the doubling it is in and the step within it.
 export
-classOf : Config -> (bytes : Bits64) -> Bits64
-classOf c bytes =
+bytesClass : Config -> (bytes : Bits64) -> Bits64
+bytesClass c bytes =
   let n = if bytes == 0 then 1 else bytes
       linear = steps c `shiftL` c.minShift
   in if n <= linear then ((n - 1) `shiftR` c.minShift)
@@ -93,7 +93,7 @@ smallBytes c = 1 `shiftL` c.smallShift
 
 export
 classCount : Config -> Bits64
-classCount c = classOf c (smallBytes c) + 1
+classCount c = bytesClass c (smallBytes c) + 1
 
 ||| The order of a chunk: its granules' logarithm. A slab of a class is the
 ||| chunk of four of its blocks rounded up to a power of two, a granule at

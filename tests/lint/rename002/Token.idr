@@ -15,3 +15,13 @@ data Tok : Type where
 export
 spend : Tok -> Nat
 spend MkTok = 1
+
+||| Two tokens' worth, by a helper of its own in a `where` block, which
+||| the test renames with `spend`, both in one run: a local name in its
+||| module alone.
+export
+double : Tok -> Nat
+double t = costOf t + costOf t
+  where
+    costOf : Tok -> Nat
+    costOf = spend

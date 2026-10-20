@@ -45,13 +45,13 @@ record Imported where
 ||| The imports of a file that are of our modules, by the names each of our
 ||| modules exports, with their paths.
 export
-importedFrom : (exportsOf : SortedMap String (List String)) -> Source.SourceFile -> List Imported
-importedFrom exportsOf f = mapMaybe imported f.mod.imports
+importedFrom : (ourExports : SortedMap String (List String)) -> Source.SourceFile -> List Imported
+importedFrom ourExports f = mapMaybe imported f.mod.imports
   where
     imported : Import -> Maybe Imported
     imported i =
       map (MkImported (show i.path) (Qualifier.pathFrom (show f.mod.moduleNS) (show i.path)) i)
-        (lookup (show i.path) exportsOf)
+        (lookup (show i.path) ourExports)
 
 ||| Each name the file writes bare that it takes from one of our modules
 ||| alone, by what it uses resolved (`uses`, each with its definer), and
@@ -63,7 +63,7 @@ unqualified : (uses : List (String, String)) -> List Imported -> Source.SourceFi
               (written : List (FC, Name)) -> List Refactor.Edit
 unqualified uses is f ds written =
   let defined = Finding.joined (map (.defines) ds)
-        ++ Finding.joined (map (.members) (Concept.conceptsOf f ds))
+        ++ Finding.joined (map (.members) (Concept.fileConcepts f ds))
       lower = [ o | d <- ds, o <- SortedMap.toList (freeIn d), not (capital (fst o)) ]
   in Finding.joined (map (bareEdits defined) (lower ++ SortedMap.toList capitals))
   where
@@ -77,8 +77,8 @@ unqualified uses is f ds written =
     freeIn : Rules.Declared -> Refactor.Free.Occurrences
     freeIn d = case d.decl.val of
       PImplementation _ _ _ _ _ _ _ _ _ (Just body) =>
-        Refactor.Free.allOf (map Refactor.Free.declAt body)
-      PInterface _ _ _ _ _ _ _ body => Refactor.Free.allOf (map Refactor.Free.declAt body)
+        Refactor.Free.combined (map Refactor.Free.declAt body)
+      PInterface _ _ _ _ _ _ _ body => Refactor.Free.combined (map Refactor.Free.declAt body)
       PData {} => empty
       PRecord {} => empty
       _ => Refactor.Free.declAt d.decl
@@ -97,8 +97,8 @@ unqualified uses is f ds written =
     -- the one import of ours that exports a name, if exactly one does,
     -- and the module takes the name from it alone, resolved: not from a
     -- library too
-    providerOf : String -> Maybe Imported
-    providerOf n = case List.filter (\i => n `elem` i.exports) is of
+    nameProvider : String -> Maybe Imported
+    nameProvider n = case List.filter (\i => n `elem` i.exports) is of
       [i] => if map fst (List.filter (\u => snd u == n) uses) == [i.name] then Just i else Nothing
       _ => Nothing
 
@@ -106,7 +106,7 @@ unqualified uses is f ds written =
     bareEdits : (defined : List String) -> (String, List (Int, Int)) -> List Refactor.Edit
     bareEdits defined (n, ps) =
       if n `elem` defined then [] else
-        case providerOf n of
+        case nameProvider n of
           Just i => let q = Qualifier.qualifiedName i.path n in
                     if q == n then []
                       else [ Refactor.MkEdit p (fst p, snd p + cast (length n)) q | p <- ps,

@@ -115,7 +115,7 @@ public export
 record Resolution where
   constructor MkResolution
   modules : List ResolvedModule
-  importsOf : SortedMap String (List (String, Bool))
+  moduleImports : SortedMap String (List (String, Bool))
 
 ||| What a module makes visible to its importers: itself, and what it
 ||| re-exports publicly, in turn, re-exports followed where `follow` says.
@@ -191,7 +191,7 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
       if not (isSuffixOf rel f.path) then pure Nothing else do
         let root = substr 0 (minus (length f.path) (length rel)) f.path
             dir = if root == "" then "." else pack (dropTrailingSlash (unpack root))
-        pkg <- packageOf dir
+        pkg <- rootPackage dir
         pure (Just (pkg ++ "/build/ttc"))
       where
         dropTrailingSlash : List Char -> List Char
@@ -199,11 +199,11 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
 
         ||| The directory holding a source root's package: the root, or its parent,
         ||| whichever holds an `.ipkg`; the root when neither does.
-        packageOf : String -> IO String
-        packageOf root = do
+        rootPackage : String -> IO String
+        rootPackage root = do
           here <- hasPackage root
           if here then pure root else do
-            let up = parentOf root
+            let up = directoryParent root
             there <- hasPackage up
             pure (if there then up else root)
           where
@@ -214,14 +214,14 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
               pure (any (isSuffixOf ".ipkg") es)
 
             ||| A path's directory, `.` for none.
-            directoryOf : String -> String
-            directoryOf p = case reverse (forget (Data.String.split (== '/') p)) of
+            pathDirectory : String -> String
+            pathDirectory p = case reverse (forget (Data.String.split (== '/') p)) of
               (_ :: d@(_ :: _)) => fastConcat (intersperse "/" (reverse d))
               _ => "."
 
-            parentOf : String -> String
-            parentOf "." = ".."
-            parentOf d = directoryOf d
+            directoryParent : String -> String
+            directoryParent "." = ".."
+            directoryParent d = pathDirectory d
 
     ||| Whether a file's TTC is there and newer than its source; a finding
     ||| otherwise.
@@ -305,8 +305,8 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
     ||| context keeps which modules are loaded, not which imports which. Only
     ||| the file's first bytes are read, and all of it when the head is
     ||| longer.
-    importsOf : {auto c : Ref Ctxt Defs} -> String -> Core (List (String, Bool))
-    importsOf m = do
+    ttcImports : {auto c : Ref Ctxt Defs} -> String -> Core (List (String, Bool))
+    ttcImports m = do
       let mi = nsAsModuleIdent (mkNamespace m)
       Right path <- nsToPath EmptyFC mi
         | Left _ => pure []
@@ -361,7 +361,7 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
     resolveModule ours mods implementations js (f, names) = do
       let m = show f.mod.moduleNS
       defs <- get Ctxt
-      is <- importsOf m
+      is <- ttcImports m
       perName <- traverse (definition defs) names
       let uses =
             Prelude.toList
@@ -372,8 +372,8 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
               (mapMaybe (\(_, a, _) => a) perName) (mapMaybe (\(_, _, g) => g) perName))
       where
         -- the head of a type, as its name is written
-        headOf : Defs -> Term vs -> Core String
-        headOf defs t = case getFnArgs t of
+        typeHead : Defs -> Term vs -> Core String
+        typeHead defs t = case getFnArgs t of
           (Ref _ _ n, _) => nameRoot <$> full (gamma defs) n
           _ => pure "_"
 
@@ -384,7 +384,7 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
         implemented defs t = case getFnArgs t of
           (Ref _ _ n, args) => do
             iface <- nameRoot <$> full (gamma defs) n
-            heads <- traverse (headOf defs) args
+            heads <- traverse (typeHead defs) args
             pure (unwords (iface :: heads))
           _ => pure "an implementation"
 
@@ -453,8 +453,8 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
 
         ||| A definition's accumulations, counted in the right-hand sides of its
         ||| clauses: at its end, by left folds, and structured.
-        accumulationsOf : List (Name, List Nat) -> GlobalDef -> Core (Nat, Nat, Nat)
-        accumulationsOf js g = do
+        defAccumulations : List (Name, List Nat) -> GlobalDef -> Core (Nat, Nat, Nat)
+        defAccumulations js g = do
           update Counting { atEnd := 0, leftFolds := 0, structured := 0 }
           defs <- get Ctxt
           me <- full (gamma defs) g.fullname
@@ -567,8 +567,8 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
                 dictionary (S k) t = case getFnArgs t of
                   (Ref _ _ d, args) => do
                     defs <- get Ctxt
-                    j <- joinsOf !(full (gamma defs) d)
-                    if j /= JoinsOther then pure j else firstOf args
+                    j <- implJoins !(full (gamma defs) d)
+                    if j /= JoinsOther then pure j else firstJoins args
                   (Meta _ hole _ _, _) => do
                     defs <- get Ctxt
                     Just g <- lookupCtxtExact hole (gamma defs)
@@ -583,15 +583,15 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
                       _ => pure JoinsOther
                   _ => pure JoinsOther
                   where
-                    firstOf : List (Term vs'') -> Core Joins
-                    firstOf [] = pure JoinsOther
-                    firstOf (a :: as) = do
+                    firstJoins : List (Term vs'') -> Core Joins
+                    firstJoins [] = pure JoinsOther
+                    firstJoins (a :: as) = do
                       j <- dictionary k a
-                      if j /= JoinsOther then pure j else firstOf as
+                      if j /= JoinsOther then pure j else firstJoins as
 
                     ||| What an implementation of a semigroup or monoid joins, told by its type.
-                    joinsOf : Name -> Core Joins
-                    joinsOf impl = do
+                    implJoins : Name -> Core Joins
+                    implJoins impl = do
                       known <- get Counting
                       case lookup (show impl) known.joins of
                         Just j => pure j
@@ -674,8 +674,8 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
           let refs = keys (fromMaybe empty g.refersToM) ++ keys (getRefs (UN Underscore) g.type)
                 ++ clauseRefs g.definition
           us <- mapMaybe id <$> traverse (used defs) refs
-          (atEnd, folds, structured) <- accumulationsOf js g
-          let (line, col) = startOf g.location
+          (atEnd, folds, structured) <- defAccumulations js g
+          let (line, col) = fcStart g.location
           me <- full (gamma defs) nm
           resolvedRefs <- traverse (full (gamma defs)) refs
           let ofOurs =
@@ -706,10 +706,10 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
                  pats)
             clauseRefs _ = []
 
-            startOf : FC -> (Int, Int)
-            startOf (MkFC _ s _) = s
-            startOf (MkVirtualFC _ s _) = s
-            startOf EmptyFC = (0, 0)
+            fcStart : FC -> (Int, Int)
+            fcStart (MkFC _ s _) = s
+            fcStart (MkVirtualFC _ s _) = s
+            fcStart EmptyFC = (0, 0)
 
     ||| Whether a name is not a data constructor.
     notConstructor : {auto c : Ref Ctxt Defs} -> Defs -> Name -> Core Bool
@@ -760,5 +760,5 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
         rs <- traverse (resolveModule ours mods implementations js)
                        [ (f, fromMaybe [] (lookup (show f.mod.moduleNS) byModule))
                          | (f, _) <- located ]
-        imports <- traverse (\m => (m,) <$> importsOf m) (Prelude.toList mods)
+        imports <- traverse (\m => (m,) <$> ttcImports m) (Prelude.toList mods)
         pure (Right (MkResolution rs (fromList imports)))

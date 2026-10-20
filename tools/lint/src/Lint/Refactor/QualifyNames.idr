@@ -59,7 +59,7 @@ qualifyNames =
           names = \i => show i.imp.nameAs == x || i.name == x || isSuffixOf ("." ++ x) i.name
       in case (List.filter (\i => names i && (n `elem` i.exports)) is, Span.bounds fc) of
            ([i], Just ((l, c), (l', c'))) =>
-             let shown = substr (cast c) (cast (c' - c)) (Subject.lineOf s l)
+             let shown = substr (cast c) (cast (c' - c)) (Subject.subjectLine s l)
                  q = Qualifier.qualifiedName i.path n
              in if l /= l' || shown /= x ++ "." ++ n || shown == q then []
                else [MkEdit (l, c) (l', c') q]
@@ -98,7 +98,7 @@ qualifyNames =
         s.file
 
     candidates : Project -> Subject -> List Refactoring.Candidate
-    candidates p s = case Project.usesOf p (show s.file.mod.moduleNS) of
+    candidates p s = case Project.moduleUses p (show s.file.mod.moduleNS) of
       Left why => [Refactoring.candidate "names" (Left why)]
       Right resolved =>
         let is = importedIn p s

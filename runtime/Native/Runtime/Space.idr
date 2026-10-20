@@ -70,7 +70,7 @@ sizeAt a = do
   if HeapObj.Shape.isFrame h
      then do l <- Memory.loadAt (ByteAddr.fromWord h) (0 - 8)
              Ordo.pure (HeapObj.LayoutWord.continuationWords l)
-     else Ordo.pure (HeapObj.Shape.objectWordsOf h)
+     else Ordo.pure (HeapObj.Shape.headerObjectWords h)
 
 export
 Memory Ordo where
@@ -80,10 +80,10 @@ Memory Ordo where
     hp <- Memory.allocationPointer
     let a = v - tag
     Ordo.pure (v .&. 1 == tag && ByteAddr.toWord base <= a && a < ByteAddr.toWord hp)
-  addressOf v = do
+  pointerAddress v = do
     tag <- Memory.pointerTag
     Ordo.pure (v - tag)
-  pointerOf a = do
+  addressPointer a = do
     tag <- Memory.pointerTag
     Ordo.pure (a + tag)
   objectSize = sizeAt
@@ -95,11 +95,12 @@ Memory Ordo where
         if HeapObj.Shape.isFrame h
            then do l <- Memory.loadAt (ByteAddr.fromWord h) (0 - 8)
                    Ordo.pure (HeapObj.LayoutWord.continuationScanned l)
-           else Ordo.pure (HeapObj.Shape.scannedOf h)
+           else Ordo.pure (HeapObj.Shape.headerScanned h)
   forwarded a = do
     h <- firstWord a
     Ordo.pure (if HeapObj.Shape.isForwarding h then Just (HeapObj.Shape.forwardedTo h) else Nothing)
-  setForwarded from to = Memory.storeAt (ByteAddr.fromWord from) 0 (HeapObj.Shape.forwardingHeader to)
+  setForwarded from to =
+    Memory.storeAt (ByteAddr.fromWord from) 0 (HeapObj.Shape.forwardingHeader to)
   readWord a i = Memory.loadAt (ByteAddr.fromWord a) (8 * i)
   writeWord a i v = Memory.storeAt (ByteAddr.fromWord a) (8 * i) v
   reserve n = do

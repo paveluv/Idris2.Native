@@ -40,8 +40,9 @@ import Idris.Syntax
 export
 distinction : List (Source.SourceFile, List Rules.Declared) -> Graph.Component
 distinction fds =
-  let grouped = filter (\m => groupOf m /= "") (map name fs)
-      members = filter (\m => length (filter (\o => groupOf o == groupOf m) grouped) >= 2) grouped
+  let grouped = filter (\m => moduleGroup m /= "") (map name fs)
+      members =
+        filter (\m => length (filter (\o => moduleGroup o == moduleGroup m) grouped) >= 2) grouped
       classes = twinClasses importedTwice
       small = filter (\(m, _) => m `elem` members) smallMembers
       joinable = length (nub (Finding.joined classes ++ map fst small))
@@ -49,7 +50,7 @@ distinction fds =
     (Graph.percent (minus (length members) joinable) (length members))
        ("group members that stand apart from their siblings: "
          ++ show (minus (length members) joinable) ++ " of " ++ show (length members))
-       (mapMaybe (groupOffender members classes small) (nub (map groupOf members)))
+       (mapMaybe (groupOffender members classes small) (nub (map moduleGroup members)))
   where
     fs : List Source.SourceFile
     fs = map fst fds
@@ -72,19 +73,19 @@ distinction fds =
       in [ (m, sort (nub is)) | (m, is) <- SortedMap.toList importersOf, length (nub is) >= 2 ]
 
     ||| A module's group: its name without its last part.
-    groupOf : String -> String
-    groupOf m = case reverse (List1.forget (Data.String.split (== '.') m)) of
+    moduleGroup : String -> String
+    moduleGroup m = case reverse (List1.forget (Data.String.split (== '.') m)) of
       (_ :: rest@(_ :: _)) => fastConcat (intersperse "." (reverse rest))
       _ => ""
 
     -- the members of groups too small to stand alone, with their sizes
     smallMembers : List (String, Nat)
     smallMembers =
-      [ (name f, size) | (f, ds) <- fds, groupOf (name f) /= "",
-        let size = sum (map (.size) (Concept.conceptsOf f ds)), size < Concept.pieceLines ]
+      [ (name f, size) | (f, ds) <- fds, moduleGroup (name f) /= "",
+        let size = sum (map (.size) (Concept.fileConcepts f ds)), size < Concept.pieceLines ]
 
     key : (String, List String) -> (String, List String)
-    key (m, is) = (groupOf m, is)
+    key (m, is) = (moduleGroup m, is)
 
     sameImporters : (String, List String) -> (String, List String) -> Bool
     sameImporters a b = key a == key b
@@ -100,7 +101,7 @@ distinction fds =
          (groupBy sameImporters (sortBy byGroupAndImporters (filter inGroup imported))))
       where
         inGroup : (String, List String) -> Bool
-        inGroup (m, _) = groupOf m /= ""
+        inGroup (m, _) = moduleGroup m /= ""
 
     lastName : String -> String
     lastName m = maybe m id (last' (List1.forget (Data.String.split (== '.') m)))
@@ -118,9 +119,9 @@ distinction fds =
     groupOffender : List String -> List (List String) -> List (String, Nat) -> String ->
                     Maybe Graph.Offender
     groupOffender members classes small g =
-      let mine = filter (\c => maybe False (\m => groupOf m == g) (head' c)) classes
-          tiny = filter (\(m, _) => groupOf m == g) small
-          size = length (filter (\m => groupOf m == g) members)
+      let mine = filter (\c => maybe False (\m => moduleGroup m == g) (head' c)) classes
+          tiny = filter (\(m, _) => moduleGroup m == g) small
+          size = length (filter (\m => moduleGroup m == g) members)
           joinable = nub (Finding.joined mine ++ map fst tiny)
           share = Graph.percent (length joinable) size
       in if null joinable || size < 2 then Nothing else

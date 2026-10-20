@@ -40,6 +40,7 @@ pruneImports =
         -- the import's line, and a blank line after it if one is before it:
         -- the last import of a block takes the block's blank line with it
         removal : Subject -> Int -> Edit
-        removal s l = if trim (Subject.lineOf s (l - 1)) == "" && trim (Subject.lineOf s (l + 1))
+        removal s l = if trim (Subject.subjectLine s (l - 1)) == ""
+          && trim (Subject.subjectLine s (l + 1))
           == ""
           then Edit.deleteLines l (l + 1) else Edit.deleteLines l l

@@ -31,7 +31,7 @@ utf8Length b = if b < 0x80 then 1 else if b < 0xE0 then 2 else if b < 0xF0 then 
 ||| The code point whose lead byte is at the offset into the payload, the
 ||| bytes after it its sequence's, trusted to be well formed.
 export
-decodeUtf8 : {auto 0 raw : Types.Kind.shapeOf k = Just HeapObj.Shape.RAW} -> Obj k ->
+decodeUtf8 : {auto 0 raw : Types.Kind.shape k = Just HeapObj.Shape.RAW} -> Obj k ->
              (offset : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
 decodeUtf8 a i = do
   b0 <- Obj.load8 a i
@@ -74,7 +74,7 @@ utf8Word c =
 ||| The code point `c` written at the offset into the payload, its
 ||| `utf8Bytes c` bytes.
 export
-encodeUtf8 : {auto 0 raw : Types.Kind.shapeOf k = Just HeapObj.Shape.RAW} -> Obj k ->
+encodeUtf8 : {auto 0 raw : Types.Kind.shape k = Just HeapObj.Shape.RAW} -> Obj k ->
              (offset, c : Bits64) -> Runtime.Ordo.Op Runtime.Ordo ()
 encodeUtf8 a j c =
   let w = utf8Word c in

@@ -29,17 +29,17 @@ rowWords = 7
 ||| words for a number of no message.
 export covering
 errorText : Table 0 937 Bits64
-errorText k _ = wordOf (cast (8 * (k `mod` rowWords))) 8 (message (k `div` rowWords))
+errorText k _ = messageWord (cast (8 * (k `mod` rowWords))) 8 (message (k `div` rowWords))
   where
     -- `n` bytes of the message from its character `skip`, the first the
     -- low one, zero past its end
-    wordOf : (skip, n : Nat) -> String -> Bits64
-    wordOf _ Z _ = 0
-    wordOf skip (S j) s = case strUncons s of
+    messageWord : (skip, n : Nat) -> String -> Bits64
+    messageWord _ Z _ = 0
+    messageWord skip (S j) s = case strUncons s of
       Nothing => 0
       Just (c, rest) => case skip of
-        S skip' => wordOf skip' (S j) rest
-        Z => cast (ord c) + prim__shl_Bits64 (wordOf Z j rest) 8
+        S skip' => messageWord skip' (S j) rest
+        Z => cast (ord c) + prim__shl_Bits64 (messageWord Z j rest) 8
 
     message : Int -> String
     message 0 = "Success"

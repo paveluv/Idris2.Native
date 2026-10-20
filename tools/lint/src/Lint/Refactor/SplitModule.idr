@@ -81,8 +81,8 @@ splitModule args =
     named ns = joinBy ", " (map (\n => "`" ++ n ++ "`") ns)
 
     ||| The split of a module's declarations by the concepts named.
-    splitOf : Subject -> (names : List String) -> List Concept -> Split
-    splitOf s names cs =
+    namedSplit : Subject -> (names : List String) -> List Concept -> Split
+    namedSplit s names cs =
       MkSplit (filter moving s.declared) (filter (not . moving) s.declared)
               (Finding.joined (map (.members) (filter named' cs)))
                 (Finding.joined (map (.members) (filter (not . named') cs)))
@@ -100,8 +100,8 @@ splitModule args =
 
     ||| The private concepts what moves reaches and what stays does not, which
     ||| move with it, and those both reach, which keep a split from being made.
-    helpersOf : List Concept -> (names : List String) -> (List String, List String)
-    helpersOf cs names =
+    movingHelpers : List Concept -> (names : List String) -> (List String, List String)
+    movingHelpers cs names =
       let privates = map (.name) (filter (\c => not c.offered && not (c.name `elem` names)) cs)
           kept = map (.name) (filter (\c => c.offered && not (c.name `elem` names)) cs)
           fromMoved = reachedFrom names
@@ -115,7 +115,7 @@ splitModule args =
     candidates : Project -> Subject -> List Refactoring.Candidate
     candidates p s = case args of
       (into :: names@(_ :: _)) =>
-        let cs = Concept.conceptsOf s.file s.declared in
+        let cs = Concept.fileConcepts s.file s.declared in
         if all (\n => any (\c => c.name == n) cs) names
           then
             [Refactoring.candidate ("split " ++ joinBy ", " names ++ " into " ++ into)
@@ -124,25 +124,26 @@ splitModule args =
       _ => []
       where
         -- a declaration's lines, from what is attached above it
-        rangeOf : Subject -> Rules.Declared -> (Int, Int)
-        rangeOf s d = let (a, b) =
+        declRange : Subject -> Rules.Declared -> (Int, Int)
+        declRange s d = let (a, b) =
                             Span.lineSpan d.decl.fc in
-                              (Extent.attachedFrom (Subject.linesOf s) a, b)
+                              (Extent.attachedFrom (Subject.subjectLines s) a, b)
 
         -- a range taken out, with a blank line after it if one is before
         -- it, or the blank lines before it if nothing but blank lines
         -- follows it
         deletion : Subject -> (Int, Int) -> Edit
         deletion s (a, b) =
-          if all (\l => trim l == "") (drop (cast (b + 1)) (Subject.linesOf s))
+          if all (\l => trim l == "") (drop (cast (b + 1)) (Subject.subjectLines s))
             then Edit.deleteLines (blankFrom a) b
-          else if trim (Subject.lineOf s (b + 1)) == ""
-            && (a == 0 || trim (Subject.lineOf s (a - 1)) == "")
+          else if trim (Subject.subjectLine s (b + 1)) == ""
+            && (a == 0 || trim (Subject.subjectLine s (a - 1)) == "")
             then Edit.deleteLines a (b + 1)
           else Edit.deleteLines a b
           where
             blankFrom : Int -> Int
-            blankFrom l = if l > 0 && trim (Subject.lineOf s (l - 1)) == "" then blankFrom (l - 1)
+            blankFrom l = if l > 0 && trim (Subject.subjectLine s (l - 1)) == ""
+              then blankFrom (l - 1)
               else l
 
         importLine : String -> String
@@ -187,8 +188,8 @@ splitModule args =
         newText s old new names needsOld ranges =
           let (publics, privates) =
                 partition (isPrefixOf "import public")
-                  (sort (importsOf ++ (if needsOld then [importLine old] else [])))
-              defaults = filter (isPrefixOf "%default") (map trim (Subject.linesOf s))
+                  (sort (importLines ++ (if needsOld then [importLine old] else [])))
+              defaults = filter (isPrefixOf "%default") (map trim (Subject.subjectLines s))
           in unlines (["||| " ++ named names ++ ", from `" ++ old ++ "`.", "module " ++ new, ""]
                       ++ block publics ++ block privates
                       ++ take 1 defaults ++ [""] ++ body)
@@ -198,9 +199,10 @@ splitModule args =
             block [] = []
             block ls = ls ++ [""]
 
-            importsOf : List String
-            importsOf =
-              map (\i => trim (Subject.lineOf s (fst (Span.lineSpan i.loc)))) s.file.mod.imports
+            importLines : List String
+            importLines =
+              map (\i => trim (Subject.subjectLine s (fst (Span.lineSpan i.loc))))
+                s.file.mod.imports
 
             piece : (Int, Int) -> List String
             piece (a, b) = Subject.linesBetween s a b
@@ -213,12 +215,12 @@ splitModule args =
                Either String Change
         plan p s into names cs = do
           let old = show s.file.mod.moduleNS
-              (helpers, shared) = helpersOf cs names
+              (helpers, shared) = movingHelpers cs names
           when (not (null shared)) $
             Left
               ("both what moves and what stays use the private " ++ named shared
                ++ ", which the split would have to export")
-          let sp = splitOf s (names ++ helpers) cs
+          let sp = namedSplit s (names ++ helpers) cs
               needsOld = mentionsAny sp.keptMembers sp.moved
               needsNew = mentionsAny sp.movedMembers sp.kept
           when (any (\d => Span.startColumn d.decl.fc /= 0) sp.moved) $
@@ -227,8 +229,8 @@ splitModule args =
             Left
               ("what moves and what stays refer to each other: the two modules would import " ++
                "each other")
-          l <- Listing.listingOf p.packages old into
-          let ranges = merged s (map (rangeOf s) sp.moved)
+          l <- Listing.packageListing p.packages old into
+          let ranges = merged s (map (declRange s) sp.moved)
           pure (MkChange
                   ([ (s.file.path,
                     map (deletion s) ranges ++ (if needsNew then [importAfterLast s into] else [])),

@@ -64,7 +64,7 @@ ownerIn : Source.SourceFile -> List Rules.Declared -> Rules.Declared -> String
 ownerIn f ds =
   let types = Finding.joined (map typeNames ds)
       interfaces = Finding.joined (map interfaceNames ds)
-      placed = belongsTo (keyOf f types) types interfaces
+      placed = belongsTo (keyType f types) types interfaces
       claimed =
         the (SortedMap String String)
           (fromList [ (n, placed d) | d <- ds, isClaim d, n <- d.defines ])
@@ -124,24 +124,24 @@ ownerIn f ds =
         own = fromMaybe "" (head' d.defines)
 
     ||| The module's key type: the one it is named after, if it defines it.
-    keyOf : Source.SourceFile -> List String -> Maybe String
-    keyOf f types = find (\t => toLower t == toLower (Rules.lastPart (show f.mod.moduleNS))) types
+    keyType : Source.SourceFile -> List String -> Maybe String
+    keyType f types = find (\t => toLower t == toLower (Rules.lastPart (show f.mod.moduleNS))) types
 
 ||| A module's concepts, in the order their first declarations are written.
 export
-conceptsOf : Source.SourceFile -> List Rules.Declared -> List Concept
-conceptsOf f ds =
+fileConcepts : Source.SourceFile -> List Rules.Declared -> List Concept
+fileConcepts f ds =
   let owner = ownerIn f ds
       names = nub (map owner ds)
       memberOf =
-        the (SortedMap String String) (fromList [ (m, owner d) | d <- ds, m <- membersOf d ])
+        the (SortedMap String String) (fromList [ (m, owner d) | d <- ds, m <- declMembers d ])
   in map (concept owner memberOf) names
   where
     ||| The names a declaration contributes to its concept: those it defines,
     ||| and a type's constructors, fields and methods; an implementation, by
     ||| what it implements.
-    membersOf : Rules.Declared -> List String
-    membersOf d = case d.decl.val of
+    declMembers : Rules.Declared -> List String
+    declMembers d = case d.decl.val of
       PData _ _ _ (MkPData _ n _ _ cons) => nameRoot n
         :: foldr (\c, rest => map (nameRoot . (.val) . snd) (forget c.val.names) ++ rest) [] cons
       PRecord _ _ _ (MkPRecord n _ _ con fields) =>
@@ -162,8 +162,8 @@ conceptsOf f ds =
       PImplementation v _ _ _ _ _ _ _ _ _ => v /= Private
       _ => not (null d.visible)
 
-    linesOf : Rules.Declared -> Nat
-    linesOf d = let (a, b) = Refactor.Span.lineSpan d.decl.fc in cast (b - a + 1)
+    declLines : Rules.Declared -> Nat
+    declLines d = let (a, b) = Refactor.Span.lineSpan d.decl.fc in cast (b - a + 1)
 
     concept : (Rules.Declared -> String) -> SortedMap String String -> String -> Concept
     concept owner memberOf n =
@@ -172,8 +172,8 @@ conceptsOf f ds =
             nub
               (filter (/= n)
                (mapMaybe (\m => lookup m memberOf) (Finding.joined (map (.mentions) mine))))
-      in MkConcept n (nub (Finding.joined (map membersOf mine))) (any exportedHere mine) refs
-        (sum (map linesOf mine))
+      in MkConcept n (nub (Finding.joined (map declMembers mine))) (any exportedHere mine) refs
+        (sum (map declLines mine))
 
 ||| The concept a use of a module's name is of: the one the name is a
 ||| member of; for an implementation found by search, named by what it
@@ -193,12 +193,12 @@ conceptOfUse cs n True = case words n of
 ||| back to it.
 export
 reachable : List Concept -> String -> SortedSet String
-reachable cs n = go empty (refersOf n)
+reachable cs n = go empty (nameRefers n)
   where
-    refersOf : String -> List String
-    refersOf c = maybe [] (.refers) (find (\x => x.name == c) cs)
+    nameRefers : String -> List String
+    nameRefers c = maybe [] (.refers) (find (\x => x.name == c) cs)
 
     go : SortedSet String -> List String -> SortedSet String
     go seen [] = seen
     go seen (c :: rest) = if contains c seen then go seen rest
-      else go (insert c seen) (refersOf c ++ rest)
+      else go (insert c seen) (nameRefers c ++ rest)

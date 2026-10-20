@@ -4,8 +4,8 @@
 -- documentation in Types.Kind describes it, is written out by hand
 -- (`layout`), and compared with the shape description twice: as the
 -- compiler reads it, from a typed header (`objectWords`, `scanned`), and
--- as the collector reads it, from the header's word (`objectWordsOf`,
--- `scannedOf`). Every kind is checked with each part at its boundaries,
+-- as the collector reads it, from the header's word (`headerObjectWords`,
+-- `headerScanned`). Every kind is checked with each part at its boundaries,
 -- so that a change to a shape, or to the shape a kind has, that breaks a
 -- kind's layout is caught. The word must also carry the kind's shape and
 -- tag in its low bits.
@@ -66,13 +66,13 @@ check : (k : Kind ** Header TestEnc k) -> List String
 check (k ** h) =
   let w = cast {to = Bits64} (encodeHeader h)
       typed = (objectWords h, scanned h)
-      (size, (from, count)) = (objectWordsOf w, scannedOf w)
+      (size, (from, count)) = (headerObjectWords w, headerScanned w)
       words = (cast {to = Nat} size, (cast {to = Nat} from, cast {to = Nat} count))
   in
-    (if Just (shapeIdOf w) /= map shapeId (shapeOf k)
-     then [show h ++ ": the shape read is " ++ show (shapeIdOf w)] else [])
+    (if Just (headerShapeId w) /= map shapeId (shape k)
+     then [show h ++ ": the shape read is " ++ show (headerShapeId w)] else [])
      ++
-       (if field {s = VALUES} Tag w /= tagOf k
+       (if field {s = VALUES} Tag w /= tag k
         then [show h ++ ": the tag read is " ++ show (field {s = VALUES} Tag w)] else [])
      ++
        (if typed /= layout h

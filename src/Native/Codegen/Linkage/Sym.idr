@@ -63,27 +63,27 @@ data Sym
     SymConstants
 
 public export
-symLabel : Sym -> X86.Asm.Label
-symLabel SymStart = 0
-symLabel SymMain = 1
-symLabel SymHalt = 2
-symLabel SymCrash = 3
-symLabel SymUnsupported = 4
-symLabel SymAllocSlow = 5
-symLabel SymHALT = 7
-symLabel SymArgs = 10
-symLabel SymRoots = 11
-symLabel SymNRoots = 12
-symLabel SymScratch = 13
-symLabel SymApply = 14
-symLabel SymAllocMutable = 16
-symLabel SymStackLimit = 17
-symLabel SymStackOverflow = 18
-symLabel SymMsgStackOverflow = 19
-symLabel SymArgv = 20
-symLabel SymRuntimeStart = 21
-symLabel SymRuntime = 22
-symLabel SymConstants = 23
+label : Sym -> X86.Asm.Label
+label SymStart = 0
+label SymMain = 1
+label SymHalt = 2
+label SymCrash = 3
+label SymUnsupported = 4
+label SymAllocSlow = 5
+label SymHALT = 7
+label SymArgs = 10
+label SymRoots = 11
+label SymNRoots = 12
+label SymScratch = 13
+label SymApply = 14
+label SymAllocMutable = 16
+label SymStackLimit = 17
+label SymStackOverflow = 18
+label SymMsgStackOverflow = 19
+label SymArgv = 20
+label SymRuntimeStart = 21
+label SymRuntime = 22
+label SymConstants = 23
 
 ||| Names as the ABI documents write them (for dumps).
 public export

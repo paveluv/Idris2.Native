@@ -6,7 +6,7 @@
 ||| arithmetic applies (there is no `Num`), so an id is not computed, nor a
 ||| count or another code taken for one. One is a constructor's place in its
 ||| type's declaration (`declared`), which the representation contract names
-||| (`Types.Represents.listCons`), or read from a header (`ofHeader`); one
+||| (`Types.Represents.listCons`), or read from a header (`fromHeader`); one
 ||| goes only into a header (`withConstructor`). No literal is one: a
 ||| `fromInteger` of its own would leave every literal of a module that
 ||| imports it two readings.
@@ -38,8 +38,8 @@ declared n = MkConstructorId n
 
 ||| The id a constructor's header holds.
 export %inline
-ofHeader : (header : Bits64) -> ConstructorId
-ofHeader h = MkConstructorId (Header.readPart Header.ConId h)
+fromHeader : (header : Bits64) -> ConstructorId
+fromHeader h = MkConstructorId (Header.readPart Header.ConId h)
 
 ||| A constructor's header parts with its id.
 export %inline

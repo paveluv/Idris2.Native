@@ -163,7 +163,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
         next1' = next1 + length p.statics
         tableLabels = zip (map fst tables) [next1' .. next1' + length tables]
         next2 = next1' + length tables
-    let params = fromList (map (\f => (f.name, map LocatedIR.Reg.regTy f.params)) p.functions)
+    let params = fromList (map (\f => (f.name, map LocatedIR.Reg.ty f.params)) p.functions)
         -- `idris_apply` stages a saturated closure's arguments in SCRATCH,
         -- and passes them as a call does, all `Val`s; a closure's arity is
         -- its function's number of parameters, and its function is CPS.
@@ -209,7 +209,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
       emits = traverse_ emit
 
       sym : Linkage.Sym -> Asm.Label
-      sym = Linkage.Sym.symLabel
+      sym = Linkage.Sym.label
 
       abi : Target.Abi
       abi = Target.x86_64.abi
@@ -268,8 +268,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                        Maybe (LocatedIR.Label, (List (LocatedIR.Reg enc), Integer))
               resume b = do
                 c <- LocatedIR.Terminator.termCont b.term
-                let vals = filter (IRCommon.Ty.gcVisible . LocatedIR.Reg.regTy) c.live
-                    raws = filter (not . IRCommon.Ty.gcVisible . LocatedIR.Reg.regTy) c.live
+                let vals = filter (IRCommon.Ty.gcVisible . LocatedIR.Reg.ty) c.live
+                    raws = filter (not . IRCommon.Ty.gcVisible . LocatedIR.Reg.ty) c.live
                 pure (c.resume,
                   (vals ++ raws,
                    HeapObj.LayoutWord.layoutWord (cast (length vals)) (cast (length raws))))
@@ -280,7 +280,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
 
           ||| The register's slot, recorded as used.
           useSlot : LocatedIR.Reg enc -> Render enc Nat
-          useSlot r = do let n = LocatedIR.Reg.slotOf r
+          useSlot r = do let n = LocatedIR.Reg.slot r
                          uses (Linkage.MkAreas 0 0 (S n) 0)
                          pure n
 
@@ -298,16 +298,16 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
 
           ||| Where values of the types travel between functions.
           placeTys : List (IRCommon.Ty enc) -> List Target.Loc
-          placeTys tys = Target.place abi (map IRCommon.Ty.classOf tys)
+          placeTys tys = Target.place abi (map IRCommon.Ty.class tys)
 
           ||| Take values from where `place` puts them into the registers' slots: a
           ||| function's parameters on entry, or a direct call's results after it.
           ||| The registers first, then `ARGS`, through rax and rcx.
           takeValues : List (LocatedIR.Reg enc) -> Render enc ()
           takeValues ds = do
-            let tys = map LocatedIR.Reg.regTy ds
+            let tys = map LocatedIR.Reg.ty ds
                 items = zip (placeTys tys) ds
-            uses (Linkage.MkAreas (Target.argsWords abi (map IRCommon.Ty.classOf tys)) 0 0 0)
+            uses (Linkage.MkAreas (Target.argsWords abi (map IRCommon.Ty.class tys)) 0 0 0)
             traverse_ (\(l, d) => case l of
                                     Target.InWordReg r => store d (reg64 r)
                                     Target.InFloatReg f => do n <- useSlot d
@@ -338,8 +338,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
 
           ||| The type two compared operands share: the register's, if either is one.
           pairTy : LocatedIR.Opnd enc -> LocatedIR.Opnd enc -> IRCommon.Ty enc
-          pairTy (LocatedIR.Opnd.R x) _ = LocatedIR.Reg.regTy x
-          pairTy _ (LocatedIR.Opnd.R y) = LocatedIR.Reg.regTy y
+          pairTy (LocatedIR.Opnd.R x) _ = LocatedIR.Reg.ty x
+          pairTy _ (LocatedIR.Opnd.R y) = LocatedIR.Reg.ty y
           pairTy (LocatedIR.Opnd.StaticRef _) _ = IRCommon.Ty.Val
           pairTy _ (LocatedIR.Opnd.StaticRef _) = IRCommon.Ty.Val
           pairTy _ _ = IRCommon.Ty.W64
@@ -418,8 +418,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                   (List (LocatedIR.Reg enc), List (LocatedIR.Reg enc))
           saved False live = ([], live)
           saved True live =
-            (filter (IRCommon.Ty.gcVisible . LocatedIR.Reg.regTy) live,
-             filter (not . IRCommon.Ty.gcVisible . LocatedIR.Reg.regTy) live)
+            (filter (IRCommon.Ty.gcVisible . LocatedIR.Reg.ty) live,
+             filter (not . IRCommon.Ty.gcVisible . LocatedIR.Reg.ty) live)
 
           ||| Save the live slots across a call, as `saved` divides them, the ones on
           ||| the stack with a padding word when their number is odd so the call sees
@@ -521,7 +521,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
           ||| registers, then the word registers, since rcx is one of them.
           putValues : List (IRCommon.Ty enc) -> List (LocatedIR.Opnd enc) -> Render enc ()
           putValues tys xs = do
-            uses (Linkage.MkAreas (Target.argsWords abi (map IRCommon.Ty.classOf tys)) 0 0 0)
+            uses (Linkage.MkAreas (Target.argsWords abi (map IRCommon.Ty.class tys)) 0 0 0)
             let items = zip3 (placeTys tys) tys xs
             traverse_ (\(l, t, x) => case l of
                                        Target.InArgs i => do emit
@@ -553,7 +553,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
             where
               ||| The type of an operand: its register's, or a word for an immediate.
               opTy : LocatedIR.Opnd enc -> IRCommon.Ty enc
-              opTy (LocatedIR.Opnd.R r) = LocatedIR.Reg.regTy r
+              opTy (LocatedIR.Opnd.R r) = LocatedIR.Reg.ty r
               opTy (LocatedIR.Opnd.Imm _) = IRCommon.Ty.W64
               opTy (LocatedIR.Opnd.StaticRef _) = IRCommon.Ty.Val
 
@@ -590,13 +590,13 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                    emits [Asm.Jcc (cond r) (blk t), Asm.Jmp (blk f)]
             LocatedIR.Terminator.Switch r cs d => do
                                    loadReg Asm.RAX r
-                                   traverse_ (\(v, l) => do compareWith (LocatedIR.Reg.regTy r)
+                                   traverse_ (\(v, l) => do compareWith (LocatedIR.Reg.ty r)
                                                               (LocatedIR.Opnd.Imm v)
                                                             emit (Asm.Jcc Asm.E (blk l))) cs
                                    emit (Asm.Jmp (blk d))
             LocatedIR.Terminator.Call f args c => do
               l <- funLabel f
-              pushCont blk c (argRegsOf args)
+              pushCont blk c (argRegs args)
               putValues !(paramTys f args) args
               emit (Asm.Jmp l)
             LocatedIR.Terminator.TailCall f args => do
@@ -642,8 +642,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                 ("the rendering does not support " ++ show (LocatedIR.Terminator.termName t)
                  ++ " yet")
             where
-              argRegsOf : List (LocatedIR.Opnd enc) -> List (LocatedIR.Reg enc)
-              argRegsOf = Data.Builder.joinMap LocatedIR.Opnd.opRegs
+              argRegs : List (LocatedIR.Opnd enc) -> List (LocatedIR.Reg enc)
+              argRegs = Data.Builder.joinMap LocatedIR.Opnd.opRegs
 
               ||| Allocate and initialise the continuation of a non-tail call, and make it
               ||| the current one. Its layout word counts fewer than 2^24 GC-visible and
@@ -652,8 +652,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
               pushCont : (LocatedIR.Label -> Asm.Label) -> LocatedIR.Cont enc ->
                          (alsoLive : List (LocatedIR.Reg enc)) -> Render enc ()
               pushCont blk c alsoLive = do
-                let vals = filter (IRCommon.Ty.gcVisible . LocatedIR.Reg.regTy) c.live
-                    raws = filter (not . IRCommon.Ty.gcVisible . LocatedIR.Reg.regTy) c.live
+                let vals = filter (IRCommon.Ty.gcVisible . LocatedIR.Reg.ty) c.live
+                    raws = filter (not . IRCommon.Ty.gcVisible . LocatedIR.Reg.ty) c.live
                 when (length vals >= 16777216 || length raws >= 16777216) $
                   failWith "a continuation keeps more values than its layout word counts"
                 allocate (16 + 8 * length c.live) (c.live ++ alsoLive)
@@ -694,7 +694,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
               instr blk instr' = case instr' of
                 LocatedIR.Instr.Const d c => do emit
                                                   (Asm.MovRI Asm.RAX
-                                                   (immWord (LocatedIR.Reg.regTy d) c))
+                                                   (immWord (LocatedIR.Reg.ty d) c))
                                                 store d Asm.RAX
                 LocatedIR.Instr.CodeAddr d f => do l <- funLabel f
                                                    emit (Asm.Lea Asm.RAX (Asm.MRip l 0))
@@ -703,7 +703,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                                      emit (Asm.Lea Asm.RAX (Asm.MRip l ptag))
                                                      store d Asm.RAX
                 LocatedIR.Instr.Arith o d x y => do
-                                  case LocatedIR.Reg.regTy d of
+                                  case LocatedIR.Reg.ty d of
                                     IRCommon.Ty.Fix {fx} => fixArith o x y Nothing
                                     _ => wordArith o x y Nothing
                                   store d Asm.RAX
@@ -720,7 +720,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                                   IRCommon.Op.Complement => Asm.Not Asm.RAX)
                                   store d Asm.RAX
                 LocatedIR.Instr.ArithOv o d x y l => do
-                                  case LocatedIR.Reg.regTy d of
+                                  case LocatedIR.Reg.ty d of
                                     IRCommon.Ty.Fix {fx} => fixArith o x y (Just (blk l))
                                     _ => wordArith o x y (Just (blk l))
                                   store d Asm.RAX
@@ -817,7 +817,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                         (prim__shl_Integer 1 (cast (snd (Types.Header.place p)))
                                          - 1)),
                                      Asm.Alu Asm.CMP Asm.RCX Asm.RDX, Asm.Jcc Asm.A big]
-                                  size <- sizeOf p
+                                  size <- partSize p
                                   if mutableKind k
                                      then allocateMutable (\r => do n <- useSlot count
                                                                     emit (Asm.MovRM r (slotMem n))
@@ -983,16 +983,16 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
 
                   -- The object's bytes, from the count in `r`: the header word, then the
                   -- elements as words, or the bytes rounded up to words.
-                  sizeOf : Types.Header.HeaderPart k' -> Render enc (Asm.Reg64 -> List Asm.Instr)
-                  sizeOf Types.Header.ArrayElems =
+                  partSize : Types.Header.HeaderPart k' -> Render enc (Asm.Reg64 -> List Asm.Instr)
+                  partSize Types.Header.ArrayElems =
                     pure (\r => [Asm.ShiftI Asm.SHL r 3, Asm.AluI Asm.ADD r 8])
                   -- a string made by its count is not known to be ASCII: its bit is 0,
                   -- which only costs the fast paths
-                  sizeOf Types.Header.StringBytes = pure bytesSize
-                  sizeOf Types.Header.StringChars =
+                  partSize Types.Header.StringBytes = pure bytesSize
+                  partSize Types.Header.StringChars =
                     pure (\r => Asm.ShiftI Asm.SHL r 2 :: bytesSize r)
-                  sizeOf Types.Header.BufferBytes = pure bytesSize
-                  sizeOf q = failWith ("AllocSized cannot size an object by " ++ show q)
+                  partSize Types.Header.BufferBytes = pure bytesSize
+                  partSize q = failWith ("AllocSized cannot size an object by " ++ show q)
 
                   ||| Allocate an object whose size depends on `count`, as `allocate` does a
                   ||| fixed one: `size r` turns the count in `r` into the object's bytes. The
@@ -1030,7 +1030,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                   ||| What a load or store through the register subtracts: the pointer tag if
                   ||| the register holds a pointer word, nothing if it holds an address.
                   baseTag : LocatedIR.Reg enc -> Int
-                  baseTag r = if IRCommon.Ty.gcVisible (LocatedIR.Reg.regTy r) then ptag else 0
+                  baseTag r = if IRCommon.Ty.gcVisible (LocatedIR.Reg.ty r) then ptag else 0
 
                   ||| Arithmetic on raw words, into rax.
                   wordArith : IRCommon.Op.ArithOp -> LocatedIR.Opnd enc -> LocatedIR.Opnd enc ->

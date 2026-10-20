@@ -170,21 +170,21 @@ splitBy (a :: as) val = do
 
 ||| The tag of a sum's value: its first register.
 export
-tagOf : Value enc v -> Maybe (TermIR.Opnd v IRCommon.Ty.W64)
-tagOf (MkValue (Flat.Exp.Word :: _) (t :: _)) = Just t
-tagOf _ = Nothing
+valueTag : Value enc v -> Maybe (TermIR.Opnd v IRCommon.Ty.W64)
+valueTag (MkValue (Flat.Exp.Word :: _) (t :: _)) = Just t
+valueTag _ = Nothing
 
 ||| A word, the value of one register of an integer type.
 export
-wordOf : Value enc v -> Maybe (TermIR.Opnd v IRCommon.Ty.W64)
-wordOf (MkValue [Flat.Exp.Word] [w]) = Just w
-wordOf _ = Nothing
+valueWord : Value enc v -> Maybe (TermIR.Opnd v IRCommon.Ty.W64)
+valueWord (MkValue [Flat.Exp.Word] [w]) = Just w
+valueWord _ = Nothing
 
 ||| A double, the value of one register of `Double`.
 export
-doubleOf : Value enc v -> Maybe (TermIR.Opnd v IRCommon.Ty.F64)
-doubleOf (MkValue [Flat.Exp.Dbl] [f]) = Just f
-doubleOf _ = Nothing
+valueDouble : Value enc v -> Maybe (TermIR.Opnd v IRCommon.Ty.F64)
+valueDouble (MkValue [Flat.Exp.Dbl] [f]) = Just f
+valueDouble _ = Nothing
 
 ||| Zeros for the registers of the layout: what the registers of a sum's
 ||| other constructors hold.
@@ -242,8 +242,8 @@ conValue p fs = do
 
 ||| The registers of a constructor's fields in a value of its data type.
 export
-fieldsOf : Placement -> Value enc v -> Maybe (Value enc v)
-fieldsOf p val = do
+valueFields : Placement -> Value enc v -> Maybe (Value enc v)
+valueFields p val = do
   rest <- case p.tag of
     Nothing => Just val
     Just _ => snd <$> takeRegs [Flat.Exp.Word] val
@@ -350,7 +350,7 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
   -- Words and doubles
 
   word : Value enc v -> B (TermIR.Opnd v IRCommon.Ty.W64)
-  word x = maybe (TermIR.Build.unsupported "a word of another layout") pure (wordOf x)
+  word x = maybe (TermIR.Build.unsupported "a word of another layout") pure (valueWord x)
 
   ------------------------------------------------------------------------------
   -- Expressions
@@ -422,7 +422,7 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
                    Nothing =>
                      TermIR.Build.unsupported
                        ("the constructor " ++ show c ++ ", whose layout is not its type's")
-      e@(Flat.Exp.FCase _ scr alts def) => case typeOf (layouts env) e of
+      e@(Flat.Exp.FCase _ scr alts def) => case exprType (layouts env) e of
         Nothing => do
           _ <- TermIR.Build.joinPoint [] $ \exit =>
             dispatch env scr alts def (\env', b => do _ <- expr env' b; exit [])
@@ -611,7 +611,7 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
 
         ||| A constructor's value, from its fields'.
         construct : Flat.Exp.Skeleton -> Name -> Value enc v -> B (Value enc v)
-        construct sk c fs = case Flat.Exp.shapeOf pr.shapes sk of
+        construct sk c fs = case Flat.Exp.skeletonShape pr.shapes sk of
           Just (Flat.Exp.DataShape cs) => case placement cs c of
             Just (_, p) => conValue p fs
             Nothing =>
@@ -623,9 +623,9 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
 
         ||| The skeleton and layout of an expression's value, from the variables'
         ||| and the callees' results.
-        typeOf : SortedMap Name (Flat.Exp.Skeleton, Flat.Exp.Layout) -> Flat.Exp ->
-                 Maybe (Flat.Exp.Skeleton, Flat.Exp.Layout)
-        typeOf env = Flat.Exp.expType (\x => lookup x env)
+        exprType : SortedMap Name (Flat.Exp.Skeleton, Flat.Exp.Layout) -> Flat.Exp ->
+                   Maybe (Flat.Exp.Skeleton, Flat.Exp.Layout)
+        exprType env = Flat.Exp.expType (\x => lookup x env)
                              (\n =>
                                (\c => (c.form.resultSkeleton, c.form.result)) <$> lookup n
                                pr.callees)
@@ -681,7 +681,7 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
 
             double : Value enc v -> B (TermIR.Opnd v IRCommon.Ty.F64)
             double x =
-              maybe (TermIR.Build.unsupported "a double of another layout") pure (doubleOf x)
+              maybe (TermIR.Build.unsupported "a double of another layout") pure (valueDouble x)
 
             withHeld : PrimType -> String -> (Held -> B a) -> B a
             withHeld t what k = case held t of
@@ -882,13 +882,13 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
 
         conCase : Env enc v -> Flat.Exp.Skeleton -> Value enc v -> List Flat.Exp.FlatAlt -> E ->
                   (Env enc v -> Flat.Exp -> E) -> E
-        conCase env sk x alts other k = case Flat.Exp.shapeOf pr.shapes sk of
+        conCase env sk x alts other k = case Flat.Exp.skeletonShape pr.shapes sk of
           Just (Flat.Exp.DataShape [c]) => case find (named c.name) alts of
             Just (Flat.Exp.FConAlt _ _ vs b) =>
               alternative env (MkPlacement Nothing [] (Flat.Exp.fieldsLayout c.fields) []) x vs b k
             _ => other
           Just (Flat.Exp.DataShape cs) => do
-            t <- maybe (TermIR.Build.unsupported "a sum without its tag") pure (tagOf x)
+            t <- maybe (TermIR.Build.unsupported "a sum without its tag") pure (valueTag x)
             let branches = mapMaybe (\a => case a of
                                              Flat.Exp.FConAlt cn _ vs b => do
                                                         (c, p) <- placement cs cn
@@ -912,7 +912,7 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
             alternative : Env enc v -> Placement -> Value enc v -> List Flat.Exp.FlatVar ->
                           Flat.Exp ->
                           (Env enc v -> Flat.Exp -> E) -> E
-            alternative env p x vs b k = case fieldsOf p x >>= bindFields env vs of
+            alternative env p x vs b k = case valueFields p x >>= bindFields env vs of
               Just env' => k env' b
               Nothing =>
                 TermIR.Build.unsupported "an alternative whose fields are not its constructor's"

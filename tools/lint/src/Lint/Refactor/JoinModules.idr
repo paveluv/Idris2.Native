@@ -52,15 +52,15 @@ joinModules args =
     True False candidates
   where
     -- the alias an import gives its module, if any
-    aliasOf : (Import, String) -> Maybe String
-    aliasOf (_, l) = case break (== "as") (words l) of
+    lineAlias : (Import, String) -> Maybe String
+    lineAlias (_, l) = case break (== "as") (words l) of
       (_, "as" :: a :: _) => Just a
       _ => Nothing
 
     ||| The imports of a module as written, a line each.
     importLines : Subject -> List (Import, String)
     importLines s =
-      map (\i => (i, trim (Subject.lineOf s (fst (Span.lineSpan i.loc))))) s.file.mod.imports
+      map (\i => (i, trim (Subject.subjectLine s (fst (Span.lineSpan i.loc))))) s.file.mod.imports
 
     -- an importer's edits: the first import of the joined modules made one
     -- of the new module, keeping an alias any of them gives and whether one
@@ -73,7 +73,7 @@ joinModules args =
         [] => Nothing
         ((i, l) :: rest) =>
           let alias =
-                case List.filter (/= Rules.lastPart into) (mapMaybe aliasOf ((i, l) :: rest)) of
+                case List.filter (/= Rules.lastPart into) (mapMaybe lineAlias ((i, l) :: rest)) of
                         (a :: _) => " as " ++ a
                         [] => ""
               public' = if any (\(j, _) => j.reexport) ((i, l) :: rest) then "public " else ""
@@ -89,8 +89,8 @@ joinModules args =
     ||| A module's declarations as written: from what is attached above its
     ||| first to its end, the trailing blank lines aside. Its `%default` is no
     ||| declaration of it here: the new module has one.
-    bodyOf : Subject -> List String
-    bodyOf s =
+    subjectBody : Subject -> List String
+    subjectBody s =
       case sort
         (map (fst . Span.lineSpan . (.decl.fc))
           (List.filter (not . defaultDirective) s.declared)) of
@@ -98,7 +98,8 @@ joinModules args =
         reverse
           (dropWhile (\l => trim l == "")
            (reverse
-             (drop (cast (Extent.attachedFrom (Subject.linesOf s) first)) (Subject.linesOf s))))
+             (drop (cast (Extent.attachedFrom (Subject.subjectLines s) first))
+               (Subject.subjectLines s))))
       [] => []
       where
         ||| Whether a declaration is a `%default` directive.
@@ -117,12 +118,13 @@ joinModules args =
           (publics, privates) = partition (isPrefixOf "import public") imports
           defaults =
             take 1
-              [ trim l | s <- take 1 ss, l <- Subject.linesOf s, isPrefixOf "%default" (trim l) ]
+              [ trim l | s <- take 1 ss, l <- Subject.subjectLines s,
+                isPrefixOf "%default" (trim l) ]
       in unlines
         (["||| " ++ joinBy ", " (map (\m => "`" ++ Rules.lastPart m ++ "`") sources) ++ ", joined.",
           "module " ++ into, ""]
                   ++ block publics ++ block privates ++ block defaults
-                  ++ Finding.joined (intersperse [""] (map bodyOf ss)))
+                  ++ Finding.joined (intersperse [""] (map subjectBody ss)))
       where
         block : List String -> List String
         block [] = []
@@ -133,8 +135,8 @@ joinModules args =
     twice ns = nub [ n | (n, k) <- zip ns [0 .. length ns], n `elem` take k ns ]
 
     ||| A module's name.
-    nameOf : Subject -> String
-    nameOf s = show s.file.mod.moduleNS
+    subjectModule : Subject -> String
+    subjectModule s = show s.file.mod.moduleNS
 
     -- the modules joined, or why not
     plan : Project -> (into : String) -> (sources : List String) -> Either String Change
@@ -142,7 +144,7 @@ joinModules args =
       ss <- traverse
         (\m =>
           maybe (Left ("`" ++ m ++ "` is not among the files")) Right
-         (find (\s => nameOf s == m) p.files))
+         (find (\s => subjectModule s == m) p.files))
           sources
       let names = Finding.joined (map (\s => nub (Finding.joined (map (.defines) s.declared))) ss)
       case twice names of
@@ -152,16 +154,16 @@ joinModules args =
             nub [ show i.path | s <- ss, i <- s.file.mod.imports, not (show i.path `elem` sources) ]
           around =
             List.filter
-              (\t => (nameOf t `elem` outside)
+              (\t => (subjectModule t `elem` outside)
                && any (\i => show i.path `elem` sources) t.file.mod.imports)
                 p.files
       when (not (null around)) $
         Left
-          ("`" ++ joinBy "`, `" (map nameOf around)
+          ("`" ++ joinBy "`, `" (map subjectModule around)
             ++
               ("` imports one of the modules and is imported by another: the new one would " ++
                "import itself"))
-      l <- Listing.listingOf p.packages (fromMaybe "" (head' sources)) into
+      l <- Listing.packageListing p.packages (fromMaybe "" (head' sources)) into
       ml <- maybe (Left "the package's list of modules cannot be read") Right
                   (lookup l.package p.packages >>= Listing.moduleList)
       let kept =
@@ -173,14 +175,14 @@ joinModules args =
               ((l.package,
                 [Edit.replaceLines ml.first ml.last (Listing.moduleLines ml.indent kept)])
                :: mapMaybe (importerEdits into sources)
-                 (List.filter (\t => not (nameOf t `elem` sources)) p.files))
+                 (List.filter (\t => not (subjectModule t `elem` sources)) p.files))
               [(l.newPath, newText into sources ss)]
               (map (.file.path) ss))
 
     candidates : Project -> Subject -> List Refactoring.Candidate
     candidates p s = case args of
       (into :: sources@(first :: _ :: _)) =>
-        if nameOf s == first
+        if subjectModule s == first
           then
             [Refactoring.candidate ("join " ++ joinBy ", " sources ++ " into " ++ into)
               (plan p into sources)]

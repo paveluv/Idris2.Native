@@ -60,7 +60,7 @@ Pages h => Chunks h c => Allocator h (SizeClasses c) where
         a = s.arena
     if bytes <= Config.smallBytes cf
       then do
-        let k = Config.classOf cf bytes
+        let k = Config.bytesClass cf bytes
         first <- Arena.field a (Arena.availHead cf k)
         g <- if first /= 0 then Ordo.pure first else newSlab s k
         if g == 0 then Ordo.pure 0 else takeBlock cf a (g - 1) k
@@ -69,7 +69,7 @@ Pages h => Chunks h c => Allocator h (SizeClasses c) where
         if o > Config.maxOrder cf then Ordo.pure 0 else do
           addr <- Chunks.takeChunk s.chunks o
           if addr == 0 then Ordo.pure 0 else do
-            g <- Arena.granuleOf cf a addr
+            g <- Arena.addressGranule cf a addr
             Arena.setEntry a g Arena.kind Arena.largeKind
             Arena.setEntry a g Arena.order o
             markInside a g 1 (1 `shiftL` o)
@@ -94,7 +94,7 @@ Pages h => Chunks h c => Allocator h (SizeClasses c) where
             o = Config.slabOrder cf k
         addr <- Chunks.takeChunk s.chunks o
         if addr == 0 then Ordo.pure 0 else do
-          g <- Arena.granuleOf cf a addr
+          g <- Arena.addressGranule cf a addr
           Arena.setEntry a g Arena.kind Arena.slabKind
           Arena.setEntry a g Arena.order o
           Arena.setEntry a g Arena.cls k
@@ -139,7 +139,7 @@ Pages h => Chunks h c => Allocator h (SizeClasses c) where
           a = s.arena
       ours <- Arena.owns a addr
       if not ours then notGiven else do
-        g0 <- Arena.granuleOf cf a addr
+        g0 <- Arena.addressGranule cf a addr
         k0 <- Arena.entry a g0 Arena.kind
         g <- if k0 == Arena.insideKind then Arena.entry a g0 Arena.order else Ordo.pure g0
         k <- Arena.entry a g Arena.kind

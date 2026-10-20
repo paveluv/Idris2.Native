@@ -97,10 +97,10 @@ own = do
 
     -- the bytes of an entry before its zero byte
     covering
-    lengthOf : Runtime.ByteAddr -> (i : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
-    lengthOf e i = do
+    entryLength : Runtime.ByteAddr -> (i : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
+    entryLength e i = do
       c <- Runtime.Memory.loadByteAt e i
-      if c == 0 then Runtime.Ordo.pure i else lengthOf e (i + 1)
+      if c == 0 then Runtime.Ordo.pure i else entryLength e (i + 1)
 
     -- what was copied given up, as there is not the memory for the rest
     covering
@@ -114,7 +114,7 @@ own = do
     copyAll i n = if i >= n then Runtime.Ordo.pure True else do
       w <- Runtime.Memory.environmentEntry i
       let e = Runtime.Memory.foreignBytes w
-      len <- lengthOf e 0
+      len <- entryLength e 0
       Runtime.Alloc.Block.allocate (len + 1) noMemory (\b => do
         let Runtime.Alloc.Block.MkAddressed p b' = Runtime.Alloc.Block.address b
         Runtime.Memory.copyBytes e p (len + 1)
@@ -128,7 +128,8 @@ own = do
 ||| and `overwrite` is false; whether it is, which it is not for a name
 ||| that cannot be a variable's (`validName`) or when there is no memory.
 export covering
-set : (name : Runtime.ByteAddr) -> (nameLen : Bits64) -> (value : Runtime.ByteAddr) -> (valueLen : Bits64) ->
+set : (name : Runtime.ByteAddr) -> (nameLen : Bits64) -> (value : Runtime.ByteAddr) ->
+      (valueLen : Bits64) ->
       (overwrite : Bool) ->
       Runtime.Ordo.Op Runtime.Ordo Bool
 set name nl value vl overwrite = do

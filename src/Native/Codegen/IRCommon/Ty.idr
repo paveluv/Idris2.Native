@@ -107,9 +107,9 @@ Show (Ty enc) where
 
 ||| The register class a value of the type crosses a call boundary in.
 public export
-classOf : Ty enc -> Target.RegClass
-classOf F64 = Target.FloatClass
-classOf _ = Target.WordClass
+class : Ty enc -> Target.RegClass
+class F64 = Target.FloatClass
+class _ = Target.WordClass
 
 ||| Whether the collector must find, and may move, what a register holds.
 export

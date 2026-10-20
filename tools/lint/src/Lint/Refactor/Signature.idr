@@ -36,8 +36,8 @@ record Signature where
 
 ||| The signatures of a file, in order.
 export
-signaturesOf : Subject -> List Signature
-signaturesOf s = sortBy (\a, b => compare a.first b.first) (decls s.file.mod.decls)
+subjectSignatures : Subject -> List Signature
+subjectSignatures s = sortBy (\a, b => compare a.first b.first) (decls s.file.mod.decls)
   where
     typeDecl : PTypeDecl -> List Signature
     typeDecl t = case (Span.bounds t.fc, Span.bounds (getPTermLoc t.val.type)) of
@@ -115,7 +115,7 @@ aligned c (l :: ls) = l :: go (scan [] (unpack l) 0) ls
 ||| text belongs at (`aligned`).
 export
 continuations : Subject -> List (Int, Int)
-continuations s = foldr (\g, rest => columns g ++ rest) [] (signaturesOf s)
+continuations s = foldr (\g, rest => columns g ++ rest) [] (subjectSignatures s)
   where
     columns : Signature -> List (Int, Int)
     columns g =

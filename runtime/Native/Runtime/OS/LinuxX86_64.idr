@@ -40,13 +40,13 @@ succeeded : Bits64 -> Ordo.Op Ordo Bool
 succeeded r =
   if failed r
      then do
-       State.setState State.lastFailure (failureOf (0 - r))
+       State.setState State.lastFailure (errnoFailure (0 - r))
        Ordo.pure False
      else Ordo.pure True
   where
     ||| The reason Linux's error number names, as its code (`Native.Failure`).
-    failureOf : (errno : Bits64) -> Bits64
-    failureOf e =
+    errnoFailure : (errno : Bits64) -> Bits64
+    errnoFailure e =
       if e == 2 then Failure.code Failure.NotFound -- ENOENT
       else if e == 13 then Failure.code Failure.PermissionDenied -- EACCES
       else if e == 1 then Failure.code Failure.NotPermitted -- EPERM

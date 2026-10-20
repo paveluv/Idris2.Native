@@ -137,8 +137,8 @@ reflow limit given l =
                   (target : Nat) -> Maybe Break
     chooseBreak limit statements ps target =
       let st = lexPieces target ps
-          ownIndent = maybe 0 indentOf (head' (drop target ps))
-          firstIndent = maybe 0 indentOf (head' ps)
+          ownIndent = maybe 0 lineIndent (head' (drop target ps))
+          firstIndent = maybe 0 lineIndent (head' ps)
           signature = maybe (head' ps >>= signatureColumn) Just given
           -- the blocks this piece starts that the pieces or lines after it
           -- align with: nothing at or before their first tokens moves
@@ -236,13 +236,13 @@ reflow limit given l =
             in if indent < g.to then Just (MkBreak g indent False) else Nothing
 
         ||| The column a line's text starts at.
-        indentOf : String -> Int
-        indentOf l = cast (length (takeWhile (== ' ') (unpack l)))
+        lineIndent : String -> Int
+        lineIndent l = cast (length (takeWhile (== ' ') (unpack l)))
 
         ||| The column after a signature's `: `, if the line declares names
         ||| (`f : ...`, `a, b : ...`).
         signatureColumn : String -> Maybe Int
-        signatureColumn l = names (indentOf l) (drop (cast (indentOf l)) (unpack l))
+        signatureColumn l = names (lineIndent l) (drop (cast (lineIndent l)) (unpack l))
           where
             isNameChar : Char -> Bool
             isNameChar c = isAlphaNum c || c == '_' || c == '\''
@@ -263,7 +263,7 @@ reflow limit given l =
           where
             start : Lexed
             start =
-              MkLexed [] [MkBlock (maybe 0 indentOf (head' ps)) 0 0 "line"] Nothing "" Nothing []
+              MkLexed [] [MkBlock (maybe 0 lineIndent (head' ps)) 0 0 "line"] Nothing "" Nothing []
 
             isOpChar : Char -> Bool
             isOpChar c = c `elem` unpack ":!#$%&*+./<=>?@\\^|-~"
@@ -384,9 +384,9 @@ reflow limit given l =
 
 ||| The width a refactoring's arguments give (`--arg WIDTH`), 100 if none.
 export
-widthOf : (arguments : List String) -> Int
-widthOf [w] = maybe 100 id (parsePositive w)
-widthOf _ = 100
+argsWidth : (arguments : List String) -> Int
+argsWidth [w] = maybe 100 id (parsePositive w)
+argsWidth _ = 100
 
 ||| Each line of the file wider than the limit, broken: all of them, then
 ||| each alone.
@@ -410,7 +410,7 @@ wideLines limit s = case wide of
 
     -- each wide line that breaks, where it is, with its pieces
     wide : List (Int, String, List String)
-    wide = mapMaybe one (zip [0 .. length (Subject.linesOf s)] (Subject.linesOf s))
+    wide = mapMaybe one (zip [0 .. length (Subject.subjectLines s)] (Subject.subjectLines s))
       where
         one : (Nat, String) -> Maybe (Int, String, List String)
         one (i, l) =
@@ -431,4 +431,4 @@ reflowLines : (arguments : List String) -> Refactoring
 reflowLines args =
   Refactoring.fileRefactoring "reflow-lines"
     "break each line wider than a width (--arg WIDTH, 100 by default) into lines that fit"
-    (wideLines (widthOf args))
+    (wideLines (argsWidth args))

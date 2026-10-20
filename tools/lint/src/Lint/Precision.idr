@@ -50,13 +50,14 @@ excludedFrom c fs =
 ||| The concepts of each of our modules, by module.
 export
 conceptsByModule : List (Source.SourceFile, List Rules.Declared) -> SortedMap String (List Concept)
-conceptsByModule fds = fromList [ (show f.mod.moduleNS, Concept.conceptsOf f ds) | (f, ds) <- fds ]
+conceptsByModule fds =
+  fromList [ (show f.mod.moduleNS, Concept.fileConcepts f ds) | (f, ds) <- fds ]
 
 ||| The concepts of a module a module uses, by name.
 export
-usedOf : SortedMap String (List Concept) -> Resolution.ResolvedModule -> (definer : String) ->
-         SortedSet String
-usedOf byModule rm m =
+usedConcepts : SortedMap String (List Concept) -> Resolution.ResolvedModule -> (definer : String) ->
+               SortedSet String
+usedConcepts byModule rm m =
   let cs = fromMaybe [] (lookup m byModule) in
   fromList
     (mapMaybe (\u => if u.definer == m then Concept.conceptOfUse cs u.name u.searched else Nothing)
@@ -93,7 +94,7 @@ precision fds r =
       if not (contains i ours) || (i `elem` out) then Nothing else
         let exposed =
               filter (shown ours out)
-                (Prelude.toList (Resolution.visibleThrough r.importsOf (`contains` ours) i)) in
+                (Prelude.toList (Resolution.visibleThrough r.moduleImports (`contains` ours) i)) in
         Just
           (MkImportEdge rm.name i (sum (map (length . offeredIn byModule) exposed))
            (sum (map (usedIn byModule rm) exposed)))
@@ -106,7 +107,7 @@ precision fds r =
 
         usedIn : SortedMap String (List Concept) -> Resolution.ResolvedModule -> String -> Nat
         usedIn byModule rm m = let used =
-                                     usedOf byModule rm m in length
+                                     usedConcepts byModule rm m in length
                                        (filter (\c => contains c.name used) (offeredIn byModule m))
 
     offenders : SortedMap String (List Concept) -> List ImportEdge -> List Graph.Offender

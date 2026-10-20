@@ -41,12 +41,12 @@ parameterBlocks text = foldr (\d, rest => here d ++ rest) []
   where
     -- the names the block binds, and the variables its binders' types
     -- leave free, which the block binds implicitly
-    namesOf : Either (List1 PlainBinder) (List1 PBinder) -> SortedSet String
-    namesOf (Left bs) =
+    binderNames : Either (List1 PlainBinder) (List1 PBinder) -> SortedSet String
+    binderNames (Left bs) =
       foldr (\b, rest => insert (nameRoot b.nameVal) (union (Free.typeVariables empty b.val) rest))
         empty
         (forget bs)
-    namesOf (Right bs) =
+    binderNames (Right bs) =
       foldr (\b,
         rest =>
           union (fromList (map (nameRoot . (.val)) (forget b.bind.names)))
@@ -68,16 +68,16 @@ parameterBlocks text = foldr (\d, rest => here d ++ rest) []
 
     -- where the block's first declaration starts, its attached comments
     -- included, or the block's end
-    firstOf : PDecl -> List PDecl -> Int
-    firstOf d ds = case sort (map (fst . Span.lineSpan . (.fc)) ds) of
+    blockStart : PDecl -> List PDecl -> Int
+    blockStart d ds = case sort (map (fst . Span.lineSpan . (.fc)) ds) of
       (l :: _) => Extent.attachedFrom text l
       [] => snd (Span.lineSpan d.fc) + 1
 
     here : PDecl -> List ParameterBlock
     here d = case d.val of
       PParameters ps ds =>
-        MkParameterBlock (Span.lineSpan d.fc) (namesOf ps)
-          (bindersAt text (fst (Span.lineSpan d.fc)) (firstOf d ds)) :: parameterBlocks text ds
+        MkParameterBlock (Span.lineSpan d.fc) (binderNames ps)
+          (bindersAt text (fst (Span.lineSpan d.fc)) (blockStart d ds)) :: parameterBlocks text ds
       PNamespace _ ds => parameterBlocks text ds
       PMutual ds => parameterBlocks text ds
       PUsing _ ds => parameterBlocks text ds

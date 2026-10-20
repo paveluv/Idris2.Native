@@ -54,11 +54,11 @@ import Native.Types.StringRoutine
 -- The layout
 
 ||| The bytes a header counts, and whether it says they are all ASCII.
-bytesOf : (header : Bits64) -> Bits64
-bytesOf = Types.Header.readPart Types.Header.StringBytes
+headerBytes : (header : Bits64) -> Bits64
+headerBytes = Types.Header.readPart Types.Header.StringBytes
 
-asciiOf : (header : Bits64) -> Bool
-asciiOf h = Types.Header.readPart Types.Header.StringAscii h == 1
+headerAscii : (header : Bits64) -> Bool
+headerAscii h = Types.Header.readPart Types.Header.StringAscii h == 1
 
 ||| The object a string is: a string is always an object.
 export
@@ -66,8 +66,8 @@ stringObject : Flat.Uniform String -> Runtime.Ordo.Op Runtime.Ordo (Obj Types.Ki
 stringObject s = Obj.valueObject s
 
 ||| A string's header.
-headerOf : Obj Types.Kind.STRING -> Runtime.Ordo.Op Runtime.Ordo Bits64
-headerOf s = Obj.header s
+stringHeader : Obj Types.Kind.STRING -> Runtime.Ordo.Op Runtime.Ordo Bits64
+stringHeader s = Obj.header s
 
 ||| A string's header parts: whether it is ASCII, and its bytes.
 partsFor : (ascii : Bool) -> (bytes : Bits64) -> Types.Header.Parts Types.Kind.STRING
@@ -128,10 +128,10 @@ countChars s i end count =
 
 ||| The byte offset of the `n`th character of a string of the header.
 covering
-offsetOf : Obj Types.Kind.STRING -> (header, n : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
-offsetOf s h n =
-  if asciiOf h then Runtime.Ordo.pure (if n > bytesOf h then bytesOf h else n)
-  else skipChars s 0 (bytesOf h) n
+charOffset : Obj Types.Kind.STRING -> (header, n : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
+charOffset s h n =
+  if headerAscii h then Runtime.Ordo.pure (if n > headerBytes h then headerBytes h else n)
+  else skipChars s 0 (headerBytes h) n
   where
     ||| The byte offset `n` characters after `i`, or `end` if there are fewer.
     ||| Ends: `n` falls to 0, or `i` climbs to `end`.
@@ -146,7 +146,7 @@ offsetOf s h n =
 ||| bytes, whose top bit says whether any is not ASCII. Ends: `n` falls to 0.
 covering
 copyStringBytes : (from : Obj Types.Kind.STRING) -> (i : Bits64) -> (to : Obj Types.Kind.STRING) ->
-            (j, n, seen : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
+                  (j, n, seen : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
 copyStringBytes from i to j n seen =
   if n == 0 then Runtime.Ordo.pure seen else do
     b <- byteAt from i
@@ -162,7 +162,7 @@ slice s h from to = do
   let n = to - from
   r <- newString n
   seen <- copyStringBytes s from r 0 n 0
-  finish r (asciiOf h || seen < 0x80) n
+  finish r (headerAscii h || seen < 0x80) n
 
 ------------------------------------------------------------------------------
 -- The primitives
@@ -173,8 +173,8 @@ export covering
 length : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.Length)
 length str = do
   s <- stringObject str
-  h <- headerOf s
-  if asciiOf h then Runtime.Ordo.pure (bytesOf h) else countChars s 0 (bytesOf h) 0
+  h <- stringHeader s
+  if headerAscii h then Runtime.Ordo.pure (headerBytes h) else countChars s 0 (headerBytes h) 0
 
 %cg native flat Support.String.Utf8.head
 ||| The first character.
@@ -182,8 +182,9 @@ export
 head : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.Head)
 head str = do
   s <- stringObject str
-  h <- headerOf s
-  if bytesOf h == 0 then Runtime.Ordo.crashOp "idris: the head of an empty string" else decodeAt s 0
+  h <- stringHeader s
+  if headerBytes h == 0 then Runtime.Ordo.crashOp "idris: the head of an empty string"
+    else decodeAt s 0
 
 %cg native flat Support.String.Utf8.tail
 ||| All but the first character.
@@ -191,10 +192,10 @@ export covering
 tail : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.Tail)
 tail str = do
   s <- stringObject str
-  h <- headerOf s
-  if bytesOf h == 0 then Runtime.Ordo.crashOp "idris: the tail of an empty string" else do
+  h <- stringHeader s
+  if headerBytes h == 0 then Runtime.Ordo.crashOp "idris: the tail of an empty string" else do
     b <- byteAt s 0
-    slice s h (seqLength b) (bytesOf h)
+    slice s h (seqLength b) (headerBytes h)
 
 %cg native flat Support.String.Utf8.index
 ||| The character at an index. A negative index comes as a word past every
@@ -203,9 +204,9 @@ export covering
 index : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.Index)
 index str i = do
   s <- stringObject str
-  h <- headerOf s
-  off <- offsetOf s h i
-  if off >= bytesOf h then Runtime.Ordo.crashOp "idris: an index outside a string"
+  h <- stringHeader s
+  off <- charOffset s h i
+  if off >= headerBytes h then Runtime.Ordo.crashOp "idris: an index outside a string"
     else decodeAt s off
 
 %cg native flat Support.String.Utf8.cons
@@ -214,13 +215,13 @@ export covering
 cons : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.Cons)
 cons c str = do
   s <- stringObject str
-  h <- headerOf s
+  h <- stringHeader s
   let k = charBytes c
-  let n = bytesOf h
+  let n = headerBytes h
   r <- newString (k + n)
   encodeAt r 0 c
   _ <- copyStringBytes s 0 r k n 0
-  finish r (c < 0x80 && asciiOf h) (k + n)
+  finish r (c < 0x80 && headerAscii h) (k + n)
 
 %cg native flat Support.String.Utf8.append
 ||| One string, then another.
@@ -229,14 +230,14 @@ append : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.Stri
 append x y = do
   a <- stringObject x
   b <- stringObject y
-  ha <- headerOf a
-  hb <- headerOf b
-  let na = bytesOf ha
-  let nb = bytesOf hb
+  ha <- stringHeader a
+  hb <- stringHeader b
+  let na = headerBytes ha
+  let nb = headerBytes hb
   r <- newString (na + nb)
   _ <- copyStringBytes a 0 r 0 na 0
   _ <- copyStringBytes b 0 r na nb 0
-  finish r (asciiOf ha && asciiOf hb) (na + nb)
+  finish r (headerAscii ha && headerAscii hb) (na + nb)
 
 %cg native flat Support.String.Utf8.reverse
 ||| The characters in the other order.
@@ -244,11 +245,11 @@ export covering
 reverse : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.Reverse)
 reverse str = do
   s <- stringObject str
-  h <- headerOf s
-  let n = bytesOf h
+  h <- stringHeader s
+  let n = headerBytes h
   r <- newString n
   reverseFrom s 0 n r
-  finish r (asciiOf h) n
+  finish r (headerAscii h) n
   where
     ||| The characters of a string from byte `i` to `n`, each written at the
     ||| mirror of its place in `r`. Ends: `i` climbs to `n`.
@@ -270,15 +271,15 @@ export covering
 substr : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.Substr)
 substr start len str = do
   s <- stringObject str
-  h <- headerOf s
-  let n = bytesOf h
-  count <- if asciiOf h then Runtime.Ordo.pure n else countChars s 0 n 0
+  h <- stringHeader s
+  let n = headerBytes h
+  count <- if headerAscii h then Runtime.Ordo.pure n else countChars s 0 n 0
   let b = if start < 0 then 0 else cast {to = Bits64} start
   let x = if len < 0 then 0 else cast {to = Bits64} len
   let e = if x > count - b then count else b + x
   if b > count then slice s h 0 0 else do
-    from <- offsetOf s h b
-    to <- offsetOf s h e
+    from <- charOffset s h b
+    to <- charOffset s h e
     slice s h from to
 
 %cg native flat Support.String.Utf8.compare
@@ -289,9 +290,9 @@ compare : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.Str
 compare x y = do
   a <- stringObject x
   b <- stringObject y
-  ha <- headerOf a
-  hb <- headerOf b
-  compareFrom a b 0 (bytesOf ha) (bytesOf hb)
+  ha <- stringHeader a
+  hb <- stringHeader b
+  compareFrom a b 0 (headerBytes ha) (headerBytes hb)
   where
     ||| Compare two strings' bytes from `i`: the first difference, else the
     ||| shorter first. Ends: `i` climbs to the shorter's length.
@@ -370,9 +371,9 @@ fastUnpack str = let (Runtime.MkOrdo # r) = unpackOp str Runtime.MkOrdo in r
     unpackOp : Flat.Uniform String -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform (List Char))
     unpackOp str = do
       s <- stringObject str
-      h <- headerOf s
+      h <- stringHeader s
       nil <- Obj.con0 {t = List Char} Types.Represents.listNil
-      build s (bytesOf h) nil
+      build s (headerBytes h) nil
       where
         ||| Where the character that ends before byte `j` starts: the first
         ||| byte back that is not a continuation byte, `10xxxxxx`.
@@ -421,9 +422,9 @@ fastConcat xs = let (Runtime.MkOrdo # r) = concatOp xs Runtime.MkOrdo in r
             Just c => do
               v <- Obj.field {f = String} 0 c
               s <- stringObject v
-              h <- headerOf s
+              h <- stringHeader s
               t <- Obj.field {f = List String} 1 c
-              concatMeasure t (bytes + bytesOf h) (ascii && asciiOf h)
+              concatMeasure t (bytes + headerBytes h) (ascii && headerAscii h)
 
         ||| The strings of a list copied from `j`. Ends: as `concatMeasure`.
         covering
@@ -436,10 +437,10 @@ fastConcat xs = let (Runtime.MkOrdo # r) = concatOp xs Runtime.MkOrdo in r
             Just c => do
               v <- Obj.field {f = String} 0 c
               s <- stringObject v
-              h <- headerOf s
-              _ <- copyStringBytes s 0 r j (bytesOf h) 0
+              h <- stringHeader s
+              _ <- copyStringBytes s 0 r j (headerBytes h) 0
               t <- Obj.field {f = List String} 1 c
-              concatWrite t r (j + bytesOf h)
+              concatWrite t r (j + headerBytes h)
 
 ------------------------------------------------------------------------------
 -- Numbers as text
@@ -637,8 +638,8 @@ textBytes : Runtime.PortTy Runtime.Memory.Addr
             (Types.StringRoutine.port Types.StringRoutine.TextBytes)
 textBytes str = do
   s <- stringObject str
-  h <- headerOf s
-  Runtime.Ordo.pure (bytesOf h)
+  h <- stringHeader s
+  Runtime.Ordo.pure (headerBytes h)
 
 %cg native flat Support.String.Utf8.textAddress
 ||| Where a string's own bytes are, which are the system's text: valid
@@ -657,8 +658,8 @@ copyText : Runtime.PortTy Runtime.Memory.Addr
            (Types.StringRoutine.port Types.StringRoutine.CopyText)
 copyText str to = do
   s <- stringObject str
-  h <- headerOf s
-  Runtime.Memory.copyBytes (Obj.objectBytes s 0) to (bytesOf h)
+  h <- stringHeader s
+  Runtime.Memory.copyBytes (Obj.objectBytes s 0) to (headerBytes h)
 
 ||| What a decoder takes of a run of bytes, from one of them: how many,
 ||| and whether they are a character as they stand, or one U+FFFD.
@@ -798,8 +799,8 @@ readWord : Runtime.PortTy Runtime.Memory.Addr
            (Types.StringRoutine.port Types.StringRoutine.ReadWord)
 readWord u = do
   s <- stringObject u
-  h <- headerOf s
-  let n = bytesOf h
+  h <- stringHeader s
+  let n = headerBytes h
   if n == 0 then Runtime.Ordo.pure 0 else do
     c0 <- byteAt s 0
     let negative = c0 == 45
@@ -848,8 +849,8 @@ readDouble : Runtime.PortTy Runtime.Memory.Addr
              (Types.StringRoutine.port Types.StringRoutine.ReadDouble)
 readDouble u = do
   s <- stringObject u
-  h <- headerOf s
-  let n = bytesOf h
+  h <- stringHeader s
+  let n = headerBytes h
   if n == 0 then Runtime.Ordo.pure 0.0 else do
     c0 <- byteAt s 0
     let negative = c0 == 45

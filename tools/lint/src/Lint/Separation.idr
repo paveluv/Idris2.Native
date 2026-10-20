@@ -56,7 +56,7 @@ separation fds r =
       out = Precision.excludedFrom "separation" (map fst fds)
       counted =
         filter hasPieces
-          [ (m, piecesOf byModule r.modules m) | m <- keys byModule, not (m `elem` out) ]
+          [ (m, modulePieces byModule r.modules m) | m <- keys byModule, not (m `elem` out) ]
       pieces = sum (map (counting . snd) counted)
   in Graph.MkComponent "structure" "separation" (Graph.percent (length counted) pieces)
        ("modules that are one piece, of the pieces of " ++ show Concept.pieceLines
@@ -90,9 +90,9 @@ separation fds r =
 
     ||| A module's pieces: its concepts that other modules use, clustered by
     ||| use, each with its users.
-    piecesOf : SortedMap String (List Concept) -> List Resolution.ResolvedModule -> String ->
-               List Piece
-    piecesOf byModule rms m =
+    modulePieces : SortedMap String (List Concept) -> List Resolution.ResolvedModule -> String ->
+                   List Piece
+    modulePieces byModule rms m =
       let usersOf = usersMap (filter (.offered) (fromMaybe [] (lookup m byModule)))
       in map (piece usersOf)
         (parts (usedOnes usersOf)
@@ -126,7 +126,7 @@ separation fds r =
         usersMap cs =
           [ (c.name,
             fromList [ rm.name | rm <- rms,
-                      rm.name /= m, contains c.name (Precision.usedOf byModule rm m) ])
+                      rm.name /= m, contains c.name (Precision.usedConcepts byModule rm m) ])
            | c <- cs ]
 
         usersIn : List (String, SortedSet String) -> String -> SortedSet String

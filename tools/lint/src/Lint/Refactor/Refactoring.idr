@@ -73,8 +73,8 @@ candidate l p = MkCandidate l p Nothing
 ||| What a declaration is called in a report: the names it defines, or,
 ||| for one that defines none, such as an implementation, where it is.
 export
-labelOf : Rules.Declared -> String
-labelOf d = case d.defines of
+declLabel : Rules.Declared -> String
+declLabel d = case d.defines of
   [] => "the declaration at line " ++ show (fst (Span.lineSpan d.decl.fc) + 1)
   ns => fastConcat (intersperse ", " ns)
 
@@ -160,8 +160,8 @@ runWith aside dryRun check r project changedFiles path = case check of
 
     -- the directory a file is in, and the directories down to it,
     -- made where they are missing
-    directoryOf : String -> String
-    directoryOf p = case reverse (List1.forget (split (== '/') p)) of
+    pathDirectory : String -> String
+    pathDirectory p = case reverse (List1.forget (split (== '/') p)) of
       (_ :: rest@(_ :: _)) => joinBy "/" (reverse rest)
       _ => "."
 
@@ -169,12 +169,12 @@ runWith aside dryRun check r project changedFiles path = case check of
     createDirectories d = do
       True <- not <$> exists d
         | False => pure (Right ())
-      ignore (createDirectories (directoryOf d))
+      ignore (createDirectories (pathDirectory d))
       createDir d
 
     restore : Saved -> IO ()
     restore saved = for_ (SortedMap.toList saved) $ \(p, old) => case old of
-      Just t => do ignore (createDirectories (directoryOf p)); ignore (writeFile p t)
+      Just t => do ignore (createDirectories (pathDirectory p)); ignore (writeFile p t)
       Nothing => ignore (removeFile p)
 
     ||| A change as a dry run prints it: each edit, with the text it replaces.
@@ -247,7 +247,7 @@ runWith aside dryRun check r project changedFiles path = case check of
             | Left e => pure (Left ("cannot remove " ++ p ++ ": " ++ show e, saved'))
           -- the directory too, if the file was its last; an undo makes it
           -- again
-          ignore (removeDir (directoryOf p))
+          ignore (removeDir (pathDirectory p))
           removeAll saved' rest
 
         editAll : Saved -> List (String, List Edit) -> IO (Either (String, Saved) Saved)
@@ -270,7 +270,7 @@ runWith aside dryRun check r project changedFiles path = case check of
           True <- not <$> exists p
             | False => pure (Left ("it would overwrite " ++ p, saved))
           let saved' = insert p Nothing saved
-          ignore (createDirectories (directoryOf p))
+          ignore (createDirectories (pathDirectory p))
           Right () <- writeFile p t
             | Left e => pure (Left ("cannot write " ++ p ++ ": " ++ show e, saved'))
           createAll saved' rest

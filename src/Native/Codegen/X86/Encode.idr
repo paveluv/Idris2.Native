@@ -268,23 +268,23 @@ assembleWith env base is =
   in go labels base [<] [<] is
   where
     ||| The label an instruction refers to, if any, and the constant added to it.
-    labelOf : Asm.Instr -> Maybe (Asm.Label, Int)
-    labelOf (Asm.Jmp l) = Just (l, 0)
-    labelOf (Asm.Jcc _ l) = Just (l, 0)
-    labelOf (Asm.Call l) = Just (l, 0)
-    labelOf (Asm.MovRM _ (Asm.MRip l d)) = Just (l, d)
-    labelOf (Asm.MovMR (Asm.MRip l d) _) = Just (l, d)
-    labelOf (Asm.MovMI (Asm.MRip l d) _) = Just (l, d)
-    labelOf (Asm.Lea _ (Asm.MRip l d)) = Just (l, d)
-    labelOf (Asm.Load _ _ _ (Asm.MRip l d)) = Just (l, d)
-    labelOf (Asm.Store _ (Asm.MRip l d) _) = Just (l, d)
-    labelOf (Asm.AluRM _ _ (Asm.MRip l d)) = Just (l, d)
-    labelOf (Asm.AluMR _ (Asm.MRip l d) _) = Just (l, d)
-    labelOf (Asm.JmpM (Asm.MRip l d)) = Just (l, d)
-    labelOf (Asm.MovsdRM _ (Asm.MRip l d)) = Just (l, d)
-    labelOf (Asm.MovsdMR (Asm.MRip l d) _) = Just (l, d)
-    labelOf (Asm.LockCmpxchg (Asm.MRip l d) _) = Just (l, d)
-    labelOf _ = Nothing
+    instrLabel : Asm.Instr -> Maybe (Asm.Label, Int)
+    instrLabel (Asm.Jmp l) = Just (l, 0)
+    instrLabel (Asm.Jcc _ l) = Just (l, 0)
+    instrLabel (Asm.Call l) = Just (l, 0)
+    instrLabel (Asm.MovRM _ (Asm.MRip l d)) = Just (l, d)
+    instrLabel (Asm.MovMR (Asm.MRip l d) _) = Just (l, d)
+    instrLabel (Asm.MovMI (Asm.MRip l d) _) = Just (l, d)
+    instrLabel (Asm.Lea _ (Asm.MRip l d)) = Just (l, d)
+    instrLabel (Asm.Load _ _ _ (Asm.MRip l d)) = Just (l, d)
+    instrLabel (Asm.Store _ (Asm.MRip l d) _) = Just (l, d)
+    instrLabel (Asm.AluRM _ _ (Asm.MRip l d)) = Just (l, d)
+    instrLabel (Asm.AluMR _ (Asm.MRip l d) _) = Just (l, d)
+    instrLabel (Asm.JmpM (Asm.MRip l d)) = Just (l, d)
+    instrLabel (Asm.MovsdRM _ (Asm.MRip l d)) = Just (l, d)
+    instrLabel (Asm.MovsdMR (Asm.MRip l d) _) = Just (l, d)
+    instrLabel (Asm.LockCmpxchg (Asm.MRip l d) _) = Just (l, d)
+    instrLabel _ = Nothing
 
     -- the bytes and the problems accumulate at their ends, instruction by
     -- instruction
@@ -293,7 +293,7 @@ assembleWith env base is =
     go labels _ acc problems [] = (acc, labels, problems <>> [])
     go labels pc acc problems (i :: rest) =
       let size = instrSize pc i
-          (rel, missing) = case labelOf i of
+          (rel, missing) = case instrLabel i of
             Nothing => (the Int 0, [])
             Just (l, d) => case lookup l labels of
               Just target => (target + d - (pc + size), [])

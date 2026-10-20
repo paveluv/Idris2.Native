@@ -546,13 +546,13 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
       ||| The ordinary value of the shape, from its registers.
       box : Flat.Exp.Shape -> LowerFlat.Value enc v -> B (TermIR.Opnd v IRCommon.Ty.Val)
       box shape x = case shape of
-        Flat.Exp.PrimShape DoubleType => case LowerFlat.doubleOf x of
+        Flat.Exp.PrimShape DoubleType => case LowerFlat.valueDouble x of
                    Just f => do p <- TermIR.Build.emit1
                                   (TermIR.Instr.AllocObj Types.Header.DoubleH [f])
                                 TermIR.Build.emit1 (TermIR.Instr.WidenPtr p)
                    Nothing => TermIR.Build.unsupported "a double of another layout from flat code"
         Flat.Exp.PrimShape WorldType => pure TermIR.Opnd.Erased
-        Flat.Exp.PrimShape t => case (intWidth t, LowerFlat.wordOf x) of
+        Flat.Exp.PrimShape t => case (intWidth t, LowerFlat.valueWord x) of
                    (Just (Narrow _ _), Just w) => do f <- TermIR.Build.emit1 (TermIR.Instr.Tag w)
                                                      widen f
                    (Just (Wide _), Just w) => wideVal w
@@ -563,13 +563,13 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                    _ => TermIR.Build.unsupported "a uniform value of another layout from flat code"
         Flat.Exp.DataShape [] => pure TermIR.Opnd.Erased
         Flat.Exp.DataShape [c] => boxCon c x
-        Flat.Exp.DataShape cs => case LowerFlat.tagOf x of
+        Flat.Exp.DataShape cs => case LowerFlat.valueTag x of
                    Nothing => TermIR.Build.unsupported "a sum without its tag from flat code"
                    Just t => if all isTag cs then do f <- TermIR.Build.emit1 (TermIR.Instr.Tag t)
                                                      widen f else do
                      [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done => do
                        let branches = mapMaybe (\c => do (_, p) <- LowerFlat.placement cs c.name
-                                                         fs <- LowerFlat.fieldsOf p x
+                                                         fs <- LowerFlat.valueFields p x
                                                          pure (the Int64 (cast c.tag),
                                                                do r <- boxCon c fs; done [r]))
                                                            cs
@@ -1505,10 +1505,10 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
     boundary d refs ce ss r (allVals ps)
 
   ||| A function's definition, from its plan.
-  defOf : (d : TermIR.Decls enc) -> Refs enc d -> LowerFlat.Forms enc d -> (s : TermIR.Sig enc) ->
-          Plan ->
-          TermIR.Def d s
-  defOf d refs fs (TermIR.MkSig n IRCommon.Conv.CPS ps False) (FromVM args body) =
+  planDef : (d : TermIR.Decls enc) -> Refs enc d -> LowerFlat.Forms enc d -> (s : TermIR.Sig enc) ->
+            Plan ->
+            TermIR.Def d s
+  planDef d refs fs (TermIR.MkSig n IRCommon.Conv.CPS ps False) (FromVM args body) =
     case decEq ps (replicate (length args) IRCommon.Ty.Val) of
     Yes Refl =>
       TermIR.Def.Defined
@@ -1525,14 +1525,14 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
         lower d refs (fromList (zip args (map (\x => (x, Nothing)) (allVals ps)))) True
           (annotate (singleton (-1)) body)
               (\env => TermIR.Build.return (get env RVal))
-  defOf d refs fs (TermIR.MkSig n IRCommon.Conv.CPS ps False) (Boundary arity fd ss r) =
+  planDef d refs fs (TermIR.MkSig n IRCommon.Conv.CPS ps False) (Boundary arity fd ss r) =
     case (decEq ps (replicate arity IRCommon.Ty.Val), lookup fd.name fs.callees) of
       (Yes Refl, Just ce) =>
         TermIR.Def.Defined
           (fromMaybe (TermIR.Body.Unsupported "a level outside its context")
            (TermIR.Build.close (lowerBoundary d refs ce ss r arity)))
       _ => TermIR.Def.Defined (TermIR.Body.Unsupported ("the boundary of " ++ show n))
-  defOf d refs fs (TermIR.MkSig n (IRCommon.Conv.Direct rs False) ps cv) (Form fd) =
+  planDef d refs fs (TermIR.MkSig n (IRCommon.Conv.Direct rs False) ps cv) (Form fd) =
     case (decEq rs (LowerFlat.tys fd.result),
       decEq ps (LowerFlat.tys (LowerFlat.paramsLayout fd.params)),
         decEq cv (Linkage.ConvertsIn.convertsIn fd.name)) of
@@ -1543,7 +1543,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
       _ =>
         TermIR.Def.Defined
           (TermIR.Body.Unsupported ("the registers of the flat form of " ++ show fd.name))
-  defOf d refs fs (TermIR.MkSig n IRCommon.Conv.CPS ps False) (Foreign arity) =
+  planDef d refs fs (TermIR.MkSig n IRCommon.Conv.CPS ps False) (Foreign arity) =
     case decEq ps (replicate arity IRCommon.Ty.Val) of
     Yes Refl =>
       TermIR.Def.Defined
@@ -1556,7 +1556,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                      TermIR.Build.Closed d IRCommon.Conv.CPS False (replicate arity IRCommon.Ty.Val)
       lowerForeign d refs n arity = TermIR.Build.build $ \ps =>
         TermIR.Build.unsupported ("the foreign function " ++ show n)
-  defOf d refs fs (TermIR.MkSig n IRCommon.Conv.CPS ps False) (Implemented arity impl m) =
+  planDef d refs fs (TermIR.MkSig n IRCommon.Conv.CPS ps False) (Implemented arity impl m) =
     case (decEq ps (replicate arity IRCommon.Ty.Val), lookup impl refs.funs) of
       (Yes Refl, Just (TermIR.MkSig _ IRCommon.Conv.CPS ps' _ ** var)) =>
         case decEq ps' (replicate m IRCommon.Ty.Val) of
@@ -1605,7 +1605,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
           applied f rest
         Nothing => TermIR.Build.unsupported ("the arguments of " ++ show impl)
 
-  defOf d refs fs (TermIR.MkSig n IRCommon.Conv.CPS [] False) (Constant i body) =
+  planDef d refs fs (TermIR.MkSig n IRCommon.Conv.CPS [] False) (Constant i body) =
     case lookup body refs.funs of
       Just (TermIR.MkSig _ IRCommon.Conv.CPS ps _ ** var) => case decEq ps [] of
         Yes Refl =>
@@ -1636,16 +1636,16 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
           cell : TermIR.Opnd v' IRCommon.Ty.W64 -> (word : Int) -> TermIR.Mem v'
           cell a w =
             TermIR.MkMem (TermIR.Mem.AtWord a) Nothing (cast (Area.constantOffset (cast i)) + w)
-  defOf d refs fs s NoEntry =
+  planDef d refs fs s NoEntry =
     TermIR.Def.Defined (TermIR.Body.Unsupported "a program without __mainExpression")
-  defOf d refs fs s _ =
+  planDef d refs fs s _ =
     TermIR.Def.Defined (TermIR.Body.Unsupported ("the definition of " ++ show s.name))
 
   defs : (d : TermIR.Decls enc) -> Refs enc d -> LowerFlat.Forms enc d ->
          (es : List (TermIR.Sig enc, Plan)) ->
          All (TermIR.Def d) (map Builtin.fst es)
   defs d refs fs [] = []
-  defs d refs fs ((s, p) :: es) = defOf d refs fs s p :: defs d refs fs es
+  defs d refs fs ((s, p) :: es) = planDef d refs fs s p :: defs d refs fs es
 
 ||| The program of the declarations, the entry first.
 program : {enc : Types.Enc} -> {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} ->
@@ -1660,13 +1660,13 @@ program forms shapes realised tables constants entry es rs =
     (Data.Distinct.distinct (map (.name) (mainSig :: map Builtin.fst es))
      && Data.Distinct.distinct (map (.sym) (map DPair.fst rs))) of
     Left ok =>
-      (declsOf es rs ** TermIR.MkProgram
-                     (defs (declsOf es rs) (refsOf (declsOf es rs))
-                       (LowerFlat.MkForms (LowerFlat.callees (declsOf es rs) forms) shapes
+      (programDecls es rs ** TermIR.MkProgram
+                     (defs (programDecls es rs) (declsRefs (programDecls es rs))
+                       (LowerFlat.MkForms (LowerFlat.callees (programDecls es rs) forms) shapes
                          realised.services
                          realised.externs realised.primitives tables constants)
                            ((mainSig, entry) :: es))
-                     (staticDefs (declsOf es rs) rs) (TermIR.Program.MkEntry TermIR.Var.here)
+                     (staticDefs (programDecls es rs) rs) (TermIR.Program.MkEntry TermIR.Var.here)
                        IRCommon.ConIds.noConIds)
     Right _ =>
       (TermIR.MkDecls [mainSig] [] ** TermIR.MkProgram
@@ -1675,8 +1675,8 @@ program forms shapes realised tables constants entry es rs =
                        []
                        (TermIR.Program.MkEntry TermIR.Var.here) IRCommon.ConIds.noConIds)
   where
-    refsOf : (d : TermIR.Decls enc) -> Refs enc d
-    refsOf d = MkRefs (fromList [(s.name, (s ** v)) | (s ** v) <- TermIR.Var.enumerate d.sigs])
+    declsRefs : (d : TermIR.Decls enc) -> Refs enc d
+    declsRefs d = MkRefs (fromList [(s.name, (s ** v)) | (s ** v) <- TermIR.Var.enumerate d.sigs])
                       (fromList [(s.sym, (s ** v)) | (s ** v) <- TermIR.Var.enumerate d.statics])
                         realised
 
@@ -1691,10 +1691,10 @@ program forms shapes realised tables constants entry es rs =
     mainSig = TermIR.MkSig mainExpression IRCommon.Conv.CPS [] False
 
     ||| The declarations: the entry first, the other functions, the statics.
-    declsOf : (es : List (TermIR.Sig enc, Plan)) ->
-              (rs : List (s ** ({0 d : TermIR.Decls enc} -> TermIR.StaticDef d s))) ->
-              TermIR.Decls enc
-    declsOf es rs = TermIR.MkDecls (mainSig :: map Builtin.fst es) (map DPair.fst rs)
+    programDecls : (es : List (TermIR.Sig enc, Plan)) ->
+                   (rs : List (s ** ({0 d : TermIR.Decls enc} -> TermIR.StaticDef d s))) ->
+                   TermIR.Decls enc
+    programDecls es rs = TermIR.MkDecls (mainSig :: map Builtin.fst es) (map DPair.fst rs)
 
 ||| Whether a value of the C type is held as a flat value of the skeleton:
 ||| an integer as its machine type, a `Char`, a `Double`, the world, `()`, a
@@ -1838,15 +1838,15 @@ lowerProgram enc platform realised forms shapes tables constants flat implemente
     -- The boundary of a function that has a form of its arity, whose
     -- parameters' and result's shapes are known and lay out as the form's.
     -- A foreign function's is its implementation's.
-    boundaryOf : Name -> Nat -> Maybe Plan
-    boundaryOf n arity = do
+    boundaryPlan : Name -> Nat -> Maybe Plan
+    boundaryPlan n arity = do
       fd <- lookup n byName
         <|>
           (Data.List.lookup n flat >>= \f =>
            lookup f byName)
       guard (length fd.params == arity)
-      ss <- traverse (Flat.Exp.shapeOf shapes . skeleton) fd.params
-      r <- Flat.Exp.shapeOf shapes fd.resultSkeleton
+      ss <- traverse (Flat.Exp.skeletonShape shapes . skeleton) fd.params
+      r <- Flat.Exp.skeletonShape shapes fd.resultSkeleton
       guard
         (map Flat.Exp.shapeLayout ss == map layout fd.params && Flat.Exp.shapeLayout r == fd.result)
       pure (Boundary arity fd ss r)
@@ -1869,19 +1869,19 @@ lowerProgram enc platform realised forms shapes tables constants flat implemente
     boxed _ = neutral
 
     -- the parameters of a function of the program, as Idris compiled it
-    arityOf : Name -> Nat
-    arityOf f = case Data.List.lookup f vmdefs0 of
+    functionArity : Name -> Nat
+    functionArity f = case Data.List.lookup f vmdefs0 of
       Just (MkVMFun args _) => length args
       _ => 0
 
     plan : (Name, VMDef) -> Maybe (TermIR.Sig enc, Plan)
     plan (n, MkVMFun args body) =
       Just (TermIR.MkSig n IRCommon.Conv.CPS (replicate (length args) IRCommon.Ty.Val) False,
-            fromMaybe (FromVM args body) (boundaryOf n (length args)))
+            fromMaybe (FromVM args body) (boundaryPlan n (length args)))
     plan (n, MkVMForeign _ fargs _) =
       Just (TermIR.MkSig n IRCommon.Conv.CPS (replicate (length fargs) IRCommon.Ty.Val) False,
-            maybe (fromMaybe (Foreign (length fargs)) (boundaryOf n (length fargs)))
-              (\impl => Implemented (length fargs) impl (arityOf impl))
+            maybe (fromMaybe (Foreign (length fargs)) (boundaryPlan n (length fargs)))
+              (\impl => Implemented (length fargs) impl (functionArity impl))
               (Data.List.lookup n implemented))
     plan (n, MkVMError _) = Nothing
 
@@ -1902,8 +1902,8 @@ lowerProgram enc platform realised forms shapes tables constants flat implemente
     ||| compiling, so every constant a local may hold is followed through casts;
     ||| the result may name statics the lowering does not use, which costs only
     ||| their bytes.
-    staticsOf : List VMInst -> SortedMap Name StaticPlan
-    staticsOf body = snd (go body (empty, note (Str "") empty))
+    instructionStatics : List VMInst -> SortedMap Name StaticPlan
+    instructionStatics body = snd (go body (empty, note (Str "") empty))
       where
         -- the empty string, which the lowering makes a character's string
         -- from (`Cons` onto it), whether the body names it or not; an image
@@ -1959,7 +1959,7 @@ lowerProgram enc platform realised forms shapes tables constants flat implemente
           one _ acc = acc
 
     bodyStatics : (Name, VMDef) -> Maybe (SortedMap Name StaticPlan)
-    bodyStatics (_, MkVMFun _ body) = Just (staticsOf body)
+    bodyStatics (_, MkVMFun _ body) = Just (instructionStatics body)
     bodyStatics _ = Nothing
 
     ready : (Name, StaticPlan) -> Maybe (s ** ({0 d : TermIR.Decls enc} -> TermIR.StaticDef d s))

@@ -1,4 +1,4 @@
-||| The constraints of a type as written (`constraintsOf`): each argument of
+||| The constraints of a type as written (`typeConstraints`): each argument of
 ||| an arrow `C x =>`, which search fills, as its text in the file; and a
 ||| claim's text with one of them taken out (`withoutConstraint`).
 |||
@@ -44,10 +44,10 @@ writtenAs ls t = case Span.bounds (getPTermLoc t) of
 ||| The constraints of a type, each as written in the file's lines: the
 ||| arguments of its arrows `C x =>`, from the outside in.
 export
-constraintsOf : (text : List String) -> PTerm -> List String
-constraintsOf ls (PPi _ _ AutoImplicit Nothing a r) = writtenAs ls a ++ constraintsOf ls r
-constraintsOf ls (PPi _ _ _ _ _ r) = constraintsOf ls r
-constraintsOf _ _ = []
+typeConstraints : (text : List String) -> PTerm -> List String
+typeConstraints ls (PPi _ _ AutoImplicit Nothing a r) = writtenAs ls a ++ typeConstraints ls r
+typeConstraints ls (PPi _ _ _ _ _ r) = typeConstraints ls r
+typeConstraints _ _ = []
 
 ||| A text without the constraint written as given, its `=>` and the spaces
 ||| and line breaks after it, at the constraint's first place: the type goes

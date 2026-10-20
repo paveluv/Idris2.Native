@@ -586,7 +586,7 @@ mutual
            Tr -> FC -> PrimFn arity -> List ClosedTerm -> Core (Maybe ClosedTerm)
   foldOp tr fc op as
       = do as' <- traverse (\a => fst <$> whnfStatic tr a) as
-           let Just ks = the (Maybe (List Constant)) (traverse constantOf as')
+           let Just ks = the (Maybe (List Constant)) (traverse termConstant as')
              | Nothing => pure Nothing
            let Just vs = toVect arity (map (NPrimVal fc) ks)
              | Nothing => pure Nothing
@@ -594,9 +594,9 @@ mutual
                 Just (NPrimVal _ k) => pure (Just (PrimVal fc k))
                 _ => pure Nothing
     where
-      constantOf : ClosedTerm -> Maybe Constant
-      constantOf (PrimVal _ k) = Just k
-      constantOf _ = Nothing
+      termConstant : ClosedTerm -> Maybe Constant
+      termConstant (PrimVal _ k) = Just k
+      termConstant _ = Nothing
 
 -- Make the flat form of `n`, a flat function, if its signature is ground.
 -- A generic one has flat forms at static arguments only. A primitive's form
@@ -871,11 +871,11 @@ root n
                                        "A constructor applied to too many arguments")
 
                     -- The term for a translated value that is an atom.
-                    atomOf : Exp -> Maybe ClosedTerm
-                    atomOf (Exp.FVar fc x) = Just (Ref fc Bound x)
-                    atomOf (Exp.FConst fc k) = Just (PrimVal fc k)
-                    atomOf (Exp.FNone fc) = Just (Erased fc Placeholder)
-                    atomOf _ = Nothing
+                    atomTerm : Exp -> Maybe ClosedTerm
+                    atomTerm (Exp.FVar fc x) = Just (Ref fc Bound x)
+                    atomTerm (Exp.FConst fc k) = Just (PrimVal fc k)
+                    atomTerm (Exp.FNone fc) = Just (Erased fc Placeholder)
+                    atomTerm _ = Nothing
 
                     staticPending : Tr -> Pending -> Core Pending
                     staticPending tr (PArg a) = PArg <$> static tr a
@@ -912,7 +912,7 @@ root n
                                 do Right (sk, l) <- laidOut b.type
                                      | Left _ => keep !(static tr a)
                                    v <- trTerm tr a []
-                                   let Nothing = atomOf v
+                                   let Nothing = atomTerm v
                                      | Just a' => keep a'
                                    x <- fresh b.name
                                    let fv = Exp.MkFlatVar x sk l
@@ -1114,7 +1114,7 @@ root n
                                            (Problem.CalleeNotFlat fn Nothing !(quoteClosed res) why)
                                      -- the flat variables the static arguments capture
                                      sts <- statics <$> get FlatSt
-                                     let staticTerms = mapMaybe staticOf parts
+                                     let staticTerms = mapMaybe pendingStatic parts
                                      let caps = filter (\x => isJust (lookup x tr.vars))
                                                        (nub
                                                          (Data.Builder.joinMap
@@ -1124,7 +1124,7 @@ root n
                                            zip caps
                                              (map (MN "flat captured" . cast) [0 .. length caps])
                                      parts' <- relocateParts (fromList canon) parts
-                                     key <- traverse keyOf parts'
+                                     key <- traverse pendingKey parts'
                                      as <- traverse (\a => trTerm tr a []) actuals
                                      let capArgs = map (Exp.FVar fc) caps
                                      st <- get FlatSt
@@ -1257,9 +1257,9 @@ root n
                                       then pure (parts <>> [], params <>> [], actuals <>> [], res)
                                       else fail tr fc Problem.NotStatic
 
-                                staticOf : (Bool, Pending) -> Maybe ClosedTerm
-                                staticOf (True, PArg t) = Just t
-                                staticOf _ = Nothing
+                                pendingStatic : (Bool, Pending) -> Maybe ClosedTerm
+                                pendingStatic (True, PArg t) = Just t
+                                pendingStatic _ = Nothing
 
                                 -- A term with every let substituted into its scope.
                                 substLets : Term vars'' -> Term vars''
@@ -1361,7 +1361,7 @@ root n
                                 relocateParts : NameMap Name -> List (Bool, Pending) ->
                                                 Core (List (Bool, Pending))
                                 relocateParts canon parts
-                                    = do moved <- relocate canon (mapMaybe staticOf parts)
+                                    = do moved <- relocate canon (mapMaybe pendingStatic parts)
                                          pure (place parts moved)
                                   where
                                     place : List (Bool, Pending) -> List ClosedTerm ->
@@ -1376,10 +1376,10 @@ root n
                                 -- one, around the whole right-hand side, and a recursive call there
                                 -- would otherwise carry one more let per level and never meet its
                                 -- memo.
-                                keyOf : (Bool, Pending) -> Core (Maybe ClosedTerm)
-                                keyOf (True, PArg t) =
+                                pendingKey : (Bool, Pending) -> Core (Maybe ClosedTerm)
+                                pendingKey (True, PArg t) =
                                   Just <$> toFullNames (substLets !(resolved t))
-                                keyOf _ = pure Nothing
+                                pendingKey _ = pure Nothing
 
                                 sameKey : List (Maybe ClosedTerm) -> List (Maybe ClosedTerm) -> Bool
                                 sameKey [] [] = True
@@ -1446,7 +1446,7 @@ root n
                         -- the value bound to a fresh flat variable, unless it is an atom
                         bindFlat : Exp.Skeleton -> Exp.Layout -> Exp -> Core Exp
                         bindFlat sk l v'
-                            = do let Nothing = atomOf v'
+                            = do let Nothing = atomTerm v'
                                    | Just a => trTerm tr (subst a sc) ps
                                  x' <- fresh x
                                  let fv = Exp.MkFlatVar x' sk l
@@ -1678,7 +1678,7 @@ shape sk
     = do Just tm <- skeletonTerm sk
            | Nothing => pure Nothing
          defs <- get Ctxt
-         shapeOf !(nf defs Env.empty tm)
+         typeShape !(nf defs Env.empty tm)
   where
     skeletonTerm : Exp.Skeleton -> Core (Maybe ClosedTerm)
     skeletonTerm (Exp.SPrim t) = pure (Just (PrimVal EmptyFC (PrT t)))
@@ -1706,12 +1706,12 @@ shape sk
     -- The judgement goes first: it rejects the recursive types, whose
     -- shapes have no end.
     mutual
-      shapeOf : ClosedNF -> Core (Maybe Exp.Shape)
-      shapeOf ty@(NPrimVal _ (PrT t))
+      typeShape : ClosedNF -> Core (Maybe Exp.Shape)
+      typeShape ty@(NPrimVal _ (PrT t))
           = do Judgement.LaidOut _ <- layout [] ty
                            | _ => pure Nothing
                pure (Just (Exp.PrimShape t))
-      shapeOf ty@(NTCon _ n _ args)
+      typeShape ty@(NTCon _ n _ args)
           = if !(toFullNames n) == Exp.uniformType then pure (Just Exp.UniformShape) else
             do Judgement.LaidOut _ <- layout [] ty
                            | _ => pure Nothing
@@ -1722,7 +1722,7 @@ shape sk
                  | _ => pure Nothing
                cs <- traverse (conShape args) cons
                pure (Exp.DataShape <$> the (Maybe (List Exp.ConShape)) (sequence cs))
-      shapeOf _ = pure Nothing
+      typeShape _ = pure Nothing
 
       conShape : List (FC, ClosedClosure) -> Name -> Core (Maybe Exp.ConShape)
       conShape args cn
@@ -1731,7 +1731,7 @@ shape sk
                  | Nothing => pure Nothing
                let DCon tag arity nt = definition cdef
                  | _ => pure Nothing
-               fs <- traverse (\t => shapeOf !(nf defs Env.empty t))
+               fs <- traverse (\t => typeShape !(nf defs Env.empty t))
                  !(Judgement.fieldTypes args cdef)
                let Just fs' = the (Maybe (List Exp.Shape)) (sequence fs)
                  | Nothing => pure Nothing

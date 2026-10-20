@@ -34,7 +34,7 @@ Show Pinned where
 ||| What a pinned register holds: a word for the window's, the continuation
 ||| for `K`.
 public export
-pinnedTy : Pinned -> Ty enc
-pinnedTy Hp = Ty.W64
-pinnedTy HpLim = Ty.W64
-pinnedTy K = Ty.PtrTo Types.Kind.CONT
+ty : Pinned -> Ty enc
+ty Hp = Ty.W64
+ty HpLim = Ty.W64
+ty K = Ty.PtrTo Types.Kind.CONT

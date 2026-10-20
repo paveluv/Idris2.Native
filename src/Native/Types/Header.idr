@@ -253,7 +253,7 @@ encodeHeader h = signed (cast (fixedWord k) + sum (map part (parts h)))
 export
 decodeHeader : (enc : Enc) -> Int64 -> Maybe (k : Kind ** Header enc k)
 decodeHeader enc w = do
-  r <- parse (Kind.kindOfCode (cast (u `mod` 65536)))
+  r <- parse (Kind.fromCode (cast (u `mod` 65536)))
   if encodeHeader (snd r) == w then Just r else Nothing
   where
     unsigned : Int64 -> Integer

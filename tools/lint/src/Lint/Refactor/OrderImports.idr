@@ -40,7 +40,7 @@ orderImports =
         (first :: _, Just lastImport) =>
           let blockStart = fst (span first)
               blockEnd = snd (span lastImport)
-              chunks = chunksOf blockStart is
+              chunks = importChunks blockStart is
               sorted = sortBy (\a, b => compare (key a) (key b)) chunks
               block =
                 Finding.joined
@@ -67,19 +67,19 @@ orderImports =
 
         -- each import with its lines: the non-blank lines after the previous
         -- import's, then its own
-        chunksOf : Int -> List Import -> List (Import, List String)
-        chunksOf _ [] = []
-        chunksOf from (i :: rest) =
+        importChunks : Int -> List Import -> List (Import, List String)
+        importChunks _ [] = []
+        importChunks from (i :: rest) =
           let (s, e) = span i
               above = filter (\l => trim l /= "") (linesFrom from (s - 1))
-          in (i, above ++ linesFrom s e) :: chunksOf (e + 1) rest
+          in (i, above ++ linesFrom s e) :: importChunks (e + 1) rest
 
         chunkLines : List (Import, List String) -> List String
         chunkLines = foldr (\(_, l), rest => l ++ rest) []
 
     candidates : Subject -> List Refactoring.Candidate
     candidates s =
-      let ls = Subject.linesOf s
+      let ls = Subject.subjectLines s
           ordered = orderedImports s.file ls
       in if ordered == ls then []
         else

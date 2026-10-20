@@ -26,7 +26,7 @@ import Native.Types.Enc as Types
 ||| A static executable from the seed and the program's own instructions and
 ||| read-only data, with allocation windows of `window` bytes, a multiple of
 ||| 8, and the per-thread areas the program needs (`Areas`). The program
-||| defines `symLabel SymMain`, which is entered with `k = HALT`, `hp`/`hplim`
+||| defines `label SymMain`, which is entered with `k = HALT`, `hp`/`hplim`
 ||| set and the stack 16-aligned, and numbers its other labels from
 ||| `reservedLabels`. Each item of read-only data follows the seed's,
 ||| 8-aligned, at its label. Fails with what it could not assemble: labels it
@@ -45,12 +45,12 @@ linkProgram enc window areas program items =
       offsets = offsetsFrom (cast (length seedData)) items
       as = Linkage.Areas.maxAreas Seed.seedAreas areas
       lay = ELF.planLayout ts (Bytes.byteCount rodata) (Seed.seedBssSize as)
-      env = fromList (map (\(s, off) => (Linkage.Sym.symLabel s, rodataBase lay + off)) rsyms
-                   ++ map (\(s, off) => (Linkage.Sym.symLabel s, bssBase lay + off))
+      env = fromList (map (\(s, off) => (Linkage.Sym.label s, rodataBase lay + off)) rsyms
+                   ++ map (\(s, off) => (Linkage.Sym.label s, bssBase lay + off))
                      (Seed.seedBss as)
                    ++ map (\(l, off) => (l, rodataBase lay + off)) offsets)
       (bytes, labels, problems) = X86.Encode.assembleWith env ELF.textBase text
-      entry = fromMaybe ELF.textBase (lookup (Linkage.Sym.symLabel Linkage.Sym.SymStart) labels)
+      entry = fromMaybe ELF.textBase (lookup (Linkage.Sym.label Linkage.Sym.SymStart) labels)
   in if null problems
     then Right (ELF.elfImage Platform.X86_64 lay bytes rodata (Seed.seedBssSize as) entry)
                       else Left problems

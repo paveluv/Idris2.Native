@@ -36,7 +36,7 @@ realigned s = case moved of
           let ls = Subject.linesBetween s g.first g.last
               ls' = Signature.aligned g.column ls
           in if ls == ls' then Nothing else Just (g, Edit.replaceLines g.first g.last ls'))
-        (Signature.signaturesOf s)
+        (Signature.subjectSignatures s)
 
 ||| `format`: the signatures aligned, then the lines wider than the width
 ||| (`--arg WIDTH`, 100 by default) broken.
@@ -47,5 +47,5 @@ format args =
     ("align each signature's lines with its type, then break each line wider than a width "
      ++ "(--arg WIDTH, 100 by default) into lines that fit")
     (\s => case realigned s of
-             [] => ReflowLines.wideLines (ReflowLines.widthOf args) s
+             [] => ReflowLines.wideLines (ReflowLines.argsWidth args) s
              cs => cs)

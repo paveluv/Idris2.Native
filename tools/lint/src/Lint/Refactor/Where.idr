@@ -52,11 +52,11 @@ intoWhere text (MkPatClause fc _ _ wh@(d :: _)) names uses column ls =
     Just user =>
       -- the user's function starts with its claim, the first local
       -- declaration of one of its names
-      let userNames = Rules.definesOf user
-          first = fromMaybe user (find (\w => any (`elem` userNames) (Rules.definesOf w)) wh)
+      let userNames = Rules.declDefines user
+          first = fromMaybe user (find (\w => any (`elem` userNames) (Rules.declDefines w)) wh)
           from = fst (Span.lineSpan first.fc)
           after = filter (\w => fst (Span.lineSpan w.fc) >= from) wh
-      in if any (\w => any (\n => contains n uses) (Rules.definesOf w)) after
+      in if any (\w => any (\n => contains n uses) (Rules.declDefines w)) after
            then Left
              "it uses a local function its user's `where` block defines after the one that uses it"
            else Right

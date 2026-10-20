@@ -122,8 +122,8 @@ setEntry a g i v = do
 
 ||| The granule an address of the region is in, and a granule's address.
 export
-granuleOf : Pages h => Config -> (arena, addr : Bits64) -> Ordo.Op h Bits64
-granuleOf c a addr = do
+addressGranule : Pages h => Config -> (arena, addr : Bits64) -> Ordo.Op h Bits64
+addressGranule c a addr = do
   r <- field a regionStart
   Ordo.pure ((addr - r) `shiftR` c.granuleShift)
 
@@ -216,7 +216,7 @@ carve c a = do
   e <- field a regionEnd
   let size = 1 `shiftL` c.maxChunkShift
   if t + size > e then Ordo.pure Nothing else do
-    g <- granuleOf c a t
+    g <- addressGranule c a t
     p <- field a pagemap
     pc <- field a pagemapCommitted
     let needed = p + ((g + (1 `shiftL` Config.maxOrder c)) `shiftL` entryShift)

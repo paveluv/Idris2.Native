@@ -292,11 +292,11 @@ failures = concat
   , showFailures "Pinned" pinnedNames, showFailures "Reg64" regs
   , showFailures "Xmm" xmms, showFailures "Cond" conds, showFailures "AluOp" aluOps
   , showFailures "ShiftOp" shiftOps, showFailures "SseOp" sseOps, showFailures "Width" widths
-  , tableFailures "code" code kinds, inverseFailures "kindOfCode" code kindOfCode kinds
+  , tableFailures "code" code kinds, inverseFailures "fromCode" code fromCode kinds
   , tableFailures "regNum" regNum regs, tableFailures "xmmNum" xmmNum xmms
   , tableFailures "condCode" condCode conds, tableFailures "aluDigit" aluDigit aluOps
   , tableFailures "shiftDigit" shiftDigit shiftOps, tableFailures "sseOpcode" sseOpcode sseOps
-  , tableFailures "symLabel" symLabel syms, tableFailures "symName" symName syms
+  , tableFailures "label" label syms, tableFailures "symName" symName syms
   , eqFailures "Broken" brokens, showFailures "Broken" brokens
   , tableFailures "brokenCode" brokenCode brokens
   , inverseFailures "brokenDecode" brokenCode brokenDecode brokens

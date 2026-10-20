@@ -124,8 +124,8 @@ data Instr : Decls enc -> Bool -> (var : IRCommon.Ty enc -> Type) -> List (IRCom
   DirectCall : Var d.sigs (MkSig n (IRCommon.Conv.Direct rs col) ps cv) -> All (Opnd var) ps ->
                Instr d m var rs
   ||| A pinned register's value, and setting it.
-  GetPinned : (r : IRCommon.Pinned) -> Instr d m var [IRCommon.Pinned.pinnedTy r]
-  SetPinned : (r : IRCommon.Pinned) -> Opnd var (IRCommon.Pinned.pinnedTy r) -> Instr d m var []
+  GetPinned : (r : IRCommon.Pinned) -> Instr d m var [IRCommon.Pinned.ty r]
+  SetPinned : (r : IRCommon.Pinned) -> Opnd var (IRCommon.Pinned.ty r) -> Instr d m var []
   ||| One system call of so many arguments, at most six: its number, then the
   ||| arguments, giving its result, by the platform's convention. A
   ||| collection never starts in a system call.

@@ -28,20 +28,20 @@ record Subject where
 
 ||| The file's text, line by line.
 export
-linesOf : Subject -> List String
-linesOf s = lines s.text
+subjectLines : Subject -> List String
+subjectLines s = lines s.text
 
 ||| A line of the file, or an empty one past its end.
 export
-lineOf : Subject -> Int -> String
-lineOf s l = case drop (cast l) (linesOf s) of
+subjectLine : Subject -> Int -> String
+subjectLine s l = case drop (cast l) (subjectLines s) of
   (x :: _) => x
   [] => ""
 
 ||| The file's lines from `a` to `b`, both included.
 export
 linesBetween : Subject -> (a, b : Int) -> List String
-linesBetween s a b = take (cast (b - a + 1)) (drop (cast a) (linesOf s))
+linesBetween s a b = take (cast (b - a + 1)) (drop (cast a) (subjectLines s))
 
 ||| The file at the path, parsed, or what stopped it.
 export

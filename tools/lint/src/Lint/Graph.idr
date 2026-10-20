@@ -63,7 +63,7 @@ Eq Layer where
 ||| Whether an import is allowed by the layers, given the modules that are
 ||| ours. The runtime, of either tier, may import nothing that is not ours.
 allowed : SortedSet String -> (importer : String) -> (imported : String) -> Maybe Bool
-allowed ours importer imported = case layerOf importer of
+allowed ours importer imported = case moduleLayer importer of
   Nothing => Nothing
   Just RuntimeLayer => Just (contains imported ours && mayImport RuntimeLayer imported)
   Just SupportLayer => Just (contains imported ours && mayImport SupportLayer imported)
@@ -77,8 +77,8 @@ allowed ours importer imported = case layerOf importer of
 
     ||| A module's layer: the group under the product's root its name is in
     ||| (`Codegen` for `Native.Codegen.TermIR.Instr`), or the linter's.
-    layerOf : String -> Maybe Layer
-    layerOf m = case forget (split (== '.') m) of
+    moduleLayer : String -> Maybe Layer
+    moduleLayer m = case forget (split (== '.') m) of
       ("Native" :: g :: _) =>
         if g `elem` contract then Just ContractLayer
         else lookup g
@@ -113,19 +113,19 @@ allowed ours importer imported = case layerOf importer of
     ||| module of no layer among ours (a program) by none.
     mayImport : Layer -> String -> Bool
     mayImport l m =
-      maybe False (`elem` imports l) (layerOf m)
+      maybe False (`elem` imports l) (moduleLayer m)
         ||
           (elem l
             (the (List Layer) [ContractLayer, TypesLayer, RuntimeLayer, SupportLayer, SystemLayer])
            && m
            == "Native.Flat.Uniform")
 
-moduleOf : Source.SourceFile -> String
-moduleOf f = show f.mod.moduleNS
+fileModule : Source.SourceFile -> String
+fileModule f = show f.mod.moduleNS
 
 ||| The modules defined by the files.
 ourModules : List Source.SourceFile -> SortedSet String
-ourModules fs = fromList (map moduleOf fs)
+ourModules fs = fromList (map fileModule fs)
 
 ||| `layering` and `syscall`: imports the layers do not allow, and the raw
 ||| system call imported outside the platforms' modules.
@@ -138,16 +138,17 @@ graphRules fs =
     rules : SortedSet String -> Source.SourceFile -> List Finding
     rules ours f =
       [ MkFinding "layering" f.path (fst (start i.loc)) (snd (start i.loc)) imported
-          ("`" ++ moduleOf f ++ "` may not import `" ++ imported ++ "`: the layers")
+          ("`" ++ fileModule f ++ "` may not import `" ++ imported ++ "`: the layers")
       | i <- f.mod.imports, let imported = show i.path,
-                                  allowed ours (moduleOf f) imported == Just False ]
+                                  allowed ours (fileModule f) imported == Just False ]
       ++
       [ MkFinding "syscall" f.path (fst (start i.loc)) (snd (start i.loc))
         "Native.Runtime.OS.Syscall"
-          ("the direct system call outside `Native.Runtime.OS`: the platform's services reach the " ++
+          ("the direct system call outside `Native.Runtime.OS`: the platform's services reach the "
+            ++
            "system")
       | i <- f.mod.imports, show i.path == "Native.Runtime.OS.Syscall",
-        not (isPrefixOf "Native.Runtime.OS." (moduleOf f)) ]
+        not (isPrefixOf "Native.Runtime.OS." (fileModule f)) ]
       where
         start : FC -> (Int, Int)
         start (MkFC _ s _) = s
@@ -164,12 +165,12 @@ graphRules fs =
 
 ||| A module's group: the last component of its parent.
 export
-groupOf : String -> Maybe String
-groupOf m = parentOf m >>= \p => last' (forget (Data.String.split (== '.') p))
+moduleGroup : String -> Maybe String
+moduleGroup m = moduleParent m >>= \p => last' (forget (Data.String.split (== '.') p))
   where
     ||| A module's parent: its name without the last component.
-    parentOf : String -> Maybe String
-    parentOf m = case reverse (forget (Data.String.split (== '.') m)) of
+    moduleParent : String -> Maybe String
+    moduleParent m = case reverse (forget (Data.String.split (== '.') m)) of
       (_ :: rest@(_ :: _)) => Just (fastConcat (intersperse "." (reverse rest)))
       _ => Nothing
 
@@ -180,10 +181,10 @@ groupOf m = parentOf m >>= \p => last' (forget (Data.String.split (== '.') p))
 ||| the two modules' names share, `TermIR.StaticDef.SWord` in
 ||| `Native.Codegen.RegAlloc`.
 export
-importAlias : (exportsOf : SortedMap String (List String)) -> Source.SourceFile ->
+importAlias : (fileExports : SortedMap String (List String)) -> Source.SourceFile ->
               List (FC, Name) ->
               List Finding
-importAlias exportsOf f refs =
+importAlias fileExports f refs =
   [ MkFinding "import-alias" f.path l c m
       ("`" ++ m ++ "` imported as `" ++ show i.nameAs ++ "`: "
        ++ maybe "its names are qualified by its path, which needs no alias"
@@ -199,7 +200,7 @@ importAlias exportsOf f refs =
     me = show f.mod.moduleNS
 
     ours : List Import
-    ours = filter (\i => isJust (lookup (show i.path) exportsOf)) f.mod.imports
+    ours = filter (\i => isJust (lookup (show i.path) fileExports)) f.mod.imports
 
     start : FC -> (Int, Int)
     start (MkFC _ s _) = s
@@ -212,7 +213,7 @@ importAlias exportsOf f refs =
     by q n i =
       let m = show i.path in
       (show i.nameAs == q || m == q || isSuffixOf ("." ++ q) m)
-        && maybe False (elem n) (lookup m exportsOf)
+        && maybe False (elem n) (lookup m fileExports)
 
     written : (FC, Name) -> Maybe Finding
     written (fc, NS ns (UN (Basic n))) =
@@ -244,30 +245,30 @@ selfQualified f defines refs = mapMaybe one refs
     me = show f.mod.moduleNS
 
     -- where each right-hand side of the file's clauses is
-    rhsOf : List PDecl -> List ((Int, Int), (Int, Int))
-    rhsOf ds = foldr (\d, rest => decl d.val ++ rest) [] ds
+    rhsSpans : List PDecl -> List ((Int, Int), (Int, Int))
+    rhsSpans ds = foldr (\d, rest => decl d.val ++ rest) [] ds
       where
         mutual
           decl : PDeclNoFC -> List ((Int, Int), (Int, Int))
           decl (PDef cs) = foldr (\c, rest => clause c ++ rest) [] cs
-          decl (PMutual ds) = rhsOf ds
-          decl (PNamespace _ ds) = rhsOf ds
-          decl (PParameters _ ds) = rhsOf ds
-          decl (PUsing _ ds) = rhsOf ds
-          decl (PFail _ ds) = rhsOf ds
-          decl (PInterface _ _ _ _ _ _ _ ds) = rhsOf ds
-          decl (PImplementation _ _ _ _ _ _ _ _ _ (Just ds)) = rhsOf ds
+          decl (PMutual ds) = rhsSpans ds
+          decl (PNamespace _ ds) = rhsSpans ds
+          decl (PParameters _ ds) = rhsSpans ds
+          decl (PUsing _ ds) = rhsSpans ds
+          decl (PFail _ ds) = rhsSpans ds
+          decl (PInterface _ _ _ _ _ _ _ ds) = rhsSpans ds
+          decl (PImplementation _ _ _ _ _ _ _ _ _ (Just ds)) = rhsSpans ds
           decl _ = []
 
           clause : PClause -> List ((Int, Int), (Int, Int))
           clause (MkPatClause _ _ rhs wh) =
             maybe [] (\b => [b]) (Refactor.Span.bounds (getPTermLoc rhs))
-            ++ rhsOf wh
+            ++ rhsSpans wh
           clause (MkWithClause _ _ _ _ cs) = foldr (\c, rest => clause c ++ rest) [] cs
           clause (MkImpossible _ _) = []
 
     spans : List ((Int, Int), (Int, Int))
-    spans = rhsOf f.mod.decls
+    spans = rhsSpans f.mod.decls
 
     onRight : FC -> Bool
     onRight fc = case Refactor.Span.bounds fc of
@@ -336,18 +337,19 @@ meetings fds =
   let ours = ourModules (map fst fds)
       oursOnly = \is => filter (\i => contains i ours) is
       imports =
-        fromList [ (moduleOf f, oursOnly (map (show . (.path)) f.mod.imports)) | (f, _) <- fds ]
+        fromList [ (fileModule f, oursOnly (map (show . (.path)) f.mod.imports)) | (f, _) <- fds ]
       reexports =
         fromList
-          [ (moduleOf f, oursOnly (map (show . (.path)) (filter (.reexport) f.mod.imports)))
+          [ (fileModule f, oursOnly (map (show . (.path)) (filter (.reexport) f.mod.imports)))
            | (f, _) <- fds ]
       visibleIn =
         the (SortedMap String (List String))
-          (fromList [ (moduleOf f, Finding.joined (map (.visible) ds)) | (f, ds) <- fds ])
+          (fromList [ (fileModule f, Finding.joined (map (.visible) ds)) | (f, ds) <- fds ])
       found = foldl (\acc, fd => meet acc imports reexports visibleIn fd) empty fds
       overloads = the (SortedSet (String, String))
                     (fromList
-                      (Finding.joined [ map (moduleOf f,) (d.defines ++ d.visible) | (f, ds) <- fds,
+                      (Finding.joined
+                        [ map (fileModule f,) (d.defines ++ d.visible) | (f, ds) <- fds,
                                d <- ds, Rules.typedOverload d ]))
   in filter (\mt => not (exempt overloads mt.name mt.definers))
             (map (\(n, (ds, ms)) => MkMeeting n (Prelude.toList ds) (Prelude.toList ms))
@@ -364,7 +366,7 @@ meetings fds =
            SortedMap String (List String) -> (Source.SourceFile, List Rules.Declared) ->
            SortedMap String (SortedSet String, SortedSet String)
     meet acc imports reexports visibleIn (f, ds) =
-      let m = moduleOf f
+      let m = fileModule f
           own = tag m (Finding.joined (map (.defines) ds))
           others =
             Finding.joined
@@ -485,7 +487,7 @@ health fds =
       in MkComponent "structure" "encapsulation" (percent privates (length imports))
            ("private imports, façades exempt: " ++ show privates ++ " of "
             ++ show (length imports))
-           [ MkOffender (moduleOf f) (length pub) ("imports publicly " ++ listed pub)
+           [ MkOffender (fileModule f) (length pub) ("imports publicly " ++ listed pub)
            | f <- notFacades, let pub = [ show i.path | i <- f.mod.imports, i.reexport ],
                                     not (null pub) ]
 
@@ -495,14 +497,15 @@ health fds =
 
     disallowed : (Source.SourceFile, Import, Bool) -> Offender
     disallowed (f, i, _) =
-      MkOffender (moduleOf f) 1 ("imports `" ++ show i.path ++ "`, which its layer may not")
+      MkOffender (fileModule f) 1 ("imports `" ++ show i.path ++ "`, which its layer may not")
 
     layering : List Source.SourceFile -> Component
     layering fs =
       let ours = ourModules fs
           checked =
             Finding.joined
-              [ mapMaybe (\i => map (f, i,) (allowed ours (moduleOf f) (show i.path))) f.mod.imports
+              [ mapMaybe (\i => map (f, i,) (allowed ours (fileModule f) (show i.path)))
+                f.mod.imports
                | f <- fs ]
           good = length (filter allowedImport checked)
       in MkComponent "structure" "layering" (percent good (length checked))
@@ -530,10 +533,10 @@ health fds =
           g =
             the (SortedMap String (List String))
               (fromList
-                [ (moduleOf f, [ show i.path | i <- f.mod.imports, contains (show i.path) ours ])
+                [ (fileModule f, [ show i.path | i <- f.mod.imports, contains (show i.path) ours ])
                  | f <- fs ])
           n = length fs
-          reachOf = [ (moduleOf f, Prelude.toList (reaches g (moduleOf f))) | f <- fs ]
+          reachOf = [ (fileModule f, Prelude.toList (reaches g (fileModule f))) | f <- fs ]
           reached = sum (map (\mr => length (snd mr)) reachOf)
       in MkComponent "structure" "coupling" (percent (n * n `minus` reached) (n * n))
            ("module pairs a change cannot reach: " ++ show (n * n `minus` reached) ++ " of "
@@ -553,7 +556,7 @@ health fds =
 
     unnamedModule : (Source.SourceFile, List Rules.Declared) -> Offender
     unnamedModule (f, ds) =
-      MkOffender (moduleOf f) 1 ("defines " ++ listed (Finding.joined (map (.visible) ds)))
+      MkOffender (fileModule f) 1 ("defines " ++ listed (Finding.joined (map (.visible) ds)))
 
     names : Component
     names =
@@ -565,12 +568,12 @@ health fds =
            (map unnamedModule unnamed)
 
     -- the names a module exports, each with the module
-    exportsOf : (Source.SourceFile, List Rules.Declared) -> List (String, String)
-    exportsOf (f, ds) = map (\n => (n, moduleOf f)) (Finding.joined (map (.visible) ds))
+    fileExports : (Source.SourceFile, List Rules.Declared) -> List (String, String)
+    fileExports (f, ds) = map (\n => (n, fileModule f)) (Finding.joined (map (.visible) ds))
 
     uniqueness : Component
     uniqueness =
-      let exportedNames = Finding.joined (map exportsOf fds)
+      let exportedNames = Finding.joined (map fileExports fds)
           ms = meetings fds
           meetingNames = map (.name) ms
           unique = length (filter (\nm => not (fst nm `elem` meetingNames)) exportedNames)
@@ -586,7 +589,7 @@ health fds =
     moduleWide (_, ([], _)) = Nothing
     moduleWide (f, (s, _)) =
       Just
-        (MkOffender (moduleOf f) (length s)
+        (MkOffender (fileModule f) (length s)
          ("module-wide, each used by one: "
            ++ listed (Finding.joined (map (\hu => (fst hu).defines) s))))
 

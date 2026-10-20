@@ -1,5 +1,8 @@
 ./Token.idr: 1 changed, 0 stay
 ./Token.idr: 1 changed, 0 stay
+./Token.idr: 0 changed, 1 stay
+  `rename Token.costOf to double` stays: `double` occurs in its module already
+./Token.idr: 2 changed, 0 stay
 --- Token.idr
 ||| The module whose names are renamed: a token, its type and its
 ||| constructor, which the test renames to `Ordo` and `MkOrdo`. In its own
@@ -16,8 +19,18 @@ data Ordo : Type where
 
 ||| A token used: its one value matched.
 export
-spend : Ordo -> Nat
-spend MkOrdo = 1
+pay : Ordo -> Nat
+pay MkOrdo = 1
+
+||| Two tokens' worth, by a helper of its own in a `where` block, which
+||| the test renames with `spend`, both in one run: a local name in its
+||| module alone.
+export
+double : Ordo -> Nat
+double t = cost t + cost t
+  where
+    cost : Ordo -> Nat
+    cost = pay
 --- User.idr
 ||| A module that takes the token from `Token`: written bare, and qualified
 ||| by the module's name. Both are renamed, the qualifier kept. A string
@@ -29,7 +42,7 @@ import Token
 %default total
 
 twice : Ordo -> Nat
-twice t = spend t + spend Token.MkOrdo
+twice t = pay t + pay Token.MkOrdo
 
 label : String
 label = "Tok"

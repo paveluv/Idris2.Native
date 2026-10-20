@@ -37,7 +37,7 @@ record Project where
 export
 packagesNear : (roots : List String) -> IO (List (String, String))
 packagesNear roots = do
-  let dirs = nub (concatMap (\r => [r, parentOf r]) roots)
+  let dirs = nub (concatMap (\r => [r, pathDirectory r]) roots)
   packages <- traverse packagesIn dirs
   pure (nub (concat packages))
   where
@@ -55,8 +55,8 @@ packagesNear roots = do
       pure (rights texts)
 
     ||| A directory's parent, `""` for the current one.
-    parentOf : String -> String
-    parentOf p = case reverse (List1.forget (split (== '/') p)) of
+    pathDirectory : String -> String
+    pathDirectory p = case reverse (List1.forget (split (== '/') p)) of
       (_ :: rest@(_ :: _)) => joinBy "/" (reverse rest)
       _ => ""
 
@@ -65,8 +65,8 @@ packagesNear roots = do
 ||| TTC missing or older than its source. A refactoring that judges by the
 ||| uses takes no module left out for one that uses nothing.
 export
-usesOf : Project -> (module' : String) -> Either String (List Resolution.Use)
-usesOf p m = case p.resolution of
+moduleUses : Project -> (module' : String) -> Either String (List Resolution.Use)
+moduleUses p m = case p.resolution of
   Nothing => Left "the modules' uses cannot be resolved: build them first"
   Just r => case find (\rm => rm.name == m) r.modules of
     Just rm => Right rm.uses
@@ -87,15 +87,15 @@ loadProject roots paths res context = do
 ||| Where a package keeps its sources: its `sourcedir` under its directory,
 ||| its directory if it names none or `.`.
 export
-sourceDirOf : (path, text : String) -> String
-sourceDirOf path text =
-  let dir = parentOf path in
+packageSourceDir : (path, text : String) -> String
+packageSourceDir path text =
+  let dir = pathDirectory path in
   case mapMaybe value (lines text) of
     (d :: _) => if d == "." || d == "" then dir else (if dir == "" then d else dir ++ "/" ++ d)
     [] => dir
   where
-    parentOf : String -> String
-    parentOf p = case reverse (List1.forget (split (== '/') p)) of
+    pathDirectory : String -> String
+    pathDirectory p = case reverse (List1.forget (split (== '/') p)) of
       (_ :: rest@(_ :: _)) => joinBy "/" (reverse rest)
       _ => ""
 

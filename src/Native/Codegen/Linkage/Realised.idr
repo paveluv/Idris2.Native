@@ -129,8 +129,8 @@ entries required contract listName own heads keep = do
       _ => []
 
     -- the constructor a type is the port of, if it is one
-    portOf : Term vars -> Maybe Name
-    portOf ty = case getFnArgs ty of
+    typePort : Term vars -> Maybe Name
+    typePort ty = case getFnArgs ty of
       (Ref _ _ f, args) =>
         if not (f `elem` heads) then Nothing
         else case reverse args of
@@ -150,7 +150,7 @@ entries required contract listName own heads keep = do
       if not (keep n' g) then pure Nothing else do
         ty <- toFullNames (type g)
         pure $ do
-          c <- portOf ty
+          c <- typePort ty
           i <- lookup c byConstructor
           pure (n', c, i)
 

@@ -252,7 +252,8 @@ storeByteAt = intrinsic__store8
 export covering
 copyBytes : (from, to : ByteAddr) -> (count : Bits64) -> Ordo.Op Ordo ()
 copyBytes from to n =
-  if ByteAddr.toWord to > ByteAddr.toWord from && ByteAddr.toWord to - ByteAddr.toWord from < n then down n
+  if ByteAddr.toWord to > ByteAddr.toWord from && ByteAddr.toWord to - ByteAddr.toWord from < n
+    then down n
     else up 0
   where
     covering
@@ -339,8 +340,8 @@ fieldPointer a = do
 ||| them: under both encodings with fixnums the integer is the word shifted
 ||| left by one, with the fixnum tag, the pointer tag's complement, below.
 export
-fixnumOf : (word : Bits64) -> Bits64
-fixnumOf w = Bits.shiftR w 1
+wordFixnum : (word : Bits64) -> Bits64
+wordFixnum w = Bits.shiftR w 1
 
 export
 fixnumWord : Bits64 -> Ordo.Op Ordo Bits64

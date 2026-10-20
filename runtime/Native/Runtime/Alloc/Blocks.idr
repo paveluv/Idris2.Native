@@ -43,8 +43,8 @@ environment : Blocks
 environment = MkBlocks State.environArray
 
 ||| The array's address, null if it is not made.
-arrayOf : Blocks -> Ordo.Op Ordo ByteAddr
-arrayOf (MkBlocks s) = State.getState s
+array : Blocks -> Ordo.Op Ordo ByteAddr
+array (MkBlocks s) = State.getState s
 
 ||| Where block `i`'s address is in the array.
 slot : (i : Bits64) -> Bits64
@@ -54,7 +54,7 @@ slot i = 16 + 8 * i
 export
 made : Blocks -> Ordo.Op Ordo Bool
 made xs = do
-  a <- arrayOf xs
+  a <- array xs
   Ordo.pure (not (ByteAddr.isNull a))
 
 ||| The array made, empty, with room for `capacity` blocks, if it is not
@@ -62,7 +62,7 @@ made xs = do
 export covering
 make : Blocks -> (capacity : Bits64) -> Ordo.Op Ordo Bool
 make xs@(MkBlocks s) capacity = do
-  a <- arrayOf xs
+  a <- array xs
   if not (ByteAddr.isNull a) then Ordo.pure True else do
     w <- System.allocateBlock (slot capacity)
     if w == 0 then Ordo.pure False else do
@@ -76,7 +76,7 @@ make xs@(MkBlocks s) capacity = do
 export
 size : Blocks -> Ordo.Op Ordo Bits64
 size xs = do
-  a <- arrayOf xs
+  a <- array xs
   if ByteAddr.isNull a then Ordo.pure 0 else Memory.loadAt a 0
 
 ||| Where block `i` is, which the array keeps; the program ends for an `i`
@@ -84,7 +84,7 @@ size xs = do
 export
 at : Blocks -> (i : Bits64) -> Ordo.Op Ordo ByteAddr
 at xs i = do
-  a <- arrayOf xs
+  a <- array xs
   n <- if ByteAddr.isNull a then Ordo.pure 0 else Memory.loadAt a 0
   if i >= n then Ordo.crashOp "idris: a block the array does not hold" else do
     w <- Memory.loadAt a (slot i)
@@ -102,7 +102,7 @@ push xs b none done = do
   case ok of
     True => do
       r <- Block.releaseBlock b
-      a <- arrayOf xs
+      a <- array xs
       n <- Memory.loadAt a 0
       Memory.storeAt a (slot n) (ByteAddr.toWord r)
       Memory.storeAt a 0 (n + 1)
@@ -115,7 +115,7 @@ push xs b none done = do
     covering
     room : Blocks -> Ordo.Op Ordo Bool
     room xs@(MkBlocks s) = do
-      a <- arrayOf xs
+      a <- array xs
       if ByteAddr.isNull a then Ordo.pure False else do
         n <- Memory.loadAt a 0
         c <- Memory.loadAt a 8
@@ -136,7 +136,7 @@ replace : Blocks -> (i : Bits64) -> (1 b : Block) -> (k : (1 old : Block) -> Ord
           Ordo.Op Ordo a
 replace xs i b k = do
   _ <- at xs i
-  a <- arrayOf xs
+  a <- array xs
   old <- Memory.loadAt a (slot i)
   r <- Block.releaseBlock b
   Memory.storeAt a (slot i) (ByteAddr.toWord r)
@@ -148,7 +148,7 @@ export %inline covering
 removeAt : Blocks -> (i : Bits64) -> (k : (1 old : Block) -> Ordo.Op Ordo a) -> Ordo.Op Ordo a
 removeAt xs i k = do
   _ <- at xs i
-  a <- arrayOf xs
+  a <- array xs
   n <- Memory.loadAt a 0
   old <- Memory.loadAt a (slot i)
   last <- Memory.loadAt a (slot (n - 1))
@@ -161,7 +161,7 @@ removeAt xs i k = do
 export covering
 dispose : Blocks -> Ordo.Op Ordo ()
 dispose xs@(MkBlocks s) = do
-  a <- arrayOf xs
+  a <- array xs
   if ByteAddr.isNull a then Ordo.pure () else do
     n <- Memory.loadAt a 0
     freeAll a 0 n

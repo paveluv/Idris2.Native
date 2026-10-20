@@ -17,6 +17,10 @@
 ./Excludes.idr:9:1 exclusion: an exclusion from `precision` says why
 ./ForFlat.idr:6:1 suppression: the flat check loads every module a flat function reaches: no import is kept, nor re-exported, for it
 ./Headless.idr:1:1 header-comment: no comment says what the file is before its first import or declaration
+./Named.idr:16:3 of-name: `widthOf` is named with Of: name it for what it gives, as its module's qualifier says whose, or by its argument then its result where the module is not its argument's
+./Named.idr:20:1 of-name: `sizeOf` is named with Of: name it for what it gives, as its module's qualifier says whose, or by its argument then its result where the module is not its argument's
+./Named.idr:27:1 suppression: `of-name` is not to be suppressed: change what it reports
+./Named.idr:32:5 of-name: `halfOf` is named with Of: name it for what it gives, as its module's qualifier says whose, or by its argument then its result where the module is not its argument's
 ./Native/Data/Upward.idr:5:1 layering: `Native.Data.Upward` may not import `Native.Codegen.Thing`: the layers
 ./Native/Flat/Upward.idr:5:1 layering: `Native.Flat.Upward` may not import `Native.Codegen.Thing`: the layers
 ./Native/Port.idr:5:1 layering: `Native.Port` may not import `Native.Types.Thing`: the layers

@@ -65,19 +65,19 @@ inlineAlias args =
     True False candidates
   where
     ||| A module's name.
-    nameOf : Subject -> String
-    nameOf s = show s.file.mod.moduleNS
+    subjectModule : Subject -> String
+    subjectModule s = show s.file.mod.moduleNS
 
     ||| The parts of a dotted name.
-    partsOf : String -> List String
-    partsOf m = forget (split (== '.') m)
+    nameParts : String -> List String
+    nameParts m = forget (split (== '.') m)
 
     -- the parameters of a clause's left-hand side, if the function is
     -- applied to variables alone
-    paramsOf : String -> PTerm -> Maybe (List String)
-    paramsOf base (PRef _ (UN (Basic n))) = if n == base then Just [] else Nothing
-    paramsOf base (PApp _ f (PRef _ (UN (Basic x)))) = map (++ [x]) (paramsOf base f)
-    paramsOf _ _ = Nothing
+    aliasParams : String -> PTerm -> Maybe (List String)
+    aliasParams base (PRef _ (UN (Basic n))) = if n == base then Just [] else Nothing
+    aliasParams base (PApp _ f (PRef _ (UN (Basic x)))) = map (++ [x]) (aliasParams base f)
+    aliasParams _ _ = Nothing
 
     closedTerm : PTerm -> Bool
     closedTerm (PRef _ _) = True
@@ -93,7 +93,7 @@ inlineAlias args =
     textAt : Subject -> FC -> Maybe (Int, Int, String)
     textAt s fc = case Span.bounds fc of
       Just ((l, c), (l', c')) => if l == l'
-        then Just (l, c, substr (cast c) (cast (c' - c)) (Subject.lineOf s l)) else Nothing
+        then Just (l, c, substr (cast c) (cast (c' - c)) (Subject.subjectLine s l)) else Nothing
       Nothing => Nothing
 
     -- the function's right-hand side, and the extent of its claim and
@@ -107,10 +107,10 @@ inlineAlias args =
       (lhs, rhs) <- case def.decl.val of
         PDef [MkPatClause _ lhs rhs []] => Right (lhs, rhs)
         _ => Left "it is not defined by one clause"
-      params <- maybe (Left "its parameters are not variables") Right (paramsOf base lhs)
+      params <- maybe (Left "its parameters are not variables") Right (aliasParams base lhs)
       (l, c, text) <- maybe (Left "its right-hand side is not on one line") Right
         (textAt s (getPTermLoc rhs))
-      extent <- Extent.extentOf s claim
+      extent <- Extent.claimExtent s claim
       let within = \fc => case Span.bounds fc of
                             Just ((l', c'), _) => l' == l && c' >= c && c' < c + cast (length text)
                             Nothing => False
@@ -124,12 +124,12 @@ inlineAlias args =
     -- the module a name the function's module writes comes from, as the
     -- resolution has it: a single one, or none for a library's; why not,
     -- for a module the resolution left out
-    definerOf : Project -> (module', name : String) -> Either String (Maybe String)
-    definerOf p m n = do
-      uses <- Project.usesOf p m
+    nameDefiner : Project -> (module', name : String) -> Either String (Maybe String)
+    nameDefiner p m n = do
+      uses <- Project.moduleUses p m
       let definers = nub [ u.definer | u <- uses, u.name == n, not u.searched ]
       case definers of
-        [d] => Right (if any (\t => nameOf t == d) p.files then Just d else Nothing)
+        [d] => Right (if any (\t => subjectModule t == d) p.files then Just d else Nothing)
         [] => Right Nothing
         _ => Left ("`" ++ n ++ "` has more than one definer")
 
@@ -138,9 +138,9 @@ inlineAlias args =
     -- qualified by the module's last parts or its alias
     isAlias : Project -> (module', base : String) -> Subject -> Name -> Bool
     isAlias p m base t (UN (Basic n)) =
-      n == base && (nameOf t == m || definerOf p (nameOf t) base == Right (Just m))
+      n == base && (subjectModule t == m || nameDefiner p (subjectModule t) base == Right (Just m))
     isAlias p m base t (NS ns (UN (Basic n))) =
-      n == base && (isSuffixOf (partsOf (show ns)) (partsOf m)
+      n == base && (isSuffixOf (nameParts (show ns)) (nameParts m)
                     || any (\i => show i.path == m && show i.nameAs == show ns) t.file.mod.imports)
     isAlias _ _ _ _ _ = False
 
@@ -183,11 +183,12 @@ inlineAlias args =
                UN (Basic x) =>
                  case lookup x (zip a.params args) of
                    Just arg => Right (at arg, Nothing)
-                   Nothing => if nameOf t == m then Right (at x, Nothing) else do
-                     d <- definerOf p m x
+                   Nothing => if subjectModule t == m then Right (at x, Nothing) else do
+                     d <- nameDefiner p m x
                      case d of
                        Just d' =>
-                         Right (at (joinBy "." (Qualifier.pathFrom (nameOf t) d') ++ "." ++ x),
+                         Right
+                           (at (joinBy "." (Qualifier.pathFrom (subjectModule t) d') ++ "." ++ x),
                                 Just d')
                        Nothing => Right (at x, Nothing)
                _ => Right (at (show n), Nothing)
@@ -197,7 +198,7 @@ inlineAlias args =
     fileEdits : Project -> (module', base : String) -> Alias -> (exclude : Extent) -> Subject ->
                 Either String (List Edit)
     fileEdits p m base a ex t = do
-      let ours = \fc => nameOf t /= m
+      let ours = \fc => subjectModule t /= m
             || (fst (Span.lineSpan fc) < ex.first || fst (Span.lineSpan fc) > ex.last)
           refs = List.filter (\(fc, n) => isAlias p m base t n && ours fc) t.written
           uses =
@@ -212,7 +213,8 @@ inlineAlias args =
       edited <- traverse (useEdit p m a t) uses
       let needed =
             nub [ d | (_, ds) <- edited,
-                 d <- ds, not (d `elem` map (show . (.path)) t.file.mod.imports), d /= nameOf t ]
+                 d <- ds, not (d `elem` map (show . (.path)) t.file.mod.imports),
+                   d /= subjectModule t ]
           lastImport = foldl (\x, i => max x (fst (Span.lineSpan i.loc))) (-1) t.file.mod.imports
           imports = if null needed then []
             else [Edit.insertLines (lastImport + 1) (map ("import " ++) needed)]
@@ -232,20 +234,20 @@ inlineAlias args =
     plan p s m base = do
       (a, ex) <- aliasIn s base
       edits <- traverse (\t => map (t.file.path,) (fileEdits p m base a ex t))
-        (List.filter (\t => nameOf t /= m) p.files)
+        (List.filter (\t => subjectModule t /= m) p.files)
       own <- fileEdits p m base a ex s
       pure
         (MkChange
-          ((s.file.path, Extent.cut (Subject.linesOf s) ex :: own)
+          ((s.file.path, Extent.cut (Subject.subjectLines s) ex :: own)
            :: List.filter (not . null . snd) edits)
          [] [])
 
     candidates : Project -> Subject -> List Refactoring.Candidate
     candidates p s = case args of
-      [full] => case reverse (partsOf full) of
+      [full] => case reverse (nameParts full) of
         (base :: rest@(_ :: _)) =>
           let m = joinBy "." (reverse rest) in
-          if nameOf s == m && any (\d => base `elem` d.defines) s.declared
+          if subjectModule s == m && any (\d => base `elem` d.defines) s.declared
             then [Refactoring.candidate ("inline " ++ full) (plan p s m base)] else []
         _ => []
       _ => []

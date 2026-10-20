@@ -30,13 +30,13 @@ entry l = let t = trim l in if isSuffixOf "," t then trim (substr 0 (minus (leng
 ||| The package that lists a module, and where a module named `new` goes in
 ||| it.
 export
-listingOf : List (String, String) -> (old, new : String) -> Either String Listing
-listingOf packages old new = case mapMaybe listing packages of
+packageListing : List (String, String) -> (old, new : String) -> Either String Listing
+packageListing packages old new = case mapMaybe listing packages of
   (l :: _) => Right l
   [] => Left ("no package lists `" ++ old ++ "`")
   where
-    directoryOf : String -> String
-    directoryOf p = case reverse (List1.forget (split (== '/') p)) of
+    pathDirectory : String -> String
+    pathDirectory p = case reverse (List1.forget (split (== '/') p)) of
       (_ :: rest@(_ :: _)) => joinBy "/" (reverse rest)
       _ => ""
 
@@ -65,7 +65,7 @@ listingOf packages old new = case mapMaybe listing packages of
              Just
                (MkListing path (cast i) (pack (takeWhile (== ' ') (unpack l)))
                 (not (isSuffixOf "," (trim l)))
-                     (joinPath [directoryOf path,
+                     (joinPath [pathDirectory path,
                        sourceDir ls, joinBy "/" (List1.forget (split (== '.') new))] ++ ".idr"))
 
 ||| A package's list of modules: the lines it takes, both ends included, its

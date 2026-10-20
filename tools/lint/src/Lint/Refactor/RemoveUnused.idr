@@ -59,9 +59,9 @@ removeUnused =
     candidates s =
       map
         (\f =>
-         Refactoring.candidate (Refactoring.labelOf f)
-           (map (\e => Change.inFile s.file.path [Extent.cut (Subject.linesOf s) e])
-            (Extent.extentOf s f)))
+         Refactoring.candidate (Refactoring.declLabel f)
+           (map (\e => Change.inFile s.file.path [Extent.cut (Subject.subjectLines s) e])
+            (Extent.claimExtent s f)))
           (filter
             (\f => Rules.privateAtTop f && not (unnamedUse f) && not (any (uses f) s.declared))
             s.declared)

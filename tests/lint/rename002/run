@@ -14,6 +14,12 @@ lint=../../../../tools/lint/build/exec/idris2-native-lint
 $lint --refactor rename --arg Token.Tok --arg Ordo --check 'idris2 --check {} > /dev/null 2>&1' .
 idris2 --build fixtures.ipkg > /dev/null
 $lint --refactor rename --arg Token.MkTok --arg MkOrdo --check 'idris2 --check {} > /dev/null 2>&1' .
+# Several renames in one run, against one resolution: `spend` and the
+# local `costOf`; a local is not renamed to a name its module has already
+# (`double`), and stays.
+idris2 --build fixtures.ipkg > /dev/null
+$lint --refactor rename --arg Token.costOf --arg double .
+$lint --refactor rename --arg Token.spend --arg pay --arg Token.costOf --arg cost --check 'idris2 --check {} > /dev/null 2>&1' .
 for f in Token.idr User.idr Aliased.idr Other.idr; do
   echo "--- $f"
   cat $f

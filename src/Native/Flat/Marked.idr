@@ -71,7 +71,7 @@ report errs
               [] => pure ()
               (e :: earlier) =>
                 do texts <- traverse rendered (numbered (reverse earlier))
-                   let (fc, msg) = messageOf e
+                   let (fc, msg) = errorMessage e
                    throw
                      (GenericMsg fc
                       (fastConcat (map (++ "\n") texts) ++ prefixed (length earlier) msg))
@@ -85,13 +85,13 @@ report errs
     prefixed Z msg = msg
     prefixed _ msg = "Error: " ++ msg
 
-    messageOf : Error -> (FC, String)
-    messageOf (GenericMsg fc msg) = (fc, msg)
-    messageOf e = (fromMaybe EmptyFC (getErrorLoc e), show e)
+    errorMessage : Error -> (FC, String)
+    errorMessage (GenericMsg fc msg) = (fc, msg)
+    errorMessage e = (fromMaybe EmptyFC (getErrorLoc e), show e)
     -- The text of the file the error is in, for the excerpt Idris shows, if
     -- the file is found.
-    sourceOf : Error -> Core String
-    sourceOf e
+    errorSource : Error -> Core String
+    errorSource e
         = case the (Maybe NonEmptyFC) (getErrorLoc e >>= isNonEmptyFC) of
                Just (PhysicalIdrSrc ident, _, _) =>
                  catch (do path <- nsToSource EmptyFC ident
@@ -103,7 +103,7 @@ report errs
     -- the source around.
     rendered : {auto o : Ref ROpts REPLOpts} -> (Nat, Error) -> Core String
     rendered (i, e)
-        = do setCurrentElabSource !(sourceOf e)
+        = do setCurrentElabSource !(errorSource e)
              doc <- if i == 0 then perror e else display e
              pure (renderString (layoutPretty (MkLayoutOptions Unbounded) doc))
 

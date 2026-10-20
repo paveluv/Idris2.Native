@@ -114,8 +114,8 @@ realigned t es =
       [ (fst e.from, snd e.from, growth e) | e <- es, fst e.from == fst e.to,
        not (isInfixOf "\n" e.text), growth e /= 0 ]
 
-    indentOf : String -> Int
-    indentOf l = cast (length (takeWhile (== ' ') (unpack l)))
+    lineIndent : String -> Int
+    lineIndent l = cast (length (takeWhile (== ' ') (unpack l)))
 
     -- the lines hanging off a line's edits, each with how far they move it
     hanging : List String -> List (Int, Int) -> Int -> List (Int, Int)
@@ -128,8 +128,8 @@ realigned t es =
         go _ [] = []
         go i (x :: xs) =
           if trim x == "" then go (i + 1) xs
-          else if indentOf x <= start then []
-          else (i, sum [ g | (c, g) <- here, c < indentOf x ]) :: go (i + 1) xs
+          else if lineIndent x <= start then []
+          else (i, sum [ g | (c, g) <- here, c < lineIndent x ]) :: go (i + 1) xs
 
     -- whether a line opens a layout block from a column on: a keyword of
     -- one among its words there
