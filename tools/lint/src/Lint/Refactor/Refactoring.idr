@@ -9,8 +9,12 @@
 ||| change at a time, parses every file it touched again, and undoes a
 ||| change any of them no longer parses after; then it parses the file again
 ||| and asks for the candidates anew, until none is left. A dry run does the
-||| same, printing each change, and puts every file back at the end. Only
-||| the Idris files a change touches are parsed and checked again.
+||| same, printing each change, and puts every file back at the end: one
+||| without a check moves each file it touches aside first and back at the
+||| end, its times kept, so that its TTC is still taken for built from it;
+||| one with a check has had the edited files built, so it writes them back,
+||| newer than their TTCs. Only the Idris files a change touches are parsed
+||| and checked again.
 |||
 ||| Parsing is all the linter itself can ask of a change. A run may be given
 ||| a check besides, a command that type checks a file, and a change any
@@ -30,6 +34,7 @@ import Lint.Refactor.Span
 import Lint.Refactor.Subject
 
 import Core.WithData
+import Data.IORef
 import Data.List
 import Data.List1
 import Data.Maybe
@@ -68,9 +73,9 @@ candidate l p = MkCandidate l p Nothing
 ||| What a declaration is called in a report: the names it defines, or,
 ||| for one that defines none, such as an implementation, where it is.
 export
-labelOf : Declared -> String
+labelOf : Rules.Declared -> String
 labelOf d = case d.defines of
-  [] => "the declaration at line " ++ show (fst (lineSpan d.decl.fc) + 1)
+  [] => "the declaration at line " ++ show (fst (Span.lineSpan d.decl.fc) + 1)
   ns => fastConcat (intersperse ", " ns)
 
 ||| A refactoring: its name, as the command line gives it, what it does, and
@@ -118,21 +123,41 @@ record Run where
   saved : Saved
   made : List (String, Saved, Change)
 
-||| The refactoring run over the file at the path to a fixed point: each
-||| ready candidate changed, or recorded as staying, until none is left. A
-||| candidate that comes back after its change stays, so the run ends. The
-||| `check`, if any, is a shell command with `{}` where a file's path goes,
-||| which succeeds on a file that checks. A wide refactoring's `project`
-||| may be kept between calls; `changed` says the files no longer are what
-||| it was read from. A dry run prints its changes at the end, those of the
-||| run that stood.
-export
-refactor : (dryRun : Bool) -> (check : Maybe String) -> Refactoring -> (project : IO Project) ->
-           (changed : IO ()) -> (path : String) -> IO Report
-refactor dryRun check r project changedFiles path = case check of
+||| Moves a file to another path, its times with it: the C library's
+||| `rename`, which base does not offer.
+%foreign "C:rename,libc 6"
+prim__rename : String -> String -> PrimIO Int
+
+||| The file moved to the path; whether it was.
+moveFile : (from, to : String) -> IO Bool
+moveFile from to = (== 0) <$> primIO (prim__rename from to)
+
+||| `refactor`, with the files a dry run without a check has moved aside so
+||| far, each with where it is (`aside`).
+runWith : (aside : IORef (List (String, String))) -> (dryRun : Bool) -> (check : Maybe String) ->
+          Refactoring -> (project : IO Project) -> (changed : IO ()) -> (path : String) ->
+          IO Report
+runWith aside dryRun check r project changedFiles path = case check of
   Just cmd => if r.needsCheck then loop True check [] [] empty [] >>= finish else checkedOnce cmd
   Nothing => loop False Nothing [] [] empty [] >>= finish
   where
+    ||| Whether the run moves the files it touches aside: a dry run's without
+    ||| a check, which builds none of them.
+    moves : Bool
+    moves = dryRun && isNothing check
+
+    ||| The file moved aside if the run moves files and has not moved it yet:
+    ||| whether it was moved now.
+    moveAside : String -> IO Bool
+    moveAside p = if not moves then pure False else do
+      moved <- readIORef aside
+      if isJust (lookup p moved) then pure False else do
+        let to = p ++ "~lint"
+        True <- moveFile p to
+          | False => pure False
+        modifyIORef aside ((p, to) ::)
+        pure True
+
     -- the directory a file is in, and the directories down to it,
     -- made where they are missing
     directoryOf : String -> String
@@ -158,7 +183,7 @@ refactor dryRun check r project changedFiles path = case check of
       for_ ch.edits $ \(p, es) => do
         putStrLn ("  " ++ p)
         let old = fromMaybe "" (join (lookup p saved))
-        for_ es $ \e => traverse_ (putStrLn . ("    " ++)) (describe old e)
+        for_ es $ \e => traverse_ (putStrLn . ("    " ++)) (Edit.describe old e)
       for_ ch.created $ \(p, _) => putStrLn ("  created " ++ p)
       for_ ch.removed $ \p => putStrLn ("  removed " ++ p)
 
@@ -169,6 +194,8 @@ refactor dryRun check r project changedFiles path = case check of
           putStrLn (r.name ++ ": " ++ label)
           printChange before ch
         restore run.saved
+        moved <- readIORef aside
+        for_ moved $ \(p, at) => ignore (moveFile at p)
       pure (MkReport path (reverse run.changed) (reverse run.stays))
 
     withPath : String -> String -> String
@@ -214,7 +241,8 @@ refactor dryRun check r project changedFiles path = case check of
           Right old <- readFile p
             | Left e => pure (Left ("cannot read " ++ p ++ ": " ++ show e, saved))
           let saved' = insert p (Just old) saved
-          Right () <- removeFile p
+          movedNow <- moveAside p
+          Right () <- the (IO (Either FileError ())) (if movedNow then pure (Right ()) else removeFile p)
             | Left e => pure (Left ("cannot remove " ++ p ++ ": " ++ show e, saved'))
           -- the directory too, if the file was its last; an undo makes it
           -- again
@@ -227,9 +255,10 @@ refactor dryRun check r project changedFiles path = case check of
           Right old <- readFile p
             | Left e => pure (Left ("cannot read " ++ p ++ ": " ++ show e, saved))
           let saved' = if isJust (lookup p saved) then saved else insert p (Just old) saved
-          case apply es old of
+          case Edit.apply es old of
             Nothing => pure (Left ("its edits to " ++ p ++ " overlap", saved'))
             Just new => do
+              ignore (moveAside p)
               Right () <- writeFile p new
                 | Left e => pure (Left ("cannot write " ++ p ++ ": " ++ show e, saved'))
               editAll saved' rest
@@ -248,7 +277,7 @@ refactor dryRun check r project changedFiles path = case check of
         unparsed : List String -> IO (Maybe String)
         unparsed [] = pure Nothing
         unparsed (p :: ps) = do
-          r <- parse p
+          r <- Source.parse p
           case r of
             Left e => pure (Just ("the change leaves " ++ p ++ " unparsed: " ++ e))
             Right _ => unparsed ps
@@ -269,7 +298,7 @@ refactor dryRun check r project changedFiles path = case check of
       -- a change of another file's may have removed this one
       True <- exists path
         | False => pure (MkRun changed stays saved made)
-      Right s <- load path
+      Right s <- Subject.load path
         | Left e =>
           pure (MkRun changed (("the file", "it does not parse: " ++ e) :: stays) saved made)
       others <- if r.wide then project else pure (MkProject [] [] Nothing [])
@@ -318,3 +347,18 @@ refactor dryRun check r project changedFiles path = case check of
             changedFiles
             loop True (Just cmd) [] [] empty [] >>= finish
       finish unchecked
+
+||| The refactoring run over the file at the path to a fixed point: each
+||| ready candidate changed, or recorded as staying, until none is left. A
+||| candidate that comes back after its change stays, so the run ends. The
+||| `check`, if any, is a shell command with `{}` where a file's path goes,
+||| which succeeds on a file that checks. A wide refactoring's `project`
+||| may be kept between calls; `changed` says the files no longer are what
+||| it was read from. A dry run prints its changes at the end, those of the
+||| run that stood.
+export
+refactor : (dryRun : Bool) -> (check : Maybe String) -> Refactoring -> (project : IO Project) ->
+           (changed : IO ()) -> (path : String) -> IO Report
+refactor dryRun check r project changedFiles path = do
+  aside <- newIORef []
+  runWith aside dryRun check r project changedFiles path

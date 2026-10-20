@@ -43,7 +43,7 @@ shortest f be =
     covering
     cache : Int -> (Bits64, Bits64)
     cache k with (-342 <= k && k <= 326) proof inside
-      _ | True = case powerOfTen k inside of
+      _ | True = case PowerOfTen.powerOfTen k inside of
         (h, l) => if 0 <= k && k <= 55 then (h, l)
           else (if l == 0xFFFFFFFFFFFFFFFF then h + 1 else h, l + 1)
       -- lint: allow trust-escape: unreached, as Dragonbox's indices for binary64 are from -292 to
@@ -54,7 +54,7 @@ shortest f be =
 
     ||| The high word of a 64-by-64-bit product.
     high : Bits64 -> Bits64 -> Bits64
-    high x y = fst (mul128 x y)
+    high x y = fst (Primitive.Mul128.mul128 x y)
 
     ||| A decimal significand without its trailing zeros, the exponent raised
     ||| by as many: a binary search of divisions by 10^8, 10^4, 10^2 and 10,
@@ -105,7 +105,7 @@ shortest f be =
     ||| The upper 128 bits of the 192-bit product of a word and a 128-bit
     ||| number, as its high word and its low word.
     upper128 : Bits64 -> (Bits64, Bits64) -> (Bits64, Bits64)
-    upper128 x (ch, cl) = case mul128 x ch of
+    upper128 x (ch, cl) = case Primitive.Mul128.mul128 x ch of
       (h, l) => let l' = l + high x cl in (if l' < l then h + 1 else h, l')
 
     ||| Of `2f * 2^beta * 10^k`, `beta` from 1 to 63: whether its integer part
@@ -118,7 +118,7 @@ shortest f be =
         ||| The lower 128 bits of the 192-bit product of a word and a 128-bit
         ||| number, as its high word and its low word.
         lower128 : Bits64 -> (Bits64, Bits64) -> (Bits64, Bits64)
-        lower128 x (ch, cl) = case mul128 x cl of
+        lower128 x (ch, cl) = case Primitive.Mul128.mul128 x cl of
           (h, l) => (x * ch + h, l)
 
     ||| Any other double: the candidate of the larger divisor, 10^3, first,

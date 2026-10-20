@@ -9,14 +9,16 @@
 ./Native/Support/Lease.idr:57:3 sealed-boundary: `releaseBlock` leaves the linear blocks of `Native.Runtime.Alloc.Block` outside `base`'s foreign surface, the `prim__` functions of `Native.Support` and `Native.System`: keep the block linear
 ./Native/Support/Lease.idr:61:7 sealed-boundary: `allocateBlock` leaves the linear blocks of `Native.Runtime.Alloc.Block` outside `base`'s foreign surface, the `prim__` functions of `Native.Support` and `Native.System`: keep the block linear
 ./Page.idr:1:1 raw-maker: `Page` makes a raw address from a word, which only the modules that keep addresses as words do
+./Plain.idr:14:11 unqualified: `frame` is written bare: write `Frame.frame`
+./Plain.idr:18:8 unqualified: `Square` is written bare: write `Shape.Square`
 ./Report.idr:6:1 import-indirect: `Shape` is used (`Show Shape`) only through `Canvas`: import it
 ./Shape.idr:22:1 generic-export: `pow2` is exported from `Shape`, a module about its type, and refers to nothing of ours: a generic helper, private to the module or in a module of helpers
 ./Spare.idr:5:1 import-unused: `Data.List` is imported, and nothing it makes visible is used
 ./Values.idr:16:14 sealed-values: `objectValue` takes a value for what the caller says: convert through `Native.Support.Obj`, with the representation contract's evidence
 ./Viewer.idr:7:1 import-indirect: `Data.Fin` is used (`Fin`, `FZ`) only through `Data.Vect`: import it
 ./Viewer.idr:8:1 import-indirect: `Shape` is used (`Square`, `Shape`) only through `Shapes`: import it
-    directness     90  modules used that are imported directly: 35 of 39
-    leanness       86  private imports needed: 18 of 21
+    directness     90  modules used that are imported directly: 37 of 41
+    leanness       87  private imports needed: 20 of 23
   efficiency       40
     accumulation   40  accumulations in a snoc-list or a builder: 2 of 5
           1  JoinAll.flatten: 0 grown at an end with `++`, 1 joined by a left fold

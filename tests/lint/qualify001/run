@@ -1,6 +1,6 @@
 . ../../testutils.sh
 
-# qualify-names, an experiment: each name a module takes from another of
+# qualify-names: each name a module takes from another of
 # ours written with the defining module's path past what the two modules'
 # names share, so that a reader without an editor sees where it comes
 # from. It reads which module each name comes from in the TTCs, so the
@@ -10,8 +10,20 @@ mkdir work
 cp -r Geo Left Right Plan.idr fixtures.ipkg work
 cd work
 idris2 --build fixtures.ipkg > /dev/null
+# The rule `unqualified` reports the names the refactoring will qualify,
+# by the same plan. A dry run, unchecked, moves each file it changes aside
+# and back, its times kept, so nothing it touched counts as changed since
+# the build, and no file of its own stays behind.
+../../../../tools/lint/build/exec/idris2-native-lint --resolved . | grep unqualified
+../../../../tools/lint/build/exec/idris2-native-lint --refactor qualify-names --dry-run . > /dev/null
+../../../../tools/lint/build/exec/idris2-native-lint --resolved . | grep -c "older than its source"
+ls | grep -c lint
 ../../../../tools/lint/build/exec/idris2-native-lint --refactor qualify-names --check 'idris2 --check {} > /dev/null 2>&1' .
 cat Plan.idr
 idris2 --check Plan.idr > /dev/null && echo "Plan.idr checks"
+# A module whose TTC is older than its source is not judged by uses it may
+# no longer have: it stays, until it is built again.
+touch Plan.idr
+../../../../tools/lint/build/exec/idris2-native-lint --refactor qualify-names .
 cd ..
 rm -rf work

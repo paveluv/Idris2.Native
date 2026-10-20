@@ -377,7 +377,7 @@ reflow limit l = let ps =
 export
 reflowLines : (arguments : List String) -> Refactoring
 reflowLines args =
-  fileRefactoring "reflow-lines"
+  Refactoring.fileRefactoring "reflow-lines"
     "break each line wider than a width (--arg WIDTH, 100 by default) into lines that fit"
       candidates
   where
@@ -391,7 +391,7 @@ reflowLines args =
 
     -- each wide line that breaks, where it is, with its pieces
     wide : Subject -> List (Int, String, List String)
-    wide s = mapMaybe one (zip [0 .. length (linesOf s)] (linesOf s))
+    wide s = mapMaybe one (zip [0 .. length (Subject.linesOf s)] (Subject.linesOf s))
       where
         one : (Nat, String) -> Maybe (Int, String, List String)
         one (i, l) =
@@ -404,12 +404,12 @@ reflowLines args =
                  else map (cast i, l,) (reflow limit l)
             Nothing => map (cast i, l,) (reflow limit l)
 
-    candidates : Subject -> List Candidate
+    candidates : Subject -> List Refactoring.Candidate
     candidates s = case wide s of
       [] => []
       ws =>
-        candidate ("lines wider than " ++ show limit)
-          (Right (inFile s.file.path [ replaceLines i i ps | (i, _, ps) <- ws ]))
+        Refactoring.candidate ("lines wider than " ++ show limit)
+          (Right (Change.inFile s.file.path [ Edit.replaceLines i i ps | (i, _, ps) <- ws ]))
             ::
-              [ candidate ("`" ++ trim l ++ "`") (Right (inFile s.file.path [replaceLines i i ps]))
+              [ Refactoring.candidate ("`" ++ trim l ++ "`") (Right (Change.inFile s.file.path [Edit.replaceLines i i ps]))
                | (i, l, ps) <- ws ]

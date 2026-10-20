@@ -42,53 +42,53 @@ record ImportEdge where
 
 ||| The modules left out of a component, each by a comment with its reason.
 export
-excludedFrom : (component : String) -> List SourceFile -> List String
+excludedFrom : (component : String) -> List Source.SourceFile -> List String
 excludedFrom c fs =
   [ show f.mod.moduleNS | f <- fs,
-   any (\e => e.componentName == c && e.reason /= "") (exclusions f) ]
+   any (\e => e.componentName == c && e.reason /= "") (Graph.exclusions f) ]
 
 ||| The concepts of each of our modules, by module.
 export
-conceptsByModule : List (SourceFile, List Declared) -> SortedMap String (List Concept)
-conceptsByModule fds = fromList [ (show f.mod.moduleNS, conceptsOf f ds) | (f, ds) <- fds ]
+conceptsByModule : List (Source.SourceFile, List Rules.Declared) -> SortedMap String (List Concept)
+conceptsByModule fds = fromList [ (show f.mod.moduleNS, Concept.conceptsOf f ds) | (f, ds) <- fds ]
 
 ||| The concepts of a module a module uses, by name.
 export
-usedOf : SortedMap String (List Concept) -> ResolvedModule -> (definer : String) -> SortedSet String
+usedOf : SortedMap String (List Concept) -> Resolution.ResolvedModule -> (definer : String) -> SortedSet String
 usedOf byModule rm m =
   let cs = fromMaybe [] (lookup m byModule) in
   fromList
-    (mapMaybe (\u => if u.definer == m then conceptOfUse cs u.name u.searched else Nothing) rm.uses)
+    (mapMaybe (\u => if u.definer == m then Concept.conceptOfUse cs u.name u.searched else Nothing) rm.uses)
 
 ||| `precision`: of the concepts our modules' imports of each other offer,
 ||| the share the importers use; its offenders, each imported module by the
 ||| concepts its importers leave unused, with those that use the fewest.
 export
-precision : List (SourceFile, List Declared) -> Resolution -> Component
+precision : List (Source.SourceFile, List Rules.Declared) -> Resolution -> Graph.Component
 precision fds r =
   let byModule = conceptsByModule fds
       out = excludedFrom "precision" (map fst fds)
       ours = the (SortedSet String) (fromList (keys byModule))
-      edges = joined [ mapMaybe (edge byModule ours out rm) (map fst rm.imports) | rm <- r.modules ]
+      edges = Finding.joined [ mapMaybe (edge byModule ours out rm) (map fst rm.imports) | rm <- r.modules ]
       usedNames = sum (map (.used) edges)
       offeredNames = sum (map (.offered) edges)
-  in MkComponent "structure" "precision" (percent usedNames offeredNames)
+  in Graph.MkComponent "structure" "precision" (Graph.percent usedNames offeredNames)
        ("imported concepts a module uses: " ++ show usedNames ++ " of " ++ show offeredNames
          ++ leftOut out)
        (offenders byModule edges)
   where
     leftOut : List String -> String
     leftOut [] = ""
-    leftOut ms = "; left out: " ++ listed ms
+    leftOut ms = "; left out: " ++ Graph.listed ms
 
     -- an import of one of ours, with what it offers through its re-exports
-    edge : SortedMap String (List Concept) -> SortedSet String -> List String -> ResolvedModule ->
+    edge : SortedMap String (List Concept) -> SortedSet String -> List String -> Resolution.ResolvedModule ->
            String -> Maybe ImportEdge
     edge byModule ours out rm i =
       if not (contains i ours) || (i `elem` out) then Nothing else
         let exposed =
               filter (shown ours out)
-                (Prelude.toList (visibleThrough r.importsOf (`contains` ours) i)) in
+                (Prelude.toList (Resolution.visibleThrough r.importsOf (`contains` ours) i)) in
         Just
           (MkImportEdge rm.name i (sum (map (length . offeredIn byModule) exposed))
            (sum (map (usedIn byModule rm) exposed)))
@@ -99,29 +99,29 @@ precision fds r =
         offeredIn : SortedMap String (List Concept) -> String -> List Concept
         offeredIn byModule m = filter (.offered) (fromMaybe [] (lookup m byModule))
 
-        usedIn : SortedMap String (List Concept) -> ResolvedModule -> String -> Nat
+        usedIn : SortedMap String (List Concept) -> Resolution.ResolvedModule -> String -> Nat
         usedIn byModule rm m = let used =
                                      usedOf byModule rm m in length
                                        (filter (\c => contains c.name used) (offeredIn byModule m))
 
-    offenders : SortedMap String (List Concept) -> List ImportEdge -> List Offender
+    offenders : SortedMap String (List Concept) -> List ImportEdge -> List Graph.Offender
     offenders byModule edges =
       let byImported =
             foldl (\acc, e => insert e.imported (e :: fromMaybe [] (lookup e.imported acc)) acc)
                              (the (SortedMap String (List ImportEdge)) empty) edges
       in filter (\o => o.cost > 0) (map offender (SortedMap.toList byImported))
       where
-        offender : (String, List ImportEdge) -> Offender
+        offender : (String, List ImportEdge) -> Graph.Offender
         offender (b, importers) =
           let concepts = filter (.offered) (fromMaybe [] (lookup b byModule))
               unused = sum (map (\e => minus e.offered e.used) importers)
               fewest = sortBy (\e, e' => compare e.used e'.used) importers
-          in MkOffender b unused
+          in Graph.MkOffender b unused
                (show (length importers)
                  ++ (if length importers == 1 then " importer" else " importers") ++ " of its "
                 ++ show (length concepts)
                   ++ (if length concepts == 1 then " concept (" else " concepts (")
-                  ++ listed (map (.name) (take 6 concepts))
+                  ++ Graph.listed (map (.name) (take 6 concepts))
                 ++ (if length concepts > 6 then ", ..." else "") ++ "); fewest used: "
                 ++ fastConcat
                   (intersperse ", " (map (\e => e.importer ++ " " ++ show e.used) (take 4 fewest))))

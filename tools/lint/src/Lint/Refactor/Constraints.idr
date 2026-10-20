@@ -37,7 +37,7 @@ tidy = unwords . words
 ||| A term as written in the file's lines, if it has a place.
 export
 writtenAs : (text : List String) -> PTerm -> List String
-writtenAs ls t = case bounds (getPTermLoc t) of
+writtenAs ls t = case Span.bounds (getPTermLoc t) of
   Just (s, e) => [textBetween ls s e]
   Nothing => []
 

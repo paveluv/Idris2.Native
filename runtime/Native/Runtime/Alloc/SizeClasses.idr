@@ -45,8 +45,8 @@ record SizeClasses c where
 ||| A count of the control block, raised or lowered by one.
 bumpCount : Pages h => (arena, word : Bits64) -> (up : Bool) -> Ordo.Op h ()
 bumpCount a w up = do
-  n <- field a w
-  setField a w (if up then n + 1 else n - 1)
+  n <- Arena.field a w
+  Arena.setField a w (if up then n + 1 else n - 1)
 
 ||| Whether a slab has no block to hand out: none given back, and no room
 ||| for another past its bump.
@@ -58,20 +58,20 @@ Pages h => Chunks h c => Allocator h (SizeClasses c) where
   allocate s bytes = do
     let cf = s.config
         a = s.arena
-    if bytes <= smallBytes cf
+    if bytes <= Config.smallBytes cf
       then do
-        let k = classOf cf bytes
-        first <- field a (availHead cf k)
+        let k = Config.classOf cf bytes
+        first <- Arena.field a (Arena.availHead cf k)
         g <- if first /= 0 then Ordo.pure first else newSlab s k
         if g == 0 then Ordo.pure 0 else takeBlock cf a (g - 1) k
       else do
-        let o = chunkOrder cf bytes
-        if o > maxOrder cf then Ordo.pure 0 else do
-          addr <- takeChunk s.chunks o
+        let o = Config.chunkOrder cf bytes
+        if o > Config.maxOrder cf then Ordo.pure 0 else do
+          addr <- Chunks.takeChunk s.chunks o
           if addr == 0 then Ordo.pure 0 else do
-            g <- granuleOf cf a addr
-            setEntry a g kind largeKind
-            setEntry a g order o
+            g <- Arena.granuleOf cf a addr
+            Arena.setEntry a g Arena.kind Arena.largeKind
+            Arena.setEntry a g Arena.order o
             markInside a g 1 (1 `shiftL` o)
             Ordo.pure addr
     where
@@ -80,8 +80,8 @@ Pages h => Chunks h c => Allocator h (SizeClasses c) where
       markInside : (arena, head, i, count : Bits64) -> Ordo.Op h ()
       markInside a g i n =
         if i >= n then Ordo.pure () else do
-          setEntry a (g + i) kind insideKind
-          setEntry a (g + i) order g
+          Arena.setEntry a (g + i) Arena.kind Arena.insideKind
+          Arena.setEntry a (g + i) Arena.order g
           markInside a g (i + 1) n
 
       ||| A new slab of the class, empty, first in the class's list: its granule
@@ -91,20 +91,20 @@ Pages h => Chunks h c => Allocator h (SizeClasses c) where
       newSlab s k = do
         let cf = s.config
             a = s.arena
-            o = slabOrder cf k
-        addr <- takeChunk s.chunks o
+            o = Config.slabOrder cf k
+        addr <- Chunks.takeChunk s.chunks o
         if addr == 0 then Ordo.pure 0 else do
-          g <- granuleOf cf a addr
-          setEntry a g kind slabKind
-          setEntry a g order o
-          setEntry a g cls k
-          setEntry a g freeList 0
-          setEntry a g bump addr
-          setEntry a g used 0
+          g <- Arena.granuleOf cf a addr
+          Arena.setEntry a g Arena.kind Arena.slabKind
+          Arena.setEntry a g Arena.order o
+          Arena.setEntry a g Arena.cls k
+          Arena.setEntry a g Arena.freeList 0
+          Arena.setEntry a g Arena.bump addr
+          Arena.setEntry a g Arena.used 0
           markInside a g 1 (1 `shiftL` o)
-          push a (availHead cf k) g
-          bumpCount a (slabCount cf k) True
-          bumpCount a (emptyCount cf k) True
+          Arena.push a (Arena.availHead cf k) g
+          bumpCount a (Arena.slabCount cf k) True
+          bumpCount a (Arena.emptyCount cf k) True
           Ordo.pure (g + 1)
 
       ||| A block of the slab at the granule, of class `k`: one given back if
@@ -112,42 +112,42 @@ Pages h => Chunks h c => Allocator h (SizeClasses c) where
       ||| hand out leaves its class's list.
       takeBlock : Config -> (arena, granule, cls : Bits64) -> Ordo.Op h Bits64
       takeBlock cf a g k = do
-        base <- granuleAddress cf a g
-        o <- entry a g order
-        fl <- entry a g freeList
-        b <- entry a g bump
-        u <- entry a g used
-        let size = classBytes cf k
-            end = base + chunkBytes cf o
+        base <- Arena.granuleAddress cf a g
+        o <- Arena.entry a g Arena.order
+        fl <- Arena.entry a g Arena.freeList
+        b <- Arena.entry a g Arena.bump
+        u <- Arena.entry a g Arena.used
+        let size = Config.classBytes cf k
+            end = base + Config.chunkBytes cf o
         block <- if fl /= 0
           then do
-            n <- load fl 0
-            setEntry a g freeList n
+            n <- Pages.load fl 0
+            Arena.setEntry a g Arena.freeList n
             Ordo.pure fl
           else do
-            setEntry a g bump (b + size)
+            Arena.setEntry a g Arena.bump (b + size)
             Ordo.pure b
-        setEntry a g used (u + 1)
-        if u == 0 then bumpCount a (emptyCount cf k) False else Ordo.pure ()
-        fl' <- entry a g freeList
-        b' <- entry a g bump
-        if noRoom cf fl' b' size end then remove a (availHead cf k) g else Ordo.pure ()
+        Arena.setEntry a g Arena.used (u + 1)
+        if u == 0 then bumpCount a (Arena.emptyCount cf k) False else Ordo.pure ()
+        fl' <- Arena.entry a g Arena.freeList
+        b' <- Arena.entry a g Arena.bump
+        if noRoom cf fl' b' size end then Arena.remove a (Arena.availHead cf k) g else Ordo.pure ()
         Ordo.pure block
   free s addr =
     if addr == 0 then Ordo.pure () else do
       let cf = s.config
           a = s.arena
-      ours <- owns a addr
+      ours <- Arena.owns a addr
       if not ours then notGiven else do
-        g0 <- granuleOf cf a addr
-        k0 <- entry a g0 kind
-        g <- if k0 == insideKind then entry a g0 order else Ordo.pure g0
-        k <- entry a g kind
-        if k == slabKind then giveBlock s g addr else
-          if k /= largeKind then notGiven else do
-            base <- granuleAddress cf a g
-            o <- entry a g order
-            if addr /= base then notGiven else giveChunk s.chunks o addr
+        g0 <- Arena.granuleOf cf a addr
+        k0 <- Arena.entry a g0 Arena.kind
+        g <- if k0 == Arena.insideKind then Arena.entry a g0 Arena.order else Ordo.pure g0
+        k <- Arena.entry a g Arena.kind
+        if k == Arena.slabKind then giveBlock s g addr else
+          if k /= Arena.largeKind then notGiven else do
+            base <- Arena.granuleAddress cf a g
+            o <- Arena.entry a g Arena.order
+            if addr /= base then notGiven else Chunks.giveChunk s.chunks o addr
     where
       ||| The end of a `free` of an address the allocator did not give, or gave
       ||| and has back already.
@@ -163,25 +163,25 @@ Pages h => Chunks h c => Allocator h (SizeClasses c) where
       giveBlock s g addr = do
         let cf = s.config
             a = s.arena
-        base <- granuleAddress cf a g
-        o <- entry a g order
-        k <- entry a g cls
-        fl <- entry a g freeList
-        b <- entry a g bump
-        u <- entry a g used
-        let size = classBytes cf k
-            end = base + chunkBytes cf o
+        base <- Arena.granuleAddress cf a g
+        o <- Arena.entry a g Arena.order
+        k <- Arena.entry a g Arena.cls
+        fl <- Arena.entry a g Arena.freeList
+        b <- Arena.entry a g Arena.bump
+        u <- Arena.entry a g Arena.used
+        let size = Config.classBytes cf k
+            end = base + Config.chunkBytes cf o
         if u == 0 || addr >= b || (addr - base) `mod` size /= 0 then notGiven else do
-          if noRoom cf fl b size end then push a (availHead cf k) g else Ordo.pure ()
-          store addr 0 fl
-          setEntry a g freeList addr
-          setEntry a g used (u - 1)
+          if noRoom cf fl b size end then Arena.push a (Arena.availHead cf k) g else Ordo.pure ()
+          Pages.store addr 0 fl
+          Arena.setEntry a g Arena.freeList addr
+          Arena.setEntry a g Arena.used (u - 1)
           if u /= 1 then Ordo.pure () else do
-            bumpCount a (emptyCount cf k) True
-            e <- field a (emptyCount cf k)
-            n <- field a (slabCount cf k)
-            if not (quarter cf e n) then Ordo.pure () else do
-              remove a (availHead cf k) g
-              bumpCount a (slabCount cf k) False
-              bumpCount a (emptyCount cf k) False
-              giveChunk s.chunks o base
+            bumpCount a (Arena.emptyCount cf k) True
+            e <- Arena.field a (Arena.emptyCount cf k)
+            n <- Arena.field a (Arena.slabCount cf k)
+            if not (Config.quarter cf e n) then Ordo.pure () else do
+              Arena.remove a (Arena.availHead cf k) g
+              bumpCount a (Arena.slabCount cf k) False
+              bumpCount a (Arena.emptyCount cf k) False
+              Chunks.giveChunk s.chunks o base

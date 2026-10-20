@@ -25,7 +25,7 @@ prim__open path mode = toPrim $ do
       Call.recordFailure (Failure.code Failure.Invalid)
       pure Call.nullPointer.value
     else do
-      h <- Call.openPath (MkUniform path) flags
+      h <- Call.openPath (Flat.MkUniform path) flags
       if h == Runtime.OS.failedWord then pure Call.nullPointer.value else do
         f <- File.newFile h
         File.register f

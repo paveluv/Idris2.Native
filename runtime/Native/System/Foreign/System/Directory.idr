@@ -10,7 +10,7 @@ module Native.System.Foreign.System.Directory
 
 import Native.Flat.Uniform as Flat
 import Native.OpenFlag
-import Native.Runtime.Alloc.Block
+import Native.Runtime.Alloc.Block as Runtime.Alloc
 import Native.Runtime.Ordo as Runtime
 import Native.Runtime.OS
 import Native.Runtime.Raw as Runtime
@@ -27,7 +27,7 @@ import Native.Types.Represents
 export covering
 prim__openDir : String -> PrimIO AnyPtr
 prim__openDir path = toPrim $ do
-  h <- Call.openPath (MkUniform path)
+  h <- Call.openPath (Flat.MkUniform path)
          (prim__or_Bits64 (OpenFlag.bit OpenFlag.ForReading) (OpenFlag.bit OpenFlag.ADirectory))
   if h == Runtime.OS.failedWord then pure Call.nullPointer.value else do
     d <- File.newFile h
@@ -112,7 +112,7 @@ prim__currentDir w = let (Runtime.MkOrdo # r) = currentOp Runtime.MkOrdo in MkIO
     covering
     currentOp : Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform (Ptr String))
     currentOp = Runtime.Alloc.Block.allocate pathBytes Support.Ptr.nullPtr (\b => do
-      let MkAddressed p b' = Runtime.Alloc.Block.address b
+      let Runtime.Alloc.Block.MkAddressed p b' = Runtime.Alloc.Block.address b
       ok <- Runtime.OS.osCurrentDirectory p pathBytes
       case ok == 1 of
         True => do

@@ -26,7 +26,7 @@ prim__readBufferData p b offset max = toPrim $
 export covering
 prim__writeBufferData : AnyPtr -> Buffer -> (offset, size : Int) -> PrimIO Int
 prim__writeBufferData p b offset size = toPrim $ File.withFile p 0 (\_, f => do
-  ok <- Call.writeFrom !(File.handle f) (MkUniform b) offset size
+  ok <- Call.writeFrom !(File.handle f) (Flat.MkUniform b) offset size
   if ok then pure size else do
     File.markFailed f
     pure 0)

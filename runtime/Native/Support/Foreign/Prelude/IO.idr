@@ -33,6 +33,6 @@ prim__getString p = let (Runtime.MkOrdo # r) = getOp Runtime.MkOrdo in r
     getOp = do
       target <- Ptr.pointee p
       case target of
-        HeapString s => Obj.objectValue s
-        Address a => if Runtime.Raw.isNull a then Text.emptyText else Text.zeroEndedText a
-        Handle _ => Runtime.Ordo.crashOp "idris: getString of a handle, which points to no text"
+        Ptr.HeapString s => Obj.objectValue s
+        Ptr.Address a => if Runtime.Raw.isNull a then Text.emptyText else Text.zeroEndedText a
+        Ptr.Handle _ => Runtime.Ordo.crashOp "idris: getString of a handle, which points to no text"

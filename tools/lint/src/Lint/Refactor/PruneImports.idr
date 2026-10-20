@@ -31,14 +31,14 @@ pruneImports =
     "remove each private import a file checks without; only with a check" False True
       (\_ => candidates)
   where
-    candidates : Subject -> List Candidate
+    candidates : Subject -> List Refactoring.Candidate
     candidates s =
-      [ candidate ("import " ++ show i.path)
-        (Right (inFile s.file.path [removal s (fst (lineSpan i.loc))]))
+      [ Refactoring.candidate ("import " ++ show i.path)
+        (Right (Change.inFile s.file.path [removal s (fst (Span.lineSpan i.loc))]))
       | i <- s.file.mod.imports, not i.reexport ]
       where
         -- the import's line, and a blank line after it if one is before it:
         -- the last import of a block takes the block's blank line with it
         removal : Subject -> Int -> Edit
-        removal s l = if trim (lineOf s (l - 1)) == "" && trim (lineOf s (l + 1)) == ""
-          then deleteLines l (l + 1) else deleteLines l l
+        removal s l = if trim (Subject.lineOf s (l - 1)) == "" && trim (Subject.lineOf s (l + 1)) == ""
+          then Edit.deleteLines l (l + 1) else Edit.deleteLines l l

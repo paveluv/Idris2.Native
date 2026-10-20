@@ -60,13 +60,27 @@ packagesNear roots = do
       (_ :: rest@(_ :: _)) => joinBy "/" (reverse rest)
       _ => ""
 
+||| What a module of the run uses, as the resolution has it; why not, when
+||| the run has no resolution, or the resolution left the module out, its
+||| TTC missing or older than its source. A refactoring that judges by the
+||| uses takes no module left out for one that uses nothing.
+export
+usesOf : Project -> (module' : String) -> Either String (List Resolution.Use)
+usesOf p m = case p.resolution of
+  Nothing => Left "the modules' uses cannot be resolved: build them first"
+  Just r => case find (\rm => rm.name == m) r.modules of
+    Just rm => Right rm.uses
+    Nothing =>
+      Left ("the uses of `" ++ m ++ "` cannot be resolved, its TTC missing or older than its "
+            ++ "source: build it first")
+
 ||| The files of a run, parsed, the packages beside its roots, and the
 ||| context, parsed before.
 export
 loadProject : (roots, paths : List String) -> Maybe Resolution -> (context : List Subject) ->
               IO Project
 loadProject roots paths res context = do
-  subjects <- traverse load paths
+  subjects <- traverse Subject.load paths
   packages <- packagesNear roots
   pure (MkProject (rights subjects) packages res context)
 

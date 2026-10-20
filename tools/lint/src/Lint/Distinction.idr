@@ -38,23 +38,23 @@ import Idris.Syntax
 ||| be joined, by the modules joining would remove: what share of the group
 ||| that is, and which siblings are always imported together, by whom.
 export
-distinction : List (SourceFile, List Declared) -> Component
+distinction : List (Source.SourceFile, List Rules.Declared) -> Graph.Component
 distinction fds =
   let grouped = filter (\m => groupOf m /= "") (map name fs)
       members = filter (\m => length (filter (\o => groupOf o == groupOf m) grouped) >= 2) grouped
       classes = twinClasses importedTwice
       small = filter (\(m, _) => m `elem` members) smallMembers
-      joinable = length (nub (joined classes ++ map fst small))
-  in MkComponent "structure" "distinction"
-    (percent (minus (length members) joinable) (length members))
+      joinable = length (nub (Finding.joined classes ++ map fst small))
+  in Graph.MkComponent "structure" "distinction"
+    (Graph.percent (minus (length members) joinable) (length members))
        ("group members that stand apart from their siblings: "
          ++ show (minus (length members) joinable) ++ " of " ++ show (length members))
        (mapMaybe (groupOffender members classes small) (nub (map groupOf members)))
   where
-    fs : List SourceFile
+    fs : List Source.SourceFile
     fs = map fst fds
 
-    name : SourceFile -> String
+    name : Source.SourceFile -> String
     name f = show f.mod.moduleNS
 
 
@@ -81,7 +81,7 @@ distinction fds =
     smallMembers : List (String, Nat)
     smallMembers =
       [ (name f, size) | (f, ds) <- fds, groupOf (name f) /= "",
-        let size = sum (map (.size) (conceptsOf f ds)), size < pieceLines ]
+        let size = sum (map (.size) (Concept.conceptsOf f ds)), size < Concept.pieceLines ]
 
     key : (String, List String) -> (String, List String)
     key (m, is) = (groupOf m, is)
@@ -109,21 +109,21 @@ distinction fds =
     together : List String -> String
     together c =
       let is = fromMaybe [] (head' c >>= \m => lookup m importedTwice) in
-      listed (map lastName c) ++ " by " ++ show (length is) ++ " modules: " ++ listed (take 3 is)
+      Graph.listed (map lastName c) ++ " by " ++ show (length is) ++ " modules: " ++ Graph.listed (take 3 is)
         ++ (if length is > 3 then ", ..." else "")
 
     -- a group with members that could be joined: what share they are, and
     -- which, at four in five or more a candidate to collapse
     groupOffender : List String -> List (List String) -> List (String, Nat) -> String ->
-                    Maybe Offender
+                    Maybe Graph.Offender
     groupOffender members classes small g =
       let mine = filter (\c => maybe False (\m => groupOf m == g) (head' c)) classes
           tiny = filter (\(m, _) => groupOf m == g) small
           size = length (filter (\m => groupOf m == g) members)
-          joinable = nub (joined mine ++ map fst tiny)
-          share = percent (length joinable) size
+          joinable = nub (Finding.joined mine ++ map fst tiny)
+          share = Graph.percent (length joinable) size
       in if null joinable || size < 2 then Nothing else
-           Just (MkOffender g (minus (length joinable) (length mine))
+           Just (Graph.MkOffender g (minus (length joinable) (length mine))
                    (show (length joinable) ++ " of its " ++ show size ++ " members (" ++ show share
                      ++ "%) could be joined"
                     ++ (if share >= 80 then ", a candidate to collapse into one module" else "")

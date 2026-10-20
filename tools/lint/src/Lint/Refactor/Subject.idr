@@ -18,13 +18,13 @@ import System.File.ReadWrite
 public export
 record Subject where
   constructor MkSubject
-  file : SourceFile
-  declared : List Declared
+  file : Source.SourceFile
+  declared : List Rules.Declared
   text : String
   ||| The names its declarations write, each where it is written.
   written : List (FC, Name)
   ||| The names its declarations apply, each with its arguments.
-  applied : List Applied
+  applied : List Rules.Applied
 
 ||| The file's text, line by line.
 export
@@ -47,10 +47,10 @@ linesBetween s a b = take (cast (b - a + 1)) (drop (cast a) (linesOf s))
 export
 load : (path : String) -> IO (Either String Subject)
 load path = do
-  Right f <- parse path
+  Right f <- Source.parse path
     | Left e => pure (Left e)
   ds <- declared f
   Right t <- readFile path
     | Left e => pure (Left (show e))
-  ms <- mentions f.mod.decls
+  ms <- Rules.mentions f.mod.decls
   pure (Right (MkSubject f ds t ms.refs ms.applied))

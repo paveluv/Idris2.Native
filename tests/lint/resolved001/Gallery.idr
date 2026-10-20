@@ -9,4 +9,4 @@ import Canvas
 ||| The canvas, and one shape more.
 export
 gallery : List Shape
-gallery = Circle 3 :: canvas
+gallery = Circle 3 :: Canvas.canvas

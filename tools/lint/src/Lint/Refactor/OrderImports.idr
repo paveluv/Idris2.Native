@@ -22,7 +22,7 @@ import Lint.Source
 ||| `order-imports`: the file's imports in order, when they are not.
 export
 orderImports : Refactoring
-orderImports = fileRefactoring "order-imports" "put each file's imports in order" candidates
+orderImports = Refactoring.fileRefactoring "order-imports" "put each file's imports in order" candidates
   where
     ||| The file's lines with its imports in order, in their blocks
     ||| (`importBlock`): the public ones, those of the module's own group, then
@@ -30,7 +30,7 @@ orderImports = fileRefactoring "order-imports" "put each file's imports in order
     ||| the next by a blank line. Each import keeps the comment lines between it
     ||| and the import before it, and whatever follows it on its own lines;
     ||| comments above the first import stay above the block, which they describe.
-    orderedImports : SourceFile -> List String -> List String
+    orderedImports : Source.SourceFile -> List String -> List String
     orderedImports f ls =
       let is = sortBy (\a, b => compare (span a) (span b)) f.mod.imports in
       case (is, last' is) of
@@ -42,17 +42,17 @@ orderImports = fileRefactoring "order-imports" "put each file's imports in order
               chunks = chunksOf blockStart is
               sorted = sortBy (\a, b => compare (key a) (key b)) chunks
               block =
-                joined
+                Finding.joined
                   (intersperse [""]
                     (filter (not . null)
                      (map (\b => chunkLines (filter (inBlock b) sorted)) [0, 1, 2])))
           in take (cast blockStart) ls ++ block ++ drop (cast (blockEnd + 1)) ls
       where
         key : (Import, List String) -> (Nat, String, String)
-        key (i, _) = importKey (show f.mod.moduleNS) i
+        key (i, _) = Rules.importKey (show f.mod.moduleNS) i
 
         inBlock : Nat -> (Import, List String) -> Bool
-        inBlock b (i, _) = importBlock (show f.mod.moduleNS) i == b
+        inBlock b (i, _) = Rules.importBlock (show f.mod.moduleNS) i == b
 
         linesFrom : Int -> Int -> List String
         linesFrom a b = take (cast (b - a + 1)) (drop (cast a) ls)
@@ -76,10 +76,10 @@ orderImports = fileRefactoring "order-imports" "put each file's imports in order
         chunkLines : List (Import, List String) -> List String
         chunkLines = foldr (\(_, l), rest => l ++ rest) []
 
-    candidates : Subject -> List Candidate
+    candidates : Subject -> List Refactoring.Candidate
     candidates s =
-      let ls = linesOf s
+      let ls = Subject.linesOf s
           ordered = orderedImports s.file ls
       in if ordered == ls then []
         else
-          [candidate "imports" (Right (inFile s.file.path [replaceAll s.text (unlines ordered)]))]
+          [Refactoring.candidate "imports" (Right (Change.inFile s.file.path [Edit.replaceAll s.text (unlines ordered)]))]

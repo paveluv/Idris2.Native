@@ -47,8 +47,8 @@ import Lint.Source
 ||| names of each side's concepts: all of them, and those exported.
 record Split where
   constructor MkSplit
-  moved : List Declared
-  kept : List Declared
+  moved : List Rules.Declared
+  kept : List Rules.Declared
   movedMembers : List String
   keptMembers : List String
   keptOffered : List String
@@ -69,7 +69,7 @@ splitModule args =
     merged s rs = go (sort rs)
       where
         between : Int -> Int -> Bool
-        between b c = all (\l => trim l == "") (linesBetween s (b + 1) (c - 1))
+        between b c = all (\l => trim l == "") (Subject.linesBetween s (b + 1) (c - 1))
 
         go : List (Int, Int) -> List (Int, Int)
         go ((a, b) :: (c, d) :: rest) = if c <= b + 1 || between b c then go ((a, max b d) :: rest)
@@ -84,18 +84,18 @@ splitModule args =
     splitOf : Subject -> (names : List String) -> List Concept -> Split
     splitOf s names cs =
       MkSplit (filter moving s.declared) (filter (not . moving) s.declared)
-              (joined (map (.members) (filter named' cs)))
-                (joined (map (.members) (filter (not . named') cs)))
-              (joined (map (.members) (filter (\c => c.offered && not (named' c)) cs)))
+              (Finding.joined (map (.members) (filter named' cs)))
+                (Finding.joined (map (.members) (filter (not . named') cs)))
+              (Finding.joined (map (.members) (filter (\c => c.offered && not (named' c)) cs)))
       where
-        moving : Declared -> Bool
-        moving d = ownerIn s.file s.declared d `elem` names
+        moving : Rules.Declared -> Bool
+        moving d = Concept.ownerIn s.file s.declared d `elem` names
 
         named' : Concept -> Bool
         named' c = c.name `elem` names
 
     ||| Whether any of the declarations mentions any of the names.
-    mentionsAny : List String -> List Declared -> Bool
+    mentionsAny : List String -> List Rules.Declared -> Bool
     mentionsAny ns = any (\d => any (`elem` ns) d.mentions)
 
     ||| The private concepts what moves reaches and what stays does not, which
@@ -110,35 +110,35 @@ splitModule args =
           filter (\p => contains p fromMoved && contains p fromKept) privates)
       where
         reachedFrom : List String -> SortedSet String
-        reachedFrom ns = foldr (\n, acc => union (reachable cs n) acc) empty ns
+        reachedFrom ns = foldr (\n, acc => union (Concept.reachable cs n) acc) empty ns
 
-    candidates : Project -> Subject -> List Candidate
+    candidates : Project -> Subject -> List Refactoring.Candidate
     candidates p s = case args of
       (into :: names@(_ :: _)) =>
-        let cs = conceptsOf s.file s.declared in
+        let cs = Concept.conceptsOf s.file s.declared in
         if all (\n => any (\c => c.name == n) cs) names
           then
-            [candidate ("split " ++ joinBy ", " names ++ " into " ++ into) (plan p s into names cs)]
+            [Refactoring.candidate ("split " ++ joinBy ", " names ++ " into " ++ into) (plan p s into names cs)]
           else []
       _ => []
       where
         -- a declaration's lines, from what is attached above it
-        rangeOf : Subject -> Declared -> (Int, Int)
-        rangeOf s d = let (a, b) = lineSpan d.decl.fc in (attachedFrom (linesOf s) a, b)
+        rangeOf : Subject -> Rules.Declared -> (Int, Int)
+        rangeOf s d = let (a, b) = Span.lineSpan d.decl.fc in (Extent.attachedFrom (Subject.linesOf s) a, b)
 
         -- a range taken out, with a blank line after it if one is before
         -- it, or the blank lines before it if nothing but blank lines
         -- follows it
         deletion : Subject -> (Int, Int) -> Edit
         deletion s (a, b) =
-          if all (\l => trim l == "") (drop (cast (b + 1)) (linesOf s))
-            then deleteLines (blankFrom a) b
-          else if trim (lineOf s (b + 1)) == "" && (a == 0 || trim (lineOf s (a - 1)) == "")
-            then deleteLines a (b + 1)
-          else deleteLines a b
+          if all (\l => trim l == "") (drop (cast (b + 1)) (Subject.linesOf s))
+            then Edit.deleteLines (blankFrom a) b
+          else if trim (Subject.lineOf s (b + 1)) == "" && (a == 0 || trim (Subject.lineOf s (a - 1)) == "")
+            then Edit.deleteLines a (b + 1)
+          else Edit.deleteLines a b
           where
             blankFrom : Int -> Int
-            blankFrom l = if l > 0 && trim (lineOf s (l - 1)) == "" then blankFrom (l - 1) else l
+            blankFrom l = if l > 0 && trim (Subject.lineOf s (l - 1)) == "" then blankFrom (l - 1) else l
 
         importLine : String -> String
         importLine m = "import " ++ m
@@ -146,9 +146,9 @@ splitModule args =
         -- `import new` after a file's last import
         importAfterLast : Subject -> String -> Edit
         importAfterLast s new =
-          case reverse (map (\i => snd (lineSpan i.loc)) s.file.mod.imports) of
-          (l :: _) => insertLines (l + 1) [importLine new]
-          [] => insertLines 0 [importLine new]
+          case reverse (map (\i => snd (Span.lineSpan i.loc)) s.file.mod.imports) of
+          (l :: _) => Edit.insertLines (l + 1) [importLine new]
+          [] => Edit.insertLines 0 [importLine new]
 
         -- the package lists the new module after the old one, the old one
         -- given a comma if it ended the list
@@ -157,7 +157,7 @@ splitModule args =
           if l.lastInList
             then MkEdit (l.line, 0) (l.line + 1, 0)
               (l.indent ++ old ++ ",\n" ++ l.indent ++ new ++ "\n")
-          else insertLines (l.line + 1) [l.indent ++ new ++ ","]
+          else Edit.insertLines (l.line + 1) [l.indent ++ new ++ ","]
 
         -- an importer of the old module that names what moves: it imports
         -- the new one beside it, and no longer the old one if it names
@@ -165,15 +165,15 @@ splitModule args =
         importerEdits : (old, new : String) -> (movedMembers, keptOffered : List String) ->
                         Subject -> Maybe (String, List Edit)
         importerEdits old new movedMembers keptOffered t =
-          let mentioned = joined (map (.mentions) t.declared) in
+          let mentioned = Finding.joined (map (.mentions) t.declared) in
           case find (\i => show i.path == old) t.file.mod.imports of
             Nothing => Nothing
             Just i =>
               if not (any (`elem` movedMembers) mentioned) then Nothing else
-                let l = fst (lineSpan i.loc) in
+                let l = fst (Span.lineSpan i.loc) in
                 if not i.reexport && not (any (`elem` keptOffered) mentioned)
                   then Just (t.file.path, [MkEdit (l, 0) (l + 1, 0) (importLine new ++ "\n")])
-                  else Just (t.file.path, [insertLines (l + 1) [importLine new]])
+                  else Just (t.file.path, [Edit.insertLines (l + 1) [importLine new]])
 
         -- the new module's text: a placeholder for its documentation, its
         -- imports in order, the old module's `%default`, and what moves
@@ -183,7 +183,7 @@ splitModule args =
           let (publics, privates) =
                 partition (isPrefixOf "import public")
                   (sort (importsOf ++ (if needsOld then [importLine old] else [])))
-              defaults = filter (isPrefixOf "%default") (map trim (linesOf s))
+              defaults = filter (isPrefixOf "%default") (map trim (Subject.linesOf s))
           in unlines (["||| " ++ named names ++ ", from `" ++ old ++ "`.", "module " ++ new, ""]
                       ++ block publics ++ block privates
                       ++ take 1 defaults ++ [""] ++ body)
@@ -194,13 +194,13 @@ splitModule args =
             block ls = ls ++ [""]
 
             importsOf : List String
-            importsOf = map (\i => trim (lineOf s (fst (lineSpan i.loc)))) s.file.mod.imports
+            importsOf = map (\i => trim (Subject.lineOf s (fst (Span.lineSpan i.loc)))) s.file.mod.imports
 
             piece : (Int, Int) -> List String
-            piece (a, b) = linesBetween s a b
+            piece (a, b) = Subject.linesBetween s a b
 
             body : List String
-            body = joined (intersperse [""] (map piece ranges))
+            body = Finding.joined (intersperse [""] (map piece ranges))
 
         -- the change that makes the module, or why nothing moves
         plan : Project -> Subject -> (into : String) -> (names : List String) -> List Concept ->
@@ -215,13 +215,13 @@ splitModule args =
           let sp = splitOf s (names ++ helpers) cs
               needsOld = mentionsAny sp.keptMembers sp.moved
               needsNew = mentionsAny sp.movedMembers sp.kept
-          when (any (\d => startColumn d.decl.fc /= 0) sp.moved) $
+          when (any (\d => Span.startColumn d.decl.fc /= 0) sp.moved) $
             Left "a declaration to move is inside a block"
           when (needsOld && needsNew) $
             Left
               ("what moves and what stays refer to each other: the two modules would import " ++
                "each other")
-          l <- listingOf p.packages old into
+          l <- Listing.listingOf p.packages old into
           let ranges = merged s (map (rangeOf s) sp.moved)
           pure (MkChange
                   ([ (s.file.path,

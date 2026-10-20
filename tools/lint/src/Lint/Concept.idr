@@ -60,10 +60,10 @@ pieceLines = 20
 
 ||| The concept each of a module's declarations belongs to, by its name.
 export
-ownerIn : SourceFile -> List Declared -> Declared -> String
+ownerIn : Source.SourceFile -> List Rules.Declared -> Rules.Declared -> String
 ownerIn f ds =
-  let types = joined (map typeNames ds)
-      interfaces = joined (map interfaceNames ds)
+  let types = Finding.joined (map typeNames ds)
+      interfaces = Finding.joined (map interfaceNames ds)
       placed = belongsTo (keyOf f types) types interfaces
       claimed =
         the (SortedMap String String)
@@ -79,7 +79,7 @@ ownerIn f ds =
     returnsType (PType _) = True
     returnsType _ = False
 
-    typeNames : Declared -> List String
+    typeNames : Rules.Declared -> List String
     typeNames d = case d.decl.val of
       PData {} => d.defines
       PRecord {} => d.defines
@@ -87,25 +87,25 @@ ownerIn f ds =
       PClaim c => if returnsType c.type.val.type then d.defines else []
       _ => []
 
-    interfaceNames : Declared -> List String
+    interfaceNames : Rules.Declared -> List String
     interfaceNames d = case d.decl.val of
       PInterface {} => d.defines
       _ => []
 
-    isClaim : Declared -> Bool
+    isClaim : Rules.Declared -> Bool
     isClaim d = case d.decl.val of
       PClaim _ => True
       _ => False
 
     -- a definition goes with its claim, wherever its body's mentions point
-    ownerBy : (Declared -> String) -> SortedMap String String -> Declared -> String
+    ownerBy : (Rules.Declared -> String) -> SortedMap String String -> Rules.Declared -> String
     ownerBy placed claimed d = case d.decl.val of
       PDef _ => fromMaybe (placed d) (head' d.defines >>= \n => lookup n claimed)
       _ => placed d
 
     ||| What each of a module's declarations belongs to, by the concept's name.
     belongsTo : (key : Maybe String) -> (types : List String) -> (interfaces : List String) ->
-                Declared -> String
+                Rules.Declared -> String
     belongsTo key types interfaces d = case d.decl.val of
       PData {} => own
       PRecord {} => own
@@ -124,12 +124,12 @@ ownerIn f ds =
         own = fromMaybe "" (head' d.defines)
 
     ||| The module's key type: the one it is named after, if it defines it.
-    keyOf : SourceFile -> List String -> Maybe String
-    keyOf f types = find (\t => toLower t == toLower (lastPart (show f.mod.moduleNS))) types
+    keyOf : Source.SourceFile -> List String -> Maybe String
+    keyOf f types = find (\t => toLower t == toLower (Rules.lastPart (show f.mod.moduleNS))) types
 
 ||| A module's concepts, in the order their first declarations are written.
 export
-conceptsOf : SourceFile -> List Declared -> List Concept
+conceptsOf : Source.SourceFile -> List Rules.Declared -> List Concept
 conceptsOf f ds =
   let owner = ownerIn f ds
       names = nub (map owner ds)
@@ -140,7 +140,7 @@ conceptsOf f ds =
     ||| The names a declaration contributes to its concept: those it defines,
     ||| and a type's constructors, fields and methods; an implementation, by
     ||| what it implements.
-    membersOf : Declared -> List String
+    membersOf : Rules.Declared -> List String
     membersOf d = case d.decl.val of
       PData _ _ _ (MkPData _ n _ _ cons) => nameRoot n
         :: foldr (\c, rest => map (nameRoot . (.val) . snd) (forget c.val.names) ++ rest) [] cons
@@ -157,20 +157,20 @@ conceptsOf f ds =
       _ => d.defines
 
     ||| Whether a declaration makes its concept visible to an importer.
-    exportedHere : Declared -> Bool
+    exportedHere : Rules.Declared -> Bool
     exportedHere d = case d.decl.val of
       PImplementation v _ _ _ _ _ _ _ _ _ => v /= Private
       _ => not (null d.visible)
 
-    linesOf : Declared -> Nat
-    linesOf d = let (a, b) = lineSpan d.decl.fc in cast (b - a + 1)
+    linesOf : Rules.Declared -> Nat
+    linesOf d = let (a, b) = Refactor.Span.lineSpan d.decl.fc in cast (b - a + 1)
 
-    concept : (Declared -> String) -> SortedMap String String -> String -> Concept
+    concept : (Rules.Declared -> String) -> SortedMap String String -> String -> Concept
     concept owner memberOf n =
       let mine = filter (\d => owner d == n) ds
           refs =
-            nub (filter (/= n) (mapMaybe (\m => lookup m memberOf) (joined (map (.mentions) mine))))
-      in MkConcept n (nub (joined (map membersOf mine))) (any exportedHere mine) refs
+            nub (filter (/= n) (mapMaybe (\m => lookup m memberOf) (Finding.joined (map (.mentions) mine))))
+      in MkConcept n (nub (Finding.joined (map membersOf mine))) (any exportedHere mine) refs
         (sum (map linesOf mine))
 
 ||| The concept a use of a module's name is of: the one the name is a

@@ -12,5 +12,5 @@ import Shape
 ||| The square a shape fits in.
 export
 frame : Shape -> Shape
-frame (Circle r) = Square (2 * r)
+frame (Shape.Circle r) = Shape.Square (2 * r)
 frame s = s

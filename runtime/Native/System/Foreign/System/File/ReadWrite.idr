@@ -26,7 +26,7 @@ export covering
 prim__readLine : AnyPtr -> PrimIO (Ptr String)
 prim__readLine p = toPrim $ File.withFile p Call.nullString.value (\_, f => do
   s <- File.readLine f
-  pure (Call.stringPointer (MkUniform s)).value)
+  pure (Call.stringPointer (Flat.MkUniform s)).value)
 
 ||| `fGetChars`: at most `n` bytes of the file's text, as many as there are
 ||| before its end or a read that fails, as a string given as the pointer;
@@ -38,7 +38,7 @@ prim__readChars n p = toPrim $
   if n <= 0 then pure Call.nullString.value else
     File.withFile p Call.nullString.value (\_, f => do
       s <- File.readChars f n
-      pure (if s == "" then Call.nullString.value else (Call.stringPointer (MkUniform s)).value))
+      pure (if s == "" then Call.nullString.value else (Call.stringPointer (Flat.MkUniform s)).value))
 
 ||| `fGetChar`: the file's next byte, or -1 at its end or for a read that
 ||| fails, as the C library's `fgetc`.
@@ -51,7 +51,7 @@ prim__readChar p = toPrim $ File.withFile p (-1) (\_, f => File.readByte f)
 export covering
 prim__writeLine : AnyPtr -> String -> PrimIO Int
 prim__writeLine p s = toPrim $ File.withFile p 0 (\_, f => do
-  ok <- Call.writeText !(File.handle f) (MkUniform s)
+  ok <- Call.writeText !(File.handle f) (Flat.MkUniform s)
   if ok then pure 1 else do
     File.markFailed f
     pure 0)
@@ -70,5 +70,5 @@ prim__eof p = toPrim $ File.withFile p 1 (\_, f => do
 export covering
 prim__removeFile : String -> PrimIO Int
 prim__removeFile path = toPrim $ do
-  ok <- Call.removePath (MkUniform path)
+  ok <- Call.removePath (Flat.MkUniform path)
   pure (if ok then 0 else -1)

@@ -16,6 +16,7 @@ modules =
     Lint.Graph,
     Lint.Main,
     Lint.Precision,
+    Lint.Qualification,
     Lint.Qualifier,
     Lint.Refactor.Binders,
     Lint.Refactor.Change,

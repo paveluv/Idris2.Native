@@ -68,17 +68,17 @@ import Lint.Refactor.InlineAlias
 import Lint.Refactor.JoinModules
 import Lint.Refactor.MergeClauses
 import Lint.Refactor.OrderImports
-import Lint.Refactor.Project
+import Lint.Refactor.Project as Refactor
 import Lint.Refactor.PruneImports
 import Lint.Refactor.QualifyNames
-import Lint.Refactor.Refactoring
+import Lint.Refactor.Refactoring as Refactor
 import Lint.Refactor.ReflowLines
 import Lint.Refactor.RemoveUnused
 import Lint.Refactor.Rename
 import Lint.Refactor.RenameModule
 import Lint.Refactor.ScopeHelpers
 import Lint.Refactor.SplitModule
-import Lint.Refactor.Subject
+import Lint.Refactor.Subject as Refactor
 import Lint.Refactor.Unprime
 import Lint.Resolution
 import Lint.ResolvedRules
@@ -154,7 +154,7 @@ main = do
        "[--helpers] [--refactor NAME [--arg VALUE]... [--dry-run] [--check COMMAND]] " ++
        "[--resolved] PATH... [--unscored PATH...] [--programs PATH...]")
     exitWith (ExitFailure 2)
-  when o.fix $ runRefactoring True False Nothing orderImports (o.paths ++ o.unscored ++ o.programs)
+  when o.fix $ runRefactoring True False Nothing Refactor.OrderImports.orderImports (o.paths ++ o.unscored ++ o.programs)
   whenJust o.refactoring $ \n => do
     case find (\r => r.name == n) (refactorings o.arguments) of
       Nothing => do
@@ -176,21 +176,21 @@ main = do
   fdms <- (scored ++) <$> traverse declaredIn us
   let fds = map (\(f, ds, _) => (f, ds)) fdms
   when o.listHelpers $ do
-    traverse_ (\(f, ds) => traverse_ (putStrLn . singleUse f) (fst (helpers ds))) fds
+    traverse_ (\(f, ds) => traverse_ (putStrLn . singleUse f) (fst (Rules.helpers ds))) fds
     exitWith ExitSuccess
-  res <- if o.resolved then Just <$> resolve (fs ++ us) else pure Nothing
+  res <- if o.resolved then Just <$> Resolution.resolve (fs ++ us) else pure Nothing
   findings <- the (IO (List Finding)) $ if o.health then pure [] else do
-    pms <- traverse (\f => mentions f.mod.decls) ps
+    pms <- traverse (\f => Rules.mentions f.mod.decls) ps
     let programNames =
-          the (SortedSet String) (fromList (joined (map (\m => map (nameRoot . snd) m.refs) pms)))
+          the (SortedSet String) (fromList (Finding.joined (map (\m => map (nameRoot . snd) m.refs) pms)))
         findings = (failed ++ failedUnscored ++ failedPrograms) ++ lint fdms ps programNames res
-    traverse_ (putStrLn . if o.golden then withoutPosition else withPosition) findings
+    traverse_ (putStrLn . if o.golden then Finding.withoutPosition else Finding.withPosition) findings
     pure findings
   low <- if not o.health && isNothing o.minimum then pure False else case res of
     -- the findings print them, when they are asked for
     Just (Left problems) => do
       when o.health $ do
-        traverse_ (putStrLn . withPosition) problems
+        traverse_ (putStrLn . Finding.withPosition) problems
         exitWith (ExitFailure 2)
       pure False
     Just (Right r) =>
@@ -228,7 +228,7 @@ main = do
     ||| findings that kept it from being made. A suppression of a resolved
     ||| rule suppresses nothing without the resolution, and is not reported
     ||| for it then.
-    lint : List (SourceFile, List Declared, Mentions) -> List SourceFile ->
+    lint : List (Source.SourceFile, List Rules.Declared, Rules.Mentions) -> List Source.SourceFile ->
            (programNames : SortedSet String) ->
            Maybe (Either (List Finding) Resolution) -> List Finding
     lint fdms ps programNames res =
@@ -240,29 +240,29 @@ main = do
           resolved = case res of
             Nothing => []
             Just (Left problems) => problems
-            Just (Right r) => resolvedRules fdms programNames r
+            Just (Right r) => ResolvedRules.resolvedRules fdms programNames r
           ours = the (SortedSet String) (fromList (map (\f => show f.mod.moduleNS) fs))
           exportsOf =
             the (SortedMap String (List String))
-              (fromList [ (show f.mod.moduleNS, joined (map (.visible) ds)) | (f, ds) <- fds ])
+              (fromList [ (show f.mod.moduleNS, Finding.joined (map (.visible) ds)) | (f, ds) <- fds ])
           aliases =
-            joined
+            Finding.joined
               (map
-                (\(f, ds, ms) => importAlias exportsOf f ms.refs
-                 ++ selfQualified f (joined (map (.defines) ds)) ms.refs)
+                (\(f, ds, ms) => Graph.importAlias exportsOf f ms.refs
+                 ++ Graph.selfQualified f (Finding.joined (map (.defines) ds)) ms.refs)
                fdms)
-          all = joined (map (\(f, ds, ms) => fileRules f ms ds) fdms)
-            ++ joined (map programRules ps) ++ graphRules fs
-                ++ aliases ++ joined (map exclusionRules fs) ++ resolved
+          all = Finding.joined (map (\(f, ds, ms) => Rules.fileRules f ms ds) fdms)
+            ++ Finding.joined (map Rules.programRules ps) ++ Graph.graphRules fs
+                ++ aliases ++ Finding.joined (map Graph.exclusionRules fs) ++ resolved
       in sort (foldl (\acc, f => suppress ran f acc) all (fs ++ ps))
       where
         ||| The findings a file's suppressions leave, and the findings about the
         ||| suppressions themselves.
-        suppress : (ran : Bool) -> SourceFile -> List Finding -> List Finding
+        suppress : (ran : Bool) -> Source.SourceFile -> List Finding -> List Finding
         suppress ran f fs =
           let ss = suppressions f
               kept = filter (\fi => fi.path /= f.path || not (any (\s => covers s fi) ss)) fs
-          in kept ++ joined (map (check fs) ss)
+          in kept ++ Finding.joined (map (check fs) ss)
           where
             -- whether a reason is the flat check's, or the flat translation's
             forTheFlatCheck : String -> Bool
@@ -271,8 +271,8 @@ main = do
             covers : Suppression -> Finding -> Bool
             covers s fi =
               fi.rule == s.rule && fi.line >= s.line && fi.line <= s.through
-              && not (s.rule `elem` unsuppressibleRules)
-              && (not (s.rule `elem` oneUseRules) || Just (fi.line, fi.col) == firstFrom s)
+              && not (s.rule `elem` Rules.unsuppressibleRules)
+              && (not (s.rule `elem` ResolvedRules.oneUseRules) || Just (fi.line, fi.col) == firstFrom s)
               where
                 -- the first finding of the rule in the suppression's paragraph
                 firstFrom : Suppression -> Maybe (Int, Int)
@@ -284,9 +284,9 @@ main = do
             check : List Finding -> Suppression -> List Finding
             check fs s =
               let at = MkFinding "suppression" f.path s.line s.col s.rule in
-              if not (s.rule `elem` ruleNames ++ resolvedRuleNames)
+              if not (s.rule `elem` Rules.ruleNames ++ ResolvedRules.resolvedRuleNames)
                 then [at ("no rule `" ++ s.rule ++ "`")]
-              else if s.rule `elem` unsuppressibleRules
+              else if s.rule `elem` Rules.unsuppressibleRules
                 then [at ("`" ++ s.rule ++ "` is not to be suppressed: change what it reports")]
               else if (s.rule == "import-unused" || s.rule == "public-import")
                 && forTheFlatCheck s.reason
@@ -295,15 +295,15 @@ main = do
                     (("the flat check loads every module a flat function reaches: no import is " ++
                       "kept, nor re-exported, for it"))]
               else if s.reason == "" then [at ("a suppression of `" ++ s.rule ++ "` says why")]
-              else if not ran && (s.rule `elem` resolvedRuleNames) then []
+              else if not ran && (s.rule `elem` ResolvedRules.resolvedRuleNames) then []
               else if not (any (\fi => fi.path == f.path && covers s fi) fs)
                 then [at ("the suppression of `" ++ s.rule ++ "` suppresses nothing")]
               else []
 
-            suppressions : SourceFile -> List Suppression
+            suppressions : Source.SourceFile -> List Suppression
             suppressions f = mapMaybe one f.comments
               where
-                one : SourceComment -> Maybe Suppression
+                one : Source.SourceComment -> Maybe Suppression
                 one c =
                   if c.isDoc || not (isPrefixOf "lint: allow " c.text) then Nothing else
                     let rest = substr 12 (length c.text) c.text
@@ -321,14 +321,14 @@ main = do
         Right entries <- listDir path
           | Left _ => pure []
         let children = sort [ path ++ "/" ++ e | e <- entries, e /= ".", e /= "..", e /= "build" ]
-        joined <$> traverse files children
+        Finding.joined <$> traverse files children
 
     ||| The files under the paths, parsed, and a finding for each that does not
     ||| parse.
-    parsed : List String -> IO (List SourceFile, List Finding)
+    parsed : List String -> IO (List Source.SourceFile, List Finding)
     parsed roots = do
-      paths <- joined <$> traverse files roots
-      results <- traverse parse paths
+      paths <- Finding.joined <$> traverse files roots
+      results <- traverse Source.parse paths
       let failures =
             mapMaybe
               (\(p, r) => either (\e => Just (MkFinding "parse" p 0 0 "" e)) (const Nothing) r)
@@ -338,39 +338,39 @@ main = do
     ||| The refactorings, by name, given the run's arguments (`--arg`), which
     ||| those that take them read: `split-module` the module to make and the
     ||| concepts to move to it.
-    refactorings : List String -> List Refactoring
+    refactorings : List String -> List Refactor.Refactoring
     refactorings args =
-      [inlineAlias args, joinModules args, mergeClauses, orderImports, pruneImports, qualifyNames,
-        reflowLines args, removeUnused, rename args, renameModule args, scopeHelpers,
-       splitModule args, unprime]
+      [Refactor.InlineAlias.inlineAlias args, Refactor.JoinModules.joinModules args, Refactor.MergeClauses.mergeClauses, Refactor.OrderImports.orderImports, Refactor.PruneImports.pruneImports, Refactor.QualifyNames.qualifyNames,
+        Refactor.ReflowLines.reflowLines args, Refactor.RemoveUnused.removeUnused, Refactor.Rename.rename args, Refactor.RenameModule.renameModule args, Refactor.ScopeHelpers.scopeHelpers,
+       Refactor.SplitModule.splitModule args, Refactor.Unprime.unprime]
 
     ||| The files under a run's roots listed and parsed once, and again only
     ||| after a change, which may have moved one: a wide refactoring asks
     ||| for them at every file it looks at.
-    projectOnce : IORef (Maybe Project) -> (roots : List String) -> Maybe Resolution ->
-                  List Subject -> IO Project
+    projectOnce : IORef (Maybe Refactor.Project) -> (roots : List String) -> Maybe Resolution ->
+                  List Refactor.Subject -> IO Refactor.Project
     projectOnce cache roots res context = do
       Nothing <- readIORef cache
         | Just p => pure p
       -- the files as they are now: a change may have moved one
-      paths <- joined <$> traverse files roots
-      p <- loadProject roots paths res context
+      paths <- Finding.joined <$> traverse files roots
+      p <- Refactor.Project.loadProject roots paths res context
       writeIORef cache (Just p)
       pure p
 
     ||| The modules of the packages beside the roots, but the run's own files,
     ||| parsed.
-    contextOf : (roots, paths : List String) -> IO (List Subject)
+    contextOf : (roots, paths : List String) -> IO (List Refactor.Subject)
     contextOf roots paths = do
-      packages <- packagesNear roots
-      others <- joined <$> traverse (\(pp, t) => files (sourceDirOf pp t)) packages
-      rights <$> traverse load (filter (\o => not (o `elem` paths)) (nub others))
+      packages <- Refactor.Project.packagesNear roots
+      others <- Finding.joined <$> traverse (\(pp, t) => files (Refactor.Project.sourceDirOf pp t)) packages
+      rights <$> traverse Refactor.Subject.load (filter (\o => not (o `elem` paths)) (nub others))
 
     ||| What the files' modules use, resolved, those whose TTCs can be read.
     resolvedFrom : List String -> IO (Maybe Resolution)
     resolvedFrom paths = do
-      fs <- rights <$> traverse parse paths
-      res <- resolve fs
+      fs <- rights <$> traverse Source.parse paths
+      res <- Resolution.resolve fs
       case res of
         Right r => pure (Just r)
         -- the files whose TTCs are missing or stale, such as programs that
@@ -379,14 +379,14 @@ main = do
           let missing = map (.path) problems
               rest = filter (\f => not (f.path `elem` missing)) fs
           in if null missing || length rest == length fs then pure Nothing
-             else either (const Nothing) Just <$> resolve rest
+             else either (const Nothing) Just <$> Resolution.resolve rest
 
     ||| The refactoring run over every file under the paths, each to a fixed
     ||| point, with what it changed and what stays printed unless `quiet`.
-    runRefactoring : (quiet, dryRun : Bool) -> (check : Maybe String) -> Refactoring ->
+    runRefactoring : (quiet, dryRun : Bool) -> (check : Maybe String) -> Refactor.Refactoring ->
                      List String -> IO ()
     runRefactoring quiet dryRun check r roots = do
-      paths <- joined <$> traverse files roots
+      paths <- Finding.joined <$> traverse files roots
       cache <- newIORef Nothing
       -- what the modules use, read once from the TTCs built before the run,
       -- which its changes leave behind
@@ -395,7 +395,7 @@ main = do
       -- may import, read once, as the run does not change them
       context <- if r.wide then contextOf roots paths else pure []
       for_ paths $ \p => do
-        rep <- refactor dryRun check r (projectOnce cache roots res context)
+        rep <- Refactor.Refactoring.refactor dryRun check r (projectOnce cache roots res context)
           (writeIORef cache Nothing) p
         when (not quiet || not (null rep.changed)) $
           when (not (null rep.changed) || not (null rep.stays)) $ do
@@ -405,11 +405,11 @@ main = do
             for_ rep.stays $ \(what, why) => putStrLn ("  `" ++ what ++ "` stays: " ++ why)
 
     ||| The components of a group.
-    inGroup : String -> List Component -> List Component
+    inGroup : String -> List Graph.Component -> List Graph.Component
     inGroup g = filter (\c => c.group == g)
 
     ||| A component's line, and under it, short of 100, its worst `n` offenders.
-    component : (n : Nat) -> Component -> IO ()
+    component : (n : Nat) -> Graph.Component -> IO ()
     component n c = do
       putStrLn
         ("    " ++ padRight 14 ' ' c.name ++ padLeft 3 ' ' (show c.value) ++ "  " ++ c.counted)
@@ -417,7 +417,7 @@ main = do
       where
         ||| A component's offenders that cost it most, the first `n`, the costliest
         ||| first, and among equal costs in the order of their subjects.
-        worst : Nat -> List Offender -> List Offender
+        worst : Nat -> List Graph.Offender -> List Graph.Offender
         worst n os =
           take n
             (sortBy (\a,
@@ -426,44 +426,44 @@ main = do
                      (negate (cast b.cost), b.subject))
              os)
 
-        offender : Offender -> IO ()
+        offender : Graph.Offender -> IO ()
         offender x =
           putStrLn
             ("      " ++ padLeft 5 ' ' (show x.cost) ++ "  " ++ x.subject ++ ": " ++ x.detail)
 
     ||| A helper used by one declaration, as `--helpers` prints it: where it is
     ||| declared, its name, and its user with where that starts.
-    singleUse : SourceFile -> (Declared, Declared) -> String
+    singleUse : Source.SourceFile -> (Rules.Declared, Rules.Declared) -> String
     singleUse f (h, u) =
       f.path ++ ":" ++ show (line h) ++ " `" ++ name h ++ "` used only by `" ++ name u ++ "` at "
         ++ show (line u)
       where
-        line : Declared -> Int
+        line : Rules.Declared -> Int
         line d = case d.decl.fc of
           MkFC _ (l, _) _ => l + 1
           MkVirtualFC _ (l, _) _ => l + 1
           EmptyFC => 0
 
-        name : Declared -> String
+        name : Rules.Declared -> String
         name d = fromMaybe "?" (head' d.defines)
 
     ||| A file with its declarations and what it mentions.
-    declaredIn : SourceFile -> IO (SourceFile, List Declared, Mentions)
+    declaredIn : Source.SourceFile -> IO (Source.SourceFile, List Rules.Declared, Rules.Mentions)
     declaredIn f = do
-      ds <- declared f
-      ms <- mentions f.mod.decls
+      ds <- Rules.declared f
+      ms <- Rules.mentions f.mod.decls
       pure (f, ds, ms)
 
     ||| The health score of the files, with its groups and their components,
     ||| printed; whether it is below the minimum asked for.
-    healthOf : Request -> List (SourceFile, List Declared, Mentions) -> Maybe Resolution -> IO Bool
+    healthOf : Request -> List (Source.SourceFile, List Rules.Declared, Rules.Mentions) -> Maybe Resolution -> IO Bool
     healthOf o fdms r = do
       let fds = map (\(f, ds, _) => (f, ds)) fdms
-          cs = health fds ++ [distinction fds] ++ maybe [] (resolvedHealth fdms) r
-          overall = score cs
+          cs = health fds ++ [Distinction.distinction fds] ++ maybe [] (ResolvedRules.resolvedHealth fdms) r
+          overall = Graph.score cs
       putStrLn ("architectural health: " ++ show overall)
-      for_ (groups cs) $ \g => do
-        putStrLn ("  " ++ padRight 16 ' ' g ++ padLeft 3 ' ' (show (groupScore cs g)))
+      for_ (Graph.groups cs) $ \g => do
+        putStrLn ("  " ++ padRight 16 ' ' g ++ padLeft 3 ' ' (show (Graph.groupScore cs g)))
         traverse_ (component o.offenders) (inGroup g cs)
       case o.minimum of
         Just m => if overall < m

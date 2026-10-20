@@ -82,7 +82,7 @@ mulAdd x m a = do
     go : (i, n, carry : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
     go i n carry = if i >= n then Runtime.Ordo.pure carry else do
       v <- limb x i
-      case mul128 v m of
+      case Primitive.Mul128.mul128 v m of
         (h, l) => do
           let l' = l + carry
           setLimb x i l'

@@ -81,7 +81,7 @@ data Position = Kept String | Matched | Fixed String
 ||| only it uses, written as one clause with a `case`.
 export
 mergeClauses : Refactoring
-mergeClauses = fileRefactoring "merge-clauses"
+mergeClauses = Refactoring.fileRefactoring "merge-clauses"
   ("write as one clause with a `case` each function several clauses of which use a helper only " ++
    "it uses")
   candidates
@@ -92,7 +92,7 @@ mergeClauses = fileRefactoring "merge-clauses"
 
     ||| The text of a source location on one line.
     textAt : List String -> FC -> Either String String
-    textAt ls fc = case bounds fc of
+    textAt ls fc = case Span.bounds fc of
       Just ((l, a), (l', b)) =>
         if l == l' then Right (substr (cast a) (cast (b - a)) (lineAt ls l))
           else Left ("a pattern at line " ++ show (l + 1) ++ " spans lines")
@@ -107,16 +107,16 @@ mergeClauses = fileRefactoring "merge-clauses"
     ||| written after code on its line.
     partsOf : List String -> PClause -> Either String Parts
     partsOf _ (MkWithClause fc _ _ _ _) =
-      Left ("its clause at line " ++ show (fst (lineSpan fc) + 1) ++ " is a `with` clause")
+      Left ("its clause at line " ++ show (fst (Span.lineSpan fc) + 1) ++ " is a `with` clause")
     partsOf _ (MkImpossible fc _) =
-      Left ("its clause at line " ++ show (fst (lineSpan fc) + 1) ++ " is impossible")
+      Left ("its clause at line " ++ show (fst (Span.lineSpan fc) + 1) ++ " is impossible")
     partsOf ls cl@(MkPatClause fc lhs _ wh) = do
-      ((l0, c0), _) <- maybe (Left "a clause has no place in the source") Right (bounds fc)
+      ((l0, c0), _) <- maybe (Left "a clause has no place in the source") Right (Span.bounds fc)
       ((ll, _), (le, lce)) <- maybe (Left "a left-hand side has no place in the source") Right
-        (bounds (getPTermLoc lhs))
+        (Span.bounds (getPTermLoc lhs))
       when (ll /= le) $ Left ("the left-hand side at line " ++ show (ll + 1) ++ " spans lines")
       (h, args) <- spine ls lhs
-      let last = foldr (\d, m => max m (snd (lineSpan d.fc))) (snd (lineSpan fc)) wh
+      let last = foldr (\d, m => max m (snd (Span.lineSpan d.fc))) (snd (Span.lineSpan fc)) wh
       (bodyLast, wtext, wcol) <- whereOf l0 last
       pure (MkParts h (args <>> []) l0 c0 lce bodyLast last wh wtext wcol cl)
       where
@@ -128,10 +128,10 @@ mergeClauses = fileRefactoring "merge-clauses"
         -- the last line of the body; the `where` block's lines, from the
         -- comments above its first declaration; and its column
         whereOf : (first, last : Int) -> Either String (Int, List String, Int)
-        whereOf first last = case sort (map (fst . lineSpan . (.fc)) wh) of
+        whereOf first last = case sort (map (fst . Span.lineSpan . (.fc)) wh) of
           [] => Right (lastWritten ls first last, [], 0)
           (top :: _) =>
-            let from = attachedFrom ls top
+            let from = Extent.attachedFrom ls top
                 kw = lastWritten ls first (from - 1)
             in if trim (lineAt ls kw) /= "where"
                  then Left
@@ -139,7 +139,7 @@ mergeClauses = fileRefactoring "merge-clauses"
                     ++ " is written after code on its line")
                  else Right
                    (lastWritten ls first (kw - 1), linesFrom ls from last,
-                    foldr (\d, m => min m (startColumn d.fc)) 1000 wh)
+                    foldr (\d, m => min m (Span.startColumn d.fc)) 1000 wh)
 
         ||| A clause's left-hand side as its head and its arguments, in order.
         spine : List String -> PTerm -> Either String (String, SnocList Arg)
@@ -150,7 +150,7 @@ mergeClauses = fileRefactoring "merge-clauses"
                                            pure (h, as :< Written t)
           where
             after : FC -> FC -> Either String String
-            after inner outer = case (bounds inner, bounds outer) of
+            after inner outer = case (Span.bounds inner, Span.bounds outer) of
               (Just (_, (l, a)), Just (_, (l', b))) => if l == l'
                 then Right (trim (substr (cast a) (cast (b - a)) (lineAt ls l)))
                   else Left "an implicit argument spans lines"
@@ -160,7 +160,7 @@ mergeClauses = fileRefactoring "merge-clauses"
                                         pure (h, as :< Written t)
           where
             after : FC -> FC -> Either String String
-            after inner outer = case (bounds inner, bounds outer) of
+            after inner outer = case (Span.bounds inner, Span.bounds outer) of
               (Just (_, (l, a)), Just (_, (l', b))) => if l == l'
                 then Right (trim (substr (cast a) (cast (b - a)) (lineAt ls l)))
                   else Left "an auto-implicit argument spans lines"
@@ -192,7 +192,7 @@ mergeClauses = fileRefactoring "merge-clauses"
       where
         ||| A pattern as a variable, if it is one.
         variableOf : PTerm -> Maybe String
-        variableOf (PRef _ (UN (Basic v))) = if isVariable v then Just v else Nothing
+        variableOf (PRef _ (UN (Basic v))) = if Free.isVariable v then Just v else Nothing
         variableOf _ = Nothing
 
         plain : PTerm -> Bool
@@ -375,7 +375,7 @@ mergeClauses = fileRefactoring "merge-clauses"
                    ++ map shift rest)
 
     ||| The function's lines rewritten, or why they stay.
-    plan : Subject -> (user : Declared) -> List PClause -> (type : Maybe PTerm) ->
+    plan : Subject -> (user : Rules.Declared) -> List PClause -> (type : Maybe PTerm) ->
            Either String Change
     plan s u cls ty = do
       parts <- traverse (partsOf ls) cls
@@ -394,12 +394,12 @@ mergeClauses = fileRefactoring "merge-clauses"
             ++ fastConcat (map (" " ++) (argTexts ps names)) ++ " = case " ++ scrutinee names
             ++ " of"
       pure
-        (inFile s.file.path
-          [replaceLines (fst region) (snd region)
+        (Change.inFile s.file.path
+          [Edit.replaceLines (fst region) (snd region)
            (header :: joinAlts parts alts ++ whereBlock c parts)])
       where
         ls : List String
-        ls = linesOf s
+        ls = Subject.linesOf s
 
         isMatched : Position -> Bool
         isMatched Matched = True
@@ -419,8 +419,8 @@ mergeClauses = fileRefactoring "merge-clauses"
         nothingBetween : (Int, Int) -> Either String ()
         nothingBetween (a, b) =
           if any
-            (\d => let l = fst (lineSpan d.decl.fc) in l >= a && l <= b && lineSpan d.decl.fc
-             /= lineSpan u.decl.fc)
+            (\d => let l = fst (Span.lineSpan d.decl.fc) in l >= a && l <= b && Span.lineSpan d.decl.fc
+             /= Span.lineSpan u.decl.fc)
               s.declared
             then Left "other declarations lie between its clauses" else Right ()
 
@@ -430,7 +430,7 @@ mergeClauses = fileRefactoring "merge-clauses"
         avoid : (Int, Int) -> SortedSet String
         avoid (a, b) =
           let written = identifiers (joinBy "\n" (linesFrom ls a b))
-              inType = maybe [] (\t => Prelude.toList (typeNames t)) ty
+              inType = maybe [] (\t => Prelude.toList (Free.typeNames t)) ty
               explicit = maybe [] (\t => mapMaybe fst (explicitBinders t)) ty
               globals = foldr (\d, rest => d.defines ++ rest) [] s.declared
           in fromList
@@ -478,7 +478,7 @@ mergeClauses = fileRefactoring "merge-clauses"
         patternVariables ps p =
           foldr (\(i, pos), rest => case pos of
                                       Matched =>
-                                        maybe rest (\t => union (boundBy t) rest) (patternAt i p)
+                                        maybe rest (\t => union (Free.boundBy t) rest) (patternAt i p)
                                       _ => rest) empty (zip [0 .. length ps] ps)
 
         -- a name kept as an argument binds, in a clause that left it `_`,
@@ -494,7 +494,7 @@ mergeClauses = fileRefactoring "merge-clauses"
           where
             captured : (Nat, Position) -> Bool
             captured (i, Kept n) = n /= "_"
-              && any (\p => maybe False isWild (patternAt i p) && contains n (inClause p.clause))
+              && any (\p => maybe False isWild (patternAt i p) && contains n (Free.inClause p.clause))
                 parts
               where
                 isWild : PTerm -> Bool
@@ -512,10 +512,10 @@ mergeClauses = fileRefactoring "merge-clauses"
           where
             one : Parts -> Either String ()
             one p =
-              let defs = fromList (definedBy p.wheres)
-                  used = difference (foldr (\d, rest => union (inDecl d) rest) empty p.wheres) defs
+              let defs = fromList (Free.definedBy p.wheres)
+                  used = difference (foldr (\d, rest => union (Free.inDecl d) rest) empty p.wheres) defs
                   others = filter (\q => q.first /= p.first) parts
-              in if contains unknown used
+              in if contains Free.unknown used
                 then Left
                   ("the `where` block of its clause at line " ++ show (p.first + 1)
                    ++ " holds a declaration the analysis does not follow")
@@ -528,7 +528,7 @@ mergeClauses = fileRefactoring "merge-clauses"
                      not
                        (null
                          (intersection defs
-                          (union (fromList (definedBy q.wheres)) (inClause q.clause)))))
+                          (union (fromList (Free.definedBy q.wheres)) (Free.inClause q.clause)))))
                      others
                    then Left
                      ("the `where` block of its clause at line " ++ show (p.first + 1)
@@ -545,40 +545,40 @@ mergeClauses = fileRefactoring "merge-clauses"
         whereBlock c parts = case filter (\p => not (null p.whereText)) parts of
           [] => []
           ws => (indent (c + 2) ++ "where")
-            :: intercalate [""] (map (\p => reindent p.whereColumn (c + 4) p.whereText) ws)
+            :: intercalate [""] (map (\p => Reindent.reindent p.whereColumn (c + 4) p.whereText) ws)
 
-    claimType : Subject -> Declared -> Maybe PTerm
+    claimType : Subject -> Rules.Declared -> Maybe PTerm
     claimType s u = do
       c <- find (\d => isClaim d && any (`elem` u.defines) d.defines) s.declared
       case c.decl.val of
         PClaim cd => Just cd.type.val.type
         _ => Nothing
       where
-        isClaim : Declared -> Bool
+        isClaim : Rules.Declared -> Bool
         isClaim d = case d.decl.val of
           PClaim _ => True
           _ => False
 
     -- the functions a helper's one user has that several clauses of use it:
     -- the user, or methods of it if it is an implementation
-    targetsOf : Subject -> (Declared, Declared) -> List Candidate
+    targetsOf : Subject -> (Rules.Declared, Rules.Declared) -> List Refactoring.Candidate
     targetsOf s (h, u) = case u.decl.val of
-      PDef cls => if usedBy cls >= 2 then [candidate (labelOf u) (plan s u cls (claimType s u))]
+      PDef cls => if usedBy cls >= 2 then [Refactoring.candidate (Refactoring.labelOf u) (plan s u cls (claimType s u))]
         else []
       PImplementation _ _ _ _ _ _ _ _ _ (Just body) =>
         mapMaybe (\d => case d.val of
                           PDef cls => if usedBy cls >= 2
                             then Just
-                              (candidate (fastConcat (definesOf d) ++ " of " ++ labelOf u)
+                              (Refactoring.candidate (fastConcat (Rules.definesOf d) ++ " of " ++ Refactoring.labelOf u)
                                (plan s u cls Nothing))
                                 else Nothing
-                          _ => Nothing) (foldr (\d, rest => byFunction d ++ rest) [] body)
+                          _ => Nothing) (foldr (\d, rest => Rules.byFunction d ++ rest) [] body)
       _ => []
       where
         usedBy : List PClause -> Nat
-        usedBy cls = length (filter (\cl => any (\n => contains n (inClause cl)) h.defines) cls)
+        usedBy cls = length (filter (\cl => any (\n => contains n (Free.inClause cl)) h.defines) cls)
 
-    candidates : Subject -> List Candidate
+    candidates : Subject -> List Refactoring.Candidate
     candidates s =
       nubBy (\a, b => a.label == b.label)
-        (foldr (\p, rest => targetsOf s p ++ rest) [] (fst (helpers s.declared)))
+        (foldr (\p, rest => targetsOf s p ++ rest) [] (fst (Rules.helpers s.declared)))

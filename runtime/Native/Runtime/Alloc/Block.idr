@@ -46,7 +46,7 @@ data Addressed : Type where
 ||| A block of `bytes`, aligned to 16, its contents unspecified, for `use`;
 ||| `none` if there is no memory for it.
 export %inline covering
-allocate : (bytes : Bits64) -> (none : Op Ordo a) -> (use : (1 b : Block) -> Op Ordo a) -> Op Ordo a
+allocate : (bytes : Bits64) -> (none : Ordo.Op Ordo a) -> (use : (1 b : Block) -> Ordo.Op Ordo a) -> Ordo.Op Ordo a
 allocate bytes none use = do
   a <- System.allocateBlock bytes
   if a == 0 then none else use (MkBlock (Memory.foreignBytes a))
@@ -58,14 +58,14 @@ address (MkBlock a) = MkAddressed a (MkBlock a)
 
 ||| The block given back to the allocator.
 export %inline covering
-free : (1 b : Block) -> Op Ordo ()
+free : (1 b : Block) -> Ordo.Op Ordo ()
 free (MkBlock a) = System.freeBlock (Raw.rawWord a)
 
 ||| The block given up, as its address: from here nothing checks that it is
 ||| freed once, by whatever takes the address, or never.
 export %inline
-releaseBlock : (1 b : Block) -> Op Ordo Raw
-releaseBlock (MkBlock a) = pure a
+releaseBlock : (1 b : Block) -> Ordo.Op Ordo Raw
+releaseBlock (MkBlock a) = Ordo.pure a
 
 ||| An address taken for a block the allocator gave: nothing checks that it
 ||| is one, nor that no one else holds it.

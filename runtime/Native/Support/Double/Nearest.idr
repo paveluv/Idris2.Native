@@ -55,7 +55,7 @@ eiselLemire w q =
     covering
     fiveTo : Int -> (Bits64, Bits64)
     fiveTo k with (-342 <= k && k <= 326) proof inside
-      _ | True = case powerOfTen k inside of
+      _ | True = case PowerOfTen.powerOfTen k inside of
         (h, l) => if -27 <= k && k <= -1 then (if l == 0xFFFFFFFFFFFFFFFF then h + 1 else h, l + 1)
           else (h, l)
       -- lint: allow trust-escape: unreached, as q is from -342 to 308 here
@@ -68,10 +68,10 @@ eiselLemire w q =
     covering
     product : Bits64 -> (Bits64, Bits64)
     product w' = case fiveTo q of
-      (h5, l5) => case mul128 w' h5 of
+      (h5, l5) => case Primitive.Mul128.mul128 w' h5 of
         (fh, fl) =>
           if fh .&. 0x1FF /= 0x1FF then (fh, fl) else
-            case mul128 w' l5 of
+            case Primitive.Mul128.mul128 w' l5 of
               (sh, _) => let fl' = fl + sh in (if sh > fl' then fh + 1 else fh, fl')
 
     ||| A subnormal, or zero: the mantissa shifted down by what the
@@ -119,7 +119,7 @@ export covering
 nearest : (w : Bits64) -> (q : Int) -> Bits64
 nearest w q =
   if w <= 0x20000000000000 && q >= -22 && q <= 22
-     then doubleBits (clinger (cast {to = Double} w) q)
+     then Primitive.DoubleBits.doubleBits (clinger (cast {to = Double} w) q)
      else eiselLemire w q
   where
     covering

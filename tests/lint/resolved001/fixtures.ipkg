@@ -12,6 +12,7 @@ modules =
     Native.Support.Lease,
     Pace,
     Page,
+    Plain,
     Report,
     Shape,
     Shapes,

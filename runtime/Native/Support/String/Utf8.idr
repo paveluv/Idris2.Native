@@ -35,7 +35,7 @@ import Native.Runtime.PortTy as Runtime
 import Native.Runtime.Raw as Runtime
 import Native.Support.CodePoint
 import Native.Support.Double.Between
-import Native.Support.Double.Limbs
+import Native.Support.Double.Limbs as Double
 import Native.Support.Double.Nearest
 import Native.Support.Double.Shortest
 import Native.Support.Obj
@@ -495,7 +495,7 @@ export covering
 showDouble : Runtime.PortTy Runtime.Memory.Addr
              (Types.StringRoutine.port Types.StringRoutine.ShowDouble)
 showDouble x =
-  let w = doubleBits x
+  let w = Primitive.DoubleBits.doubleBits x
       negative = w `shiftR` 63 == 1
       be = (w `shiftR` 52) .&. 0x7FF
       f = w .&. 0xFFFFFFFFFFFFF
@@ -507,7 +507,7 @@ showDouble x =
      else if be == 0 && f == 0
         -- -0.0, 0.0
         then (if negative then packed 4 0x302E302D else packed 3 0x302E30)
-     else case shortest f be of
+     else case Double.Shortest.shortest f be of
        (sig, e10) => decimalText negative sig e10
   where
     ||| A short ASCII text, its bytes in a word, the first lowest: a new string
@@ -859,9 +859,9 @@ readDouble u = do
     special <- if signed && n == 6 then word5 s 1 else Runtime.Ordo.pure 0
     -- inf.0 after a sign, nan.0 after a plus
     if special == 0x302E666E69
-       then Runtime.Ordo.pure (bitsDouble (sign .|. 0x7FF0000000000000))
+       then Runtime.Ordo.pure (Primitive.DoubleBits.bitsDouble (sign .|. 0x7FF0000000000000))
        else if special == 0x302E6E616E && not negative
-         then Runtime.Ordo.pure (bitsDouble 0x7FF8000000000000)
+         then Runtime.Ordo.pure (Primitive.DoubleBits.bitsDouble 0x7FF8000000000000)
          else decimalValue s n i0 sign
   where
     ||| What `exponent` gives for a marker without digits after it.
@@ -939,7 +939,7 @@ readDouble u = do
     ||| The digits of a decimal as a number in limbs, from its first nonzero
     ||| one, at most `most` of them, and whether a nonzero digit follows those.
     covering
-    gatherDigits : Obj Types.Kind.STRING -> (from, end, lead, most : Bits64) -> Limbs ->
+    gatherDigits : Obj Types.Kind.STRING -> (from, end, lead, most : Bits64) -> Double.Limbs ->
                    Runtime.Ordo.Op Runtime.Ordo Bool
     gatherDigits s from end lead most d = go from lead 0 0 0 False
       where
@@ -948,7 +948,7 @@ readDouble u = do
         covering
         flush : (chunk, digits : Bits64) -> Runtime.Ordo.Op Runtime.Ordo ()
         flush chunk 0 = Runtime.Ordo.pure ()
-        flush chunk digits = mulAdd d (power digits) chunk
+        flush chunk digits = Double.Limbs.mulAdd d (power digits) chunk
           where
             power : Bits64 -> Bits64
             power 0 = 1
@@ -984,16 +984,16 @@ readDouble u = do
       let invalid = sc.digits == 0 || j /= n || (hasExponent && e == badExponent)
       if invalid then Runtime.Ordo.pure 0.0 else
         if sc.significant == 0
-           then Runtime.Ordo.pure (bitsDouble sign)
+           then Runtime.Ordo.pure (Primitive.DoubleBits.bitsDouble sign)
            else do
              let k = if sc.significant > 19 then 19 else sc.significant
                  q = e + cast sc.whole - cast sc.lead - cast k
-                 b = nearest sc.w q
-             bits <- if sc.significant <= 19 || b == nearest (sc.w + 1) q
+                 b = Double.Nearest.nearest sc.w q
+             bits <- if sc.significant <= 19 || b == Double.Nearest.nearest (sc.w + 1) q
                         then Runtime.Ordo.pure b
                         else do
-                          d <- newLimbs
+                          d <- Double.Limbs.newLimbs
                           sticky <- gatherDigits s i0 sc.end sc.lead 769 d
                           let kept = if sc.significant > 769 then 769 else sc.significant
-                          between d sticky (e + cast sc.whole - cast sc.lead - cast kept) b
-             Runtime.Ordo.pure (bitsDouble (bits .|. sign))
+                          Double.Between.between d sticky (e + cast sc.whole - cast sc.lead - cast kept) b
+             Runtime.Ordo.pure (Primitive.DoubleBits.bitsDouble (bits .|. sign))

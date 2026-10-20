@@ -207,7 +207,7 @@ argumentBytes n = do
   argv <- argvArea
   entry <- loadAt argv 0
   p <- loadAt (Raw.fromWord entry) (8 + 8 * n)
-  pure (Raw.fromWord p)
+  Ordo.pure (Raw.fromWord p)
 
 ||| The program's environment, as the system put it after the arguments and
 ||| the zero word that ends them: entry `n`'s address, as a foreign pointer
@@ -227,7 +227,7 @@ environmentEntry n = do
     scan : Raw -> (at, k : Bits64) -> Ordo.Op Ordo Bits64
     scan start at k = do
       p <- loadAt start at
-      if p == 0 || k == 0 then pure p else scan start (at + 8) (k - 1)
+      if p == 0 || k == 0 then Ordo.pure p else scan start (at + 8) (k - 1)
 
 ||| The raw memory a foreign pointer's word addresses, such as an
 ||| environment entry's: memory outside the heap, which the collector never

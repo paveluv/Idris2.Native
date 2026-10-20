@@ -16,7 +16,7 @@ import Native.Failure
 import Native.Flat.Uniform as Flat
 import Native.HeapObj.Shape as HeapObj
 import Native.Port
-import Native.Runtime.Alloc.Block
+import Native.Runtime.Alloc.Block as Runtime.Alloc
 import Native.Runtime.Memory
 import Native.Runtime.Ordo as Runtime
 import Native.Runtime.PortTy
@@ -87,7 +87,7 @@ withText s none use = do
       (do Runtime.State.setState Runtime.State.lastFailure (Failure.code Failure.NoMemory)
           none)
       (\b => do
-        let MkAddressed p b' = Runtime.Alloc.Block.address b
+        let Runtime.Alloc.Block.MkAddressed p b' = Runtime.Alloc.Block.address b
         string__copyText s p
         r <- use p n
         Runtime.Alloc.Block.free b'
@@ -108,7 +108,7 @@ withPath s none use = do
     (do Runtime.State.setState Runtime.State.lastFailure (Failure.code Failure.NoMemory)
         none)
     (\b => do
-      let MkAddressed p b' = Runtime.Alloc.Block.address b
+      let Runtime.Alloc.Block.MkAddressed p b' = Runtime.Alloc.Block.address b
       string__copyText s p
       Runtime.Memory.storeByteAt p n 0
       r <- use p

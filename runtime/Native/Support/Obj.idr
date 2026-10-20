@@ -36,7 +36,7 @@ import Native.Runtime.Ordo as Runtime
 import Native.Runtime.Raw as Runtime
 import Native.Runtime.Space
 import Native.Types.ConstructorId as Types
-import Native.Types.Header as Types
+import Native.Types.Header
 import Native.Types.Kind as Types
 import Native.Types.Represents as Types
 import Native.Types.Struct as Types

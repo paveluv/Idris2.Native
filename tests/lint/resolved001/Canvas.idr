@@ -12,4 +12,4 @@ import public Shape
 ||| The shapes on the canvas.
 export
 canvas : List Shape
-canvas = [Circle 1, Square 2]
+canvas = [Shape.Circle 1, Shape.Square 2]

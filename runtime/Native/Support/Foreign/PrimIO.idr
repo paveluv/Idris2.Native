@@ -26,6 +26,6 @@ prim__nullAnyPtr p = let (Runtime.MkOrdo # r) = nullOp p Runtime.MkOrdo in r
     nullOp p = do
       target <- Ptr.pointee p
       case target of
-        Address a => Runtime.Ordo.pure (if Runtime.Raw.isNull a then 1 else 0)
-        HeapString _ => Runtime.Ordo.pure 0
-        Handle _ => Runtime.Ordo.pure 0
+        Ptr.Address a => Runtime.Ordo.pure (if Runtime.Raw.isNull a then 1 else 0)
+        Ptr.HeapString _ => Runtime.Ordo.pure 0
+        Ptr.Handle _ => Runtime.Ordo.pure 0

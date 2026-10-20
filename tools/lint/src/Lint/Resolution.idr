@@ -174,18 +174,18 @@ data Recursion = Own Name (List (Maybe Nat)) | FromBlock (Name -> Bool)
 ||| Our modules resolved from their TTCs, or the findings of those whose TTCs
 ||| are missing or older than their sources, or why the TTCs did not load.
 export
-resolve : List SourceFile -> IO (Either (List Finding) Resolution)
+resolve : List Source.SourceFile -> IO (Either (List Finding) Resolution)
 resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (show err)])) pure
   where
     ||| A file's module as a path, without its extension.
-    modulePath : SourceFile -> String
+    modulePath : Source.SourceFile -> String
     modulePath f =
       fastConcat (intersperse "/" (reverse (unsafeUnfoldNamespace (miAsNamespace f.mod.moduleNS))))
 
     ||| The directory of the TTCs of a source file's package, if its path ends as
     ||| its module's name says: Idris looks for them under it, in the
     ||| directory of its TTC version.
-    ttcDirectory : SourceFile -> IO (Maybe String)
+    ttcDirectory : Source.SourceFile -> IO (Maybe String)
     ttcDirectory f =
       let rel = modulePath f ++ ".idr" in
       if not (isSuffixOf rel f.path) then pure Nothing else do
@@ -225,7 +225,7 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
 
     ||| Whether a file's TTC is there and newer than its source; a finding
     ||| otherwise.
-    fresh : SourceFile -> String -> Core (Maybe Finding)
+    fresh : Source.SourceFile -> String -> Core (Maybe Finding)
     fresh f dir = do
       let ttc = dir ++ "/" ++ show ttcVersion ++ "/" ++ modulePath f ++ ".ttc"
       built <- modTime ttc
@@ -356,7 +356,7 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
     ||| A module of ours, resolved from the context it is loaded into.
     resolveModule : {auto c : Ref Ctxt Defs} -> {auto n : Ref Counting Count} ->
                     (ours : SortedSet String) -> SortedSet String -> SortedSet String ->
-                      List (Name, List Nat) -> (SourceFile, List Name) ->
+                      List (Name, List Nat) -> (Source.SourceFile, List Name) ->
                     Core ResolvedModule
     resolveModule ours mods implementations js (f, names) = do
       let m = show f.mod.moduleNS
@@ -366,7 +366,7 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
       let uses =
             Prelude.toList
               (the (SortedSet (String, String, Bool))
-               (fromList (filter (\(u, _, _) => u /= m) (joined [ us | (us, _, _) <- perName ]))))
+               (fromList (filter (\(u, _, _) => u /= m) (Finding.joined [ us | (us, _, _) <- perName ]))))
       pure (MkResolvedModule m f.path is (map (\(u, r, s) => MkUse u r s) uses)
               (mapMaybe (\(_, a, _) => a) perName) (mapMaybe (\(_, _, g) => g) perName))
       where
@@ -698,7 +698,7 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
             -- match among them, which its references leave out
             clauseRefs : Def -> List Name
             clauseRefs (PMDef _ _ _ _ pats) =
-              joined
+              Finding.joined
                 (map
                   (\(_ ** (_, lhs, rhs)) => keys (getRefs (UN Underscore) lhs)
                    ++ keys (getRefs (UN Underscore) rhs))
@@ -749,7 +749,7 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
         -- the implementations, as Idris keeps them for search: by interface,
         -- and the hints of no interface; a data type's constructors are
         -- hints for it too, and are left out
-        let hinted = joined (map (map (\(h, _) => h)) (values (typeHints defs)))
+        let hinted = Finding.joined (map (map (\(h, _) => h)) (values (typeHints defs)))
               ++ keys (autoHints defs)
         hintedNames <- traverse (full (gamma defs)) hinted
         found <- filterM (notConstructor defs) hintedNames

@@ -10,7 +10,7 @@
 # `Page` makes a raw address from a word; `Native.Support.Lease` leaves
 # the allocator's linear blocks, at base's foreign surface and outside it;
 # `Values` converts a value through the core's conversion, not the support
-# tier's door.
+# tier's door; `Plain` writes names of our modules bare.
 # Then the score's components that the resolution measures, and the
 # accumulation with what costs it: `JoinAll` accumulates lists in each
 # shape, the superlinear ones counted against it.

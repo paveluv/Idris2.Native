@@ -56,7 +56,7 @@ definedBy = foldr (\d, rest => here d ++ rest) []
     here : PDecl -> List String
     here d = case d.val of
       PMutual ds => definedBy ds
-      _ => definesOf d
+      _ => Rules.definesOf d
 
 ||| A name as a variable could be written, plain and unqualified, occurring
 ||| at the start of a source location.
@@ -377,14 +377,14 @@ claimsWithin globals around cls = foldr (\cl, rest => inPat cl ++ rest) [] cls
     -- a local function's type's names, from its claim among the block's
     typeOf : List PDecl -> List String -> SortedSet String
     typeOf ds names = foldr (\d, rest => case d.val of
-                                         PClaim c => if any (`elem` names) (definesOf d)
+                                         PClaim c => if any (`elem` names) (Rules.definesOf d)
                                            then union (typeNames c.type.val.type) rest else rest
                                          _ => rest) empty ds
 
     -- the clauses of the local function a claim among the block's declares
     defsOf : List PDecl -> List String -> List PClause
     defsOf ds names = foldr (\d, rest => case d.val of
-                                         PDef cs => if any (`elem` names) (definesOf d) then cs
+                                         PDef cs => if any (`elem` names) (Rules.definesOf d) then cs
                                            ++ rest else rest
                                          _ => rest) [] ds
 
@@ -396,8 +396,8 @@ claimsWithin globals around cls = foldr (\cl, rest => inPat cl ++ rest) [] cls
           PClaim c =>
             [MkInnerClaim (line d)
               (intersection (free c.type.val.type) (typeVariables globals c.type.val.type)) env
-                          c.type.val.type (defsOf siblings (definesOf d))]
-          PDef cs => claimsWithin globals (union env (typeOf siblings (definesOf d))) cs
+                          c.type.val.type (defsOf siblings (Rules.definesOf d))]
+          PDef cs => claimsWithin globals (union env (typeOf siblings (Rules.definesOf d))) cs
           PMutual ms => block env siblings ms
           _ => []
 

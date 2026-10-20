@@ -251,7 +251,7 @@ fileSize handle =
     (do State.setState State.lastFailure (Failure.code Failure.NoMemory)
         Ordo.pure 0xFFFFFFFFFFFFFFFF)
     (\b => do
-      let MkAddressed buffer b' = Alloc.Block.address b
+      let Alloc.Block.MkAddressed buffer b' = Alloc.Block.address b
       r <- Syscall.syscall 5 handle (Raw.rawWord buffer) 0 0 0 0
       ok <- succeeded r
       size <- Memory.loadAt buffer 48
@@ -289,7 +289,7 @@ readEntry handle address bytes =
     (do State.setState State.lastFailure (Failure.code Failure.NoMemory)
         Ordo.pure 0xFFFFFFFFFFFFFFFF)
     (\b => do
-      let MkAddressed buffer b' = Alloc.Block.address b
+      let Alloc.Block.MkAddressed buffer b' = Alloc.Block.address b
       r <- Syscall.syscall 217 handle (Raw.rawWord buffer) 280 0 0 0
       ok <- succeeded r
       n <- if not ok then Ordo.pure 0xFFFFFFFFFFFFFFFF else if r == 0 then Ordo.pure 0 else do

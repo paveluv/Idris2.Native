@@ -7,7 +7,7 @@
 module Native.System.Foreign.System.FFI
 
 import Native.Flat.Uniform as Flat
-import Native.Runtime.Alloc.Block
+import Native.Runtime.Alloc.Block as Runtime.Alloc
 import Native.Runtime.Ordo as Runtime
 import Native.Runtime.Raw as Runtime
 import Native.Support.Ptr
@@ -50,12 +50,12 @@ prim__free p w = let (Runtime.MkOrdo # ()) = freeOp p Runtime.MkOrdo in MkIORes 
     freeOp p = do
       target <- Support.Ptr.pointee p
       case target of
-        Address a =>
+        Support.Ptr.Address a =>
           if Runtime.Raw.isNull a then Runtime.Ordo.pure () else
             -- lint: allow sealed-allocator: an address the program gives back, as C's free takes
             -- one; the allocator ends the program for one it did not give
             Runtime.Alloc.Block.free (Runtime.Alloc.Block.adoptBlock a)
         -- the collector keeps an object of the heap given for a pointer
-        HeapString _ => Runtime.Ordo.pure ()
+        Support.Ptr.HeapString _ => Runtime.Ordo.pure ()
         -- a handle is the system tier's to close, by its own functions
-        Handle _ => Runtime.Ordo.pure ()
+        Support.Ptr.Handle _ => Runtime.Ordo.pure ()

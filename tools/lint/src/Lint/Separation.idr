@@ -50,19 +50,19 @@ record Piece where
 ||| another's. Its offenders, each module of several pieces, by the
 ||| pieces beyond the first, with what each holds and who uses it.
 export
-separation : List (SourceFile, List Declared) -> Resolution -> Component
+separation : List (Source.SourceFile, List Rules.Declared) -> Resolution -> Graph.Component
 separation fds r =
-  let byModule = conceptsByModule fds
-      out = excludedFrom "separation" (map fst fds)
+  let byModule = Precision.conceptsByModule fds
+      out = Precision.excludedFrom "separation" (map fst fds)
       counted =
         filter hasPieces
           [ (m, piecesOf byModule r.modules m) | m <- keys byModule, not (m `elem` out) ]
       pieces = sum (map (counting . snd) counted)
-  in MkComponent "structure" "separation" (percent (length counted) pieces)
-       ("modules that are one piece, of the pieces of " ++ show pieceLines
+  in Graph.MkComponent "structure" "separation" (Graph.percent (length counted) pieces)
+       ("modules that are one piece, of the pieces of " ++ show Concept.pieceLines
          ++ " lines or more their importers use: "
         ++ show (length counted) ++ " modules, " ++ show pieces ++ " pieces" ++ leftOut out)
-       [ MkOffender m (minus (counting ps) 1)
+       [ Graph.MkOffender m (minus (counting ps) 1)
          (show (counting ps) ++ " pieces: "
           ++ fastConcat (intersperse "; " (map described (filter large ps))))
        | (m, ps) <- counted, counting ps > 1 ]
@@ -71,7 +71,7 @@ separation fds r =
     hasPieces (_, ps) = not (null ps)
 
     large : Piece -> Bool
-    large p = p.size >= pieceLines
+    large p = p.size >= Concept.pieceLines
 
     -- the pieces of a module that count: those large enough, or one
     counting : List Piece -> Nat
@@ -79,18 +79,18 @@ separation fds r =
 
     leftOut : List String -> String
     leftOut [] = ""
-    leftOut ms = "; left out: " ++ listed ms
+    leftOut ms = "; left out: " ++ Graph.listed ms
 
     described : Piece -> String
     described p =
       let us = Prelude.toList p.users in
-      listed (take 4 p.concepts) ++ (if length p.concepts > 4 then ", ..." else "")
-      ++ " (" ++ show p.size ++ " lines) used by " ++ listed (take 3 us)
+      Graph.listed (take 4 p.concepts) ++ (if length p.concepts > 4 then ", ..." else "")
+      ++ " (" ++ show p.size ++ " lines) used by " ++ Graph.listed (take 3 us)
         ++ (if length us > 3 then ", ..." else "")
 
     ||| A module's pieces: its concepts that other modules use, clustered by
     ||| use, each with its users.
-    piecesOf : SortedMap String (List Concept) -> List ResolvedModule -> String -> List Piece
+    piecesOf : SortedMap String (List Concept) -> List Resolution.ResolvedModule -> String -> List Piece
     piecesOf byModule rms m =
       let usersOf = usersMap (filter (.offered) (fromMaybe [] (lookup m byModule)))
       in map (piece usersOf)
@@ -101,7 +101,7 @@ separation fds r =
         concepts = fromMaybe [] (lookup m byModule)
 
         reaches : String -> SortedSet String
-        reaches = reachable concepts
+        reaches = Concept.reachable concepts
 
         -- two concepts that refer to each other, through any: one piece
         cyclic : List String -> List (String, String)
@@ -124,7 +124,7 @@ separation fds r =
         usersMap : List Concept -> List (String, SortedSet String)
         usersMap cs =
           [ (c.name,
-            fromList [ rm.name | rm <- rms, rm.name /= m, contains c.name (usedOf byModule rm m) ])
+            fromList [ rm.name | rm <- rms, rm.name /= m, contains c.name (Precision.usedOf byModule rm m) ])
            | c <- cs ]
 
         usersIn : List (String, SortedSet String) -> String -> SortedSet String

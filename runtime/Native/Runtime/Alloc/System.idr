@@ -42,7 +42,7 @@ Pages Ordo where
 ||| The process's allocator, its arena made if it is not yet: the program
 ||| ends if the system has not the address space for it.
 export
-processAllocator : Ordo.Op Ordo (SizeClasses Buddy)
+processAllocator : Ordo.Op Ordo (SizeClasses Chunks.Buddy)
 processAllocator = do
   r <- State.getState State.foreignArena
   a <- if not (Raw.isNull r) then Ordo.pure (Raw.rawWord r) else do
@@ -50,7 +50,7 @@ processAllocator = do
     if n == 0 then Ordo.crashOp "idris: no address space for the allocator" else do
       State.setState State.foreignArena (Raw.fromWord n)
       Ordo.pure n
-  Ordo.pure (MkSizeClasses Config.defaultConfig a (MkBuddy Config.defaultConfig a))
+  Ordo.pure (MkSizeClasses Config.defaultConfig a (Chunks.MkBuddy Config.defaultConfig a))
 
 %cg native flat Runtime.Alloc.System.allocateBlock
 ||| A block of the process's allocator, and one given back.

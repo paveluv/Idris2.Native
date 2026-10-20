@@ -66,18 +66,18 @@ freeHead _ o = freeHeads + o
 
 export
 availHead, slabCount, emptyCount : Config -> (cls : Bits64) -> Bits64
-availHead c k = freeHeads + maxOrder c + 1 + k
-slabCount c k = availHead c k + classCount c
-emptyCount c k = slabCount c k + classCount c
+availHead c k = freeHeads + Config.maxOrder c + 1 + k
+slabCount c k = availHead c k + Config.classCount c
+emptyCount c k = slabCount c k + Config.classCount c
 
 ||| A word of the control block, and storing one.
 export
 field : Pages h => (arena, i : Bits64) -> Ordo.Op h Bits64
-field a i = load a (8 * i)
+field a i = Pages.load a (8 * i)
 
 export
 setField : Pages h => (arena, i, value : Bits64) -> Ordo.Op h ()
-setField a i v = store a (8 * i) v
+setField a i v = Pages.store a (8 * i) v
 
 ------------------------------------------------------------------------------
 -- The pagemap
@@ -112,13 +112,13 @@ export
 entry : Pages h => (arena, granule, i : Bits64) -> Ordo.Op h Bits64
 entry a g i = do
   p <- field a pagemap
-  load (p + (g `shiftL` entryShift)) (8 * i)
+  Pages.load (p + (g `shiftL` entryShift)) (8 * i)
 
 export
 setEntry : Pages h => (arena, granule, i, value : Bits64) -> Ordo.Op h ()
 setEntry a g i v = do
   p <- field a pagemap
-  store (p + (g `shiftL` entryShift)) (8 * i) v
+  Pages.store (p + (g `shiftL` entryShift)) (8 * i) v
 
 ||| The granule an address of the region is in, and a granule's address.
 export
@@ -170,7 +170,7 @@ remove a hw g = do
 ||| `bytes` rounded up to whole pages.
 pages : Pages h => (bytes : Bits64) -> Ordo.Op h Bits64
 pages n = do
-  page <- pageBytes
+  page <- Pages.pageBytes
   Ordo.pure ((n + (page - 1)) .&. (0 - page))
 
 ||| A new arena of the configuration: its reservation made, its control
@@ -183,9 +183,9 @@ newArena c = do
   entries <- pages ((1 `shiftL` (c.regionShift - c.granuleShift)) `shiftL` entryShift)
   let region = 1 `shiftL` c.regionShift
       align = 1 `shiftL` c.maxChunkShift
-  base <- reserve (control + entries + region + align)
+  base <- Pages.reserve (control + entries + region + align)
   if base == 0 then Ordo.pure 0 else do
-    ok <- commit base control
+    ok <- Pages.commit base control
     if not ok then Ordo.pure 0 else do
       let start = (base + control + entries + (align - 1)) .&. (0 - align)
       setField base mark arenaMark
@@ -198,7 +198,7 @@ newArena c = do
   where
     ||| The bytes of the control block.
     controlBytes : Config -> Bits64
-    controlBytes c = 8 * (emptyCount c 0 + classCount c)
+    controlBytes c = 8 * (emptyCount c 0 + Config.classCount c)
 
 ||| Whether the address is an arena's, by its mark.
 export
@@ -219,9 +219,9 @@ carve c a = do
     g <- granuleOf c a t
     p <- field a pagemap
     pc <- field a pagemapCommitted
-    let needed = p + ((g + (1 `shiftL` maxOrder c)) `shiftL` entryShift)
+    let needed = p + ((g + (1 `shiftL` Config.maxOrder c)) `shiftL` entryShift)
     want <- if needed <= pc then Ordo.pure 0 else pages (needed - pc)
-    ok <- if want == 0 then Ordo.pure True else commit pc want
+    ok <- if want == 0 then Ordo.pure True else Pages.commit pc want
     if not ok then Ordo.pure Nothing else do
       setField a pagemapCommitted (pc + want)
       setField a taken (t + size)

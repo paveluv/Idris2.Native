@@ -8,8 +8,8 @@ import Mode
 
 export
 pace : Mode -> Nat
-pace m = speed m + 1
+pace m = Mode.speed m + 1
 
 export
-lanes : Lanes
+lanes : Mode.Lanes
 lanes = [1, 2]

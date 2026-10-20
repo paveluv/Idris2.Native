@@ -33,19 +33,19 @@ import TTImp.TTImp
 export
 removeUnused : Refactoring
 removeUnused =
-  fileRefactoring "remove-unused"
+  Refactoring.fileRefactoring "remove-unused"
     "delete each private function at the top of a module that nothing uses" candidates
   where
     -- whether a declaration, not one of the function's own, uses it
-    uses : Declared -> Declared -> Bool
+    uses : Rules.Declared -> Rules.Declared -> Bool
     uses f d =
       not (any (`elem` f.defines) d.defines) &&
-        (let names = inDecl d.decl in
-         if contains unknown names then any (`elem` f.defines) d.mentions
+        (let names = Free.inDecl d.decl in
+         if contains Free.unknown names then any (`elem` f.defines) d.mentions
            else any (\n => contains n names) f.defines)
 
     -- whether the function is used without being named
-    unnamedUse : Declared -> Bool
+    unnamedUse : Rules.Declared -> Bool
     unnamedUse f = ("main" `elem` f.defines) || case f.decl.val of
       PClaim c => any hint c.opts
       _ => False
@@ -55,10 +55,10 @@ removeUnused =
         hint (IFnOpt (GlobalHint _)) = True
         hint _ = False
 
-    candidates : Subject -> List Candidate
+    candidates : Subject -> List Refactoring.Candidate
     candidates s =
       map
         (\f =>
-         candidate (labelOf f) (map (\e => inFile s.file.path [cut (linesOf s) e]) (extentOf s f)))
-          (filter (\f => privateAtTop f && not (unnamedUse f) && not (any (uses f) s.declared))
+         Refactoring.candidate (Refactoring.labelOf f) (map (\e => Change.inFile s.file.path [Extent.cut (Subject.linesOf s) e]) (Extent.extentOf s f)))
+          (filter (\f => Rules.privateAtTop f && not (unnamedUse f) && not (any (uses f) s.declared))
             s.declared)

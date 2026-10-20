@@ -10,4 +10,4 @@ import Canvas
 ||| The canvas, shown.
 export
 report : String
-report = show canvas
+report = show Canvas.canvas

@@ -43,13 +43,13 @@ parameterBlocks text = foldr (\d, rest => here d ++ rest) []
     -- leave free, which the block binds implicitly
     namesOf : Either (List1 PlainBinder) (List1 PBinder) -> SortedSet String
     namesOf (Left bs) =
-      foldr (\b, rest => insert (nameRoot b.nameVal) (union (typeVariables empty b.val) rest)) empty
+      foldr (\b, rest => insert (nameRoot b.nameVal) (union (Free.typeVariables empty b.val) rest)) empty
         (forget bs)
     namesOf (Right bs) =
       foldr (\b,
         rest =>
           union (fromList (map (nameRoot . (.val)) (forget b.bind.names)))
-             (union (typeVariables empty b.bind.type) rest))
+             (union (Free.typeVariables empty b.bind.type) rest))
           empty (forget bs)
 
     -- the block's binders: the groups between the `parameters` keyword and
@@ -57,7 +57,7 @@ parameterBlocks text = foldr (\d, rest => here d ++ rest) []
     bindersAt : List String -> (from, to : Int) -> List String
     bindersAt ls from to =
       let header = take (cast (to - from)) (drop (cast from) ls) in
-      map snd (binderGroups (unwords (afterKeyword header)))
+      map snd (Binders.binderGroups (unwords (afterKeyword header)))
       where
         afterKeyword : List String -> List String
         afterKeyword [] = []
@@ -68,15 +68,15 @@ parameterBlocks text = foldr (\d, rest => here d ++ rest) []
     -- where the block's first declaration starts, its attached comments
     -- included, or the block's end
     firstOf : PDecl -> List PDecl -> Int
-    firstOf d ds = case sort (map (fst . lineSpan . (.fc)) ds) of
-      (l :: _) => attachedFrom text l
-      [] => snd (lineSpan d.fc) + 1
+    firstOf d ds = case sort (map (fst . Span.lineSpan . (.fc)) ds) of
+      (l :: _) => Extent.attachedFrom text l
+      [] => snd (Span.lineSpan d.fc) + 1
 
     here : PDecl -> List ParameterBlock
     here d = case d.val of
       PParameters ps ds =>
-        MkParameterBlock (lineSpan d.fc) (namesOf ps)
-          (bindersAt text (fst (lineSpan d.fc)) (firstOf d ds)) :: parameterBlocks text ds
+        MkParameterBlock (Span.lineSpan d.fc) (namesOf ps)
+          (bindersAt text (fst (Span.lineSpan d.fc)) (firstOf d ds)) :: parameterBlocks text ds
       PNamespace _ ds => parameterBlocks text ds
       PMutual ds => parameterBlocks text ds
       PUsing _ ds => parameterBlocks text ds

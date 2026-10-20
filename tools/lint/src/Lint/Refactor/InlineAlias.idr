@@ -87,13 +87,13 @@ inlineAlias args =
 
     ||| Where a source location is, for a report.
     place : Subject -> FC -> String
-    place t fc = "at line " ++ show (fst (lineSpan fc) + 1) ++ " of " ++ t.file.path
+    place t fc = "at line " ++ show (fst (Span.lineSpan fc) + 1) ++ " of " ++ t.file.path
 
     -- the text a source location spans, if it is on one line
     textAt : Subject -> FC -> Maybe (Int, Int, String)
-    textAt s fc = case bounds fc of
+    textAt s fc = case Span.bounds fc of
       Just ((l, c), (l', c')) => if l == l'
-        then Just (l, c, substr (cast c) (cast (c' - c)) (lineOf s l)) else Nothing
+        then Just (l, c, substr (cast c) (cast (c' - c)) (Subject.lineOf s l)) else Nothing
       Nothing => Nothing
 
     -- the function's right-hand side, and the extent of its claim and
@@ -110,30 +110,28 @@ inlineAlias args =
       params <- maybe (Left "its parameters are not variables") Right (paramsOf base lhs)
       (l, c, text) <- maybe (Left "its right-hand side is not on one line") Right
         (textAt s (getPTermLoc rhs))
-      extent <- extentOf s claim
-      let within = \fc => case bounds fc of
+      extent <- Extent.extentOf s claim
+      let within = \fc => case Span.bounds fc of
                             Just ((l', c'), _) => l' == l && c' >= c && c' < c + cast (length text)
                             Nothing => False
       pure (MkAlias text c params (List.filter (within . fst) s.written) (closedTerm rhs), extent)
       where
-        isClaim : Declared -> Bool
+        isClaim : Rules.Declared -> Bool
         isClaim d = case d.decl.val of
           PClaim _ => True
           _ => False
 
     -- the module a name the function's module writes comes from, as the
-    -- resolution has it: a single one, or none for a library's
+    -- resolution has it: a single one, or none for a library's; why not,
+    -- for a module the resolution left out
     definerOf : Project -> (module', name : String) -> Either String (Maybe String)
-    definerOf p m n = case p.resolution of
-      Nothing => Left "the modules' uses cannot be resolved: build them first"
-      Just r =>
-        let definers =
-              nub [ u.definer | rm <- r.modules,
-                   rm.name == m, u <- rm.uses, u.name == n, not u.searched ] in
-        case definers of
-          [d] => Right (if any (\t => nameOf t == d) p.files then Just d else Nothing)
-          [] => Right Nothing
-          _ => Left ("`" ++ n ++ "` has more than one definer")
+    definerOf p m n = do
+      uses <- Project.usesOf p m
+      let definers = nub [ u.definer | u <- uses, u.name == n, not u.searched ]
+      case definers of
+        [d] => Right (if any (\t => nameOf t == d) p.files then Just d else Nothing)
+        [] => Right Nothing
+        _ => Left ("`" ++ n ++ "` has more than one definer")
 
     -- whether a name written in a file is the function: written bare in
     -- its module, or where the file takes the name from there alone, or
@@ -148,7 +146,7 @@ inlineAlias args =
 
     -- a use in a file: the term with the arguments in place, and the
     -- right-hand side's names written from the file
-    useEdit : Project -> (module' : String) -> Alias -> Subject -> Applied ->
+    useEdit : Project -> (module' : String) -> Alias -> Subject -> Rules.Applied ->
               Either String (Edit, List String)
     useEdit p m a t u = do
       let k = length a.params
@@ -161,17 +159,17 @@ inlineAlias args =
         Left ("it is applied to fewer arguments than it has parameters " ++ place t (fst u.called))
       named <- traverse (nameEdit (map (\(_, _, x) => x) args)) a.names
       body <- maybe (Left "its right-hand side's edits overlap") Right
-        (apply (map fst named) a.text)
+        (Edit.apply (map fst named) a.text)
       let text = if a.closed then body else "(" ++ body ++ ")"
-          from = maybe (0, 0) fst (bounds (fst u.called))
+          from = maybe (0, 0) fst (Span.bounds (fst u.called))
           to = case last' args of
                  Just (l, c, x) => (l, c + cast (length x))
-                 Nothing => maybe from snd (bounds (fst u.called))
+                 Nothing => maybe from snd (Span.bounds (fst u.called))
       pure (MkEdit from to text, mapMaybe snd named)
       where
         -- where a name is in the right-hand side's text
         columns : FC -> (Int, Int)
-        columns fc = case bounds fc of
+        columns fc = case Span.bounds fc of
           Just ((_, c), (_, c')) => (c - a.column, c' - a.column)
           Nothing => (0, 0)
 
@@ -189,7 +187,7 @@ inlineAlias args =
                      d <- definerOf p m x
                      case d of
                        Just d' =>
-                         Right (at (joinBy "." (pathFrom (nameOf t) d') ++ "." ++ x), Just d')
+                         Right (at (joinBy "." (Qualifier.pathFrom (nameOf t) d') ++ "." ++ x), Just d')
                        Nothing => Right (at x, Nothing)
                _ => Right (at (show n), Nothing)
 
@@ -199,13 +197,13 @@ inlineAlias args =
                 Either String (List Edit)
     fileEdits p m base a ex t = do
       let ours = \fc => nameOf t /= m
-            || (fst (lineSpan fc) < ex.first || fst (lineSpan fc) > ex.last)
+            || (fst (Span.lineSpan fc) < ex.first || fst (Span.lineSpan fc) > ex.last)
           refs = List.filter (\(fc, n) => isAlias p m base t n && ours fc) t.written
           uses =
             longest
               (List.filter (\u => isAlias p m base t (snd u.called) && ours (fst u.called))
                t.applied)
-      case List.filter (\(fc, _) => not (any (\u => bounds (fst u.called) == bounds fc) uses))
+      case List.filter (\(fc, _) => not (any (\u => Span.bounds (fst u.called) == Span.bounds fc) uses))
         refs of
         ((fc, _) :: _) => Left ("it is written unapplied " ++ place t fc)
         [] => pure ()
@@ -213,17 +211,17 @@ inlineAlias args =
       let needed =
             nub [ d | (_, ds) <- edited,
                  d <- ds, not (d `elem` map (show . (.path)) t.file.mod.imports), d /= nameOf t ]
-          lastImport = foldl (\x, i => max x (fst (lineSpan i.loc))) (-1) t.file.mod.imports
+          lastImport = foldl (\x, i => max x (fst (Span.lineSpan i.loc))) (-1) t.file.mod.imports
           imports = if null needed then []
-            else [insertLines (lastImport + 1) (map ("import " ++) needed)]
+            else [Edit.insertLines (lastImport + 1) (map ("import " ++) needed)]
       pure (map fst edited ++ imports)
       where
         -- of the applications at one place, the one with every argument
-        longest : List Applied -> List Applied
+        longest : List Rules.Applied -> List Rules.Applied
         longest us =
           [ u | u <- us,
             all
-              (\v => bounds (fst v.called) /= bounds (fst u.called) || length v.args
+              (\v => Span.bounds (fst v.called) /= Span.bounds (fst u.called) || length v.args
                <= length u.args)
            us ]
 
@@ -235,15 +233,15 @@ inlineAlias args =
         (List.filter (\t => nameOf t /= m) p.files)
       own <- fileEdits p m base a ex s
       pure
-        (MkChange ((s.file.path, cut (linesOf s) ex :: own) :: List.filter (not . null . snd) edits)
+        (MkChange ((s.file.path, Extent.cut (Subject.linesOf s) ex :: own) :: List.filter (not . null . snd) edits)
          [] [])
 
-    candidates : Project -> Subject -> List Candidate
+    candidates : Project -> Subject -> List Refactoring.Candidate
     candidates p s = case args of
       [full] => case reverse (partsOf full) of
         (base :: rest@(_ :: _)) =>
           let m = joinBy "." (reverse rest) in
           if nameOf s == m && any (\d => base `elem` d.defines) s.declared
-            then [candidate ("inline " ++ full) (plan p s m base)] else []
+            then [Refactoring.candidate ("inline " ++ full) (plan p s m base)] else []
         _ => []
       _ => []

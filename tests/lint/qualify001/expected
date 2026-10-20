@@ -1,3 +1,14 @@
+./Plan.idr:18:8 unqualified: `Shape` is written bare: write `Geo.Shape`
+./Plan.idr:19:10 unqualified: `area` is written bare: write `Geo.Shape.area`
+./Plan.idr:19:16 unqualified: `Circle` is written bare: write `Geo.Shape.Circle`
+./Plan.idr:19:53 unqualified: `area` is written bare: write `Geo.Shape.area`
+./Plan.idr:25:11 unqualified: `Shape` is written bare: write `Geo.Shape`
+./Plan.idr:26:10 unqualified: `Square` is written bare: write `Geo.Shape.Square`
+./Plan.idr:28:3 unqualified: `Circle` is written bare: write `Geo.Shape.Circle`
+./Plan.idr:37:7 unqualified: `Box` is written bare: write `Geo.Box`
+./Plan.idr:39:3 unqualified: `MkBox` is written bare: write `Geo.MkBox`
+0
+0
 ./Plan.idr: 1 changed, 0 stay
 ||| Names taken from our modules, written bare or under an alias. After
 ||| `qualify-names` each is written with its module's path past what it
@@ -40,3 +51,5 @@ box =
   Geo.MkBox
     { width = 1, height = 2 }
 Plan.idr checks
+./Plan.idr: 0 changed, 1 stay
+  `names` stays: the uses of `Plan` cannot be resolved, its TTC missing or older than its source: build it first

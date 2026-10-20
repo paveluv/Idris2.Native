@@ -44,22 +44,22 @@ record Buddy where
 ||| A free chunk's head marked at its order, and put in its list.
 freeAt : Pages h => Config -> (arena, granule, o : Bits64) -> Ordo.Op h ()
 freeAt c a g o = do
-  setEntry a g kind freeKind
-  setEntry a g order o
-  push a (freeHead c o) g
+  Arena.setEntry a g Arena.kind Arena.freeKind
+  Arena.setEntry a g Arena.order o
+  Arena.push a (Arena.freeHead c o) g
 
 ||| The chunk at the granule, of order `o`, joined with its buddy while that
 ||| is free at the same order, then freed.
 covering
 join : Pages h => Config -> (arena, granule, o : Bits64) -> Ordo.Op h ()
 join c a g o =
-  if o >= maxOrder c then freeAt c a g o else do
+  if o >= Config.maxOrder c then freeAt c a g o else do
     let b = g `xor` (1 `shiftL` o)
-    bk <- entry a b kind
-    bo <- entry a b order
-    if bk /= freeKind || bo /= o then freeAt c a g o else do
-      remove a (freeHead c o) b
-      setEntry a b kind unusedKind
+    bk <- Arena.entry a b Arena.kind
+    bo <- Arena.entry a b Arena.order
+    if bk /= Arena.freeKind || bo /= o then freeAt c a g o else do
+      Arena.remove a (Arena.freeHead c o) b
+      Arena.setEntry a b Arena.kind Arena.unusedKind
       join c a (if b < g then b else g) (o + 1)
   where
     xor : Bits64 -> Bits64 -> Bits64
@@ -83,19 +83,19 @@ Pages h => Chunks h Buddy where
         case found of
           Just k => Ordo.pure (Just k)
           Nothing => do
-            fresh <- carve c a
+            fresh <- Arena.carve c a
             case fresh of
               Nothing => Ordo.pure Nothing
               Just g => do
-                freeAt c a g (maxOrder c)
-                Ordo.pure (Just (maxOrder c))
+                freeAt c a g (Config.maxOrder c)
+                Ordo.pure (Just (Config.maxOrder c))
         where
           ||| The least order, from `o` up to the largest, whose list has a chunk.
           covering
           smallestFree : Config -> (arena, o : Bits64) -> Ordo.Op h (Maybe Bits64)
           smallestFree c a o =
-            if o > maxOrder c then Ordo.pure Nothing else do
-              first <- field a (freeHead c o)
+            if o > Config.maxOrder c then Ordo.pure Nothing else do
+              first <- Arena.field a (Arena.freeHead c o)
               if first /= 0 then Ordo.pure (Just o) else smallestFree c a (o + 1)
 
       ||| The first free chunk of order `k`, split down to order `o`, committed:
@@ -103,13 +103,13 @@ Pages h => Chunks h Buddy where
       covering
       takeFrom : Config -> (arena, k, o : Bits64) -> Ordo.Op h Bits64
       takeFrom c a k o = do
-        first <- field a (freeHead c k)
+        first <- Arena.field a (Arena.freeHead c k)
         let g = first - 1
-        remove a (freeHead c k) g
-        setEntry a g kind unusedKind
+        Arena.remove a (Arena.freeHead c k) g
+        Arena.setEntry a g Arena.kind Arena.unusedKind
         split c a g k o
-        addr <- granuleAddress c a g
-        ok <- commit addr (chunkBytes c o)
+        addr <- Arena.granuleAddress c a g
+        ok <- Pages.commit addr (Config.chunkBytes c o)
         if ok then Ordo.pure addr else do
           join c a g o
           Ordo.pure 0
@@ -125,7 +125,7 @@ Pages h => Chunks h Buddy where
   giveChunk b o addr = do
     let c = b.config
         a = b.arena
-    release addr (chunkBytes c o)
-    g <- granuleOf c a addr
-    setEntry a g kind unusedKind
+    Pages.release addr (Config.chunkBytes c o)
+    g <- Arena.granuleOf c a addr
+    Arena.setEntry a g Arena.kind Arena.unusedKind
     join c a g o

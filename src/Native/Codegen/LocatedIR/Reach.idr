@@ -52,7 +52,7 @@ reach roots p =
       where
         ||| The names an operand refers to: a static's.
         opnd : Opnd enc' -> Refs
-        opnd (StaticRef n) = MkRefs [] [n] []
+        opnd (Opnd.StaticRef n) = MkRefs [] [n] []
         opnd _ = neutral
 
         opnds : List (Opnd enc') -> Refs
@@ -60,37 +60,37 @@ reach roots p =
 
         ||| The names an instruction refers to.
         instr : Instr enc -> Refs
-        instr (CodeAddr _ f) = MkRefs [f] [] []
-        instr (StaticAddr _ s) = MkRefs [] [s] []
-        instr (TableAddr _ t) = MkRefs [] [] [t]
-        instr (Arith _ _ x y) = opnds [x, y]
-        instr (Mul128 _ _ x y) = opnds [x, y]
-        instr (ArithOv _ _ x y _) = opnds [x, y]
-        instr (Cmp _ _ x y) = opnds [x, y]
-        instr (AllocObj _ _ fields _) = opnds fields
-        instr (AllocSized _ _ _ fill _) = maybe neutral opnd fill
-        instr (DirectCall f xs _ _ _) = MkRefs [f] [] [] <+> opnds xs
-        instr (SetPinned _ x) = opnd x
-        instr (SystemCall _ xs) = opnds xs
+        instr (Instr.CodeAddr _ f) = MkRefs [f] [] []
+        instr (Instr.StaticAddr _ s) = MkRefs [] [s] []
+        instr (Instr.TableAddr _ t) = MkRefs [] [] [t]
+        instr (Instr.Arith _ _ x y) = opnds [x, y]
+        instr (Instr.Mul128 _ _ x y) = opnds [x, y]
+        instr (Instr.ArithOv _ _ x y _) = opnds [x, y]
+        instr (Instr.Cmp _ _ x y) = opnds [x, y]
+        instr (Instr.AllocObj _ _ fields _) = opnds fields
+        instr (Instr.AllocSized _ _ _ fill _) = maybe neutral opnd fill
+        instr (Instr.DirectCall f xs _ _ _) = MkRefs [f] [] [] <+> opnds xs
+        instr (Instr.SetPinned _ x) = opnd x
+        instr (Instr.SystemCall _ xs) = opnds xs
         instr _ = neutral
 
         ||| The names a terminator refers to.
         terminator : Terminator enc -> Refs
-        terminator (Branch _ x y _ _) = opnds [x, y]
-        terminator (Call f xs _) = MkRefs [f] [] [] <+> opnds xs
-        terminator (TailCall f xs) = MkRefs [f] [] [] <+> opnds xs
-        terminator (Return x) = opnd x
-        terminator (Enter _ xs) = opnds xs
-        terminator (Ret xs) = opnds xs
+        terminator (Terminator.Branch _ x y _ _) = opnds [x, y]
+        terminator (Terminator.Call f xs _) = MkRefs [f] [] [] <+> opnds xs
+        terminator (Terminator.TailCall f xs) = MkRefs [f] [] [] <+> opnds xs
+        terminator (Terminator.Return x) = opnd x
+        terminator (Terminator.Enter _ xs) = opnds xs
+        terminator (Terminator.Ret xs) = opnds xs
         terminator _ = neutral
 
     ||| The names a static refers to: the code and the statics its fields hold.
     static : Static enc -> Refs
     static s = concatMap field s.fields
       where
-        field : SField -> Refs
-        field (SCode f) = MkRefs [f] [] []
-        field (SRef t) = MkRefs [] [t] []
+        field : Static.SField -> Refs
+        field (Static.SCode f) = MkRefs [f] [] []
+        field (Static.SRef t) = MkRefs [] [t] []
         field _ = neutral
 
     -- the names still to follow, and those reached; each name is followed

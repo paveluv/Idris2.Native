@@ -14,7 +14,7 @@ module Native.System.Call
 import Data.Buffer
 import Native.Failure
 import Native.Flat.Uniform as Flat
-import Native.Runtime.Alloc.Block
+import Native.Runtime.Alloc.Block as Runtime.Alloc
 import Native.Runtime.Memory
 import Native.Runtime.Ordo as Runtime
 import Native.Runtime.OS
@@ -137,7 +137,7 @@ readEntry h = primIO $ \w => let (Runtime.MkOrdo # s) = op Runtime.MkOrdo in MkI
     covering
     op : Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform String)
     op = Runtime.Alloc.Block.allocate nameBytes Support.Text.emptyText (\b => do
-      let MkAddressed q b' = Runtime.Alloc.Block.address b
+      let Runtime.Alloc.Block.MkAddressed q b' = Runtime.Alloc.Block.address b
       n <- Runtime.OS.osReadEntry h q nameBytes
       s <- if n == 0 || n == Runtime.OS.failedWord then Support.Text.emptyText else Support.Text.ofText q n
       Runtime.Alloc.Block.free b'

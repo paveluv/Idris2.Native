@@ -29,13 +29,13 @@ import Data.Buffer
 public export
 data Only : Kind -> Type -> Type where
   ||| A string is a `STRING` always, the empty one too.
-  AString : Only STRING String
+  AString : Only Kind.STRING String
   ||| A list is a `CON` always: `[]` a static object of no fields.
-  AList : Only CON (List a)
+  AList : Only Kind.CON (List a)
   ||| A buffer of `Data.Buffer` is a `BUFFER` always, the empty one too.
-  ABuffer : Only BUFFER Buffer
+  ABuffer : Only Kind.BUFFER Buffer
   ||| A mutable record is a `STRUCT` always.
-  AStruct : Only STRUCT (Struct r vs)
+  AStruct : Only Kind.STRUCT (Struct r vs)
 
 ||| An object of kind `k` is a value of `a`: one can be given as a value of
 ||| `a`.
@@ -45,13 +45,13 @@ data Represents : Kind -> Type -> Type where
   Sole : Only k a -> Represents k a
   ||| A foreign pointer is an address outside the heap, as a `PTR`, the null
   ||| one too;
-  AnAddress : Represents PTR (Ptr a)
-  AnyAddress : Represents PTR AnyPtr
+  AnAddress : Represents Kind.PTR (Ptr a)
+  AnyAddress : Represents Kind.PTR AnyPtr
   ||| or, where `base` asks the runtime for a pointer to zero-ended bytes and
   ||| reads it only through the runtime, the string itself
   ||| (`Support.Ptr`), as an `AnyPtr` too, which `free` takes.
-  AHeapString : Represents STRING (Ptr String)
-  AnyHeapString : Represents STRING AnyPtr
+  AHeapString : Represents Kind.STRING (Ptr String)
+  AnyHeapString : Represents Kind.STRING AnyPtr
 
 ||| Every value of `a` is an object whose header says its kind, or for a
 ||| type of `Handles` a handle: what a value of a type of several kinds is
@@ -77,8 +77,8 @@ data Handles : Type -> Type where
 ||| The ids of `List`'s constructors, `[]` then `(::)`, as it declares them.
 export
 listNil, listCons : ConstructorId
-listNil = declared 0
-listCons = declared 1
+listNil = ConstructorId.declared 0
+listCons = ConstructorId.declared 1
 
 ||| Constructor `c` of the data type `t` is a `CON` of the id `c` and `n`
 ||| fields: a count no code computes with, only the statement's, as the

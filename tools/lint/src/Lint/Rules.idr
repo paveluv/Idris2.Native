@@ -36,7 +36,7 @@ position EmptyFC = (0, 0)
 
 ||| A rule's finding in a file, where a source position starts.
 export
-finding : SourceFile -> (rule : String) -> FC -> (subject, message : String) -> Finding
+finding : Source.SourceFile -> (rule : String) -> FC -> (subject, message : String) -> Finding
 finding f rule fc subject message =
   let (l, c) = position fc in MkFinding rule f.path l c subject message
 
@@ -139,7 +139,7 @@ importKey m i = (importBlock m i, toLower (moduleName i.path), moduleName i.path
 ||| alphabetical order, as a reader sorts: letters before their case, so
 ||| `Runtime.Object` comes before `Runtime.OS`. The first import out of its
 ||| place is reported.
-importOrder : SourceFile -> List Finding
+importOrder : Source.SourceFile -> List Finding
 importOrder f =
   let is = f.mod.imports
       key = importKey (show f.mod.moduleNS)
@@ -155,7 +155,7 @@ importOrder f =
 
 ||| A façade: a module that declares nothing, only re-exports.
 export
-facade : SourceFile -> Bool
+facade : Source.SourceFile -> Bool
 facade f = all (\d => case d.val of PDirective _ => True; _ => False) f.mod.decls
 
 ------------------------------------------------------------------------------
@@ -275,7 +275,7 @@ byFunction d = case d.val of
 ||| The declarations of a file that are not blocks of others, in the order
 ||| they are written, each with what it defines and mentions.
 export
-declared : SourceFile -> IO (List Declared)
+declared : Source.SourceFile -> IO (List Declared)
 declared f = coreRun (traverse one leaves) (\_ => pure []) pure
   where
 
@@ -449,7 +449,7 @@ adjacency ds =
 ||| function), so that a reader looking for `Enc` opens `Enc.idr`: what the
 ||| health score's names count. A façade, which defines nothing, is exempt.
 export
-namedAfterSymbol : SourceFile -> List Declared -> Bool
+namedAfterSymbol : Source.SourceFile -> List Declared -> Bool
 namedAfterSymbol f ds =
   facade f
     || any (\n => toLower n == toLower (lastPart (show f.mod.moduleNS)))
@@ -525,7 +525,7 @@ words' s =
   forget (split (\c => not (isAlphaNum c || c == '-' || c == '_' || c == '/' || c == '.')) s)
 
 ||| `cites-plan`: the code is the specification, so it cites no plan.
-citesPlan : SourceFile -> List Finding
+citesPlan : Source.SourceFile -> List Finding
 citesPlan f =
   [ MkFinding "cites-plan" f.path c.line c.col w
     ("cites `" ++ w ++ "`: the code states what it needs")
@@ -548,7 +548,7 @@ citesPlan f =
         planPrefixes = ["PQ-", "IL-", "FL-"]
 
 ||| `todo`: open work is planned, not left in the code.
-todo : SourceFile -> List Finding
+todo : Source.SourceFile -> List Finding
 todo f =
   [ MkFinding "todo" f.path c.line c.col w ("`" ++ w ++ "`: open work belongs in the plans")
   | c <- f.comments, w <- words' c.text, w `elem` openWork ]
@@ -559,7 +559,7 @@ todo f =
 
 ||| `header-comment`: a file says what it is before its first import or
 ||| declaration: in the module's documentation, or in a comment.
-headerComment : SourceFile -> List Finding
+headerComment : Source.SourceFile -> List Finding
 headerComment f =
   let firstItem =
         foldl min 2147483647
@@ -575,12 +575,12 @@ headerComment f =
 ||| itself and the order of its imports; the rules of the product's code do
 ||| not bind it.
 export
-programRules : SourceFile -> List Finding
+programRules : Source.SourceFile -> List Finding
 programRules f = importOrder f ++ citesPlan f ++ todo f ++ headerComment f
 
 ||| The rules over one file of the product.
 export
-fileRules : SourceFile -> Mentions -> List Declared -> List Finding
+fileRules : Source.SourceFile -> Mentions -> List Declared -> List Finding
 fileRules f ms ds =
   importOrder f ++ publicImport f ++ defaultTotality f ++ elabReflection f ms
   ++ trustEscape f ms ++ casts f ms ++ citesPlan f ++ todo f ++ headerComment f
@@ -595,7 +595,7 @@ fileRules f ms ds =
     ||| (`Native.Types.StringRoutine`). `prim__` stays Idris's primitives' and the
     ||| libraries' foreign functions', which the support tier and the system
     ||| libraries implement by their own names.
-    externName : SourceFile -> List Declared -> Mentions -> List Finding
+    externName : Source.SourceFile -> List Declared -> Mentions -> List Finding
     externName f ds ms =
       let m = show f.mod.moduleNS in
       if not (isPrefixOf "Native.Runtime" m || isPrefixOf "Native.Support" m
@@ -645,7 +645,7 @@ fileRules f ms ds =
     ||| symbol, as a reader looks it up: the near name says which name it
     ||| means. A module named after nothing it defines counts against the
     ||| health score's names (`Graph.health`).
-    moduleType : SourceFile -> List Declared -> List Finding
+    moduleType : Source.SourceFile -> List Declared -> List Finding
     moduleType f ds =
       if namedAfterSymbol f ds then [] else
         [ finding f "module-type" f.mod.headerLoc (show f.mod.moduleNS)
@@ -664,7 +664,7 @@ fileRules f ms ds =
     ||| `record-constructor`: a record's constructor is named after it, `MkX`
     ||| for `X`, so that a reader knows the record from its constructor, and
     ||| the constructor of a module's key type is written as the type is.
-    recordConstructor : SourceFile -> List Declared -> List Finding
+    recordConstructor : Source.SourceFile -> List Declared -> List Finding
     recordConstructor f ds = concatMap one ds
       where
         one : Declared -> List Finding
@@ -679,14 +679,14 @@ fileRules f ms ds =
 
     ||| `public-import`: a module imports what it uses, so a public import is for
     ||| a façade.
-    publicImport : SourceFile -> List Finding
+    publicImport : Source.SourceFile -> List Finding
     publicImport f =
       if facade f then [] else
         [ finding f "public-import" i.loc (moduleName i.path)
             ("`" ++ moduleName i.path ++ "` imported publicly: a module that uses it imports it")
         | i <- f.mod.imports, i.reexport ]
 
-    implementationAdjacent : SourceFile -> List Declared -> List Finding
+    implementationAdjacent : Source.SourceFile -> List Declared -> List Finding
     implementationAdjacent f ds =
       mapMaybe one (adjacency ds)
       where
@@ -707,7 +707,7 @@ fileRules f ms ds =
 
     ||| `default-totality`: every module says how total its functions are by
     ||| default.
-    defaultTotality : SourceFile -> List Finding
+    defaultTotality : Source.SourceFile -> List Finding
     defaultTotality f =
       if any isDefault f.mod.decls then [] else
         [finding f "default-totality" f.mod.headerLoc (show f.mod.moduleNS)
@@ -720,7 +720,7 @@ fileRules f ms ds =
 
     ||| `elab-reflection`: no elaborator reflection until the compiler compiles
     ||| itself natively: no `%runElab`, no `%macro`, no extension.
-    elabReflection : SourceFile -> Mentions -> List Finding
+    elabReflection : Source.SourceFile -> Mentions -> List Finding
     elabReflection f ms =
       mapMaybe decl (declarations f.mod.decls)
       ++ [ finding f "elab-reflection" fc "%runElab" "`%runElab`" | fc <- ms.runElabs ]
@@ -744,7 +744,7 @@ fileRules f ms ds =
     ||| of one type for one of another, whatever the two are. No suppression
     ||| lifts it: what a value is, the representation contract states
     ||| (`Types.Represents`), and the conversions ask its evidence.
-    casts : SourceFile -> Mentions -> List Finding
+    casts : Source.SourceFile -> Mentions -> List Finding
     casts f ms =
       [ finding f "cast" fc (nameRoot n)
         ("`" ++ nameRoot n
@@ -757,7 +757,7 @@ fileRules f ms ds =
 
     ||| `trust-escape`: a use of one of `escapes`, each to be suppressed with its
     ||| reason.
-    trustEscape : SourceFile -> Mentions -> List Finding
+    trustEscape : Source.SourceFile -> Mentions -> List Finding
     trustEscape f ms =
       [ finding f "trust-escape" fc (nameRoot n) ("`" ++ nameRoot n ++ "`: say why it is sound")
       | (fc, n) <- ms.refs, nameRoot n `elem` escapes ]

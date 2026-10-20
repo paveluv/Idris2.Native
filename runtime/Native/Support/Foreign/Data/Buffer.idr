@@ -208,7 +208,7 @@ prim__getInt b offset w =
 export
 prim__setDouble : Flat.Uniform Buffer -> (offset : Int) -> Double -> PrimIO ()
 prim__setDouble b offset v w =
-  let (Runtime.MkOrdo # ()) = BufferObj.store 8 b offset (doubleBits v) Runtime.MkOrdo
+  let (Runtime.MkOrdo # ()) = BufferObj.store 8 b offset (Primitive.DoubleBits.doubleBits v) Runtime.MkOrdo
   in MkIORes () w
 
 %cg native flat Support.Foreign.Data.Buffer.prim__getDouble
@@ -217,7 +217,7 @@ export
 prim__getDouble : Flat.Uniform Buffer -> (offset : Int) -> PrimIO Double
 prim__getDouble b offset w =
   let (Runtime.MkOrdo # n) = BufferObj.load 8 b offset Runtime.MkOrdo
-  in MkIORes (bitsDouble n) w
+  in MkIORes (Primitive.DoubleBits.bitsDouble n) w
 
 %cg native flat Support.Foreign.Data.Buffer.stringByteLength
 ||| The bytes of the string's text as the system's, which `setString`

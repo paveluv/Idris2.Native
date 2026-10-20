@@ -19,17 +19,17 @@ module Native.Codegen.Native
 import Native.Codegen.ELF
 import Native.Codegen.Evaluate
 import Native.Codegen.Link
-import Native.Codegen.Linkage.Areas
+import Native.Codegen.Linkage.Areas as Linkage
 import Native.Codegen.Linkage.ForeignFunctions
 import Native.Codegen.Linkage.OSService
 import Native.Codegen.Linkage.Realised as Linkage
 import Native.Codegen.Linkage.Routine
 import Native.Codegen.Linkage.RuntimeModule
-import Native.Codegen.Linkage.Sym
-import Native.Codegen.Linkage.SystemLibrary
+import Native.Codegen.Linkage.Sym as Linkage
+import Native.Codegen.Linkage.SystemLibrary as Linkage
 import Native.Codegen.LocatedIR.Dump
 import Native.Codegen.LocatedIR.Program as LocatedIR
-import Native.Codegen.LocatedIR.Reach as LocatedIR
+import Native.Codegen.LocatedIR.Reach
 import Native.Codegen.Lower
 import Native.Codegen.Platform
 import Native.Codegen.RegAlloc
@@ -123,7 +123,7 @@ record Settings where
   dumpForeign : Maybe String
   encodings : Types.Enc
   platform : Platform
-  system : SystemLibrary
+  system : Linkage.SystemLibrary
 
 export
 codegenNative : Codegen
@@ -273,7 +273,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
         parseSettings =
           foldlM setting
             (MkSettings Link.windowBytes Nothing Nothing Nothing Nothing Types.Enc.defaultEnc
-             Platform.defaultPlatform NativeSystem)
+             Platform.defaultPlatform Linkage.SystemLibrary.NativeSystem)
           where
             setting : Settings -> String -> Either String Settings
             setting o d = case forget (split (== '=') d) of
@@ -316,7 +316,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
         ||| which nothing generic imports either, from the installed package,
         ||| with the backend's own package, whose heap-object model and type
         ||| layer (the modules of `HeapObj` and `Types`) the runtime shares.
-        loadRuntime : Platform -> Types.Enc -> SystemLibrary -> Core ()
+        loadRuntime : Platform -> Types.Enc -> Linkage.SystemLibrary -> Core ()
         loadRuntime platform enc lib = do
           addPkgDir "idris2-native-runtime" anyBounds
           addPkgDir "idris2-native" anyBounds
