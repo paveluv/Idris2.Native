@@ -1,0 +1,16 @@
+readFile: "line one\nline two\n\233t\233\nno newline"
+line "line one\n"
+line "line two\n"
+line "\233t\233\n"
+line "no newline", then the end
+fGetChars 4 "line", fGetChar ' ', after fSeekLine "line two\n"
+fileSize 34, isTTY False
+fPutStr to a file read: Bad file descriptor, fileError True
+lines [8, 8, 3, 10, 8, 100000, 4]
+openFile missing/out.txt: File Not Found
+removeFile twice: File Not Found
+line "first\n"
+line "second", then the end
+to stdout
+done
+to stderr

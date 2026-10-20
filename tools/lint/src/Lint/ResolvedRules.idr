@@ -164,9 +164,10 @@ resolvedRules fms programNames r =
     ||| mention of such a name in the file is reported, where it is written.
     |||
     ||| Only `base`'s foreign surface forces such a place, so one is allowed
-    ||| only there: in a `prim__` function of the support tier
-    ||| (`Native.Support.`), which implements one of `base`'s, its reason
-    ||| naming what of `base` forces it. Anywhere else it is reported as
+    ||| only there: in a `prim__` function of the support tier or of a
+    ||| system library (`Native.Support.`, `Native.System.`), which
+    ||| implements one of `base`'s, its reason naming what of `base` forces
+    ||| it. Anywhere else it is reported as
     ||| `sealed-boundary`, which no suppression lifts.
     sealedAllocator : SourceFile -> List Declared -> Mentions -> List Finding
     sealedAllocator f ds ms =
@@ -176,10 +177,12 @@ resolvedRules fms programNames r =
               [ u.name | rm <- r.modules, rm.path == f.path, u <- rm.uses, leaves u ])
         in [ report fc (nameRoot n) | (fc, n) <- ms.refs, contains (nameRoot n) sealed ]
       where
-        ||| Whether a place is in a `prim__` function of the support tier.
+        ||| Whether a place is in a `prim__` function of the support tier or of
+        ||| a system library.
         atBoundary : FC -> Bool
         atBoundary fc =
-          isPrefixOf "Native.Support." (show f.mod.moduleNS)
+          (isPrefixOf "Native.Support." (show f.mod.moduleNS)
+           || isPrefixOf "Native.System." (show f.mod.moduleNS))
           && any (\d => any (isPrefixOf "prim__") d.defines && inside d.decl.fc fc) ds
           where
             inside : FC -> FC -> Bool
@@ -201,7 +204,8 @@ resolvedRules fms programNames r =
                     ("`" ++ n
                       ++
                         ("` leaves the linear blocks of `Native.Runtime.Alloc.Block` outside " ++
-                         "`base`'s foreign surface, the `prim__` functions of `Native.Support`: " ++
+                         "`base`'s foreign surface, the `prim__` functions of `Native.Support` " ++
+                         "and `Native.System`: " ++
                          "keep the block linear"))
 
         ||| What the blocks' module gives that the types check.

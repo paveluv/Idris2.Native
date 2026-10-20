@@ -6,8 +6,8 @@
 ./Native/Support/Lease.idr:47:15 sealed-allocator: `adoptBlock` leaves the linear blocks of `Native.Runtime.Alloc.Block`: say why it is sound
 ./Native/Support/Lease.idr:51:32 sealed-allocator: `adoptBlock` leaves the linear blocks of `Native.Runtime.Alloc.Block`: say why it is sound
 ./Native/Support/Lease.idr:56:3 suppression: `sealed-boundary` is not to be suppressed: change what it reports
-./Native/Support/Lease.idr:57:3 sealed-boundary: `releaseBlock` leaves the linear blocks of `Native.Runtime.Alloc.Block` outside `base`'s foreign surface, the `prim__` functions of `Native.Support`: keep the block linear
-./Native/Support/Lease.idr:61:7 sealed-boundary: `allocateBlock` leaves the linear blocks of `Native.Runtime.Alloc.Block` outside `base`'s foreign surface, the `prim__` functions of `Native.Support`: keep the block linear
+./Native/Support/Lease.idr:57:3 sealed-boundary: `releaseBlock` leaves the linear blocks of `Native.Runtime.Alloc.Block` outside `base`'s foreign surface, the `prim__` functions of `Native.Support` and `Native.System`: keep the block linear
+./Native/Support/Lease.idr:61:7 sealed-boundary: `allocateBlock` leaves the linear blocks of `Native.Runtime.Alloc.Block` outside `base`'s foreign surface, the `prim__` functions of `Native.Support` and `Native.System`: keep the block linear
 ./Page.idr:1:1 raw-maker: `Page` makes a raw address from a word, which only the modules that keep addresses as words do
 ./Report.idr:6:1 import-indirect: `Shape` is used (`Show Shape`) only through `Canvas`: import it
 ./Shape.idr:22:1 generic-export: `pow2` is exported from `Shape`, a module about its type, and refers to nothing of ours: a generic helper, private to the module or in a module of helpers

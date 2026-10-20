@@ -1,0 +1,5 @@
+listed: ["a.txt", "b.txt", "sub", "\233t\233.txt"]
+entries one by one: 4
+listDir missing: File Not Found
+listDir of a file: Not a directory
+done

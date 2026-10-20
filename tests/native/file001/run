@@ -1,0 +1,9 @@
+. ../../testutils.sh
+
+# Files written and read, the standard input's lines among them; the
+# errors' line after, as Chez's output waits in a buffer.
+idris2 --cg native -o file File.idr > /dev/null
+rm -f out.txt
+printf 'first\nsecond' | ./build/exec/file 2> errors.txt
+cat errors.txt
+rm -f out.txt errors.txt

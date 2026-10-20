@@ -124,6 +124,13 @@ Memory Ordo where
   writeRoot i v = do
     r <- Memory.rootsArea
     Memory.storeAt r (Area.rootOffset i) v
+  constantCount = Memory.constantCount
+  readConstant i = do
+    c <- Memory.constantsArea
+    Memory.loadAt c (Area.constantOffset i + 8)
+  writeConstant i v = do
+    c <- Memory.constantsArea
+    Memory.storeAt c (Area.constantOffset i + 8) v
   rootContinuation = Memory.continuation
   setRootContinuation = Memory.setContinuation
   flipSpaces = do

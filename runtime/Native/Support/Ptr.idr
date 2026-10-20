@@ -18,7 +18,9 @@
 ||| one foreign function to another, all of them the runtime's. Each one
 ||| that makes a pointer says which it makes (`newPtr`, `stringPtr`); each
 ||| one that takes one asks which it is (`pointee`), here and nowhere else.
-||| One that goes to foreign code is to be an address.
+||| One that goes to foreign code is to be an address. An `AnyPtr` may also
+||| be a file the runtime opened (`Support.FileObj`), which `base` takes only
+||| as a `FilePtr`, and the functions that take any pointer ask for first.
 module Native.Support.Ptr
 
 import Native.Support.Obj
@@ -46,6 +48,8 @@ data Pointee : Type where
   Address : (address : Runtime.Raw) -> Pointee
   ||| A string of the heap, given for a pointer to its bytes.
   HeapString : Obj Types.Kind.STRING -> Pointee
+  ||| A handle: a number the system tier gives for a value of its own.
+  Handle : (number : Bits64) -> Pointee
 
 ||| A new pointer of the address, as ordinary code holds it.
 export %inline
@@ -69,20 +73,26 @@ stringPtr s = do
   o <- Obj.valueObject {k = Types.Kind.STRING} s
   Obj.objectValue o
 
-||| What a pointer is, by its object's kind; the program ends for one of
-||| neither.
+||| What a pointer is: a handle, or by its object's kind; the program ends
+||| for one of none of them.
 export %inline
-pointee : {auto 0 objs : Objects a} -> {auto 0 str : Represents Types.Kind.STRING a} ->
+pointee : {auto 0 objs : Objects a} -> {auto 0 hs : Handles a} ->
+          {auto 0 str : Represents Types.Kind.STRING a} ->
           {auto 0 adr : Represents Types.Kind.PTR a} ->
           Flat.Uniform a -> Runtime.Ordo.Op Runtime.Ordo Pointee
 pointee v = do
-  s <- Obj.asKind Types.Kind.STRING v
-  case s of
-    Just o => Runtime.Ordo.pure (HeapString o)
+  handle <- Obj.valueHandle v
+  case handle of
+    Just n => Runtime.Ordo.pure (Handle n)
     Nothing => do
-      p <- Obj.asKind Types.Kind.PTR v
-      case p of
-        Just o => do
-          w <- Obj.load64 o 0
-          Runtime.Ordo.pure (Address (Runtime.Memory.foreignBytes w))
-        Nothing => Runtime.Ordo.crashOp "idris: a pointer that is neither an address nor a string"
+      s <- Obj.asKind Types.Kind.STRING v
+      case s of
+        Just o => Runtime.Ordo.pure (HeapString o)
+        Nothing => do
+          p <- Obj.asKind Types.Kind.PTR v
+          case p of
+            Just o => do
+              w <- Obj.load64 o 0
+              Runtime.Ordo.pure (Address (Runtime.Memory.foreignBytes w))
+            Nothing =>
+              Runtime.Ordo.crashOp "idris: a pointer that is no address, string or handle"

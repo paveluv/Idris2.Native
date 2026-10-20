@@ -1,6 +1,6 @@
 ||| The foreign functions of the prelude's `PrimIO`, as the runtime
 ||| implements them: each a flat function of the foreign one's name and type
-||| (`Native.Support.Foreign.System` says how they are bound).
+||| (`Native.Support` says how they are bound).
 module Native.Support.Foreign.PrimIO
 
 import Native.Flat.Uniform as Flat
@@ -17,7 +17,7 @@ import Native.Types.Represents
 
 %cg native flat Support.Foreign.PrimIO.prim__nullAnyPtr
 ||| 1 for the null pointer, 0 for any other: an object of the heap given for
-||| a pointer is never null (`Support.Ptr`).
+||| a pointer (`Support.Ptr`) is never null, nor is a handle.
 export
 prim__nullAnyPtr : Flat.Uniform AnyPtr -> Int
 prim__nullAnyPtr p = let (Runtime.MkOrdo # r) = nullOp p Runtime.MkOrdo in r
@@ -28,3 +28,4 @@ prim__nullAnyPtr p = let (Runtime.MkOrdo # r) = nullOp p Runtime.MkOrdo in r
       case target of
         Address a => Runtime.Ordo.pure (if Runtime.Raw.isNull a then 1 else 0)
         HeapString _ => Runtime.Ordo.pure 0
+        Handle _ => Runtime.Ordo.pure 0

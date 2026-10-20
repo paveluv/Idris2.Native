@@ -36,7 +36,7 @@ export
 data Blocks : Type where
   MkBlocks : State Raw -> Blocks
 
-||| The environment's entries (`Support.Environment`), once the program
+||| The environment's entries (`System.Environment`), once the program
 ||| changes it.
 export
 environment : Blocks

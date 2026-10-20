@@ -6,7 +6,7 @@
 ||| the older errors (`ENOENT` 2, `EACCES` 13, `EEXIST` 17). A reason the
 ||| runtime does not tell apart is `EIO`, an input or output error; no
 ||| failure yet is 0.
-module Native.Support.Errno
+module Native.System.Errno
 
 import Native.Failure
 import Native.Runtime.Ordo as Runtime

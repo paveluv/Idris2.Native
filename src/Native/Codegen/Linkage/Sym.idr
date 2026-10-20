@@ -59,6 +59,8 @@ data Sym
     SymRuntimeStart
   | ||| bss: RUNTIME, `runtimeWords` words: the runtime's state
     SymRuntime
+  | ||| bss: CONSTANTS, sized by `Areas`: the program's top-level constants
+    SymConstants
 
 public export
 symLabel : Sym -> X86.Asm.Label
@@ -81,6 +83,7 @@ symLabel SymMsgStackOverflow = 19
 symLabel SymArgv = 20
 symLabel SymRuntimeStart = 21
 symLabel SymRuntime = 22
+symLabel SymConstants = 23
 
 ||| Names as the ABI documents write them (for dumps).
 public export
@@ -104,8 +107,9 @@ symName SymMsgStackOverflow = "msg_stack_overflow"
 symName SymArgv = "ARGV"
 symName SymRuntimeStart = "idris_start"
 symName SymRuntime = "RUNTIME"
+symName SymConstants = "CONSTANTS"
 
-||| The symbol of a per-thread area.
+||| The symbol of an area.
 public export
 areaSym : Area -> Sym
 areaSym Area.ARGS = SymArgs
@@ -115,6 +119,7 @@ areaSym Area.SCRATCH = SymScratch
 areaSym Area.STACK_LIMIT = SymStackLimit
 areaSym Area.ARGV = SymArgv
 areaSym Area.RUNTIME = SymRuntime
+areaSym Area.CONSTANTS = SymConstants
 
 ||| The first label a program may use for itself.
 public export

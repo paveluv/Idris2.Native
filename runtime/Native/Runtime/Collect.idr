@@ -1,22 +1,24 @@
 ||| Cheney's copying collector, written once against an interface to the
 ||| memory, so that it runs against the program's heap and against a model.
 |||
-||| Everything live is reached from the roots: the current continuation and
-||| the root buffer. The collector forwards each root: a word that is not a
-||| pointer into the space being collected is left as it is; one that points
-||| to an object already moved becomes the pointer to its copy, which the
-||| forwarding header the move left gives; any other object is copied to the
-||| to-space, word by word, and its first word replaced by the forwarding
-||| header. Then it scans the copies in the order they were made, forwarding
-||| each word that holds a value, which may copy more objects after the scan
-||| point; the scan ends when it reaches the end of the copies. Nothing is
-||| recursive in the object graph's depth: the to-space is the queue.
+||| Everything live is reached from the roots: the current continuation, the
+||| root buffer, and the values of the program's constants. The collector forwards each root: a word that is
+||| not a pointer into the space being collected is left as it is; one that
+||| points to an object already moved becomes the pointer to its copy, which
+||| the forwarding header the move left gives; any other object is copied
+||| to the to-space, word by word, and its first word replaced by the
+||| forwarding header. Then it scans the copies in the order they were
+||| made, forwarding each word that holds a value, which may copy more
+||| objects after the scan point; the scan ends when it reaches the end of
+||| the copies. Nothing is recursive in the object graph's depth: the
+||| to-space is the queue.
 |||
 ||| Every loop is a self tail call. The measures that end them: a copy
 ||| advances through the object's words; a scan through the object's
-||| scanned words; the roots through the buffer; and the scan loop by the
-||| words of the from-space not yet copied plus the words of the to-space
-||| not yet scanned, which every step lowers.
+||| scanned words; the roots through the buffer, the constants through
+||| their count; and the scan loop by the words of the from-space not yet
+||| copied plus the words of the to-space not yet scanned, which every step
+||| lowers.
 module Native.Runtime.Collect
 
 import Native.Runtime.Ordo
@@ -54,6 +56,11 @@ interface Memory (0 h : Type) where
   rootCount : Ordo.Op h Bits64
   readRoot : Bits64 -> Ordo.Op h Bits64
   writeRoot : (index, value : Bits64) -> Ordo.Op h ()
+  ||| The program's constants: how many, the value of one, and storing
+  ||| one. A constant not yet evaluated holds 0, which is no pointer.
+  constantCount : Ordo.Op h Bits64
+  readConstant : Bits64 -> Ordo.Op h Bits64
+  writeConstant : (index, value : Bits64) -> Ordo.Op h ()
   ||| The current continuation, a root of its own, and setting it.
   rootContinuation : Ordo.Op h Bits64
   setRootContinuation : Bits64 -> Ordo.Op h ()
@@ -129,6 +136,16 @@ forwardRoots i count =
     writeRoot i v'
     forwardRoots (i + 1) count
 
+||| Forward the constants' values from `i` to the count.
+export covering
+forwardConstants : Memory h => (i, count : Bits64) -> Ordo.Op h ()
+forwardConstants i count =
+  if i >= count then Ordo.pure () else do
+    v <- readConstant i
+    v' <- forward v
+    writeConstant i v'
+    forwardConstants (i + 1) count
+
 ||| A collection: the roots forwarded, the copies scanned, the spaces
 ||| flipped.
 export covering
@@ -139,5 +156,7 @@ collect = do
   setRootContinuation k'
   n <- rootCount
   forwardRoots 0 n
+  c <- constantCount
+  forwardConstants 0 c
   scanLoop
   flipSpaces

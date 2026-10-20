@@ -36,20 +36,34 @@ import Native.Service
 %extern service__currentDirectory : PortTy.ExternTy (Service.port Service.CurrentDirectory)
 %extern service__createDirectory : PortTy.ExternTy (Service.port Service.CreateDirectory)
 %extern service__removeDirectory : PortTy.ExternTy (Service.port Service.RemoveDirectory)
-
+%extern service__open : PortTy.ExternTy (Service.port Service.Open)
+%extern service__close : PortTy.ExternTy (Service.port Service.Close)
+%extern service__read : PortTy.ExternTy (Service.port Service.Read)
+%extern service__fileSize : PortTy.ExternTy (Service.port Service.FileSize)
+%extern service__isTerminal : PortTy.ExternTy (Service.port Service.IsTerminal)
+%extern service__removeFile : PortTy.ExternTy (Service.port Service.RemoveFile)
+%extern service__readEntry : PortTy.ExternTy (Service.port Service.ReadEntry)
 
 ||| End the process with the status.
 export %inline
 osExit : (status : Bits64) -> Ordo.Op Ordo ()
 osExit = service__exit
 
-||| The standard handles: the output and the errors.
+||| The standard handles: the input, the output and the errors.
 export
-stdout, stderr : Bits64
+stdin, stdout, stderr : Bits64
+stdin = 0
 stdout = 1
 stderr = 2
 
-||| Write `bytes` at the address to a standard handle; the bytes written.
+||| The word of all ones, which a service that gives a handle, a count of
+||| bytes or a size gives when it fails.
+export
+failedWord : Bits64
+failedWord = 0xFFFFFFFFFFFFFFFF
+
+||| Write `bytes` at the address to a handle; the bytes written, 0 if it
+||| fails.
 export %inline
 osWrite : (handle : Bits64) -> (address : Raw) -> (bytes : Bits64) -> Ordo.Op Ordo Bits64
 osWrite = service__write
@@ -115,11 +129,51 @@ osCreateDirectory, osRemoveDirectory : (path : Raw) -> Ordo.Op Ordo Bits64
 osCreateDirectory = service__createDirectory
 osRemoveDirectory = service__removeDirectory
 
-||| Write all `bytes` at the address to a standard handle, in as many writes
-||| as it takes; a write that fails ends it, as nothing more would go.
+||| Open the file at the path, zero-ended bytes at the address, with the
+||| flags (`Native.OpenFlag`); its handle, `failedWord` if it fails.
+export %inline
+osOpen : (path : Raw) -> (flags : Bits64) -> Ordo.Op Ordo Bits64
+osOpen = service__open
+
+||| Close a handle `osOpen` gave; 1 on success.
+export %inline
+osClose : (handle : Bits64) -> Ordo.Op Ordo Bits64
+osClose = service__close
+
+||| Read at most `bytes` from the handle into the bytes at the address;
+||| the bytes read, 0 at the end, `failedWord` if it fails.
+export %inline
+osRead : (handle : Bits64) -> (address : Raw) -> (bytes : Bits64) -> Ordo.Op Ordo Bits64
+osRead = service__read
+
+||| The bytes of the handle's file; `failedWord` if it fails.
+export %inline
+osFileSize : (handle : Bits64) -> Ordo.Op Ordo Bits64
+osFileSize = service__fileSize
+
+||| Whether the handle is a terminal's: 1 if it is.
+export %inline
+osIsTerminal : (handle : Bits64) -> Ordo.Op Ordo Bits64
+osIsTerminal = service__isTerminal
+
+||| Remove the file at the path, zero-ended bytes at the address, which is
+||| not a directory; 1 on success.
+export %inline
+osRemoveFile : (path : Raw) -> Ordo.Op Ordo Bits64
+osRemoveFile = service__removeFile
+
+||| The next entry of a directory `osOpen` gave with `ADirectory`: its
+||| name written, zero-ended, into the `bytes` at the address, 256 enough;
+||| the name's bytes, 0 when there are no more, `failedWord` if it fails.
+export %inline
+osReadEntry : (handle : Bits64) -> (address : Raw) -> (bytes : Bits64) -> Ordo.Op Ordo Bits64
+osReadEntry = service__readEntry
+
+||| Write all `bytes` at the address to a handle, in as many writes as it
+||| takes; whether they all went, as a write that fails ends it.
 export covering
-osWriteAll : (handle : Bits64) -> (address : Raw) -> (bytes : Bits64) -> Ordo.Op Ordo ()
+osWriteAll : (handle : Bits64) -> (address : Raw) -> (bytes : Bits64) -> Ordo.Op Ordo Bool
 osWriteAll h a n =
-  if n == 0 then Ordo.pure () else do
+  if n == 0 then Ordo.pure True else do
     w <- osWrite h a n
-    if w == 0 then Ordo.pure () else osWriteAll h (Raw.offset a w) (n - w)
+    if w == 0 then Ordo.pure False else osWriteAll h (Raw.offset a w) (n - w)

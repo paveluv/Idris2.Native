@@ -107,9 +107,16 @@ replacing f = f :: filter (\g => g.name /= f.name) standIns
 without : Name -> List FlatDef
 without n = filter (\g => g.name /= n) standIns
 
+||| The foreign function and the runtime's flat function that implements
+||| it, as the code generator binds them.
+exitBinding : (Name, Name)
+exitBinding =
+  (NS (mkNamespace "System") (UN (Basic "prim__exit")),
+   NS (mkNamespace "Native.System.Foreign.System") (UN (Basic "prim__exit")))
+
 checkWith : String -> List FlatDef -> List (Name, VMDef) -> IO ()
 checkWith what forms vmdefs = putStrLn $ what ++ ": " ++
-  case lowerProgram TestEnc defaultPlatform realised forms [] empty vmdefs of
+  case lowerProgram TestEnc defaultPlatform realised forms [] empty [] [exitBinding] [] vmdefs of
     Left err => err
     Right _ => "lowered"
 
@@ -125,7 +132,7 @@ exitForeign =
 ||| The runtime's implementation of it, taking the argument given.
 exitImplementation : Skeleton -> FlatDef
 exitImplementation arg =
-  form (NS (mkNamespace "Native.Support.Foreign.System") (UN (Basic "prim__exit")))
+  form (snd exitBinding)
        [MkFlatVar (UN (Basic "status")) arg [Word], MkFlatVar (UN (Basic "w")) (SPrim WorldType) []]
        (SCon (NS (mkNamespace "PrimIO") (UN (Basic "IORes"))) [unit]) []
 

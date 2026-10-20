@@ -1,0 +1,7 @@
+. ../../testutils.sh
+
+# Constants evaluated once, on their first use, kept across collections. The
+# program imports the runtime as a package for the collection count.
+idris2 --cg native -p idris2-native-runtime -p idris2-native --directive nursery=4096 \
+  -o constant Constant.idr > /dev/null
+./build/exec/constant

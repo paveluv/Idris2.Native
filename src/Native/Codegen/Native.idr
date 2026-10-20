@@ -19,12 +19,14 @@ module Native.Codegen.Native
 import Native.Codegen.ELF
 import Native.Codegen.Evaluate
 import Native.Codegen.Link
+import Native.Codegen.Linkage.Areas
 import Native.Codegen.Linkage.ForeignFunctions
 import Native.Codegen.Linkage.OSService
 import Native.Codegen.Linkage.Realised as Linkage
 import Native.Codegen.Linkage.Routine
 import Native.Codegen.Linkage.RuntimeModule
 import Native.Codegen.Linkage.Sym
+import Native.Codegen.Linkage.SystemLibrary
 import Native.Codegen.LocatedIR.Dump
 import Native.Codegen.LocatedIR.Program as LocatedIR
 import Native.Codegen.LocatedIR.Reach as LocatedIR
@@ -46,10 +48,14 @@ import Core.Context
 import Core.Context.Context
 import Core.Core
 import Core.Directory
+import Core.Env
 import Core.FC
 import Core.Name
 import Core.Name.Namespace
+import Core.Name.Scoped
+import Core.Normalise.Convert
 import Core.Options
+import Core.TT
 import Core.TT.Term
 import Core.UnifyState
 import Data.List
@@ -117,6 +123,7 @@ record Settings where
   dumpForeign : Maybe String
   encodings : Types.Enc
   platform : Platform
+  system : SystemLibrary
 
 export
 codegenNative : Codegen
@@ -130,29 +137,38 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
         | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
       Just table <- phase "the runtime loaded"
         (Flat.Marked.markedForms Linkage.Realised.flatPrimitives
-          (loadRuntime settings.platform settings.encodings))
+          (loadRuntime settings.platform settings.encodings settings.system))
         | Nothing => pure Nothing
       Right realised <- phase "the contract realised"
         (Linkage.Realised.realise settings.platform settings.encodings)
         | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
       whenJust settings.dumpFlat $ \f => dumpFlat f table
-      whenJust settings.dumpForeign $ \f => dumpForeign settings.encodings realised f
+      whenJust settings.dumpForeign $ \f => dumpForeign settings realised f
       -- the tables' compiled forms, and of all they call, for those that
       -- only the runtime's flat code reads, which Idris's passes, from
       -- `main`, do not reach
       tableForms <- phase "the tables compiled" (Evaluate.compileFor (keys realised.tables))
-      cdata <- phase "Idris's passes" (getCompileData False VMCode tm)
+      -- the foreign functions the program reaches, each with the runtime's
+      -- function that implements it: the flat ones, and the ordinary ones,
+      -- which Idris compiles with the program
+      (flat, bound) <- phase "the foreign functions bound" (bindForeign settings table tm)
+      cdata <- phase "Idris's passes" (withSystem bound tm)
       -- the compiled form of each definition of the program, as Idris gives
       -- it to every code generator, and the tables': what the tables are
       -- computed from
       let compiled = mergeLeft (fromList (map (\(n, _, d) => (n, d)) cdata.namedDefs)) tableForms
+      -- the definitions evaluated once, on their first use: every one of
+      -- no arguments but the entry. The Scheme backends, which evaluate
+      -- them before `main`, leave out those whose evaluation may crash or
+      -- recur, which on first use crash or recur as they would unshared
+      let constants = mapMaybe kept (vmcode cdata)
       image <- case settings.encodings of
         Types.MkEnc HeapObj.ValEnc.FixnumTag1 b s =>
           pipeline (Types.MkEnc HeapObj.ValEnc.FixnumTag1 b s) settings realised table compiled
-            (vmcode cdata)
+            constants flat bound (vmcode cdata)
         Types.MkEnc HeapObj.ValEnc.FixnumTag0 b s =>
           pipeline (Types.MkEnc HeapObj.ValEnc.FixnumTag0 b s) settings realised table compiled
-            (vmcode cdata)
+            constants flat bound (vmcode cdata)
         Types.MkEnc HeapObj.ValEnc.NoFixnums _ _ =>
           throw (GenericMsg EmptyFC "native: the encoding nofixnums is not implemented")
       coreLift_ $ mkdirAll outputDir
@@ -161,11 +177,103 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
         | Left err => throw (FileErr outexec err)
       pure (Just outexec)
       where
+        ||| The foreign functions the program's term reaches that the runtime
+        ||| implements, each with the first of its candidates the loaded runtime
+        ||| defines (`ForeignFunctions.candidates`): those a flat function
+        ||| implements, and those an ordinary one does, each checked to be of
+        ||| its foreign function's type. A foreign function an ordinary
+        ||| implementation reaches is reached too.
+        bindForeign : Settings -> NameMap Flat.Exp.FlatDef -> ClosedTerm ->
+                      Core (List (Name, Name), List (Name, Name))
+        bindForeign settings table tm = do
+          defs <- get Ctxt
+          (flat, ordinary) <- reach defs empty [] [] (keys (getRefs (Resolved (-1)) tm))
+          traverse_ (agree defs) ordinary
+          pure (flat, ordinary)
+          where
+            -- the first candidate the context defines
+            implementer : Defs -> Name -> Core (Maybe Name)
+            implementer defs f = firstDefined
+              (Linkage.ForeignFunctions.candidates settings.encodings settings.system f)
+              where
+                firstDefined : List Name -> Core (Maybe Name)
+                firstDefined [] = pure Nothing
+                firstDefined (c :: cs) = do
+                  Just _ <- lookupCtxtExact c (gamma defs)
+                    | Nothing => firstDefined cs
+                  pure (Just c)
+
+            -- the foreign functions the names reach, those found so far among
+            -- the definitions seen so far
+            covering
+            reach : Defs -> NameMap () -> (flat, ordinary : List (Name, Name)) -> List Name ->
+                    Core (List (Name, Name), List (Name, Name))
+            reach defs seen flat ordinary [] = pure (flat, ordinary)
+            reach defs seen flat ordinary (n :: ns) = do
+              full <- toFullNames n
+              if isJust (lookup full seen) then reach defs seen flat ordinary ns else do
+                let seen' = insert full () seen
+                Just gdef <- lookupCtxtExact full (gamma defs)
+                  | Nothing => reach defs seen' flat ordinary ns
+                let refs = keys (refersToRuntime gdef)
+                case definition gdef of
+                  ForeignDef _ _ => do
+                    impl <- implementer defs full
+                    case impl of
+                      Just i =>
+                        if isJust (lookup i table)
+                          then reach defs seen' ((full, i) :: flat) ordinary ns
+                          else reach defs seen' flat ((full, i) :: ordinary) (i :: ns)
+                      Nothing => reach defs seen' flat ordinary ns
+                  _ => reach defs seen' flat ordinary (refs ++ ns)
+
+            -- an implementation of its foreign function's type, or the reason
+            agree : Defs -> (Name, Name) -> Core ()
+            agree defs (f, impl) = do
+              Just fdef <- lookupCtxtExact f (gamma defs)
+                | Nothing => throw (UndefinedName EmptyFC f)
+              Just idef <- lookupCtxtExact impl (gamma defs)
+                | Nothing =>
+                    throw (GenericMsg EmptyFC
+                      ("native: the runtime has no " ++ show impl ++ ", which implements "
+                       ++ show f))
+              True <- convert defs Env.empty fdef.type idef.type
+                | False =>
+                    throw (GenericMsg EmptyFC
+                      ("native: " ++ show impl ++ " is not of the type of " ++ show f
+                       ++ ", which it implements"))
+              pure ()
+
+        ||| Idris's passes over the program's term, which compile the
+        ||| implementations with it: each given to them as a function the
+        ||| backend exports, which they compile whatever the program reaches,
+        ||| for these passes alone.
+        withSystem : List (Name, Name) -> ClosedTerm -> Core CompileData
+        withSystem bound tm = do
+          defs <- get Ctxt
+          let exports = defs.foreignExports
+          put Ctxt
+            ({ foreignExports :=
+                 foldl (\m, (_, impl) => insert impl [(systemExports, show impl)] m) exports bound }
+               defs)
+          cdata <- getCompileDataWith [systemExports] False VMCode tm
+          update Ctxt { foreignExports := exports }
+          pure cdata
+          where
+            -- the backend the implementations are exported for
+            systemExports : String
+            systemExports = "native-system"
+
+        -- a function of no arguments, but the entry, which runs once
+        kept : (Name, VMDef) -> Maybe Name
+        kept (n, MkVMFun [] _) = if n /= Lower.mainExpression then Just n else Nothing
+        kept _ = Nothing
+
         parseSettings : List String -> Either String Settings
         parseSettings =
           foldlM setting
             (MkSettings Link.windowBytes Nothing Nothing Nothing Nothing Types.Enc.defaultEnc
-             Platform.defaultPlatform)
+             Platform.defaultPlatform NativeSystem)
           where
             setting : Settings -> String -> Either String Settings
             setting o d = case forget (split (== '=') d) of
@@ -191,6 +299,9 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
               ["string-encoding", "utf32"] => Left "the string encoding utf32 is not implemented"
               ["string-encoding", v] =>
                 Left ("string-encoding= takes utf8 or utf32, not " ++ show v)
+              ["system", v] => case Linkage.SystemLibrary.parseSystemLibrary v of
+                Just l => Right ({ system := l } o)
+                Nothing => Left ("system= takes native, not " ++ show v)
               ["target", v] => case Platform.parsePlatform v of
                 Just p => if Platform.built p then Right ({ platform := p } o)
                           else Left
@@ -198,20 +309,22 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
                 Nothing => Left ("target= takes <arch>-<os>, such as x86_64-linux, not " ++ show v)
               _ => Right o
 
-        ||| Load the runtime's modules into the context: the roots of its core and
-        ||| of its support tier, which import the generic ones, the platform's
-        ||| module, which implements the OS services, and the string encoding's,
+        ||| Load the runtime's modules into the context: the roots of its core, of
+        ||| its support tier and of the system library's, which import the
+        ||| generic ones, the platform's module, which implements the OS
+        ||| services, and the string encoding's,
         ||| which nothing generic imports either, from the installed package,
         ||| with the backend's own package, whose heap-object model and type
         ||| layer (the modules of `HeapObj` and `Types`) the runtime shares.
-        loadRuntime : Platform -> Types.Enc -> Core ()
-        loadRuntime platform enc = do
+        loadRuntime : Platform -> Types.Enc -> SystemLibrary -> Core ()
+        loadRuntime platform enc lib = do
           addPkgDir "idris2-native-runtime" anyBounds
           addPkgDir "idris2-native" anyBounds
           u <- newRef UST initUState
           traverse_ (\ns => addImport (MkImport EmptyFC False (nsAsModuleIdent ns) ns))
                     (Linkage.RuntimeModule.runtimeModule ""
                       :: Linkage.RuntimeModule.supportModule ""
+                      :: Linkage.RuntimeModule.systemModule lib ""
                       :: toList (Linkage.OSService.platformModule platform)
                       ++ toList (Linkage.RuntimeModule.stringModule enc.string))
 
@@ -220,11 +333,11 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
         ||| lowering inline (`lowered`), or not yet (`missing`). The contract's
         ||| externs, the inline externs and the services' (`realised`), are not
         ||| the libraries', and are left out, as is anything of the runtime's.
-        dumpForeign : Types.Enc -> Linkage.Realised -> String -> Core ()
-        dumpForeign enc realised path = do
+        dumpForeign : Settings -> Linkage.Realised -> String -> Core ()
+        dumpForeign settings realised path = do
           defs <- get Ctxt
           all <- traverse (\n => (n,) <$> lookupCtxtExact n (gamma defs)) !(allNames (gamma defs))
-          entries <- traverse entry (mapMaybe library all)
+          entries <- traverse (entry defs) (mapMaybe library all)
           Right () <- coreLift
             (Data.WriteBuilder.writeBuilder path
               (concatMap (\e => Data.Builder.single (e ++ "\n")) (sort entries)))
@@ -252,16 +365,26 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
             lowered : List String
             lowered =
               ["prim__newArray", "prim__arrayGet", "prim__arraySet", "prim__newIORef",
-               "prim__readIORef", "prim__writeIORef"]
+               "prim__readIORef", "prim__writeIORef", "prim__os", "prim__codegen"]
 
-            entry : (Name, GlobalDef) -> Core String
-            entry (n, _) = do
+            -- whether the runtime defines one of the foreign function's candidates
+            implemented : Defs -> Name -> Core Bool
+            implemented defs n =
+              anyM (\c => isJust <$> lookupCtxtExact c (gamma defs))
+                (Linkage.ForeignFunctions.candidates settings.encodings settings.system n)
+              where
+                anyM : (Name -> Core Bool) -> List Name -> Core Bool
+                anyM p [] = pure False
+                anyM p (x :: xs) = if !(p x) then pure True else anyM p xs
+
+            entry : Defs -> (Name, GlobalDef) -> Core String
+            entry defs (n, _) = do
               n' <- toFullNames n
+              runtime <- implemented defs n'
               pure $
-                (if elem n' (map fst (Linkage.ForeignFunctions.foreignFunctions enc))
-                 then "runtime  "
-                      else if elem (nameRoot n') lowered then "lowered  "
-                      else "missing  ") ++ show n'
+                (if runtime then "runtime  "
+                 else if elem (nameRoot n') lowered then "lowered  "
+                 else "missing  ") ++ show n'
 
         ||| A phase of the compile, reported under `--timing 2` with its time and
         ||| the part of it the collector took: that part follows where collections
@@ -296,22 +419,24 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
         ||| fixnums: produce the term, allocate its registers, render, link.
         pipeline : (enc : Types.Enc) -> {auto 0 _ : HeapObj.ValEnc.HasFixnums enc.val} ->
                    Settings -> Linkage.Realised -> NameMap Flat.Exp.FlatDef ->
-                   (compiled : SortedMap Name NamedDef) -> List (Name, VMDef) ->
-                   Core ELF.Image
-        pipeline enc settings realised table compiled defs = do
+                   (compiled : SortedMap Name NamedDef) -> (constants : List Name) ->
+                   (flat, bound : List (Name, Name)) -> List (Name, VMDef) -> Core ELF.Image
+        pipeline enc settings realised table compiled constants flat bound defs = do
           (forms, shapes) <- phase "flat inputs" $
                                flatInputs table (Data.SortedMap.toList realised.services)
                                           (map fst defs
                                             ++
                                               [r.name
                                                | r <- Linkage.Routine.routines {enc} realised]
-                                           ++ mapMaybe (foreignRoot {enc' = enc}) defs)
+                                           ++ map snd flat)
           -- each table's row, by its first: the lowering's reads of it
           firsts <- phase "table rows"
             (traverse (\(n, (lo, _)) => tabulated (n, (lo, lo))) (reached forms))
           let tables = fromList [ (t.name, (t.lo, t.rowWords)) | t <- firsts ]
           Right (_ ** term) <- phase "lowering"
-            (later (Lower.lowerProgram enc settings.platform realised forms shapes tables defs))
+            (later
+              (Lower.lowerProgram enc settings.platform realised forms shapes tables constants
+                 flat bound defs))
             | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
           allocated <- phase "register allocation"
             (later (RegAlloc.allocRegs X86.Target.x86_64 term))
@@ -342,7 +467,9 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
             Nothing => pure ()
           Right image <- phase "linking"
             (later
-              (Link.linkProgram enc settings.window rendered.areas rendered.text rendered.rodata))
+              (Link.linkProgram enc settings.window
+                 ({ constants := 2 * length constants } rendered.areas) rendered.text
+                 rendered.rodata))
             | Left problems =>
               throw (InternalError ("native: the image cannot be assembled: " ++ show problems))
           pure image
@@ -399,10 +526,6 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
 
             ||| The runtime's function for a foreign function of the program it
             ||| implements.
-            foreignRoot : {enc' : Types.Enc} -> (Name, VMDef) -> Maybe Name
-            foreignRoot (n, MkVMForeign {}) =
-              lookup n (Linkage.ForeignFunctions.foreignFunctions enc')
-            foreignRoot _ = Nothing
 
     executeExpr : Ref Ctxt Defs -> Ref Syn SyntaxInfo ->
                   (tmpDir : String) -> ClosedTerm -> Core ()

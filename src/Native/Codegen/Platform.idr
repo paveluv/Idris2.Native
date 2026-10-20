@@ -58,6 +58,18 @@ Show OS where
   show MacOS = "macos"
   show Windows = "windows"
 
+||| The operating system's name as `System.Info.os` gives it, which the
+||| libraries test (`isWindows`, "darwin" for a dynamic library's suffix):
+||| the names the Chez backend gives, "unix" for the systems it does not
+||| tell apart.
+export
+osName : OS -> String
+osName Linux = "unix"
+osName FreeBSD = "unix"
+osName OpenBSD = "unix"
+osName MacOS = "darwin"
+osName Windows = "windows"
+
 ||| What a program is compiled for.
 public export
 record Platform where

@@ -313,8 +313,9 @@ data Held = Narrower IRCommon.Op.SubWord Bool | Whole Bool
 ||| the shapes of the data types, the OS services' externs, each bound to the
 ||| function that implements it on the platform, the inline externs, each
 ||| with the intrinsic it is, the backend's primitives, each with the
-||| primitive it is, and the tables the code generator computed, each with
-||| the index of its first row and the words of a row.
+||| primitive it is, the tables the code generator computed, each with the
+||| index of its first row and the words of a row, and the number of the
+||| program's top-level constants.
 public export
 record Forms (enc : Types.Enc) (d : TermIR.Decls enc) where
   constructor MkForms
@@ -324,6 +325,7 @@ record Forms (enc : Types.Enc) (d : TermIR.Decls enc) where
   externs : SortedMap Name Intrinsic
   primitives : SortedMap Name Primitive
   tables : SortedMap Name (Int, Nat)
+  constants : Nat
 
 ||| Each variable in scope: its type's skeleton and its value.
 Env : (enc : Types.Enc) -> (IRCommon.Ty enc -> Type) -> Type
@@ -592,6 +594,7 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
               pure (word (TermIR.Opnd.W (cast (HeapObj.ValEnc.pointerTag enc.val))))
             expand (Linkage.Expansion.AreaAddress a) [] =
               word <$> TermIR.Build.emit1 (TermIR.Instr.AreaAddr a)
+            expand Linkage.Expansion.ConstantCount [] = pure (word (TermIR.Opnd.W (cast pr.constants)))
             -- a uniform value and a word: the conversions, so this module's
             -- functions alone
             expand Linkage.Expansion.ValueWord [u] = case m of

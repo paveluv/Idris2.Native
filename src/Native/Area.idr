@@ -1,7 +1,8 @@
-||| The per-thread memory areas the runtime keeps outside the heap (`Area`),
-||| and what generated code and the runtime agree on of them: the words of
-||| the runtime's state (`runtimeWords`), and where the root buffer holds an
-||| entry (`rootOffset`).
+||| The memory areas the runtime keeps outside the heap (`Area`), and what
+||| generated code and the runtime agree on of them: the words of the
+||| runtime's state (`runtimeWords`), where the root buffer holds an entry
+||| (`rootOffset`), and where a top-level constant's cell is
+||| (`constantOffset`).
 |||
 ||| Part of the contract between compiled code and the runtime, with the
 ||| heap-object model (`HeapObj.Shape` says what it is), and like it of
@@ -13,8 +14,9 @@ module Native.Area
 
 %default total
 
-||| The per-thread memory areas the runtime keeps outside the heap. None of
-||| them holds objects.
+||| The memory areas the runtime keeps outside the heap: each thread's, but
+||| for the program's constants. None of them holds objects; the root buffer
+||| and the constants hold values, which the collector forwards.
 public export
 data Area
   = ||| Arguments beyond the target's argument registers, so that no
@@ -43,6 +45,11 @@ data Area
   | ||| The runtime's state: the spaces, the limits, what the last collection
     ||| left live. `runtimeWords` words, which the runtime library lays out.
     RUNTIME
+  | ||| The program's top-level constants, each evaluated on its first use
+    ||| and kept: a cell of two words each, 1 once the constant is evaluated,
+    ||| 0 before, and then its value, which the collector forwards. As many
+    ||| cells as the program has constants, which the code generator counts.
+    CONSTANTS
 
 ||| The words of `RUNTIME`. The runtime's state names each of its words
 ||| with a proof that the area holds it.
@@ -62,3 +69,15 @@ rootShift = 3
 public export %inline
 rootOffset : (i : Bits64) -> Bits64
 rootOffset i = prim__shl_Bits64 i rootShift
+
+||| The bytes of a cell of `CONSTANTS`, as the power of two they are: two
+||| words, whether the constant is evaluated, then its value.
+public export
+cellShift : Bits64
+cellShift = 4
+
+||| Where `CONSTANTS` holds constant `i`'s cell, in bytes from its start:
+||| the cells in order from the start, `2 ^ cellShift` bytes each.
+public export %inline
+constantOffset : (i : Bits64) -> Bits64
+constantOffset i = prim__shl_Bits64 i cellShift

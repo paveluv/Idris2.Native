@@ -1,29 +1,31 @@
-||| The runtime's support tier: Idris's primitive types and the foreign
-||| functions of the libraries Idris ships, implemented over the core
-||| (`Native.Runtime`), as flat functions. The core knows objects by their
-||| shapes; the support tier knows their types (`Native.Support.Obj`).
+||| The runtime's support tier: Idris's own primitives and the values the
+||| language has (strings, numbers, characters, buffers, the mutable cells,
+||| pointers), implemented over the core (`Native.Runtime`), as flat
+||| functions, with the foreign functions of the libraries Idris ships that
+||| are about those values: a pointer's text read (`getString`), its test
+||| for null, a buffer's bytes. The core knows objects by their shapes; the
+||| support tier knows their types (`Native.Support.Obj`). What a C program
+||| has from libc, files and the rest of the OS surface, is a system
+||| library's (`Native.System`), not this tier's.
+|||
+||| Each of its foreign functions is the flat function of the foreign one's
+||| name and type under `Native.Support.Foreign`, by the foreign one's
+||| module path (`Data.Buffer.prim__newBuffer` by
+||| `Native.Support.Foreign.Data.Buffer.prim__newBuffer`), which the code
+||| generator binds it to where no system library implements it, so that
+||| ordinary code calls it through the boundary, which converts its
+||| arguments and its result as their types say.
+|||
 ||| A program does not import it; the code generator loads it, by this
 ||| module, which imports the generic ones, and the string encoding's
-||| module, which nothing generic imports.
-|||
-||| What it may hold is bounded: the operations of Idris's primitive types,
-||| and the `%foreign` and `%extern` functions the libraries Idris ships
-||| declare, which the code generator's `dump-foreign` lists, each with how
-||| this backend implements it. It grows by that list and never past it.
-||| Those of its functions tied to no syntax or literal (files, buffers,
-||| clocks, the network) may later move to a standard library written as any
-||| library is; those tied to literals (strings, integers, doubles,
-||| characters, and the casts among them) stay, as the code generator lays
-||| their literals out.
+||| module, which nothing generic imports. What it may hold is bounded: the
+||| operations of Idris's primitive types, and those of the libraries'
+||| foreign functions that are about the language's values, each listed by
+||| the code generator's `dump-foreign` with how this backend implements it.
 module Native.Support
 
+import public Native.Support.Foreign.Data.Buffer
 import public Native.Support.Foreign.Prelude.IO
 import public Native.Support.Foreign.PrimIO
-import public Native.Support.Foreign.System
-import public Native.Support.Foreign.System.Directory
-import public Native.Support.Foreign.System.Errno
-import public Native.Support.Foreign.System.FFI
-import public Native.Support.Foreign.System.File.Error
-import public Native.Support.Foreign.System.Term
 
 %default total

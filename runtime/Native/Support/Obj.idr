@@ -17,9 +17,11 @@
 ||| kind is its header's, and its header rewritten only so (`setHeader`).
 ||| Words and bytes are loaded and stored only in objects of the raw shape,
 ||| which hold no value the collector follows, and only after the header:
-||| their offsets are the payload's, from the word after it. The core's
-||| conversions, which take a value of any type, are used outside the core
-||| only here, which the linter checks.
+||| their offsets are the payload's, from the word after it. A handle, a
+||| number the system tier gives for a value of its own, is read and made
+||| here too (`valueHandle`, `handleValue`). The core's conversions, which
+||| take a value of any type, are used outside the core only here, which the
+||| linter checks.
 module Native.Support.Obj
 
 import Native.Flat.Uniform as Flat
@@ -136,12 +138,33 @@ asKind : (k : Types.Kind) -> {auto 0 objs : Types.Represents.Objects a} ->
          {auto 0 shaped : Types.Kind.shapeOf k = Just s} -> Flat.Uniform a ->
            Runtime.Ordo.Op Runtime.Ordo (Maybe (Obj k))
 asKind k v = do
-  -- every value of the type is an object, whose header is at 0, whatever
-  -- its shape
-  a <- Runtime.Memory.valueObject {s} v
-  h <- Runtime.Memory.load64 a 0
-  if Types.Kind.headerCode h == Types.Kind.code k then Runtime.Ordo.pure (Just (MkObj shaped a))
-    else Runtime.Ordo.pure Nothing
+  w <- Runtime.Memory.valueWord v
+  pointer <- Runtime.Memory.isPointer w
+  if not pointer then Runtime.Ordo.pure Nothing else do
+    -- every value of the type but a handle is an object, whose header is
+    -- at 0, whatever its shape
+    a <- Runtime.Memory.valueObject {s} v
+    h <- Runtime.Memory.load64 a 0
+    if Types.Kind.headerCode h == Types.Kind.code k
+      then Runtime.Ordo.pure (Just (MkObj shaped a))
+      else Runtime.Ordo.pure Nothing
+
+||| The number a handle is, if a value of a type of `Handles` is one, and
+||| the value of a handle.
+export %inline
+valueHandle : {auto 0 hs : Types.Represents.Handles a} -> Flat.Uniform a ->
+              Runtime.Ordo.Op Runtime.Ordo (Maybe Bits64)
+valueHandle v = do
+  w <- Runtime.Memory.valueWord v
+  pointer <- Runtime.Memory.isPointer w
+  Runtime.Ordo.pure (if pointer then Nothing else Just (Runtime.Memory.fixnumOf w))
+
+export %inline
+handleValue : {auto 0 hs : Types.Represents.Handles a} -> (number : Bits64) ->
+              Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform a)
+handleValue n = do
+  w <- Runtime.Memory.fixnumWord n
+  Runtime.Memory.fieldValue w
 
 ||| The integer a fixnum stands for, of a type held as fixnums, and the
 ||| value of one.

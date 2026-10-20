@@ -1,0 +1,6 @@
+. ../../testutils.sh
+
+# Buffers: their numbers, strings and copies, and their bytes through files.
+idris2 --cg native -o buffer Buffer.idr > /dev/null
+./build/exec/buffer
+rm -f big.bin lines.txt

@@ -39,6 +39,11 @@ import Native.Types.StringRoutine
 %extern string__ofText : Runtime.PortTy.ExternTy
   (Types.StringRoutine.port Types.StringRoutine.OfText)
 
+||| The bytes of a string's text as the system's.
+export %inline
+textBytes : Flat.Uniform String -> Runtime.Ordo.Op Runtime.Ordo Bits64
+textBytes = string__textBytes
+
 ||| A new string of the `len` bytes of the system's text at the address.
 export %inline
 ofText : (bytes : Runtime.Raw) -> (len : Bits64) ->

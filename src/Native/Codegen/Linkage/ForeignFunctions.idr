@@ -1,11 +1,12 @@
-||| The foreign functions a program's libraries use that the runtime
-||| implements (`foreignFunctions`).
+||| Where the runtime implements a foreign function of the libraries a
+||| program uses (`candidates`).
 |||
 ||| Part of what generated code, the runtime and the linker agree on
 ||| (`Native.Codegen.Linkage.Routine` says what it is).
 module Native.Codegen.Linkage.ForeignFunctions
 
 import Native.Codegen.Linkage.RuntimeModule
+import Native.Codegen.Linkage.SystemLibrary
 
 import Core.Name
 import Core.Name.Namespace
@@ -13,48 +14,34 @@ import Native.Types.Enc as Types
 
 %default total
 
-||| The foreign functions of the libraries a program uses, `prelude` and
-||| `base`, that the runtime implements, each with the flat function that
-||| does: of the same type position by position, so that the lowering gives
-||| the foreign function the boundary to it, which converts each argument and
-||| the result as their types say. Most are `Support.Foreign`'s, by the
-||| foreign one's module path and name (`System.prim__exit` by
-||| `Support.Foreign.System.prim__exit`), a string reached through the
-||| string encoding's externs (`Support.Text`); the primitives of lists of
-||| characters and strings are the string module's, under the program's
-||| encoding. A foreign function is
-||| bound by its Idris name, whatever names the library gives it for C or
-||| Scheme; one not listed stays `Unsupported`.
+||| The definition that would implement a foreign function under a root: of
+||| the foreign one's module path and name, under the root's `Foreign`
+||| (`System.prim__exit` by `Native.System.Foreign.System.prim__exit` under
+||| the system tier's root). A foreign function is bound by its Idris name,
+||| whatever names the library gives it for C or Scheme.
 export
-foreignFunctions : Types.Enc -> List (Name, Name)
-foreignFunctions enc =
-  [ mirrored (NS (mkNamespace "System") (UN (Basic "prim__exit")))
-  , mirrored (NS (mkNamespace "System") (UN (Basic "prim__getArgCount")))
-  , mirrored (NS (mkNamespace "Prelude.IO") (UN (Basic "prim__putChar")))
-  , mirrored (NS (mkNamespace "PrimIO") (UN (Basic "prim__nullAnyPtr")))
-  , mirrored (NS (mkNamespace "System.FFI") (UN (Basic "prim__malloc")))
-  , mirrored (NS (mkNamespace "System.FFI") (UN (Basic "prim__free")))
-  , mirrored (NS (mkNamespace "Prelude.IO") (UN (Basic "prim__putStr")))
-  , mirrored (NS (mkNamespace "Prelude.IO") (UN (Basic "prim__getString")))
-  , mirrored (NS (mkNamespace "System") (UN (Basic "prim__getArg")))
-  , mirrored (NS (mkNamespace "System") (UN (Basic "prim__getEnv")))
-  , mirrored (NS (mkNamespace "System") (UN (Basic "prim__getEnvPair")))
-  , mirrored (NS (mkNamespace "System") (UN (Basic "prim__setEnv")))
-  , mirrored (NS (mkNamespace "System") (UN (Basic "prim__unsetEnv")))
-  , mirrored (NS (mkNamespace "System.Directory") (UN (Basic "prim__changeDir")))
-  , mirrored (NS (mkNamespace "System.Directory") (UN (Basic "prim__createDir")))
-  , mirrored (NS (mkNamespace "System.Directory") (UN (Basic "prim__removeDir")))
-  , mirrored (NS (mkNamespace "System.Directory") (UN (Basic "prim__currentDir")))
-  , mirrored (NS (mkNamespace "System.Errno") (UN (Basic "prim__getErrno")))
-  , mirrored (NS (mkNamespace "System.File.Error") (UN (Basic "prim__fileErrno")))
-  , mirrored (NS (mkNamespace "System.Term") (UN (Basic "prim__setupTerm")))
-  , mirrored (NS (mkNamespace "System.Term") (UN (Basic "prim__getTermCols")))
-  , mirrored (NS (mkNamespace "System.Term") (UN (Basic "prim__getTermLines"))) ]
-  ++ maybe [] (\ns => [ (NS (mkNamespace m) (UN (Basic f)), NS ns (UN (Basic f)))
-                      | (m, f) <- [ ("Prelude.Types", "fastPack"), ("Prelude.Types", "fastUnpack")
-                                  , ("Prelude.Types", "fastConcat") ] ])
-           (RuntimeModule.stringModule enc.string)
+under : (root : String) -> Name -> Name
+under root (NS ns f) = NS (mkNamespace (root ++ ".Foreign." ++ show ns)) f
+under root n = NS (mkNamespace (root ++ ".Foreign")) n
+
+||| Where a foreign function may be implemented, in the order the code
+||| generator looks: the string encoding's module, for the primitives of
+||| lists of characters and strings; the system library's (`SystemLibrary`),
+||| for the libraries' OS surface; and the support tier, for Idris's own
+||| primitives and values (pointers, buffers). The first the loaded runtime
+||| defines implements it: a flat function by the boundary, which converts
+||| each argument and the result as their types say; an ordinary one by a
+||| call, which needs none. A foreign function none implements stays
+||| `Unsupported`.
+export
+candidates : Types.Enc -> SystemLibrary -> Name -> List Name
+candidates enc lib n =
+  strings ++ [under (SystemLibrary.systemRoot lib) n, under RuntimeModule.supportRoot n]
   where
-    mirrored : Name -> (Name, Name)
-    mirrored n@(NS ns f) = (n, NS (RuntimeModule.supportModule ("Foreign." ++ show ns)) f)
-    mirrored n = (n, NS (RuntimeModule.supportModule "Foreign") n)
+    -- the string module's functions of the prelude's string primitives
+    strings : List Name
+    strings = case (n, RuntimeModule.stringModule enc.string) of
+      (NS ns (UN (Basic f)), Just m) =>
+        if ns == mkNamespace "Prelude.Types" && elem f ["fastPack", "fastUnpack", "fastConcat"]
+          then [NS m (UN (Basic f))] else []
+      _ => []

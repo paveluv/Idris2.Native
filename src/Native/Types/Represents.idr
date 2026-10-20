@@ -18,6 +18,8 @@ module Native.Types.Represents
 import Native.Types.ConstructorId
 import Native.Types.Kind
 
+import Data.Buffer
+
 %default total
 
 ||| Every value of `a` is an object of kind `k`: a value of `a` can be taken
@@ -29,6 +31,8 @@ data Only : Kind -> Type -> Type where
   AString : Only STRING String
   ||| A list is a `CON` always: `[]` a static object of no fields.
   AList : Only CON (List a)
+  ||| A buffer of `Data.Buffer` is a `BUFFER` always, the empty one too.
+  ABuffer : Only BUFFER Buffer
 
 ||| An object of kind `k` is a value of `a`: one can be given as a value of
 ||| `a`.
@@ -46,9 +50,9 @@ data Represents : Kind -> Type -> Type where
   AHeapString : Represents STRING (Ptr String)
   AnyHeapString : Represents STRING AnyPtr
 
-||| Every value of `a` is an object, never a fixnum, whose header says its
-||| kind: what a value of a type of several kinds is read by
-||| (`Support.Obj.asKind`).
+||| Every value of `a` is an object whose header says its kind, or for a
+||| type of `Handles` a handle: what a value of a type of several kinds is
+||| read by (`Support.Obj.asKind`), which takes a handle for no object.
 public export
 data Objects : Type -> Type where
   ||| A type whose values are all objects of one kind.
@@ -56,6 +60,16 @@ data Objects : Type -> Type where
   ||| A foreign pointer, of either kind.
   Pointers : Objects (Ptr a)
   AnyPointers : Objects AnyPtr
+
+||| A value of `a` may be a fixnum: a number the system tier gives for a
+||| value of its own (`Native.System`), a handle, which the libraries hold
+||| only to give back, as `base` holds a file as an `AnyPtr`. A foreign
+||| pointer may be one, of either type, as the prelude turns one into the
+||| other.
+public export
+data Handles : Type -> Type where
+  AnyHandle : Handles AnyPtr
+  AHandle : Handles (Ptr a)
 
 ||| The ids of `List`'s constructors, `[]` then `(::)`, as it declares them.
 export

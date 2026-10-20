@@ -30,8 +30,9 @@ public export
 data Service
   = ||| End the process with the status.
     Exit
-  | ||| Write the bytes at an address to a standard handle (1 the output, 2
-    ||| the errors); the bytes written.
+  | ||| Write the bytes at an address to a handle, a standard one (1 the
+    ||| output, 2 the errors) or one `Open` gave; the bytes written, 0 if
+    ||| it fails.
     Write
   | ||| Reserve address space, readable by nothing, which no memory is
     ||| committed to; its address, the null one if there is none.
@@ -67,6 +68,29 @@ data Service
   | ||| Remove the directory at a path, zero-ended bytes at an address, which
     ||| has to be empty; success.
     RemoveDirectory
+  | ||| Open the file at a path, zero-ended bytes at an address, with the
+    ||| flags (`Native.OpenFlag`); its handle, the word of all ones if it
+    ||| fails. A file made has the permissions the system gives a new one.
+    Open
+  | ||| Close a handle `Open` gave; success.
+    Close
+  | ||| Read bytes from a handle, a standard one (0 the input) or one `Open`
+    ||| gave, into the bytes at an address, at most so many; the bytes
+    ||| read, 0 at the end, the word of all ones if it fails.
+    Read
+  | ||| The bytes of the file of a handle; the word of all ones if it fails.
+    FileSize
+  | ||| Whether a handle is a terminal's, 1 if it is.
+    IsTerminal
+  | ||| Remove the file at a path, zero-ended bytes at an address, which is
+    ||| not a directory; success.
+    RemoveFile
+  | ||| The next entry of a directory `Open` gave with `ADirectory`: its name
+    ||| written, zero-ended, into the bytes at an address, at most so many,
+    ||| 256 enough on every platform; the name's bytes, 0 when there are no
+    ||| more, the word of all ones if it fails. The entries `.` and `..` are
+    ||| among them, where the system has them.
+    ReadEntry
 
 ||| Each service's arrow: what its arguments and its result carry.
 public export
@@ -85,15 +109,22 @@ port ChangeDirectory = MkPort [Port.Raw] (Just Port.Word)
 port CurrentDirectory = MkPort [Port.Raw, Port.Word] (Just Port.Word)
 port CreateDirectory = MkPort [Port.Raw] (Just Port.Word)
 port RemoveDirectory = MkPort [Port.Raw] (Just Port.Word)
+port Open = MkPort [Port.Raw, Port.Word] (Just Port.Word)
+port Close = MkPort [Port.Word] (Just Port.Word)
+port Read = MkPort [Port.Word, Port.Raw, Port.Word] (Just Port.Word)
+port FileSize = MkPort [Port.Word] (Just Port.Word)
+port IsTerminal = MkPort [Port.Word] (Just Port.Word)
+port RemoveFile = MkPort [Port.Raw] (Just Port.Word)
+port ReadEntry = MkPort [Port.Word, Port.Raw, Port.Word] (Just Port.Word)
 
 ||| Every service, once. The code generator pairs this list's term, as the
 ||| loaded runtime's context holds it, with its own copy, element by element.
 public export
 allServices : List Service
 allServices =
-  [Exit, Write, Reserve, Commit, Release, StackLimit, PageBytes, PrepareTerminal, TerminalColumns,
-   TerminalLines, ChangeDirectory,
-               CurrentDirectory, CreateDirectory, RemoveDirectory]
+  [ Exit, Write, Reserve, Commit, Release, StackLimit, PageBytes, PrepareTerminal, TerminalColumns
+  , TerminalLines, ChangeDirectory, CurrentDirectory, CreateDirectory, RemoveDirectory, Open, Close
+  , Read, FileSize, IsTerminal, RemoveFile, ReadEntry ]
 
 ||| The list holds every service.
 complete : (c : Service) -> Elem c Service.allServices
@@ -111,3 +142,10 @@ complete ChangeDirectory = %search
 complete CurrentDirectory = %search
 complete CreateDirectory = %search
 complete RemoveDirectory = %search
+complete Open = %search
+complete Close = %search
+complete Read = %search
+complete FileSize = %search
+complete IsTerminal = %search
+complete RemoveFile = %search
+complete ReadEntry = %search

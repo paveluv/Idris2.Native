@@ -97,6 +97,7 @@ import Data.String
 import Data.Vect
 import Data.Zippable
 import Libraries.Data.List.SizeOf
+import Libraries.Data.List.Thin
 import Libraries.Data.NameMap
 import Libraries.Data.WithDefault
 import Native.Data.Builder as Data
@@ -356,6 +357,21 @@ unfoldable tr fn gdef
           , NS primIONS (UN (Basic "prim__io_bind"))
           , NS builtinNS (UN (Basic "idris_crash"))
           ]
+
+||| A term with each `let` whose variable its scope does not use dropped.
+||| A case tree keeps the case block's binding of the scrutinee to its
+||| pattern around a term elaborated in an alternative, as the dictionary
+||| of a `fromString` that Idris leaves unreduced, for a literal of ten
+||| characters or more: the binding's value names the pattern's variables,
+||| flat ones, which the term does not use, and without it the term is
+||| closed.
+deadLets : Term vs -> Term vs
+deadLets (Bind fc x b@(Let {}) sc) = case shrink (deadLets sc) (Drop Refl) of
+  Just sc' => sc'
+  Nothing => Bind fc x b (deadLets sc)
+deadLets (Bind fc x b sc) = Bind fc x b (deadLets sc)
+deadLets (App fc f a) = App fc (deadLets f) (deadLets a)
+deadLets t = t
 
 -- The type of a static value that does not reduce: the type of the call it
 -- is, or else the case tree's type for it.
@@ -1213,8 +1229,9 @@ root n
                                                                       (fv, !(quoteClosed tyNF)))
                                                                       (actuals :< a)
                                                 Judgement.Rejected why =>
-                                                            if staticOnly why || closed a'
-                                                               then do sa <- static tr a
+                                                            let a'' = deadLets a' in
+                                                            if staticOnly why || closed a''
+                                                               then do sa <- static tr a''
                                                                        walk ns i' as !(next a')
                                                                          (parts :< (True, PArg sa))
                                                                            params actuals
@@ -1729,16 +1746,29 @@ shape sk
       ordinary tag (ENUM _) = Exp.AsTag
       ordinary tag ci = Exp.AsObject (fromMaybe tag (intrinsicTag ci))
 
+||| Whether a flat form of the name and the number of parameters is a copy at
+||| static arguments of none left: a copy is of a machine name
+||| (`copyName`), and called by flat forms alone, never by ordinary code.
+unparameterised : Name -> (params : Nat) -> Bool
+unparameterised (NS _ n) k = unparameterised n k
+unparameterised (MN _ _) Z = True
+unparameterised _ _ = False
+
 ||| The ordinary form of a flat form: every value represented as ordinary code
 ||| represents it, every call by name, taking the definition's run-time
 ||| arguments as ordinary code passes them. It witnesses that the flat regime
 ||| is part of the ordinary one, and is the flat translation's test oracle.
 ||| Like every compiled form, it then has its constructors specialised
-||| (`Compiler.Opts.Constructor`).
+||| (`Compiler.Opts.Constructor`). A copy at static arguments of no
+||| parameters left (`unparameterised`) takes one, erased, which each call
+||| of it passes: a definition of no arguments is a constant to the Scheme
+||| code generators, which evaluate it before the program runs, so a crash
+||| on a branch the program never takes would end it at its start.
 export
 forget : {auto c : Ref Ctxt Defs} -> Exp.FlatDef -> Core CDef
 forget d
-    = do let args = map name d.params
+    = do let args = if unparameterised d.name (length d.params)
+                      then [MN "unparameterised" 0] else map name d.params
          s <- newRef NextMN 0
          constructorCDef (MkFun args !(forgetExp {vars = args} d.body))
   where
@@ -1755,7 +1785,9 @@ forget d
         forgetArgs : {vars' : _} -> Vect n Exp -> Core (Vect n (CExp vars'))
         forgetArgs [] = pure []
         forgetArgs (a :: as) = pure (!(forgetExp a) :: !(forgetArgs as))
-    forgetExp (Exp.FCall fc n as) = CApp fc (CRef fc n) <$> traverse forgetExp as
+    forgetExp (Exp.FCall fc n as) =
+      if unparameterised n (length as) then pure (CApp fc (CRef fc n) [CErased fc])
+        else CApp fc (CRef fc n) <$> traverse forgetExp as
     forgetExp (Exp.FPrim fc n _ _ as)
         = do defs <- get Ctxt
              Just gdef <- lookupCtxtExact n (gamma defs)

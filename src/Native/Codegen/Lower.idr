@@ -59,7 +59,6 @@ import Native.Codegen.IRCommon.Conv
 import Native.Codegen.IRCommon.Op
 import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.Codegen.Linkage.ConvertsIn
-import Native.Codegen.Linkage.ForeignFunctions
 import Native.Codegen.Linkage.Realised as Linkage
 import Native.Codegen.Linkage.Routine
 import Native.Codegen.LowerFlat
@@ -98,6 +97,7 @@ import Data.Vect
 import Data.Zippable
 import Decidable.Equality
 import Decidable.Equality.Core
+import Native.Area
 import Native.Data.Builder as Data
 import Native.Data.Distinct
 import Native.Flat.Exp
@@ -197,6 +197,12 @@ bignumStatic : Integer -> Name
 bignumStatic v = NS (mkNamespace "_native") (UN (Basic ("integer_" ++ show v)))
 
 ||| The static object of a string literal: one per distinct literal.
+||| The function that computes a top-level constant's value, which the
+||| constant's own name calls on its first use (`Constant`).
+export
+constantValue : Name -> Name
+constantValue n = NS (mkNamespace "_native") (UN (Basic ("value of " ++ show n)))
+
 stringStatic : String -> Name
 stringStatic s = NS (mkNamespace "_native") (UN (Basic ("string_" ++ show s)))
 
@@ -1477,6 +1483,14 @@ data Plan
     Form Flat.Exp.FlatDef
   | ||| A foreign function, of the arity.
     Foreign Nat
+  | ||| A foreign function the system tier implements, of the arity: a call
+    ||| of the ordinary function that does, of the same type, and of the
+    ||| arity it is written of.
+    Implemented Nat Name Nat
+  | ||| A top-level constant, evaluated on its first use and kept: its cell
+    ||| in `Area.CONSTANTS`, and the function of no arguments that computes
+    ||| its value.
+    Constant Nat Name
   | ||| The entry, when the program has none.
     NoEntry
 
@@ -1542,6 +1556,83 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                      TermIR.Build.Closed d IRCommon.Conv.CPS False (replicate arity IRCommon.Ty.Val)
       lowerForeign d refs n arity = TermIR.Build.build $ \ps =>
         TermIR.Build.unsupported ("the foreign function " ++ show n)
+  defOf d refs fs (TermIR.MkSig n IRCommon.Conv.CPS ps False) (Implemented arity impl m) =
+    case (decEq ps (replicate arity IRCommon.Ty.Val), lookup impl refs.funs) of
+      (Yes Refl, Just (TermIR.MkSig _ IRCommon.Conv.CPS ps' _ ** var)) =>
+        case decEq ps' (replicate m IRCommon.Ty.Val) of
+          Yes Refl =>
+            if m > arity then unbound "of more parameters than" else
+              TermIR.Def.Defined
+                (fromMaybe (TermIR.Body.Unsupported "a level outside its context")
+                 (TermIR.Build.close (TermIR.Build.build $ \args => bound var (allVals args))))
+          No _ => unbound "of other parameters than"
+      _ => unbound "missing for"
+    where
+      unbound : {0 s' : TermIR.Sig enc} -> String -> TermIR.Def d s'
+      unbound why =
+        TermIR.Def.Defined (TermIR.Body.Unsupported ("the implementation " ++ show impl ++ " "
+                                                     ++ why ++ " " ++ show n))
+
+      -- a function's value applied to the arguments, the last in tail position
+      applied : TermIR.Opnd v' IRCommon.Ty.Val -> List (TermIR.Opnd v' IRCommon.Ty.Val) ->
+                TermIR.Build.End d IRCommon.Conv.CPS False v' l'
+      applied f [] = TermIR.Build.return f
+      applied f [x] = TermIR.Build.tailApply f x
+      applied f (x :: xs) = do
+        f' <- TermIR.Build.apply f x
+        applied f' xs
+
+      -- the first `k` of the operands, and the rest
+      splitVals : (k : Nat) -> List (TermIR.Opnd v' IRCommon.Ty.Val) ->
+                  Maybe (All (TermIR.Opnd v') (replicate k IRCommon.Ty.Val),
+                         List (TermIR.Opnd v' IRCommon.Ty.Val))
+      splitVals Z xs = Just ([], xs)
+      splitVals (S k) [] = Nothing
+      splitVals (S k) (x :: xs) = map (\(fs, rs) => (x :: fs, rs)) (splitVals k xs)
+
+      -- the implementation called with the arguments it takes, and what it
+      -- gives applied to the rest: an implementation written of fewer
+      -- arguments than its type has, as `toPrim` makes one, gives a function
+      bound : {k : Nat} ->
+              TermIR.Var d.sigs (TermIR.MkSig nm IRCommon.Conv.CPS (replicate k IRCommon.Ty.Val) cv) ->
+              List (TermIR.Opnd v' IRCommon.Ty.Val) -> TermIR.Build.End d IRCommon.Conv.CPS False v' l'
+      bound var args = case splitVals k args of
+        Just (first, []) => TermIR.Build.tailCall var first
+        Just (first, rest) => do
+          f <- TermIR.Build.call var first
+          applied f rest
+        Nothing => TermIR.Build.unsupported ("the arguments of " ++ show impl)
+
+  defOf d refs fs (TermIR.MkSig n IRCommon.Conv.CPS [] False) (Constant i body) =
+    case lookup body refs.funs of
+      Just (TermIR.MkSig _ IRCommon.Conv.CPS ps _ ** var) => case decEq ps [] of
+        Yes Refl =>
+          TermIR.Def.Defined
+            (fromMaybe (TermIR.Body.Unsupported "a level outside its context")
+             (TermIR.Build.close (lowerConstant var)))
+        No _ => TermIR.Def.Defined (TermIR.Body.Unsupported ("the value of " ++ show n))
+      _ => TermIR.Def.Defined (TermIR.Body.Unsupported ("the value of " ++ show n))
+    where
+      ||| The constant's cell: its first word 1 once the value, its second
+      ||| word, is there. The value comes from the cell, or from the call of
+      ||| the function that computes it, which the cell then keeps.
+      lowerConstant : TermIR.Var d.sigs (TermIR.MkSig nm IRCommon.Conv.CPS [] cv) ->
+                      TermIR.Build.Closed d IRCommon.Conv.CPS False []
+      lowerConstant var = TermIR.Build.build $ \[] => do
+        a <- TermIR.Build.emit1 (TermIR.Instr.AreaAddr Area.CONSTANTS)
+        ready <- TermIR.Build.emit1 (TermIR.Instr.Load IRCommon.Ty.W64 (cell a 0))
+        TermIR.Build.branch IRCommon.Op.EqR ready (TermIR.Opnd.W 1)
+          (do v <- TermIR.Build.emit1 (TermIR.Instr.Load IRCommon.Ty.Val (cell a 8))
+              TermIR.Build.return v)
+          (do v <- TermIR.Build.call var []
+              -- the area's address again, as no register outlives the call
+              a' <- TermIR.Build.emit1 (TermIR.Instr.AreaAddr Area.CONSTANTS)
+              TermIR.Build.emit0 (TermIR.Instr.Store IRCommon.Ty.Val (cell a' 8) v)
+              TermIR.Build.emit0 (TermIR.Instr.Store IRCommon.Ty.W64 (cell a' 0) (TermIR.Opnd.W 1))
+              TermIR.Build.return v)
+        where
+          cell : TermIR.Opnd v' IRCommon.Ty.W64 -> (word : Int) -> TermIR.Mem v'
+          cell a w = TermIR.MkMem (TermIR.Mem.AtWord a) Nothing (cast (Area.constantOffset (cast i)) + w)
   defOf d refs fs s NoEntry =
     TermIR.Def.Defined (TermIR.Body.Unsupported "a program without __mainExpression")
   defOf d refs fs s _ =
@@ -1556,11 +1647,12 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
 ||| The program of the declarations, the entry first.
 program : {enc : Types.Enc} -> {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} ->
           List Flat.Exp.FlatDef ->
-          Flat.Exp.Shapes -> Linkage.Realised -> (tables : SortedMap Name (Int, Nat)) -> Plan ->
+          Flat.Exp.Shapes -> Linkage.Realised -> (tables : SortedMap Name (Int, Nat)) ->
+          (constants : Nat) -> Plan ->
           (es : List (TermIR.Sig enc, Plan)) ->
             (rs : List (s ** ({0 d : TermIR.Decls enc} -> TermIR.StaticDef d s))) ->
             TermIR.Program.TermProgram enc
-program forms shapes realised tables entry es rs =
+program forms shapes realised tables constants entry es rs =
   case choose
     (Data.Distinct.distinct (map (.name) (mainSig :: map Builtin.fst es))
      && Data.Distinct.distinct (map (.sym) (map DPair.fst rs))) of
@@ -1569,7 +1661,7 @@ program forms shapes realised tables entry es rs =
                      (defs (declsOf es rs) (refsOf (declsOf es rs))
                        (LowerFlat.MkForms (LowerFlat.callees (declsOf es rs) forms) shapes
                          realised.services
-                         realised.externs realised.primitives tables)
+                         realised.externs realised.primitives tables constants)
                            ((mainSig, entry) :: es))
                      (staticDefs (declsOf es rs) rs) (TermIR.Program.MkEntry TermIR.Var.here)
                        IRCommon.ConIds.noConIds)
@@ -1603,9 +1695,9 @@ program forms shapes realised tables entry es rs =
 
 ||| Whether a value of the C type is held as a flat value of the skeleton:
 ||| an integer as its machine type, a `Char`, a `Double`, the world, `()`, a
-||| primitive's `IORes`, a `String` held as ordinary code holds it, and a
+||| primitive's `IORes`, a `String` held as ordinary code holds it, a
 ||| pointer, `Ptr a` or `AnyPtr`, held as ordinary code holds it, an object
-||| of its address.
+||| of its address, and a `Buffer` held as ordinary code holds it.
 export
 cfAgrees : CFType -> Flat.Exp.Skeleton -> Bool
 cfAgrees CFInt (Flat.Exp.SPrim IntType) = True
@@ -1629,6 +1721,8 @@ cfAgrees CFPtr (Flat.Exp.SCon n [Flat.Exp.SCon p _]) =
   &&
     (p == NS (mkNamespace "PrimIO") (UN (Basic "Ptr")) || p
      == NS (mkNamespace "PrimIO") (UN (Basic "AnyPtr")))
+cfAgrees CFBuffer (Flat.Exp.SCon n [Flat.Exp.SCon b _]) =
+  n == Flat.Exp.uniformType && b == NS (mkNamespace "Data.Buffer") (UN (Basic "Buffer"))
 cfAgrees (CFUser t _) (Flat.Exp.SCon n [Flat.Exp.SCon t' _]) = n == Flat.Exp.uniformType && t == t'
 cfAgrees _ _ = False
 
@@ -1642,10 +1736,12 @@ cfAgrees _ _ = False
 ||| and the shapes of its parameters and result are known, and every form
 ||| becomes a `Direct` function.
 |||
-||| A foreign function the runtime implements (`Native.Codegen.Linkage.
-||| foreignFunctions`) becomes the boundary to the runtime's function, which
-||| must take and return, position by position, what the foreign function's
-||| C types say; one that does not is an error.
+||| A foreign function the runtime implements by a flat function (`flat`,
+||| as `Native.Codegen.Linkage.ForeignFunctions` finds them) becomes the
+||| boundary to it, which must take and return, position by position, what
+||| the foreign function's C types say; one that does not is an error. One
+||| it implements by an ordinary function (`implemented`) becomes a call of
+||| it.
 |||
 ||| The runtime's routines, as the loaded runtime realises the contract
 ||| (`Native.Codegen.Linkage.Realised`), are forms among them: a routine the
@@ -1659,21 +1755,44 @@ export
 lowerProgram : (enc : Types.Enc) -> {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Platform ->
                Linkage.Realised -> List Flat.Exp.FlatDef -> Flat.Exp.Shapes ->
                  (tables : SortedMap Name (Int, Nat)) ->
-               List (Name, VMDef) -> Either String (TermIR.Program.TermProgram enc)
-lowerProgram enc platform realised forms shapes tables vmdefs = do
+               (constants : List Name) -> (flat, implemented : List (Name, Name)) ->
+                 List (Name, VMDef) -> Either String (TermIR.Program.TermProgram enc)
+lowerProgram enc platform realised forms shapes tables constants flat implemented vmdefs0 = do
+  let vmdefs = map (\(n, d) => (n, answered d)) vmdefs0
   traverse_ provided (Linkage.Routine.routines {enc} realised)
   traverse_ agrees (mapMaybe boundForeign vmdefs)
   let entryPlan = case Data.List.lookup mainExpression vmdefs of
                     Just (MkVMFun [] body) => FromVM [] body
                     _ => NoEntry
-      planned = mapMaybe plan (filter ((/= mainExpression) . fst) vmdefs)
+      planned = concatMap kept (mapMaybe plan (filter ((/= mainExpression) . fst) vmdefs))
       others = planned
                  ++ [(LowerFlat.formSig fd, Form fd) | fd <- forms]
       boxing = fromList [(nullaryCon c, Nullary c) | c <- toList (concatMap (boxed . snd) planned)]
       statics = Data.SortedMap.toList (foldl mergeLeft boxing (mapMaybe bodyStatics vmdefs))
   pure
-    (program forms shapes realised tables entryPlan others (mapMaybe ready statics))
+    (program forms shapes realised tables (length constants) entryPlan others
+       (mapMaybe ready statics))
   where
+    -- `System.Info`'s externs, which every program of the platform answers
+    -- alike, made the constants they are: the operating system's name and
+    -- the code generator's.
+    answered : VMDef -> VMDef
+    answered (MkVMFun args body) = MkVMFun args (map inst body)
+      where
+        inst : VMInst -> VMInst
+        inst i@(EXTPRIM r p []) =
+          if p == NS (mkNamespace "System.Info") (UN (Basic "prim__os"))
+            then MKCONSTANT r (Str (Platform.osName platform.os))
+          else if p == NS (mkNamespace "System.Info") (UN (Basic "prim__codegen"))
+            then MKCONSTANT r (Str "native")
+          else i
+        inst (CASE r alts dflt) =
+          CASE r (map (\(t, is) => (t, map inst is)) alts) (map (map inst) dflt)
+        inst (CONSTCASE r alts dflt) =
+          CONSTCASE r (map (\(c, is) => (c, map inst is)) alts) (map (map inst) dflt)
+        inst i = i
+    answered d = d
+
     -- A routine the runtime has: its form, of its port's registers.
     provided : Linkage.Routine.RoutineCall enc -> Either String ()
     provided r =
@@ -1694,13 +1813,13 @@ lowerProgram enc platform realised forms shapes tables vmdefs = do
 
     boundForeign : (Name, VMDef) -> Maybe (Name, List CFType, CFType)
     boundForeign (n, MkVMForeign _ fargs ret) =
-      if elem n (map fst (Linkage.ForeignFunctions.foreignFunctions enc))
+      if elem n (map fst flat)
       then Just (n, fargs, ret) else Nothing
     boundForeign _ = Nothing
 
     -- A foreign function and its implementation, position by position.
     agrees : (Name, List CFType, CFType) -> Either String ()
-    agrees (n, fargs, ret) = case Data.List.lookup n (Linkage.ForeignFunctions.foreignFunctions enc)
+    agrees (n, fargs, ret) = case Data.List.lookup n flat
       >>= \f =>
       lookup f byName of
       Nothing => Left ("the runtime has no function that implements " ++ show n)
@@ -1720,7 +1839,7 @@ lowerProgram enc platform realised forms shapes tables vmdefs = do
     boundaryOf n arity = do
       fd <- lookup n byName
         <|>
-          (Data.List.lookup n (Linkage.ForeignFunctions.foreignFunctions enc) >>= \f =>
+          (Data.List.lookup n flat >>= \f =>
            lookup f byName)
       guard (length fd.params == arity)
       ss <- traverse (Flat.Exp.shapeOf shapes . skeleton) fd.params
@@ -1746,14 +1865,34 @@ lowerProgram enc platform realised forms shapes tables vmdefs = do
     boxed (Boundary _ _ ss r) = concatMap nullaries (r :: ss)
     boxed _ = neutral
 
+    -- the parameters of a function of the program, as Idris compiled it
+    arityOf : Name -> Nat
+    arityOf f = case Data.List.lookup f vmdefs0 of
+      Just (MkVMFun args _) => length args
+      _ => 0
+
     plan : (Name, VMDef) -> Maybe (TermIR.Sig enc, Plan)
     plan (n, MkVMFun args body) =
       Just (TermIR.MkSig n IRCommon.Conv.CPS (replicate (length args) IRCommon.Ty.Val) False,
             fromMaybe (FromVM args body) (boundaryOf n (length args)))
     plan (n, MkVMForeign _ fargs _) =
       Just (TermIR.MkSig n IRCommon.Conv.CPS (replicate (length fargs) IRCommon.Ty.Val) False,
-            fromMaybe (Foreign (length fargs)) (boundaryOf n (length fargs)))
+            maybe (fromMaybe (Foreign (length fargs)) (boundaryOf n (length fargs)))
+              (\impl => Implemented (length fargs) impl (arityOf impl))
+              (Data.List.lookup n implemented))
     plan (n, MkVMError _) = Nothing
+
+    cells : SortedMap Name Nat
+    cells = fromList (zip constants [0 .. length constants])
+
+    -- a constant's plan as its cell's, and the function of its value
+    kept : (TermIR.Sig enc, Plan) -> List (TermIR.Sig enc, Plan)
+    kept (s, p@(FromVM [] body)) = case lookup s.name cells of
+      Just i =>
+        [ (s, Constant i (constantValue s.name))
+        , ({ name := constantValue s.name } s, p) ]
+      Nothing => [(s, p)]
+    kept sp = [sp]
 
     ||| The constants a function's locals may hold, and the static objects its
     ||| constants need. A cast of a local holding a constant is folded while

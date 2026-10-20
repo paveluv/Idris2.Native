@@ -660,15 +660,32 @@ copyText str to = do
   h <- headerOf s
   Runtime.Memory.copyRaw (Obj.objectBytes s 0) to (bytesOf h)
 
+||| What a decoder takes of a run of bytes, from one of them: how many,
+||| and whether they are a character as they stand, or one U+FFFD.
+record Decoded where
+  constructor MkDecoded
+  taken : Bits64
+  whole : Bool
+
 %cg native flat Support.String.Utf8.ofText
 ||| A new string of the `len` bytes of UTF-8 at the address, as the system
-||| gave them, copied, ASCII if none has its top bit set.
+||| gave them: copied, ASCII if none has its top bit set; each sequence that
+||| is not a character's replaced by U+FFFD, as Chez's `utf8->string`
+||| replaces it (`decodedAt`), so that a string's bytes are always UTF-8.
+||| A byte-order mark at the start is a character like any other, kept,
+||| where `utf8->string` drops it.
 export covering
 ofText : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.OfText)
 ofText p len = do
   s <- newString len
   seen <- copy s 0 0
-  finish s (seen < 0x80) len
+  if seen < 0x80 then finish s True len else do
+    ok <- wellFormed 0
+    if ok then finish s False len else do
+      n <- replacedBytes 0 0
+      s' <- newString n
+      write s' 0 0
+      finish s' False n
   where
     -- the bytes copied, and the OR of them, whose top bit says whether any
     -- is not ASCII
@@ -678,6 +695,77 @@ ofText p len = do
       b <- Runtime.Memory.loadByteAt p i
       setByte s i b
       copy s (i + 1) (seen .|. b)
+
+    ||| What Chez's `utf8->string` takes of the `len` bytes at the address from
+    ||| byte `i`: a character's bytes, whole; a byte that cannot begin one, or a
+    ||| lead byte whose next byte does not continue it, one byte for U+FFFD; a
+    ||| sequence cut short by a byte that does not continue it, the bytes
+    ||| before that byte; one that runs past the end, the rest; and a sequence
+    ||| of the length its lead says that is no character's shortest form, or a
+    ||| surrogate's, or past U+10FFFF, all its bytes, for one U+FFFD.
+    covering
+    decodedAt : Runtime.Raw -> (len, i : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Decoded
+    decodedAt p len i = do
+      b1 <- Runtime.Memory.loadByteAt p i
+      if b1 < 0x80 then Runtime.Ordo.pure (MkDecoded 1 True)
+        else if b1 >= 0xC0 && b1 <= 0xDF then multiByte b1 2 0x1F
+        else if b1 >= 0xE0 && b1 <= 0xEF then multiByte b1 3 0x0F
+        else if b1 >= 0xF0 && b1 <= 0xF4 then multiByte b1 4 0x07
+        else Runtime.Ordo.pure (MkDecoded 1 False)
+      where
+        -- the code point of the `n` bytes, which all continue the lead: one of
+        -- the length's range, and no surrogate
+        character : (n, x : Bits64) -> Bool
+        character n x =
+          if n == 2 then x >= 0x80
+          else if n == 3 then x >= 0x800 && (x < 0xD800 || x > 0xDFFF)
+          else x >= 0x10000 && x <= 0x10FFFF
+
+        -- the bytes of the sequence from its `k`th, the code point so far
+        covering
+        continued : (n, k, x : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Decoded
+        continued n k x =
+          if k >= n then Runtime.Ordo.pure (MkDecoded n (character n x))
+          else if i + k >= len then Runtime.Ordo.pure (MkDecoded (len - i) False)
+          else do
+            b <- Runtime.Memory.loadByteAt p (i + k)
+            if b .&. 0xC0 /= 0x80 then Runtime.Ordo.pure (MkDecoded k False)
+              else continued n (k + 1) ((x `shiftL` 6) .|. (b .&. 0x3F))
+
+        covering
+        multiByte : (lead, n, mask : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Decoded
+        multiByte b1 n mask = continued n 1 (b1 .&. mask)
+
+    -- whether the bytes from `i` are characters, all of them
+    covering
+    wellFormed : Bits64 -> Runtime.Ordo.Op Runtime.Ordo Bool
+    wellFormed i = if i >= len then Runtime.Ordo.pure True else do
+      d <- decodedAt p len i
+      if d.whole then wellFormed (i + d.taken) else Runtime.Ordo.pure False
+
+    -- the bytes from `i` make, each sequence not a character's the three
+    -- of U+FFFD, added to `n`
+    covering
+    replacedBytes : (i, n : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
+    replacedBytes i n = if i >= len then Runtime.Ordo.pure n else do
+      d <- decodedAt p len i
+      replacedBytes (i + d.taken) (n + (if d.whole then d.taken else 3))
+
+    -- the characters from `i` written from `j`, each sequence not a
+    -- character's as U+FFFD
+    covering
+    write : Obj Types.Kind.STRING -> (i, j : Bits64) -> Runtime.Ordo.Op Runtime.Ordo ()
+    write s i j = if i >= len then Runtime.Ordo.pure () else do
+      d <- decodedAt p len i
+      if d.whole
+        then do
+          Runtime.Memory.copyRaw (Runtime.Raw.offset p i) (Obj.objectBytes s j) d.taken
+          write s (i + d.taken) (j + d.taken)
+        else do
+          setByte s j 0xEF
+          setByte s (j + 1) 0xBF
+          setByte s (j + 2) 0xBD
+          write s (i + d.taken) (j + 3)
 
 ------------------------------------------------------------------------------
 -- Text as numbers

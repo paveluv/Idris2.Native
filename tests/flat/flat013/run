@@ -1,0 +1,4 @@
+. ../../testutils.sh
+
+run Main.idr
+idris2 --cg flat-oracle --exec main Main.idr

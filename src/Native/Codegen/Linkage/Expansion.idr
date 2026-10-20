@@ -44,8 +44,10 @@ data Expansion : Port -> Type where
   ||| The pointer tag of the program's encoding: what a pointer word is
   ||| beyond the object's address.
   PointerTag : Expansion (MkPort [] (Just Port.Word))
-  ||| The address of a per-thread area.
+  ||| The address of an area.
   AreaAddress : Area -> Expansion (MkPort [] (Just Port.Raw))
+  ||| The number of the program's top-level constants.
+  ConstantCount : Expansion (MkPort [] (Just Port.Word))
   ||| The word a uniform value is.
   ValueWord : Expansion (MkPort [Port.Value] (Just Port.Word))
   ||| The uniform value a word is.
@@ -78,6 +80,8 @@ expansion Intrinsic.ArgvArea = AreaAddress Area.ARGV
 expansion Intrinsic.RootsArea = AreaAddress Area.ROOTS
 expansion Intrinsic.NrootsArea = AreaAddress Area.NROOTS
 expansion Intrinsic.RuntimeArea = AreaAddress Area.RUNTIME
+expansion Intrinsic.ConstantsArea = AreaAddress Area.CONSTANTS
+expansion Intrinsic.ConstantCount = ConstantCount
 expansion ValueWord = ValueWord
 expansion WordValue = WordValue
 expansion Intrinsic.Syscall6 = Syscall

@@ -282,10 +282,10 @@ seedRodata tl =
 ||| largest arity, which the program's areas cover.
 export
 seedAreas : Linkage.Areas
-seedAreas = Linkage.MkAreas 0 2 0
+seedAreas = Linkage.MkAreas 0 2 0 0
 
-||| The zero-initialised per-thread areas, 8-aligned, in bss: `ARGS`, then
-||| `ROOTS`, `NROOTS`, `SCRATCH`, `STACK_LIMIT`, `ARGV` and `RUNTIME`.
+||| The zero-initialised areas, 8-aligned, in bss: `ARGS`, then `ROOTS`,
+||| `NROOTS`, `SCRATCH`, `STACK_LIMIT`, `ARGV`, `RUNTIME` and `CONSTANTS`.
 export
 seedBss : Linkage.Areas -> List (Linkage.Sym, Int)
 seedBss a =
@@ -296,8 +296,10 @@ seedBss a =
     (Linkage.Sym.SymRoots, roots), (Linkage.Sym.SymNRoots, nroots),
       (Linkage.Sym.SymScratch, nroots + 8),
       (Linkage.Sym.SymStackLimit, limit)
-     , (Linkage.Sym.SymArgv, limit + 8), (Linkage.Sym.SymRuntime, limit + 16) ]
+     , (Linkage.Sym.SymArgv, limit + 8), (Linkage.Sym.SymRuntime, limit + 16)
+     , (Linkage.Sym.SymConstants, limit + 16 + 8 * cast Area.runtimeWords) ]
 
 export
 seedBssSize : Linkage.Areas -> Int
-seedBssSize a = 8 * (cast (a.args + a.roots + 1 + a.scratch + 2) + cast Area.runtimeWords)
+seedBssSize a =
+  8 * (cast (a.args + a.roots + 1 + a.scratch + 2 + a.constants) + cast Area.runtimeWords)

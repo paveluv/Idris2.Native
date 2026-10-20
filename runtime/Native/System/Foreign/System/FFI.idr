@@ -1,10 +1,10 @@
-||| The foreign functions of `base`'s `System.FFI`, as the runtime implements
-||| them: `malloc` and `free` over the process's allocator of memory outside
-||| the heap (`Native.Runtime.Alloc.Block`), each a flat function of the
-||| foreign one's name and type (`Native.Support.Foreign.System` says how
+||| The foreign functions of `base`'s `System.FFI`, as the system tier
+||| implements them: `malloc` and `free` over the process's allocator of
+||| memory outside the heap (`Native.Runtime.Alloc.Block`), each a flat
+||| function of the foreign one's name and type (`Native.System` says how
 ||| they are bound). A block is a pointer as ordinary code holds one
 ||| (`Native.Support.Ptr`).
-module Native.Support.Foreign.System.FFI
+module Native.System.Foreign.System.FFI
 
 import Native.Flat.Uniform as Flat
 import Native.Runtime.Alloc.Block
@@ -19,7 +19,7 @@ import Native.Types.Represents
 
 %default total
 
-%cg native flat Support.Foreign.System.FFI.prim__malloc
+%cg native flat System.Foreign.System.FFI.prim__malloc
 ||| `malloc`: a block of at least `size` bytes, aligned to 16, its contents
 ||| unspecified; the null pointer if there is no memory for it, or for a
 ||| negative size, which C's `size_t` would take for a huge one.
@@ -29,17 +29,18 @@ prim__malloc size w = let (Runtime.MkOrdo # r) = mallocOp size Runtime.MkOrdo in
   where
     covering
     mallocOp : Int -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform AnyPtr)
-    mallocOp n = if n < 0 then Ptr.nullPtr else
+    mallocOp n = if n < 0 then Support.Ptr.nullPtr else
       -- lint: allow sealed-allocator: the program owns the block, and frees it with `free`
-      Runtime.Alloc.Block.allocate (cast n) (Ptr.nullPtr) (\b => do
+      Runtime.Alloc.Block.allocate (cast n) (Support.Ptr.nullPtr) (\b => do
         a <- Runtime.Alloc.Block.releaseBlock b
-        Ptr.newPtr a)
+        Support.Ptr.newPtr a)
 
-%cg native flat Support.Foreign.System.FFI.prim__free
+%cg native flat System.Foreign.System.FFI.prim__free
 ||| `free`: a block `malloc` gave back; the null pointer is no block. An
 ||| address `malloc` did not give ends the program. A pointer that is an
 ||| object of the heap (`Support.Ptr`), which `base` frees once it has read
-||| it, is the collector's, and freeing it does nothing.
+||| it, is the collector's, and freeing it does nothing, as freeing a handle
+||| does, which the system tier closes.
 export covering
 prim__free : Flat.Uniform AnyPtr -> PrimIO ()
 prim__free p w = let (Runtime.MkOrdo # ()) = freeOp p Runtime.MkOrdo in MkIORes () w
@@ -47,7 +48,7 @@ prim__free p w = let (Runtime.MkOrdo # ()) = freeOp p Runtime.MkOrdo in MkIORes 
     covering
     freeOp : Flat.Uniform AnyPtr -> Runtime.Ordo.Op Runtime.Ordo ()
     freeOp p = do
-      target <- Ptr.pointee p
+      target <- Support.Ptr.pointee p
       case target of
         Address a =>
           if Runtime.Raw.isNull a then Runtime.Ordo.pure () else
@@ -56,3 +57,5 @@ prim__free p w = let (Runtime.MkOrdo # ()) = freeOp p Runtime.MkOrdo in MkIORes 
             Runtime.Alloc.Block.free (Runtime.Alloc.Block.adoptBlock a)
         -- the collector keeps an object of the heap given for a pointer
         HeapString _ => Runtime.Ordo.pure ()
+        -- a handle is the system tier's to close, by its own functions
+        Handle _ => Runtime.Ordo.pure ()

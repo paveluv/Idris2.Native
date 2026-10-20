@@ -593,12 +593,13 @@ fileRules f ms ds =
     ||| port (`Native.Intrinsic`), `service__` for an OS service's
     ||| (`Native.Service`), `string__` for a string routine's
     ||| (`Native.Types.StringRoutine`). `prim__` stays Idris's primitives' and the
-    ||| libraries' foreign functions', which the support tier implements by
-    ||| their own names.
+    ||| libraries' foreign functions', which the support tier and the system
+    ||| libraries implement by their own names.
     externName : SourceFile -> List Declared -> Mentions -> List Finding
     externName f ds ms =
       let m = show f.mod.moduleNS in
-      if not (isPrefixOf "Native.Runtime" m || isPrefixOf "Native.Support" m) then []
+      if not (isPrefixOf "Native.Runtime" m || isPrefixOf "Native.Support" m
+              || isPrefixOf "Native.System" m) then []
         else concatMap one ds
       where
         isExtern : PFnOpt -> Bool

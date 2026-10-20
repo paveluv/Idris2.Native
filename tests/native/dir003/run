@@ -1,0 +1,7 @@
+. ../../testutils.sh
+
+# A directory's entries, listed and read one by one, and the failures.
+idris2 --cg native -o dir Dir.idr > /dev/null
+rm -rf listed
+./build/exec/dir
+rm -rf listed

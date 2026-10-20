@@ -41,10 +41,12 @@ import Libraries.Data.WithData
 ||| the heap, the calling convention, the OS services, which know objects by
 ||| their shapes), `Support` (the runtime's support tier: the primitive
 ||| types and the libraries' foreign functions, which know their types),
-||| each a group under the product's root, `Native`, the contract several;
-||| and the linter's own, of a root of its own.
+||| `System` (the system tier: the libraries' OS surface, files and the
+||| like, written as ordinary Idris over the two), each a group under the
+||| product's root, `Native`, the contract several; and the linter's own, of
+||| a root of its own.
 data Layer = DataLayer | ContractLayer | TypesLayer | FlatLayer | CodegenLayer | RuntimeLayer
-  | SupportLayer | LintLayer
+  | SupportLayer | SystemLayer | LintLayer
 
 Eq Layer where
   DataLayer == DataLayer = True
@@ -54,6 +56,7 @@ Eq Layer where
   CodegenLayer == CodegenLayer = True
   RuntimeLayer == RuntimeLayer = True
   SupportLayer == SupportLayer = True
+  SystemLayer == SystemLayer = True
   LintLayer == LintLayer = True
   _ == _ = False
 
@@ -69,8 +72,8 @@ allowed ours importer imported = case layerOf importer of
     ||| The groups of the contract.
     contract : List String
     contract =
-      ["HeapObj", "Area", "Port", "Routine", "Intrinsic", "Service", "Failure", "Primitive",
-       "Table"]
+      ["HeapObj", "Area", "Port", "Routine", "Intrinsic", "Service", "Failure", "OpenFlag",
+       "Primitive", "Table"]
 
     ||| A module's layer: the group under the product's root its name is in
     ||| (`Codegen` for `Native.Codegen.TermIR.Instr`), or the linter's.
@@ -81,7 +84,7 @@ allowed ours importer imported = case layerOf importer of
         else lookup g
           [("Data", DataLayer), ("Types", TypesLayer), ("Flat", FlatLayer),
            ("Codegen", CodegenLayer),
-                       ("Runtime", RuntimeLayer), ("Support", SupportLayer)]
+           ("Runtime", RuntimeLayer), ("Support", SupportLayer), ("System", SystemLayer)]
       ("Lint" :: _) => Just LintLayer
       _ => Nothing
 
@@ -90,8 +93,9 @@ allowed ours importer imported = case layerOf importer of
     ||| those and itself, the type layer those and the contract; the
     ||| runtime's core only what it shares with the code generator's core,
     ||| the contract, so it knows no type; its support tier the core, the
-    ||| contract and the type layer, and nothing imports the support tier;
-    ||| and of the flat fragment, the contract, the type layer and the
+    ||| contract and the type layer, and nothing imports the support tier but
+    ||| the system tier, which takes all of them, and the libraries, as any
+    ||| library may; and of the flat fragment, the contract, the type layer and the
     ||| runtime take `Native.Flat.Uniform` alone (`mayImport`).
     imports : Layer -> List Layer
     imports DataLayer = [DataLayer]
@@ -101,6 +105,7 @@ allowed ours importer imported = case layerOf importer of
     imports CodegenLayer = [DataLayer, ContractLayer, TypesLayer, FlatLayer, CodegenLayer]
     imports RuntimeLayer = [ContractLayer, RuntimeLayer]
     imports SupportLayer = [ContractLayer, TypesLayer, RuntimeLayer, SupportLayer]
+    imports SystemLayer = [ContractLayer, TypesLayer, RuntimeLayer, SupportLayer, SystemLayer]
     imports LintLayer = [LintLayer]
 
     ||| Whether a layer's module may import a module: one of the layers it
@@ -110,7 +115,9 @@ allowed ours importer imported = case layerOf importer of
     mayImport l m =
       maybe False (`elem` imports l) (layerOf m)
         ||
-          (elem l (the (List Layer) [ContractLayer, TypesLayer, RuntimeLayer, SupportLayer]) && m
+          (elem l
+            (the (List Layer) [ContractLayer, TypesLayer, RuntimeLayer, SupportLayer, SystemLayer])
+           && m
            == "Native.Flat.Uniform")
 
 moduleOf : SourceFile -> String

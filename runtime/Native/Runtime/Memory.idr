@@ -49,6 +49,8 @@ import Native.Port
 %extern intrinsic__rootsArea : PortTy.ExternTy (Intrinsic.port Intrinsic.RootsArea)
 %extern intrinsic__nrootsArea : PortTy.ExternTy (Intrinsic.port Intrinsic.NrootsArea)
 %extern intrinsic__runtimeArea : PortTy.ExternTy (Intrinsic.port Intrinsic.RuntimeArea)
+%extern intrinsic__constantsArea : PortTy.ExternTy (Intrinsic.port Intrinsic.ConstantsArea)
+%extern intrinsic__constantCount : PortTy.ExternTy (Intrinsic.port Intrinsic.ConstantCount)
 %extern intrinsic__valueWord : PortTy.ExternTy (Intrinsic.port Intrinsic.ValueWord)
 %extern intrinsic__wordValue : PortTy.ExternTy (Intrinsic.port Intrinsic.WordValue)
 
@@ -179,6 +181,16 @@ export %inline
 runtimeArea : Ordo.Op Ordo Raw
 runtimeArea = intrinsic__runtimeArea
 
+||| The program's top-level constants (`Area.CONSTANTS`): their cells, and
+||| how many there are.
+export %inline
+constantsArea : Ordo.Op Ordo Raw
+constantsArea = intrinsic__constantsArea
+
+export %inline
+constantCount : Ordo.Op Ordo Bits64
+constantCount = intrinsic__constantCount
+
 ||| The program's arguments, as the system put them at the stack pointer of
 ||| the program's entry, which `ARGV` holds: their count, and argument `n`'s
 ||| bytes, ended by a zero byte.
@@ -234,16 +246,40 @@ export %inline
 storeByteAt : Raw -> (offset, value : Bits64) -> Ordo.Op Ordo ()
 storeByteAt = intrinsic__store8
 
-||| `count` bytes copied from raw memory to raw memory, the two apart.
+||| `count` bytes copied from raw memory to raw memory, the copy where it
+||| overlaps the bytes it copies too, as the C library's `memmove`: first
+||| to last, or last to first where the copy starts inside them.
 export covering
 copyRaw : (from, to : Raw) -> (count : Bits64) -> Ordo.Op Ordo ()
-copyRaw from to n = go 0
+copyRaw from to n =
+  if Raw.rawWord to > Raw.rawWord from && Raw.rawWord to - Raw.rawWord from < n then down n
+    else up 0
+  where
+    covering
+    up : Bits64 -> Ordo.Op Ordo ()
+    up i = if i >= n then Ordo.pure () else do
+      c <- loadByteAt from i
+      storeByteAt to i c
+      up (i + 1)
+
+    -- the bytes below `i`, the last first
+    covering
+    down : Bits64 -> Ordo.Op Ordo ()
+    down i = if i == 0 then Ordo.pure () else do
+      c <- loadByteAt from (i - 1)
+      storeByteAt to (i - 1) c
+      down (i - 1)
+
+||| `count` bytes of raw memory set to the byte, as the C library's
+||| `memset`.
+export covering
+fillRaw : (to : Raw) -> (count, byte : Bits64) -> Ordo.Op Ordo ()
+fillRaw to n b = go 0
   where
     covering
     go : Bits64 -> Ordo.Op Ordo ()
     go i = if i >= n then Ordo.pure () else do
-      c <- loadByteAt from i
-      storeByteAt to i c
+      storeByteAt to i b
       go (i + 1)
 
 ------------------------------------------------------------------------------
@@ -311,6 +347,14 @@ fixnumWord : Bits64 -> Ordo.Op Ordo Bits64
 fixnumWord n = do
   tag <- pointerTag
   Ordo.pure (Bits.shiftL n 1 + (1 - tag))
+
+||| Whether a value's word is an object's address, with the pointer tag,
+||| and not a fixnum.
+export
+isPointer : (word : Bits64) -> Ordo.Op Ordo Bool
+isPointer w = do
+  tag <- pointerTag
+  Ordo.pure (w .&. 1 == tag)
 
 ------------------------------------------------------------------------------
 -- The system's memory

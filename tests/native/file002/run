@@ -1,0 +1,6 @@
+. ../../testutils.sh
+
+# A file used after it is closed, while another has taken its slot.
+idris2 --cg native -o stale Stale.idr > /dev/null
+./build/exec/stale
+rm -f first.txt second.txt

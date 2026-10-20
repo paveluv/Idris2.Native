@@ -39,8 +39,11 @@ data Intrinsic
   | ||| The pointer tag of the program's encoding: what a pointer word is
     ||| beyond the object's address.
     PointerTag
-  | ||| The address of a per-thread area (`Native.Area`).
-    StackLimitArea | ArgvArea | RootsArea | NrootsArea | RuntimeArea
+  | ||| The address of an area (`Native.Area`).
+    StackLimitArea | ArgvArea | RootsArea | NrootsArea | RuntimeArea | ConstantsArea
+  | ||| The number of the program's top-level constants, the cells of
+    ||| `Area.CONSTANTS`, which the code generator knows.
+    ConstantCount
   | ||| The word a value is, as ordinary code holds it, and the value a word
     ||| is: of any type, so the externs name none.
     ValueWord | WordValue
@@ -70,6 +73,8 @@ port ArgvArea = MkPort [] (Just Port.Raw)
 port RootsArea = MkPort [] (Just Port.Raw)
 port NrootsArea = MkPort [] (Just Port.Raw)
 port RuntimeArea = MkPort [] (Just Port.Raw)
+port ConstantsArea = MkPort [] (Just Port.Raw)
+port ConstantCount = MkPort [] (Just Port.Word)
 port ValueWord = MkPort [Port.Value] (Just Port.Word)
 port WordValue = MkPort [Port.Word] (Just Port.Value)
 port Syscall6 =
@@ -85,7 +90,8 @@ allIntrinsics : List Intrinsic
 allIntrinsics =
   [ Load64, Load32, Load16, Load8, Store64, Store32, Store16, Store8
   , GetHp, SetHp, GetHpLim, SetHpLim, GetK, SetK, PointerTag
-  , StackLimitArea, ArgvArea, RootsArea, NrootsArea, RuntimeArea, ValueWord, WordValue, Syscall6 ]
+  , StackLimitArea, ArgvArea, RootsArea, NrootsArea, RuntimeArea, ConstantsArea, ConstantCount
+  , ValueWord, WordValue, Syscall6 ]
 
 ||| The list holds every intrinsic.
 complete : (i : Intrinsic) -> Elem i Intrinsic.allIntrinsics
@@ -109,6 +115,8 @@ complete ArgvArea = %search
 complete RootsArea = %search
 complete NrootsArea = %search
 complete RuntimeArea = %search
+complete ConstantsArea = %search
+complete ConstantCount = %search
 complete ValueWord = %search
 complete WordValue = %search
 complete Syscall6 = %search

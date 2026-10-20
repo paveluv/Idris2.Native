@@ -13,7 +13,7 @@
 |||
 ||| Names and values come as bytes and counts, so that this module reads no
 ||| string: the system's text of a string (`Support.Text`) gives them.
-module Native.Support.Environment
+module Native.System.Environment
 
 import Native.Runtime.Alloc.Block
 import Native.Runtime.Alloc.Blocks

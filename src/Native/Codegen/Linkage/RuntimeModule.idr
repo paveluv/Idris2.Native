@@ -1,10 +1,13 @@
 ||| Where the runtime library's modules are: its core's under one root
 ||| (`runtimeModule`), its support tier's under another (`supportModule`),
-||| both the runtime's part of the project's.
+||| each system library's under its own (`systemModule`), all the runtime's
+||| part of the project's.
 |||
 ||| Part of what generated code, the runtime and the linker agree on
 ||| (`Native.Codegen.Linkage.Routine` says what it is).
 module Native.Codegen.Linkage.RuntimeModule
+
+import Native.Codegen.Linkage.SystemLibrary
 
 import Core.Name.Namespace
 import Data.String
@@ -44,12 +47,19 @@ public export
 supportModule : String -> Namespace
 supportModule = under supportRoot
 
-||| Whether a namespace is the runtime library's, of either tier.
+||| A module of a system library (`SystemLibrary`), by its name under its
+||| root.
+public export
+systemModule : SystemLibrary -> String -> Namespace
+systemModule lib = under (SystemLibrary.systemRoot lib)
+
+||| Whether a namespace is the runtime library's, of any tier.
 public export
 inRuntime : Namespace -> Bool
 inRuntime ns = let s =
                      show ns in any (\r => s == r || isPrefixOf (r ++ ".") s)
-                       [runtimeRoot, supportRoot]
+                       ([runtimeRoot, supportRoot]
+                        ++ map SystemLibrary.systemRoot SystemLibrary.allSystemLibraries)
 
 ||| The support tier's module that lays strings out under the encoding: the
 ||| one module of the runtime that reads a string's header or bytes. Every
