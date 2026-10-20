@@ -132,7 +132,7 @@ reportedMark = "flat-errors-reported"
 export
 markedForms : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} ->
               (primitives : Ref Ctxt Defs -> Core (List Name)) -> (load : Core ()) ->
-                Core (Maybe (NameMap Exp.FlatDef))
+              Core (Maybe (NameMap Exp.FlatDef))
 markedForms primitives load
     = do own <- getDirectives markingCG
          marked <- Translate.flatNames own

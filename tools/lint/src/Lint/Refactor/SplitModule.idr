@@ -118,13 +118,16 @@ splitModule args =
         let cs = Concept.conceptsOf s.file s.declared in
         if all (\n => any (\c => c.name == n) cs) names
           then
-            [Refactoring.candidate ("split " ++ joinBy ", " names ++ " into " ++ into) (plan p s into names cs)]
+            [Refactoring.candidate ("split " ++ joinBy ", " names ++ " into " ++ into)
+              (plan p s into names cs)]
           else []
       _ => []
       where
         -- a declaration's lines, from what is attached above it
         rangeOf : Subject -> Rules.Declared -> (Int, Int)
-        rangeOf s d = let (a, b) = Span.lineSpan d.decl.fc in (Extent.attachedFrom (Subject.linesOf s) a, b)
+        rangeOf s d = let (a, b) =
+                            Span.lineSpan d.decl.fc in
+                              (Extent.attachedFrom (Subject.linesOf s) a, b)
 
         -- a range taken out, with a blank line after it if one is before
         -- it, or the blank lines before it if nothing but blank lines
@@ -133,12 +136,14 @@ splitModule args =
         deletion s (a, b) =
           if all (\l => trim l == "") (drop (cast (b + 1)) (Subject.linesOf s))
             then Edit.deleteLines (blankFrom a) b
-          else if trim (Subject.lineOf s (b + 1)) == "" && (a == 0 || trim (Subject.lineOf s (a - 1)) == "")
+          else if trim (Subject.lineOf s (b + 1)) == ""
+            && (a == 0 || trim (Subject.lineOf s (a - 1)) == "")
             then Edit.deleteLines a (b + 1)
           else Edit.deleteLines a b
           where
             blankFrom : Int -> Int
-            blankFrom l = if l > 0 && trim (Subject.lineOf s (l - 1)) == "" then blankFrom (l - 1) else l
+            blankFrom l = if l > 0 && trim (Subject.lineOf s (l - 1)) == "" then blankFrom (l - 1)
+              else l
 
         importLine : String -> String
         importLine m = "import " ++ m
@@ -194,7 +199,8 @@ splitModule args =
             block ls = ls ++ [""]
 
             importsOf : List String
-            importsOf = map (\i => trim (Subject.lineOf s (fst (Span.lineSpan i.loc)))) s.file.mod.imports
+            importsOf =
+              map (\i => trim (Subject.lineOf s (fst (Span.lineSpan i.loc)))) s.file.mod.imports
 
             piece : (Int, Int) -> List String
             piece (a, b) = Subject.linesBetween s a b

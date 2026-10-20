@@ -995,5 +995,6 @@ readDouble u = do
                           d <- Double.Limbs.newLimbs
                           sticky <- gatherDigits s i0 sc.end sc.lead 769 d
                           let kept = if sc.significant > 769 then 769 else sc.significant
-                          Double.Between.between d sticky (e + cast sc.whole - cast sc.lead - cast kept) b
+                          Double.Between.between d sticky
+                            (e + cast sc.whole - cast sc.lead - cast kept) b
              Runtime.Ordo.pure (Primitive.DoubleBits.bitsDouble (bits .|. sign))

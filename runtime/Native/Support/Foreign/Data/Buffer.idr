@@ -208,7 +208,8 @@ prim__getInt b offset w =
 export
 prim__setDouble : Flat.Uniform Buffer -> (offset : Int) -> Double -> PrimIO ()
 prim__setDouble b offset v w =
-  let (Runtime.MkOrdo # ()) = BufferObj.store 8 b offset (Primitive.DoubleBits.doubleBits v) Runtime.MkOrdo
+  let (Runtime.MkOrdo # ()) =
+        BufferObj.store 8 b offset (Primitive.DoubleBits.doubleBits v) Runtime.MkOrdo
   in MkIORes () w
 
 %cg native flat Support.Foreign.Data.Buffer.prim__getDouble

@@ -31,13 +31,13 @@ import Native.Types.StringRoutine
 %default total
 
 %extern string__textBytes : Runtime.PortTy.ExternTy
-  (Types.StringRoutine.port Types.StringRoutine.TextBytes)
+                            (Types.StringRoutine.port Types.StringRoutine.TextBytes)
 %extern string__textAddress : Runtime.PortTy.ExternTy
-  (Types.StringRoutine.port Types.StringRoutine.TextAddress)
+                              (Types.StringRoutine.port Types.StringRoutine.TextAddress)
 %extern string__copyText : Runtime.PortTy.ExternTy
-  (Types.StringRoutine.port Types.StringRoutine.CopyText)
+                           (Types.StringRoutine.port Types.StringRoutine.CopyText)
 %extern string__ofText : Runtime.PortTy.ExternTy
-  (Types.StringRoutine.port Types.StringRoutine.OfText)
+                         (Types.StringRoutine.port Types.StringRoutine.OfText)
 
 ||| The bytes of a string's text as the system's.
 export %inline
@@ -78,7 +78,7 @@ zeroEndedText p = do
 export %inline covering
 withText : Flat.Uniform String -> (none : Runtime.Ordo.Op Runtime.Ordo a) ->
            (use : Runtime.Raw -> Bits64 -> Runtime.Ordo.Op Runtime.Ordo a) ->
-             Runtime.Ordo.Op Runtime.Ordo a
+           Runtime.Ordo.Op Runtime.Ordo a
 withText s none use = do
   n <- string__textBytes s
   own <- string__textAddress s

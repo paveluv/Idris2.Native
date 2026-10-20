@@ -22,7 +22,8 @@ import Lint.Source
 ||| `order-imports`: the file's imports in order, when they are not.
 export
 orderImports : Refactoring
-orderImports = Refactoring.fileRefactoring "order-imports" "put each file's imports in order" candidates
+orderImports =
+  Refactoring.fileRefactoring "order-imports" "put each file's imports in order" candidates
   where
     ||| The file's lines with its imports in order, in their blocks
     ||| (`importBlock`): the public ones, those of the module's own group, then
@@ -82,4 +83,5 @@ orderImports = Refactoring.fileRefactoring "order-imports" "put each file's impo
           ordered = orderedImports s.file ls
       in if ordered == ls then []
         else
-          [Refactoring.candidate "imports" (Right (Change.inFile s.file.path [Edit.replaceAll s.text (unlines ordered)]))]
+          [Refactoring.candidate "imports"
+            (Right (Change.inFile s.file.path [Edit.replaceAll s.text (unlines ordered)]))]

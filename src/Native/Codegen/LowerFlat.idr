@@ -562,7 +562,7 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
             -- the instructions an expansion stands for, on its port's operands
             expand : Linkage.Expansion p ->
                      All (TermIR.Opnd v) (Linkage.Routine.portParams {enc} p) ->
-                    B (Value enc v)
+                     B (Value enc v)
             expand (Linkage.Expansion.Load Linkage.Expansion.Whole) [base, off] = do
               a <- TermIR.Build.emit1 (TermIR.Instr.Arith Add base off)
               word <$> TermIR.Build.emit1
@@ -594,7 +594,8 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
               pure (word (TermIR.Opnd.W (cast (HeapObj.ValEnc.pointerTag enc.val))))
             expand (Linkage.Expansion.AreaAddress a) [] =
               word <$> TermIR.Build.emit1 (TermIR.Instr.AreaAddr a)
-            expand Linkage.Expansion.ConstantCount [] = pure (word (TermIR.Opnd.W (cast pr.constants)))
+            expand Linkage.Expansion.ConstantCount [] =
+              pure (word (TermIR.Opnd.W (cast pr.constants)))
             -- a uniform value and a word: the conversions, so this module's
             -- functions alone
             expand Linkage.Expansion.ValueWord [u] = case m of
@@ -955,8 +956,8 @@ export
 lowerForm : {enc : Types.Enc} -> (0 d : TermIR.Decls enc) -> Forms enc d ->
             (fd : Flat.Exp.FlatDef) ->
             TermIR.Build.Closed d (IRCommon.Conv.Direct (tys fd.result) False)
-              (Linkage.ConvertsIn.convertsIn fd.name)
-              (tys (paramsLayout fd.params))
+            (Linkage.ConvertsIn.convertsIn fd.name)
+            (tys (paramsLayout fd.params))
 lowerForm d pr fd = TermIR.Build.build $ \xs =>
   if calls fd.name fd.body
      then TermIR.Build.loop (tys (paramsLayout fd.params)) xs $ \again,

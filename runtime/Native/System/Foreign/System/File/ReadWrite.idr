@@ -38,7 +38,8 @@ prim__readChars n p = toPrim $
   if n <= 0 then pure Call.nullString.value else
     File.withFile p Call.nullString.value (\_, f => do
       s <- File.readChars f n
-      pure (if s == "" then Call.nullString.value else (Call.stringPointer (Flat.MkUniform s)).value))
+      pure
+        (if s == "" then Call.nullString.value else (Call.stringPointer (Flat.MkUniform s)).value))
 
 ||| `fGetChar`: the file's next byte, or -1 at its end or for a read that
 ||| fails, as the C library's `fgetc`.

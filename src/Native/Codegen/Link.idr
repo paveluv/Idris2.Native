@@ -35,7 +35,7 @@ export
 linkProgram : (enc : Types.Enc) -> {auto 0 _ : HeapObj.ValEnc.HasFixnums enc.val} ->
               (window : Int) -> (areas : Linkage.Areas) -> (program : List X86.Asm.Instr) ->
               (rodata : List (X86.Asm.Label, List Bits8)) ->
-                Either (List X86.Encode.AsmProblem) ELF.Image
+              Either (List X86.Encode.AsmProblem) ELF.Image
 linkProgram enc window areas program items =
   let text = Seed.seedText enc window ++ program
       tl = X86.Encode.layout ELF.textBase text
@@ -74,7 +74,7 @@ windowBytes = 4 * 1024 * 1024
 export
 linkWith : (enc : Types.Enc) -> {auto 0 _ : HeapObj.ValEnc.HasFixnums enc.val} ->
            (window : Int) -> (program : List X86.Asm.Instr) ->
-             Either (List X86.Encode.AsmProblem) ELF.Image
+           Either (List X86.Encode.AsmProblem) ELF.Image
 linkWith enc window program = linkProgram enc window Seed.seedAreas program []
 
 ||| `linkWith` the default window.

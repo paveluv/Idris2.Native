@@ -70,7 +70,8 @@ qualifyNames =
     ||| writes the module's key type or the type's constructor.
     aliasFor : (uses : List (String, String)) -> Qualification.Imported -> Maybe String
     aliasFor uses i = case last' i.path of
-      Just m => if any (\(d, n) => d == i.name && Qualifier.keyNamed m n) uses then Qualifier.aliasAt i.path
+      Just m => if any (\(d, n) => d == i.name && Qualifier.keyNamed m n) uses
+        then Qualifier.aliasAt i.path
         else Nothing
       Nothing => Nothing
 
@@ -107,4 +108,5 @@ qualifyNames =
             imports = Finding.joined (map (importEdits s uses) is)
             named = nubBy (\a, b => a.from == b.from) (bare ++ requalified ++ imports)
             edits = named ++ Edit.realigned s.text named
-        in if null edits then [] else [Refactoring.candidate "names" (Right (Change.inFile s.file.path edits))]
+        in if null edits then []
+          else [Refactoring.candidate "names" (Right (Change.inFile s.file.path edits))]

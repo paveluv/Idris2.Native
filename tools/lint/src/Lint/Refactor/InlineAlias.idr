@@ -187,7 +187,8 @@ inlineAlias args =
                      d <- definerOf p m x
                      case d of
                        Just d' =>
-                         Right (at (joinBy "." (Qualifier.pathFrom (nameOf t) d') ++ "." ++ x), Just d')
+                         Right (at (joinBy "." (Qualifier.pathFrom (nameOf t) d') ++ "." ++ x),
+                                Just d')
                        Nothing => Right (at x, Nothing)
                _ => Right (at (show n), Nothing)
 
@@ -203,7 +204,8 @@ inlineAlias args =
             longest
               (List.filter (\u => isAlias p m base t (snd u.called) && ours (fst u.called))
                t.applied)
-      case List.filter (\(fc, _) => not (any (\u => Span.bounds (fst u.called) == Span.bounds fc) uses))
+      case List.filter
+        (\(fc, _) => not (any (\u => Span.bounds (fst u.called) == Span.bounds fc) uses))
         refs of
         ((fc, _) :: _) => Left ("it is written unapplied " ++ place t fc)
         [] => pure ()
@@ -233,7 +235,9 @@ inlineAlias args =
         (List.filter (\t => nameOf t /= m) p.files)
       own <- fileEdits p m base a ex s
       pure
-        (MkChange ((s.file.path, Extent.cut (Subject.linesOf s) ex :: own) :: List.filter (not . null . snd) edits)
+        (MkChange
+          ((s.file.path, Extent.cut (Subject.linesOf s) ex :: own)
+           :: List.filter (not . null . snd) edits)
          [] [])
 
     candidates : Project -> Subject -> List Refactoring.Candidate

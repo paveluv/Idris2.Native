@@ -58,14 +58,14 @@ data PBody : Decls enc -> IRCommon.Conv enc -> Bool -> (v : IRCommon.Ty enc -> T
   PIfFixnums : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} ->
                {n : Nat} -> Vect (S n) (Opnd v IRCommon.Ty.Val) ->
                (All v (replicate (S n) (IRCommon.Ty.Fix {enc})) -> PBody d c m v l) ->
-                 PBody d c m v l ->
-                 PBody d c m v l
+               PBody d c m v l ->
+               PBody d c m v l
   PArithOv : {t : IRCommon.Ty enc} -> {auto 0 int : IsInt t} -> OvOp -> Opnd v t -> Opnd v t ->
              (v t -> PBody d c m v l) -> PBody d c m v l -> PBody d c m v l
   PTagOv : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} ->
            Opnd v IRCommon.Ty.W64 -> (v (IRCommon.Ty.Fix {enc}) -> PBody d c m v l) ->
-             PBody d c m v l ->
-             PBody d c m v l
+           PBody d c m v l ->
+           PBody d c m v l
   PSwitch : {auto 0 int : IsInt t} -> Opnd v t -> (keys : List Int64) ->
             {auto 0 ok : So (distinct keys && keysFit t keys)} ->
             All (\_ => PBody d c m v l) keys -> PBody d c m v l -> PBody d c m v l
@@ -118,7 +118,7 @@ Monad (Build d c m v l) where
 ||| Code that ends the body: it never reaches the rest.
 public export
 0 End : Decls enc -> IRCommon.Conv enc -> Bool -> (IRCommon.Ty enc -> Type) ->
-  (List (IRCommon.Ty enc) -> Type) -> Type
+        (List (IRCommon.Ty enc) -> Type) -> Type
 End d c m v l = Build d c m v l Void
 
 ||| The body that code ending in a terminator makes.
@@ -208,8 +208,8 @@ unsupported s = MkBuild (\_ => PUnsupported s)
 ||| A jump to a block with its parameters.
 public export
 0 Jumper : Decls enc -> IRCommon.Conv enc -> Bool -> (IRCommon.Ty enc -> Type) ->
-  (List (IRCommon.Ty enc) -> Type) ->
-  List (IRCommon.Ty enc) -> Type
+           (List (IRCommon.Ty enc) -> Type) ->
+           List (IRCommon.Ty enc) -> Type
 Jumper d c m v l ps = All (Opnd v) ps -> End d c m v l
 
 jumpTo : l ps -> Jumper d c m v l ps
@@ -257,7 +257,7 @@ export
 ifFixnums : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> {n : Nat} ->
             Vect (S n) (Opnd v IRCommon.Ty.Val) ->
             (All (Opnd v) (replicate (S n) (IRCommon.Ty.Fix {enc})) -> End d c m v l) ->
-              End d c m v l -> End d c m v l
+            End d c m v l -> End d c m v l
 ifFixnums vs yes no = case variables vs of
     [] => yes (fixes (fill vs []))
     (t :: ts) => MkBuild (\_ => PIfFixnums (Opnd.V t :: map Opnd.V (fromList ts))

@@ -64,6 +64,7 @@ module Lint.Main
 import Lint.Distinction
 import Lint.Finding
 import Lint.Graph
+import Lint.Refactor.Format
 import Lint.Refactor.InlineAlias
 import Lint.Refactor.JoinModules
 import Lint.Refactor.MergeClauses
@@ -154,7 +155,9 @@ main = do
        "[--helpers] [--refactor NAME [--arg VALUE]... [--dry-run] [--check COMMAND]] " ++
        "[--resolved] PATH... [--unscored PATH...] [--programs PATH...]")
     exitWith (ExitFailure 2)
-  when o.fix $ runRefactoring True False Nothing Refactor.OrderImports.orderImports (o.paths ++ o.unscored ++ o.programs)
+  when o.fix $
+    runRefactoring True False Nothing Refactor.OrderImports.orderImports
+      (o.paths ++ o.unscored ++ o.programs)
   whenJust o.refactoring $ \n => do
     case find (\r => r.name == n) (refactorings o.arguments) of
       Nothing => do
@@ -182,9 +185,11 @@ main = do
   findings <- the (IO (List Finding)) $ if o.health then pure [] else do
     pms <- traverse (\f => Rules.mentions f.mod.decls) ps
     let programNames =
-          the (SortedSet String) (fromList (Finding.joined (map (\m => map (nameRoot . snd) m.refs) pms)))
+          the (SortedSet String)
+            (fromList (Finding.joined (map (\m => map (nameRoot . snd) m.refs) pms)))
         findings = (failed ++ failedUnscored ++ failedPrograms) ++ lint fdms ps programNames res
-    traverse_ (putStrLn . if o.golden then Finding.withoutPosition else Finding.withPosition) findings
+    traverse_ (putStrLn . if o.golden then Finding.withoutPosition else Finding.withPosition)
+      findings
     pure findings
   low <- if not o.health && isNothing o.minimum then pure False else case res of
     -- the findings print them, when they are asked for
@@ -228,7 +233,8 @@ main = do
     ||| findings that kept it from being made. A suppression of a resolved
     ||| rule suppresses nothing without the resolution, and is not reported
     ||| for it then.
-    lint : List (Source.SourceFile, List Rules.Declared, Rules.Mentions) -> List Source.SourceFile ->
+    lint : List (Source.SourceFile, List Rules.Declared, Rules.Mentions) ->
+           List Source.SourceFile ->
            (programNames : SortedSet String) ->
            Maybe (Either (List Finding) Resolution) -> List Finding
     lint fdms ps programNames res =
@@ -244,7 +250,8 @@ main = do
           ours = the (SortedSet String) (fromList (map (\f => show f.mod.moduleNS) fs))
           exportsOf =
             the (SortedMap String (List String))
-              (fromList [ (show f.mod.moduleNS, Finding.joined (map (.visible) ds)) | (f, ds) <- fds ])
+              (fromList
+                [ (show f.mod.moduleNS, Finding.joined (map (.visible) ds)) | (f, ds) <- fds ])
           aliases =
             Finding.joined
               (map
@@ -272,7 +279,9 @@ main = do
             covers s fi =
               fi.rule == s.rule && fi.line >= s.line && fi.line <= s.through
               && not (s.rule `elem` Rules.unsuppressibleRules)
-              && (not (s.rule `elem` ResolvedRules.oneUseRules) || Just (fi.line, fi.col) == firstFrom s)
+              &&
+                (not (s.rule `elem` ResolvedRules.oneUseRules) || Just (fi.line, fi.col)
+                 == firstFrom s)
               where
                 -- the first finding of the rule in the suppression's paragraph
                 firstFrom : Suppression -> Maybe (Int, Int)
@@ -340,8 +349,13 @@ main = do
     ||| concepts to move to it.
     refactorings : List String -> List Refactor.Refactoring
     refactorings args =
-      [Refactor.InlineAlias.inlineAlias args, Refactor.JoinModules.joinModules args, Refactor.MergeClauses.mergeClauses, Refactor.OrderImports.orderImports, Refactor.PruneImports.pruneImports, Refactor.QualifyNames.qualifyNames,
-        Refactor.ReflowLines.reflowLines args, Refactor.RemoveUnused.removeUnused, Refactor.Rename.rename args, Refactor.RenameModule.renameModule args, Refactor.ScopeHelpers.scopeHelpers,
+      [Refactor.Format.format args, Refactor.InlineAlias.inlineAlias args,
+        Refactor.JoinModules.joinModules args, Refactor.MergeClauses.mergeClauses,
+          Refactor.OrderImports.orderImports, Refactor.PruneImports.pruneImports,
+        Refactor.QualifyNames.qualifyNames,
+        Refactor.ReflowLines.reflowLines args, Refactor.RemoveUnused.removeUnused,
+          Refactor.Rename.rename args, Refactor.RenameModule.renameModule args,
+            Refactor.ScopeHelpers.scopeHelpers,
        Refactor.SplitModule.splitModule args, Refactor.Unprime.unprime]
 
     ||| The files under a run's roots listed and parsed once, and again only
@@ -363,7 +377,8 @@ main = do
     contextOf : (roots, paths : List String) -> IO (List Refactor.Subject)
     contextOf roots paths = do
       packages <- Refactor.Project.packagesNear roots
-      others <- Finding.joined <$> traverse (\(pp, t) => files (Refactor.Project.sourceDirOf pp t)) packages
+      others <- Finding.joined <$> traverse (\(pp, t) => files (Refactor.Project.sourceDirOf pp t))
+        packages
       rights <$> traverse Refactor.Subject.load (filter (\o => not (o `elem` paths)) (nub others))
 
     ||| What the files' modules use, resolved, those whose TTCs can be read.
@@ -456,10 +471,12 @@ main = do
 
     ||| The health score of the files, with its groups and their components,
     ||| printed; whether it is below the minimum asked for.
-    healthOf : Request -> List (Source.SourceFile, List Rules.Declared, Rules.Mentions) -> Maybe Resolution -> IO Bool
+    healthOf : Request -> List (Source.SourceFile, List Rules.Declared, Rules.Mentions) ->
+               Maybe Resolution -> IO Bool
     healthOf o fdms r = do
       let fds = map (\(f, ds, _) => (f, ds)) fdms
-          cs = health fds ++ [Distinction.distinction fds] ++ maybe [] (ResolvedRules.resolvedHealth fdms) r
+          cs = health fds ++ [Distinction.distinction fds]
+            ++ maybe [] (ResolvedRules.resolvedHealth fdms) r
           overall = Graph.score cs
       putStrLn ("architectural health: " ++ show overall)
       for_ (Graph.groups cs) $ \g => do

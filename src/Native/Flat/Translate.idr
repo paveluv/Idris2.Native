@@ -887,7 +887,7 @@ root n
                     -- the call is applied to, is passed as a closure.
                     unfold : {targs : _} ->
                              Tr -> FC -> Name -> GlobalDef -> CaseTree targs -> List Pending ->
-                               Core Exp
+                             Core Exp
                     unfold tr fc fn gdef ct ps
                         = do Just (args, rest) <- pure (takeArgs (length targs) ps)
                                | Nothing => fail tr fc Problem.NotStatic
@@ -958,7 +958,7 @@ root n
 
                         primOp : {arity : Nat} ->
                                  Tr -> FC -> Name -> GlobalDef -> PrimFn arity -> List Pending ->
-                                   Core Exp
+                                 Core Exp
                         primOp tr fc fn gdef op ps
                             = do Just (args, rest) <- pure (takeArgs arity ps)
                                    | Nothing => fail tr fc Problem.NotStatic
@@ -1194,11 +1194,11 @@ root n
                                 walk : (unfolded : List Name) -> (explicit : Nat) ->
                                        List ClosedTerm -> ClosedNF ->
                                        SnocList (Bool, Pending) ->
-                                         SnocList (Exp.FlatVar, ClosedTerm) ->
-                                         SnocList ClosedTerm ->
+                                       SnocList (Exp.FlatVar, ClosedTerm) ->
+                                       SnocList ClosedTerm ->
                                        Core (List (Bool, Pending),
                                              List (Exp.FlatVar, ClosedTerm), List ClosedTerm,
-                                               ClosedNF)
+                                             ClosedNF)
                                 walk ns i (a :: as) (NBind bfc x (Pi _ rig pinfo aty) sc) parts
                                   params actuals
                                     = do defs <- get Ctxt
@@ -1252,7 +1252,7 @@ root n
                                   where
                                     done : Core (List (Bool, Pending),
                                                  List (Exp.FlatVar, ClosedTerm), List ClosedTerm,
-                                                   ClosedNF)
+                                                 ClosedNF)
                                     done = if isNil as
                                       then pure (parts <>> [], params <>> [], actuals <>> [], res)
                                       else fail tr fc Problem.NotStatic

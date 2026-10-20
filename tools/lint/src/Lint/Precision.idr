@@ -54,11 +54,13 @@ conceptsByModule fds = fromList [ (show f.mod.moduleNS, Concept.conceptsOf f ds)
 
 ||| The concepts of a module a module uses, by name.
 export
-usedOf : SortedMap String (List Concept) -> Resolution.ResolvedModule -> (definer : String) -> SortedSet String
+usedOf : SortedMap String (List Concept) -> Resolution.ResolvedModule -> (definer : String) ->
+         SortedSet String
 usedOf byModule rm m =
   let cs = fromMaybe [] (lookup m byModule) in
   fromList
-    (mapMaybe (\u => if u.definer == m then Concept.conceptOfUse cs u.name u.searched else Nothing) rm.uses)
+    (mapMaybe (\u => if u.definer == m then Concept.conceptOfUse cs u.name u.searched else Nothing)
+      rm.uses)
 
 ||| `precision`: of the concepts our modules' imports of each other offer,
 ||| the share the importers use; its offenders, each imported module by the
@@ -69,7 +71,9 @@ precision fds r =
   let byModule = conceptsByModule fds
       out = excludedFrom "precision" (map fst fds)
       ours = the (SortedSet String) (fromList (keys byModule))
-      edges = Finding.joined [ mapMaybe (edge byModule ours out rm) (map fst rm.imports) | rm <- r.modules ]
+      edges =
+        Finding.joined
+          [ mapMaybe (edge byModule ours out rm) (map fst rm.imports) | rm <- r.modules ]
       usedNames = sum (map (.used) edges)
       offeredNames = sum (map (.offered) edges)
   in Graph.MkComponent "structure" "precision" (Graph.percent usedNames offeredNames)
@@ -82,7 +86,8 @@ precision fds r =
     leftOut ms = "; left out: " ++ Graph.listed ms
 
     -- an import of one of ours, with what it offers through its re-exports
-    edge : SortedMap String (List Concept) -> SortedSet String -> List String -> Resolution.ResolvedModule ->
+    edge : SortedMap String (List Concept) -> SortedSet String -> List String ->
+           Resolution.ResolvedModule ->
            String -> Maybe ImportEdge
     edge byModule ours out rm i =
       if not (contains i ours) || (i `elem` out) then Nothing else

@@ -105,7 +105,8 @@ rename args =
     ownEdits : (old, new : String) -> Subject -> List Edit
     ownEdits old new s =
       [ MkEdit (l, c) (l, c + cast (length old)) new
-        | (l, line) <- zip [0 .. cast (length (Subject.linesOf s))] (Subject.linesOf s), c <- wordsAt old line ]
+        | (l, line) <- zip [0 .. cast (length (Subject.linesOf s))] (Subject.linesOf s),
+          c <- wordsAt old line ]
 
     ||| Whether a qualifier as written names the module: its alias in the
     ||| file, or last parts of its path.
@@ -173,7 +174,8 @@ rename args =
           in if show s.file.mod.moduleNS /= m then []
              else case (old `elem` defined, new `elem` defined) of
                (True, True) =>
-                 [Refactoring.candidate label (Left ("`" ++ new ++ "` is defined in its module already"))]
+                 [Refactoring.candidate label
+                   (Left ("`" ++ new ++ "` is defined in its module already"))]
                (True, False) => [Refactoring.candidate label (plan p r m old new s)]
                -- renamed in the module already: the uses left, if any
                (False, True) => case plan p r m old new s of
@@ -182,7 +184,9 @@ rename args =
                  Left why => [Refactoring.candidate label (Left why)]
                (False, False) => []
         Nothing =>
-          [Refactoring.candidate "rename" (Left ("`" ++ q ++ "` is not a name with its module's path"))]
+          [Refactoring.candidate "rename"
+            (Left ("`" ++ q ++ "` is not a name with its module's path"))]
       ([_, _], Nothing) =>
-        [Refactoring.candidate "rename" (Left "the modules' uses cannot be resolved: build them first")]
+        [Refactoring.candidate "rename"
+          (Left "the modules' uses cannot be resolved: build them first")]
       _ => []

@@ -113,11 +113,13 @@ unprime = MkRefactoring "unprime"
         foldr (\c, rest => Constraints.writtenAs (Subject.linesOf s) (snd c) ++ rest) [] cs
       _ => foldr (\c, rest => case c.decl.val of
                                 PClaim cd => if any (`elem` d.defines) c.defines
-                                  then Constraints.constraintsOf (Subject.linesOf s) cd.type.val.type ++ rest else rest
+                                  then Constraints.constraintsOf (Subject.linesOf s)
+                                    cd.type.val.type ++ rest else rest
                                 _ => rest) [] s.declared)
 
     -- the change for one local claim, or why it stays
-    plan : Subject -> List String -> Free.InnerClaim -> List (String, String) -> Either String Change
+    plan : Subject -> List String -> Free.InnerClaim -> List (String, String) ->
+           Either String Change
     plan s theirs ic rs = do
       let named = filter (namedSomewhere s.text . fst) rs
       when (not (null named)) $
@@ -166,7 +168,8 @@ unprime = MkRefactoring "unprime"
         ofClaim : SortedSet String
         ofClaim = foldr (\c, rest => case c.decl.val of
                                        PClaim cd => if any (`elem` d.defines) c.defines
-                                         then union (Free.typeVariables globals cd.type.val.type) rest
+                                         then union (Free.typeVariables globals cd.type.val.type)
+                                           rest
                                            else rest
                                        _ => rest) empty s.declared
 

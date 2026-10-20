@@ -69,7 +69,7 @@ load8 (MkObj _ a) n = Runtime.Memory.load8 a (8 + n)
 export %inline
 store64, store32, store16, store8 : {auto 0 raw : Types.Kind.shapeOf k = Just HeapObj.Shape.RAW} ->
                                     Obj k -> (offset, value : Bits64) ->
-                                      Runtime.Ordo.Op Runtime.Ordo ()
+                                    Runtime.Ordo.Op Runtime.Ordo ()
 store64 (MkObj _ a) n = Runtime.Memory.store64 a (8 + n)
 store32 (MkObj _ a) n = Runtime.Memory.store32 a (8 + n)
 store16 (MkObj _ a) n = Runtime.Memory.store16 a (8 + n)
@@ -142,7 +142,7 @@ export %inline
 asKind : (k : Types.Kind) -> {auto 0 objs : Types.Represents.Objects a} ->
          {auto 0 rep : Types.Represents k a} ->
          {auto 0 shaped : Types.Kind.shapeOf k = Just s} -> Flat.Uniform a ->
-           Runtime.Ordo.Op Runtime.Ordo (Maybe (Obj k))
+         Runtime.Ordo.Op Runtime.Ordo (Maybe (Obj k))
 asKind k v = do
   w <- Runtime.Memory.valueWord v
   pointer <- Runtime.Memory.isPointer w
@@ -230,7 +230,7 @@ export %inline
 con2 : (c : Types.ConstructorId) -> {auto 0 only : Types.Represents.Only Types.Kind.CON t} ->
        {auto 0 con : Types.Represents.ConOf t c 2} ->
        {auto 0 f0 : Types.Represents.FieldOf t c 0 a0} ->
-         {auto 0 f1 : Types.Represents.FieldOf t c 1 a1} ->
+       {auto 0 f1 : Types.Represents.FieldOf t c 1 a1} ->
        Flat.Uniform a0 -> Flat.Uniform a1 -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform t)
 con2 c x y = do
   h <- checked Types.Kind.CON
@@ -258,7 +258,7 @@ record Building (0 r : Nat) (0 vs : List Type) (0 k : Nat) where
 export %inline covering
 beginStruct : (raws, values : Bits64) -> (0 rs : Types.Struct.Sized raws r) ->
               (0 sv : Types.Struct.Sized values (length vs)) ->
-                Runtime.Ordo.Op Runtime.Ordo (Building r vs 0)
+              Runtime.Ordo.Op Runtime.Ordo (Building r vs 0)
 beginStruct raws values _ _ = do
   h <- checked Types.Kind.STRUCT
          (Types.Header.withPart Types.Header.StructRaws raws
@@ -285,7 +285,7 @@ export %inline
 putValue : (i : Bits64) -> {auto 0 next : cast i = k} ->
            {auto 0 inside : Types.Struct.Below k (length vs)} ->
            Building r vs k -> Flat.Uniform (Types.Struct.valueType vs inside) ->
-             Runtime.Ordo.Op Runtime.Ordo (Building r vs (S k))
+           Runtime.Ordo.Op Runtime.Ordo (Building r vs (S k))
 putValue i (MkBuilding v) x = do
   o <- Runtime.Memory.valueObject {s = HeapObj.Shape.MIXED} v
   off <- valueOffset o i
@@ -312,7 +312,7 @@ structWord i v = do
 export %inline
 setStructWord : (i : Bits64) -> {auto 0 inside : Types.Struct.Below (cast i) r} ->
                 Flat.Uniform (Types.Struct r vs) -> (value : Bits64) ->
-                  Runtime.Ordo.Op Runtime.Ordo ()
+                Runtime.Ordo.Op Runtime.Ordo ()
 setStructWord i v x = do
   o <- Runtime.Memory.valueObject {s = HeapObj.Shape.MIXED} v
   Runtime.Memory.store64 o (8 + 8 * i) x
@@ -322,7 +322,7 @@ setStructWord i v x = do
 export %inline
 structValue : (i : Bits64) -> {auto 0 inside : Types.Struct.Below (cast i) (length vs)} ->
               Flat.Uniform (Types.Struct r vs) ->
-                Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform (Types.Struct.valueType vs inside))
+              Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform (Types.Struct.valueType vs inside))
 structValue i v = do
   o <- Runtime.Memory.valueObject {s = HeapObj.Shape.MIXED} v
   off <- valueOffset o i
@@ -332,8 +332,8 @@ structValue i v = do
 export %inline
 setStructValue : (i : Bits64) -> {auto 0 inside : Types.Struct.Below (cast i) (length vs)} ->
                  Flat.Uniform (Types.Struct r vs) ->
-                   Flat.Uniform (Types.Struct.valueType vs inside) ->
-                   Runtime.Ordo.Op Runtime.Ordo ()
+                 Flat.Uniform (Types.Struct.valueType vs inside) ->
+                 Runtime.Ordo.Op Runtime.Ordo ()
 setStructValue i v x = do
   o <- Runtime.Memory.valueObject {s = HeapObj.Shape.MIXED} v
   off <- valueOffset o i

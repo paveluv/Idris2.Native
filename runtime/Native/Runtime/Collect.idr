@@ -2,8 +2,9 @@
 ||| memory, so that it runs against the program's heap and against a model.
 |||
 ||| Everything live is reached from the roots: the current continuation, the
-||| root buffer, and the values of the program's constants. The collector forwards each root: a word that is
-||| not a pointer into the space being collected is left as it is; one that
+||| root buffer, and the values of the program's constants. The collector
+||| forwards each root: a word that is not a pointer into the space being
+||| collected is left as it is; one that
 ||| points to an object already moved becomes the pointer to its copy, which
 ||| the forwarding header the move left gives; any other object is copied
 ||| to the to-space, word by word, and its first word replaced by the

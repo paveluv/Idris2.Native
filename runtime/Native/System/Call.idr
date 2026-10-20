@@ -57,7 +57,8 @@ close h = primIO $ \w => let (Runtime.MkOrdo # _) = Runtime.OS.osClose h Runtime
 ||| The program ends for bytes outside the buffer.
 export
 readInto : (handle : Bits64) -> Flat.Uniform Buffer -> (offset, count : Int) -> IO Bits64
-readInto h b offset count = primIO $ \w => let (Runtime.MkOrdo # r) = op Runtime.MkOrdo in MkIORes r w
+readInto h b offset count = primIO $ \w => let (Runtime.MkOrdo # r) =
+                                                 op Runtime.MkOrdo in MkIORes r w
   where
     op : Runtime.Ordo.Op Runtime.Ordo Bits64
     op = do
@@ -139,7 +140,8 @@ readEntry h = primIO $ \w => let (Runtime.MkOrdo # s) = op Runtime.MkOrdo in MkI
     op = Runtime.Alloc.Block.allocate nameBytes Support.Text.emptyText (\b => do
       let Runtime.Alloc.Block.MkAddressed q b' = Runtime.Alloc.Block.address b
       n <- Runtime.OS.osReadEntry h q nameBytes
-      s <- if n == 0 || n == Runtime.OS.failedWord then Support.Text.emptyText else Support.Text.ofText q n
+      s <- if n == 0 || n == Runtime.OS.failedWord then Support.Text.emptyText
+        else Support.Text.ofText q n
       Runtime.Alloc.Block.free b'
       Runtime.Ordo.pure s)
 

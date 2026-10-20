@@ -1,0 +1,17 @@
+. ../../testutils.sh
+
+# format: each signature's lines past its first start at its type's
+# column, or one past a bracket it opened before, its line breaks kept;
+# then each line wider than a width broken into lines that fit, a
+# signature's at its type's column. A copy of the fixture is changed, and
+# checked after; a second run changes nothing.
+rm -rf work
+mkdir work
+cp Layout.idr work
+cd work
+../../../../tools/lint/build/exec/idris2-native-lint --refactor format --arg 60 --check 'idris2 --check {} > /dev/null 2>&1' .
+cat Layout.idr
+idris2 --check Layout.idr > /dev/null && echo "Layout.idr checks"
+../../../../tools/lint/build/exec/idris2-native-lint --refactor format --arg 60 .
+cd ..
+rm -rf work

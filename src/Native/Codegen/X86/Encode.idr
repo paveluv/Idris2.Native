@@ -149,8 +149,8 @@ encodeRaw pc rel instr = case instr of
 
     ||| One instruction of the form  prefixes · REX · opcode · ModRM[·SIB·disp] · imm.
     form : (prefixes : List Bits8) -> (w : Bool) -> (opcode : List Bits8)
-        -> (reg : Bits8) -> Either Asm.Reg64 Asm.Mem -> (rip : Int) -> (forceRex : Bool)
-        -> (imm : List Bits8) -> List Bits8
+           -> (reg : Bits8) -> Either Asm.Reg64 Asm.Mem -> (rip : Int) -> (forceRex : Bool)
+           -> (imm : List Bits8) -> List Bits8
     form prefixes w opcode reg rm rip forceRex imm =
       let (b, x) = rmExt rm
       in prefixes ++ rex w reg x b forceRex ++ opcode ++ rmBytes reg rm rip ++ imm
@@ -262,7 +262,7 @@ codeSize base is = foldl (\pc, i => pc + instrSize pc i) base is - base
 ||| can fail loudly.
 export
 assembleWith : (env : SortedMap Asm.Label Int) -> (base : Int) -> List Asm.Instr
-            -> (SnocList Bits8, SortedMap Asm.Label Int, List AsmProblem)
+               -> (SnocList Bits8, SortedMap Asm.Label Int, List AsmProblem)
 assembleWith env base is =
   let labels = foldl (\m, (l, a) => insert l a m) env (SortedMap.toList (layout base is))
   in go labels base [<] [<] is
@@ -289,7 +289,7 @@ assembleWith env base is =
     -- the bytes and the problems accumulate at their ends, instruction by
     -- instruction
     go : SortedMap Asm.Label Int -> Int -> SnocList Bits8 -> SnocList AsmProblem -> List Asm.Instr
-      -> (SnocList Bits8, SortedMap Asm.Label Int, List AsmProblem)
+         -> (SnocList Bits8, SortedMap Asm.Label Int, List AsmProblem)
     go labels _ acc problems [] = (acc, labels, problems <>> [])
     go labels pc acc problems (i :: rest) =
       let size = instrSize pc i

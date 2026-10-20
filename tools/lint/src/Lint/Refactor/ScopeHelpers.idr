@@ -76,13 +76,17 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
       noCapture values aroundUser
       (text, calls) <- adjust cl (union values aroundUser) lifted userBlock own extent
       insert <- Where.intoWhere (Subject.linesOf s) cl h.defines (helperFree s h) extent.column text
-      let safe = Change.inFile s.file.path ([insert, Extent.cut (Subject.linesOf s) extent] ++ calls)
+      let safe =
+            Change.inFile s.file.path ([insert, Extent.cut (Subject.linesOf s) extent] ++ calls)
           preferred = do
             (text', calls') <- eitherToMaybe (adjust cl values lifted userBlock own extent)
             if text' == text then Nothing else do
               insert' <- eitherToMaybe
-                (Where.intoWhere (Subject.linesOf s) cl h.defines (helperFree s h) extent.column text')
-              Just (Change.inFile s.file.path ([insert', Extent.cut (Subject.linesOf s) extent] ++ calls'))
+                (Where.intoWhere (Subject.linesOf s) cl h.defines (helperFree s h) extent.column
+                  text')
+              Just
+                (Change.inFile s.file.path
+                 ([insert', Extent.cut (Subject.linesOf s) extent] ++ calls'))
       pure (safe, preferred)
       where
         -- the constraints the user has, as written: its claim's, or its
@@ -93,16 +97,20 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
             foldr (\c, rest => Constraints.writtenAs (Subject.linesOf s) (snd c) ++ rest) [] cs
           _ => foldr (\d, rest => case d.decl.val of
                                      PClaim c => if any (`elem` u.defines) d.defines
-                                                   then Constraints.constraintsOf (Subject.linesOf s) c.type.val.type
+                                                   then Constraints.constraintsOf
+                                                     (Subject.linesOf s) c.type.val.type
                                                      ++ rest else rest
                                      _ => rest) [] s.declared
 
         -- the one clause of the user that uses the helper
         clauseUsing : List PClause -> Either String PClause
-        clauseUsing cls = case filter (\cl => any (\n => contains n (Free.inClause cl)) h.defines) cls of
+        clauseUsing cls =
+          case filter (\cl => any (\n => contains n (Free.inClause cl)) h.defines) cls of
           [cl] => Right cl
-          [] => Left ("it is unused: `" ++ Refactoring.labelOf u ++ "` mentions only a name of its own")
-          more => Left (show (length more) ++ " clauses of `" ++ Refactoring.labelOf u ++ "` use it")
+          [] =>
+            Left ("it is unused: `" ++ Refactoring.labelOf u ++ "` mentions only a name of its own")
+          more =>
+            Left (show (length more) ++ " clauses of `" ++ Refactoring.labelOf u ++ "` use it")
 
         -- the names a `parameters` block binds around the clause and not
         -- around the helper; the block the helper leaves, if it does, whose
@@ -139,7 +147,8 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
                                         PClaim _ => any (`elem` u.defines) d.defines
                                         _ => False) s.declared
               ofClaims =
-                foldr (\d, rest => map snd (Binders.binderGroups (joinBy "\n" (sourceOf d))) ++ rest) []
+                foldr (\d,
+                       rest => map snd (Binders.binderGroups (joinBy "\n" (sourceOf d))) ++ rest) []
                   claims
           in mapMaybe Binders.autoBinder (ofClaims ++ maybe [] (.binders) userBlock)
 
@@ -174,7 +183,9 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
               userEdits =
                 map (\(p, short, (n, to)) => nameEdit p n (if short then to ++ " = " ++ n else to))
                               (foldr (\b, rest => calls [cl] b ++ rest) [] binders)
-          pure (splice (Extent.indexIn extent cs) (ce - cs + 1) claimed (Extent.textOf (lines renamed) extent),
+          pure
+            (splice (Extent.indexIn extent cs) (ce - cs + 1) claimed
+             (Extent.textOf (lines renamed) extent),
                 userEdits)
           where
             clausesOfHelper : List PClause
@@ -192,7 +203,8 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
                 rest =>
                   foldr (\p,
                     more =>
-                      map (\(q, short) => (q, short, (n, to))) (NamedArguments.namedArguments (Subject.linesOf s) p f n)
+                      map (\(q, short) => (q, short, (n, to)))
+                        (NamedArguments.namedArguments (Subject.linesOf s) p f n)
                          ++ more)
                                        rest (fromMaybe [] (lookup f occ))) [] h.defines
 
@@ -263,8 +275,10 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
                   ty = claimType h
                   topOcc = Free.allOf (maybe empty Free.occurrences ty :: map Free.clauseAt defs)
                   avoid =
-                    union bound (union globals (union (Free.namesOf topOcc) (maybe empty Free.typeNames ty)))
-                  topVars = maybe empty (\t => intersection (Free.free t) (Free.typeVariables globals t)) ty
+                    union bound
+                      (union globals (union (Free.namesOf topOcc) (maybe empty Free.typeNames ty)))
+                  topVars =
+                    maybe empty (\t => intersection (Free.free t) (Free.typeVariables globals t)) ty
                   top = map (\n => (n, freshFor avoid n, fromMaybe [] (lookup n topOcc)))
                             (filter (\n => contains n bound && not (contains n taken))
                               (Prelude.toList topVars))
@@ -273,8 +287,10 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
                                                  (filter
                                                    (\n => contains n bound && not (contains n taken)
                                                     && not (contains n autos))
-                                                         (Prelude.toList (Free.implicitBinders t)))) ty
-                  inner = Free.claimsWithin globals (union taken (maybe empty Free.typeNames ty)) defs
+                                                         (Prelude.toList (Free.implicitBinders t))))
+                                                           ty
+                  inner =
+                    Free.claimsWithin globals (union taken (maybe empty Free.typeNames ty)) defs
                   nested = foldr (\ic, rest => innerRenames avoid ic ++ rest) [] inner
               in (top ++ nested, shadowed)
               where
@@ -287,7 +303,8 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
                 binderRename : List PClause -> PTerm -> String -> List (Int, Int)
                 binderRename defs t n =
                   if any (\cl => contains n (Free.boundBy (Rules.lhsOf cl))) defs then [(-1, -1)]
-                  else Free.implicitSites n t ++ fromMaybe [] (lookup n (Free.allOf (map Free.clauseAt defs)))
+                  else Free.implicitSites n t
+                    ++ fromMaybe [] (lookup n (Free.allOf (map Free.clauseAt defs)))
 
 
                 innerRenames : SortedSet String -> Free.InnerClaim ->
@@ -326,7 +343,8 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
               Nothing => ls
               Just b => let (comments, rest) = span comment ls in
                         case rest of
-                          (sig :: more) => comments ++ Binders.prefixType (ParameterBlock.binderPrefix provided b) sig
+                          (sig :: more) => comments
+                            ++ Binders.prefixType (ParameterBlock.binderPrefix provided b) sig
                             :: more
                           [] => ls
               where
@@ -395,7 +413,9 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
           let ofClaim = case claim.decl.val of
                 PClaim c => Free.typeNames c.type.val.type
                 _ => empty
-              ofDefs = foldr (\d, rest => union (Free.inDecl d.decl) rest) empty (Extent.definitionsOf s claim)
+              ofDefs =
+                foldr (\d, rest => union (Free.inDecl d.decl) rest) empty
+                  (Extent.definitionsOf s claim)
           in difference ofDefs (union ofClaim (fromList claim.defines))
 
         -- no name the helper's clauses refer to beyond its type's bound as a
@@ -404,7 +424,8 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
         noCapture values types =
           if contains Free.unknown (helperFree s h)
             then Left "it holds a declaration the analysis does not follow" else
-            case filter (\n => Free.isVariable n && contains n values) (Prelude.toList (bodyFree s h))
+            case filter (\n => Free.isVariable n && contains n values)
+              (Prelude.toList (bodyFree s h))
                  ++ filter (\n => contains n values || contains n types) h.defines of
               [] => Right ()
               captured =>
@@ -420,7 +441,8 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
             (maybe empty (\n => singleton (nameRoot n)) (Rules.clauseName (Rules.lhsOf cl)))
 
         whereNames : PClause -> SortedSet String
-        whereNames (MkPatClause _ _ _ wh) = fromList (foldr (\d, rest => Rules.definesOf d ++ rest) [] wh)
+        whereNames (MkPatClause _ _ _ wh) =
+          fromList (foldr (\d, rest => Rules.definesOf d ++ rest) [] wh)
         whereNames _ = empty
 
         ||| The clauses of a declaration that a helper could move into: a
@@ -447,7 +469,8 @@ scopeHelpers = Refactoring.fileRefactoring "scope-helpers"
             ofClaim = foldr (\d, rest => case d.decl.val of
                                            PClaim c => if any (`elem` u.defines) d.defines
                                              then union
-                                               (Free.typeVariables (globalsOf s) c.type.val.type) rest
+                                               (Free.typeVariables (globalsOf s) c.type.val.type)
+                                                 rest
                                                  else rest
                                            _ => rest) empty s.declared
 

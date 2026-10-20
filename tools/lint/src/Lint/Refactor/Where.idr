@@ -41,7 +41,8 @@ intoWhere _ (MkPatClause fc _ _ []) _ _ column ls =
   let at = Span.startColumn fc in
   Right
     (Edit.insertLines (snd (Span.lineSpan fc) + 1)
-     ((pack (List.replicate (cast (at + 2)) ' ') ++ "where") :: Reindent.reindent column (at + 4) ls))
+     ((pack (List.replicate (cast (at + 2)) ' ') ++ "where")
+       :: Reindent.reindent column (at + 4) ls))
 intoWhere text (MkPatClause fc _ _ wh@(d :: _)) names uses column ls =
   let depth = Span.startColumn d.fc in
   case find (\w => any (\n => contains n (Free.inDecl w)) names) wh of
@@ -58,6 +59,8 @@ intoWhere text (MkPatClause fc _ _ wh@(d :: _)) names uses column ls =
       in if any (\w => any (\n => contains n uses) (Rules.definesOf w)) after
            then Left
              "it uses a local function its user's `where` block defines after the one that uses it"
-           else Right (Edit.insertLines (Extent.attachedFrom text from) (Reindent.reindent column depth ls ++ [""]))
+           else Right
+             (Edit.insertLines (Extent.attachedFrom text from)
+              (Reindent.reindent column depth ls ++ [""]))
 intoWhere _ (MkWithClause _ _ _ _ _) _ _ _ _ = Left "the clause is a `with` clause"
 intoWhere _ (MkImpossible _ _) _ _ _ _ = Left "the clause is impossible"

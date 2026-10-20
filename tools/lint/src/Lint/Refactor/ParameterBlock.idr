@@ -43,7 +43,8 @@ parameterBlocks text = foldr (\d, rest => here d ++ rest) []
     -- leave free, which the block binds implicitly
     namesOf : Either (List1 PlainBinder) (List1 PBinder) -> SortedSet String
     namesOf (Left bs) =
-      foldr (\b, rest => insert (nameRoot b.nameVal) (union (Free.typeVariables empty b.val) rest)) empty
+      foldr (\b, rest => insert (nameRoot b.nameVal) (union (Free.typeVariables empty b.val) rest))
+        empty
         (forget bs)
     namesOf (Right bs) =
       foldr (\b,

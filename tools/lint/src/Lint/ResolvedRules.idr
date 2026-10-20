@@ -69,13 +69,16 @@ record Linted where
   privateImports : List (Import, Usage)
 
 ||| Our modules, each with its file and what it writes.
-modulesOf : List (Source.SourceFile, List Rules.Declared, Rules.Mentions) -> Resolution -> List Linted
+modulesOf : List (Source.SourceFile, List Rules.Declared, Rules.Mentions) -> Resolution ->
+            List Linted
 modulesOf fms r =
   let byPath =
-        the (SortedMap String Resolution.ResolvedModule) (fromList (map (\rm => (rm.path, rm)) r.modules))
+        the (SortedMap String Resolution.ResolvedModule)
+          (fromList (map (\rm => (rm.path, rm)) r.modules))
   in mapMaybe (one byPath) fms
   where
-    one : SortedMap String Resolution.ResolvedModule -> (Source.SourceFile, List Rules.Declared, Rules.Mentions) -> Maybe Linted
+    one : SortedMap String Resolution.ResolvedModule ->
+          (Source.SourceFile, List Rules.Declared, Rules.Mentions) -> Maybe Linted
     one byPath (f, ds, ms) = case lookup f.path byPath of
       Nothing => Nothing
       Just rm =>
@@ -90,7 +93,8 @@ modulesOf fms r =
             reached = foldl Data.SortedSet.union empty
                             (map
                               (\(i, _) => if i == "Prelude"
-                               then Resolution.visibleThrough r.importsOf (const True) i else singleton i)
+                               then Resolution.visibleThrough r.importsOf (const True) i
+                                 else singleton i)
                               rm.imports)
             direct = the (SortedSet String) (fromList (map (show . (.path)) f.mod.imports))
             usage : String -> Usage
@@ -122,7 +126,8 @@ oneUseRules = ["sealed-allocator"]
 
 ||| The rules over the program resolved.
 export
-resolvedRules : List (Source.SourceFile, List Rules.Declared, Rules.Mentions) -> (programNames : SortedSet String) ->
+resolvedRules : List (Source.SourceFile, List Rules.Declared, Rules.Mentions) ->
+                (programNames : SortedSet String) ->
                 Resolution -> List Finding
 resolvedRules fms programNames r =
   Finding.joined [ importUnused m ++ importIndirect r m ++ genericExport m | m <- modulesOf fms r ]
@@ -133,7 +138,8 @@ resolvedRules fms programNames r =
   where
     ||| What each of our modules exports.
     exportsOf : SortedMap String (List String)
-    exportsOf = fromList [ (show f.mod.moduleNS, Finding.joined (map (.visible) ds)) | (f, ds, _) <- fms ]
+    exportsOf =
+      fromList [ (show f.mod.moduleNS, Finding.joined (map (.visible) ds)) | (f, ds, _) <- fms ]
 
     ||| `unqualified`: a name another of our modules defines, written bare
     ||| where the rule writes it with where it comes from (`Lint.Qualifier`):
@@ -146,7 +152,8 @@ resolvedRules fms programNames r =
         let uses = [ (u.definer, u.name) | u <- rm.uses, not u.searched ] in
         [ MkFinding "unqualified" f.path (fst e.from) (snd e.from) e.text
             ("`" ++ bare e.text ++ "` is written bare: write `" ++ e.text ++ "`")
-        | e <- Qualification.unqualified uses (Qualification.importedFrom exportsOf f) f ds ms.refs ]
+        | e <- Qualification.unqualified uses (Qualification.importedFrom exportsOf f) f ds
+          ms.refs ]
       where
         -- the name a qualified name qualifies
         bare : String -> String
@@ -389,7 +396,8 @@ resolvedRules fms programNames r =
       where
         -- whether the module is named after a type it defines
         aboutAType : Bool
-        aboutAType = any (\t => toLower t == toLower (Rules.lastPart (show m.file.mod.moduleNS))) m.types
+        aboutAType =
+          any (\t => toLower t == toLower (Rules.lastPart (show m.file.mod.moduleNS))) m.types
 
 ------------------------------------------------------------------------------
 -- Health
@@ -400,7 +408,8 @@ resolvedRules fms programNames r =
 ||| accumulations, the share written with the structure their shape asks
 ||| for, a snoc-list or a builder, rather than lists.
 export
-resolvedHealth : List (Source.SourceFile, List Rules.Declared, Rules.Mentions) -> Resolution -> List Graph.Component
+resolvedHealth : List (Source.SourceFile, List Rules.Declared, Rules.Mentions) -> Resolution ->
+                 List Graph.Component
 resolvedHealth fms r =
   let fds = map (\(f, ds, _) => (f, ds)) fms
       ms = modulesOf fms r
@@ -423,7 +432,8 @@ resolvedHealth fms r =
            ++ show (length imports))
          [ Graph.MkOffender m.resolved.name 1 ("imports `" ++ show i.path ++ "` and " ++ uses u)
            | (m, i, u) <- unneeded ]
-     , Graph.MkComponent "efficiency" "accumulation" (Graph.percent structured (structured + unstructured))
+     , Graph.MkComponent "efficiency" "accumulation"
+       (Graph.percent structured (structured + unstructured))
          ("accumulations in a snoc-list or a builder: " ++ show structured ++ " of "
            ++ show (structured + unstructured))
          [ Graph.MkOffender (m.resolved.name ++ "." ++ a.subject) (a.atEnd + a.leftFolds)

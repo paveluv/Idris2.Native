@@ -868,8 +868,8 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
         ||| A runtime routine's variable, with its results and parameters.
         routine : Name -> (rs, ps : List (IRCommon.Ty enc)) ->
                   Maybe
-                    (n' ** TermIR.Var d.sigs
-                     (TermIR.MkSig n' (IRCommon.Conv.Direct rs False) ps False))
+                  (n' ** TermIR.Var d.sigs
+                   (TermIR.MkSig n' (IRCommon.Conv.Direct rs False) ps False))
         routine name rs ps = case lookup name refs.funs of
           Just (TermIR.MkSig n (IRCommon.Conv.Direct rs' False) ps' False ** var) =>
             case (decEq rs' rs, decEq ps' ps) of
@@ -1520,7 +1520,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
       ||| returns its result register.
       lowerFunction : (d : TermIR.Decls enc) -> Refs enc d -> (args : List Int) -> List VMInst ->
                       TermIR.Build.Closed d IRCommon.Conv.CPS False
-                        (replicate (length args) IRCommon.Ty.Val)
+                      (replicate (length args) IRCommon.Ty.Val)
       lowerFunction d refs args body = TermIR.Build.build $ \ps =>
         lower d refs (fromList (zip args (map (\x => (x, Nothing)) (allVals ps)))) True
           (annotate (singleton (-1)) body)
@@ -1594,8 +1594,10 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
       -- gives applied to the rest: an implementation written of fewer
       -- arguments than its type has, as `toPrim` makes one, gives a function
       bound : {k : Nat} ->
-              TermIR.Var d.sigs (TermIR.MkSig nm IRCommon.Conv.CPS (replicate k IRCommon.Ty.Val) cv) ->
-              List (TermIR.Opnd v' IRCommon.Ty.Val) -> TermIR.Build.End d IRCommon.Conv.CPS False v' l'
+              TermIR.Var d.sigs
+              (TermIR.MkSig nm IRCommon.Conv.CPS (replicate k IRCommon.Ty.Val) cv) ->
+              List (TermIR.Opnd v' IRCommon.Ty.Val) ->
+              TermIR.Build.End d IRCommon.Conv.CPS False v' l'
       bound var args = case splitVals k args of
         Just (first, []) => TermIR.Build.tailCall var first
         Just (first, rest) => do
@@ -1632,7 +1634,8 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
               TermIR.Build.return v)
         where
           cell : TermIR.Opnd v' IRCommon.Ty.W64 -> (word : Int) -> TermIR.Mem v'
-          cell a w = TermIR.MkMem (TermIR.Mem.AtWord a) Nothing (cast (Area.constantOffset (cast i)) + w)
+          cell a w =
+            TermIR.MkMem (TermIR.Mem.AtWord a) Nothing (cast (Area.constantOffset (cast i)) + w)
   defOf d refs fs s NoEntry =
     TermIR.Def.Defined (TermIR.Body.Unsupported "a program without __mainExpression")
   defOf d refs fs s _ =
@@ -1650,8 +1653,8 @@ program : {enc : Types.Enc} -> {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -
           Flat.Exp.Shapes -> Linkage.Realised -> (tables : SortedMap Name (Int, Nat)) ->
           (constants : Nat) -> Plan ->
           (es : List (TermIR.Sig enc, Plan)) ->
-            (rs : List (s ** ({0 d : TermIR.Decls enc} -> TermIR.StaticDef d s))) ->
-            TermIR.Program.TermProgram enc
+          (rs : List (s ** ({0 d : TermIR.Decls enc} -> TermIR.StaticDef d s))) ->
+          TermIR.Program.TermProgram enc
 program forms shapes realised tables constants entry es rs =
   case choose
     (Data.Distinct.distinct (map (.name) (mainSig :: map Builtin.fst es))
@@ -1690,7 +1693,7 @@ program forms shapes realised tables constants entry es rs =
     ||| The declarations: the entry first, the other functions, the statics.
     declsOf : (es : List (TermIR.Sig enc, Plan)) ->
               (rs : List (s ** ({0 d : TermIR.Decls enc} -> TermIR.StaticDef d s))) ->
-                TermIR.Decls enc
+              TermIR.Decls enc
     declsOf es rs = TermIR.MkDecls (mainSig :: map Builtin.fst es) (map DPair.fst rs)
 
 ||| Whether a value of the C type is held as a flat value of the skeleton:
@@ -1754,9 +1757,9 @@ cfAgrees _ _ = False
 export
 lowerProgram : (enc : Types.Enc) -> {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Platform ->
                Linkage.Realised -> List Flat.Exp.FlatDef -> Flat.Exp.Shapes ->
-                 (tables : SortedMap Name (Int, Nat)) ->
+               (tables : SortedMap Name (Int, Nat)) ->
                (constants : List Name) -> (flat, implemented : List (Name, Name)) ->
-                 List (Name, VMDef) -> Either String (TermIR.Program.TermProgram enc)
+               List (Name, VMDef) -> Either String (TermIR.Program.TermProgram enc)
 lowerProgram enc platform realised forms shapes tables constants flat implemented vmdefs0 = do
   let vmdefs = map (\(n, d) => (n, answered d)) vmdefs0
   traverse_ provided (Linkage.Routine.routines {enc} realised)

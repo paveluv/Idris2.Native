@@ -72,7 +72,7 @@ data Program : (enc : Types.Enc) -> Decls enc -> Type where
   MkProgram : {auto 0 names : So (distinct (map (.name) d.sigs)
                                   && distinct (map (.sym) d.statics))} ->
               All (Def d) d.sigs -> All (StaticDef d) d.statics -> Entry d -> IRCommon.ConIds ->
-                Program enc d
+              Program enc d
 
 ||| A program with its declarations, as a producer hands it on.
 public export

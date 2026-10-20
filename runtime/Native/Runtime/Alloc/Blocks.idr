@@ -94,7 +94,8 @@ at xs i = do
 ||| `done`; `none` of the block if there is no memory for the array to grow,
 ||| or the array is not made.
 export %inline covering
-push : Blocks -> (1 b : Block) -> (none : (1 b : Block) -> Ordo.Op Ordo a) -> (done : Ordo.Op Ordo a) ->
+push : Blocks -> (1 b : Block) -> (none : (1 b : Block) -> Ordo.Op Ordo a) ->
+       (done : Ordo.Op Ordo a) ->
        Ordo.Op Ordo a
 push xs b none done = do
   ok <- room xs
@@ -131,7 +132,8 @@ push xs b none done = do
 ||| Block `i` replaced by `b`, and given to `k`; the program ends for an `i`
 ||| the array has no block for.
 export %inline covering
-replace : Blocks -> (i : Bits64) -> (1 b : Block) -> (k : (1 old : Block) -> Ordo.Op Ordo a) -> Ordo.Op Ordo a
+replace : Blocks -> (i : Bits64) -> (1 b : Block) -> (k : (1 old : Block) -> Ordo.Op Ordo a) ->
+          Ordo.Op Ordo a
 replace xs i b k = do
   _ <- at xs i
   a <- arrayOf xs

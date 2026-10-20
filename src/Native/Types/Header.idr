@@ -44,11 +44,11 @@ data Header : Enc -> Kind -> Type where
   Int64H   : Header enc Kind.INT64
   DoubleH  : Header enc Kind.DOUBLE
   StringH  : {auto 0 u : StringEnc.Utf8Strings enc.string} -> (ascii : Bool) -> (bytes : Nat) ->
-    Header enc Kind.STRING
+             Header enc Kind.STRING
   StringCharsH : {auto 0 u : StringEnc.Utf32Strings enc.string} -> (chars : Nat) ->
                  Header enc Kind.STRING
   BignumH  : {auto 0 sh : BignumEnc.SignInHeader enc.bignum} -> (negative : Bool) ->
-    (words : Nat) ->
+             (words : Nat) ->
              Header enc Kind.BIGNUM
   IORefH   : Header enc Kind.IOREF
   ArrayH   : (elems : Nat) -> Header enc Kind.ARRAY

@@ -356,7 +356,7 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
     ||| A module of ours, resolved from the context it is loaded into.
     resolveModule : {auto c : Ref Ctxt Defs} -> {auto n : Ref Counting Count} ->
                     (ours : SortedSet String) -> SortedSet String -> SortedSet String ->
-                      List (Name, List Nat) -> (Source.SourceFile, List Name) ->
+                    List (Name, List Nat) -> (Source.SourceFile, List Name) ->
                     Core ResolvedModule
     resolveModule ours mods implementations js (f, names) = do
       let m = show f.mod.moduleNS
@@ -366,7 +366,8 @@ resolve fs = coreRun run (\err => pure (Left [MkFinding "resolution" "" 0 0 "" (
       let uses =
             Prelude.toList
               (the (SortedSet (String, String, Bool))
-               (fromList (filter (\(u, _, _) => u /= m) (Finding.joined [ us | (us, _, _) <- perName ]))))
+               (fromList
+                 (filter (\(u, _, _) => u /= m) (Finding.joined [ us | (us, _, _) <- perName ]))))
       pure (MkResolvedModule m f.path is (map (\(u, r, s) => MkUse u r s) uses)
               (mapMaybe (\(_, a, _) => a) perName) (mapMaybe (\(_, _, g) => g) perName))
       where

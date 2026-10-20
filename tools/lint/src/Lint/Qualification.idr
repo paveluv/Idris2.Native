@@ -58,10 +58,12 @@ importedFrom exportsOf f = mapMaybe imported f.mod.imports
 ||| that the rule writes qualified: an edit to the qualified name, where it
 ||| is written.
 export
-unqualified : (uses : List (String, String)) -> List Imported -> Source.SourceFile -> List Rules.Declared ->
+unqualified : (uses : List (String, String)) -> List Imported -> Source.SourceFile ->
+              List Rules.Declared ->
               (written : List (FC, Name)) -> List Refactor.Edit
 unqualified uses is f ds written =
-  let defined = Finding.joined (map (.defines) ds) ++ Finding.joined (map (.members) (Concept.conceptsOf f ds))
+  let defined = Finding.joined (map (.defines) ds)
+        ++ Finding.joined (map (.members) (Concept.conceptsOf f ds))
       lower = [ o | d <- ds, o <- SortedMap.toList (freeIn d), not (capital (fst o)) ]
   in Finding.joined (map (bareEdits defined) (lower ++ SortedMap.toList capitals))
   where
@@ -74,7 +76,8 @@ unqualified uses is f ds written =
     ||| or a record's none, its names all capitalised ones (`capitals`).
     freeIn : Rules.Declared -> Refactor.Free.Occurrences
     freeIn d = case d.decl.val of
-      PImplementation _ _ _ _ _ _ _ _ _ (Just body) => Refactor.Free.allOf (map Refactor.Free.declAt body)
+      PImplementation _ _ _ _ _ _ _ _ _ (Just body) =>
+        Refactor.Free.allOf (map Refactor.Free.declAt body)
       PInterface _ _ _ _ _ _ _ body => Refactor.Free.allOf (map Refactor.Free.declAt body)
       PData {} => empty
       PRecord {} => empty
@@ -106,5 +109,6 @@ unqualified uses is f ds written =
         case providerOf n of
           Just i => let q = Qualifier.qualifiedName i.path n in
                     if q == n then []
-                      else [ Refactor.MkEdit p (fst p, snd p + cast (length n)) q | p <- ps, p /= (-1, -1) ]
+                      else [ Refactor.MkEdit p (fst p, snd p + cast (length n)) q | p <- ps,
+                            p /= (-1, -1) ]
           Nothing => []

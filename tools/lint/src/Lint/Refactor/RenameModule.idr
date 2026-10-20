@@ -107,7 +107,8 @@ renameModule args =
       let exports = nub (concatMap (.visible) s.declared)
           header =
             maybe (-1) fst
-              (find (isPrefixOf "module " . snd) (zip [0 .. cast (length (Subject.linesOf s))] (Subject.linesOf s)))
+              (find (isPrefixOf "module " . snd)
+                (zip [0 .. cast (length (Subject.linesOf s))] (Subject.linesOf s)))
           own = MkEdit (header, 0) (header + 1, 0) ("module " ++ new ++ "\n")
             :: concatMap (requalified old new exports s) s.written
           entry = l.indent ++ new ++ (if l.lastInList then "" else ",")
@@ -139,6 +140,7 @@ renameModule args =
     candidates : Project -> Subject -> List Refactoring.Candidate
     candidates p s = case args of
       [old, new] => case renamed old new (nameOf s) of
-        Just m => [Refactoring.candidate ("rename " ++ nameOf s ++ " to " ++ m) (plan p s (nameOf s) m)]
+        Just m =>
+          [Refactoring.candidate ("rename " ++ nameOf s ++ " to " ++ m) (plan p s (nameOf s) m)]
         Nothing => []
       _ => []

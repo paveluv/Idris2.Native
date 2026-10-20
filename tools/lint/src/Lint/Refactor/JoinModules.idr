@@ -59,7 +59,8 @@ joinModules args =
 
     ||| The imports of a module as written, a line each.
     importLines : Subject -> List (Import, String)
-    importLines s = map (\i => (i, trim (Subject.lineOf s (fst (Span.lineSpan i.loc))))) s.file.mod.imports
+    importLines s =
+      map (\i => (i, trim (Subject.lineOf s (fst (Span.lineSpan i.loc))))) s.file.mod.imports
 
     -- an importer's edits: the first import of the joined modules made one
     -- of the new module, keeping an alias any of them gives and whether one
@@ -71,7 +72,8 @@ joinModules args =
       case List.filter (\(i, _) => show i.path `elem` sources) (importLines t) of
         [] => Nothing
         ((i, l) :: rest) =>
-          let alias = case List.filter (/= Rules.lastPart into) (mapMaybe aliasOf ((i, l) :: rest)) of
+          let alias =
+                case List.filter (/= Rules.lastPart into) (mapMaybe aliasOf ((i, l) :: rest)) of
                         (a :: _) => " as " ++ a
                         [] => ""
               public' = if any (\(j, _) => j.reexport) ((i, l) :: rest) then "public " else ""
@@ -80,7 +82,8 @@ joinModules args =
             (t.file.path, MkEdit (at, 0) (at + 1, 0) ("import " ++ public' ++ into ++ alias ++ "\n")
                                 :: map
                                   (\(j, _) =>
-                                   Edit.deleteLines (fst (Span.lineSpan j.loc)) (fst (Span.lineSpan j.loc)))
+                                   Edit.deleteLines (fst (Span.lineSpan j.loc))
+                                     (fst (Span.lineSpan j.loc)))
                                     rest)
 
     ||| A module's declarations as written: from what is attached above its
@@ -89,11 +92,13 @@ joinModules args =
     bodyOf : Subject -> List String
     bodyOf s =
       case sort
-        (map (fst . Span.lineSpan . (.decl.fc)) (List.filter (not . defaultDirective) s.declared)) of
+        (map (fst . Span.lineSpan . (.decl.fc))
+          (List.filter (not . defaultDirective) s.declared)) of
       (first :: _) =>
         reverse
           (dropWhile (\l => trim l == "")
-           (reverse (drop (cast (Extent.attachedFrom (Subject.linesOf s) first)) (Subject.linesOf s))))
+           (reverse
+             (drop (cast (Extent.attachedFrom (Subject.linesOf s) first)) (Subject.linesOf s))))
       [] => []
       where
         ||| Whether a declaration is a `%default` directive.
@@ -111,7 +116,8 @@ joinModules args =
             sort (nub [ l | s <- ss, (i, l) <- importLines s, not (show i.path `elem` sources) ])
           (publics, privates) = partition (isPrefixOf "import public") imports
           defaults =
-            take 1 [ trim l | s <- take 1 ss, l <- Subject.linesOf s, isPrefixOf "%default" (trim l) ]
+            take 1
+              [ trim l | s <- take 1 ss, l <- Subject.linesOf s, isPrefixOf "%default" (trim l) ]
       in unlines
         (["||| " ++ joinBy ", " (map (\m => "`" ++ Rules.lastPart m ++ "`") sources) ++ ", joined.",
           "module " ++ into, ""]
@@ -164,7 +170,8 @@ joinModules args =
                then (if Just m == head' sources then Just into else Nothing) else Just m)
                 ml.modules
       pure (MkChange
-              ((l.package, [Edit.replaceLines ml.first ml.last (Listing.moduleLines ml.indent kept)])
+              ((l.package,
+                [Edit.replaceLines ml.first ml.last (Listing.moduleLines ml.indent kept)])
                :: mapMaybe (importerEdits into sources)
                  (List.filter (\t => not (nameOf t `elem` sources)) p.files))
               [(l.newPath, newText into sources ss)]
@@ -175,6 +182,7 @@ joinModules args =
       (into :: sources@(first :: _ :: _)) =>
         if nameOf s == first
           then
-            [Refactoring.candidate ("join " ++ joinBy ", " sources ++ " into " ++ into) (plan p into sources)]
+            [Refactoring.candidate ("join " ++ joinBy ", " sources ++ " into " ++ into)
+              (plan p into sources)]
               else []
       _ => []

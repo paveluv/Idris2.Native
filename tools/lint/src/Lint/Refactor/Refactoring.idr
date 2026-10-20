@@ -242,7 +242,8 @@ runWith aside dryRun check r project changedFiles path = case check of
             | Left e => pure (Left ("cannot read " ++ p ++ ": " ++ show e, saved))
           let saved' = insert p (Just old) saved
           movedNow <- moveAside p
-          Right () <- the (IO (Either FileError ())) (if movedNow then pure (Right ()) else removeFile p)
+          Right () <- the (IO (Either FileError ()))
+            (if movedNow then pure (Right ()) else removeFile p)
             | Left e => pure (Left ("cannot remove " ++ p ++ ": " ++ show e, saved'))
           -- the directory too, if the file was its last; an undo makes it
           -- again

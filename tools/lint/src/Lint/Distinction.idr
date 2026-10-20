@@ -109,7 +109,8 @@ distinction fds =
     together : List String -> String
     together c =
       let is = fromMaybe [] (head' c >>= \m => lookup m importedTwice) in
-      Graph.listed (map lastName c) ++ " by " ++ show (length is) ++ " modules: " ++ Graph.listed (take 3 is)
+      Graph.listed (map lastName c) ++ " by " ++ show (length is) ++ " modules: "
+        ++ Graph.listed (take 3 is)
         ++ (if length is > 3 then ", ..." else "")
 
     -- a group with members that could be joined: what share they are, and

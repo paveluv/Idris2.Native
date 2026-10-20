@@ -90,7 +90,8 @@ separation fds r =
 
     ||| A module's pieces: its concepts that other modules use, clustered by
     ||| use, each with its users.
-    piecesOf : SortedMap String (List Concept) -> List Resolution.ResolvedModule -> String -> List Piece
+    piecesOf : SortedMap String (List Concept) -> List Resolution.ResolvedModule -> String ->
+               List Piece
     piecesOf byModule rms m =
       let usersOf = usersMap (filter (.offered) (fromMaybe [] (lookup m byModule)))
       in map (piece usersOf)
@@ -124,7 +125,8 @@ separation fds r =
         usersMap : List Concept -> List (String, SortedSet String)
         usersMap cs =
           [ (c.name,
-            fromList [ rm.name | rm <- rms, rm.name /= m, contains c.name (Precision.usedOf byModule rm m) ])
+            fromList [ rm.name | rm <- rms,
+                      rm.name /= m, contains c.name (Precision.usedOf byModule rm m) ])
            | c <- cs ]
 
         usersIn : List (String, SortedSet String) -> String -> SortedSet String

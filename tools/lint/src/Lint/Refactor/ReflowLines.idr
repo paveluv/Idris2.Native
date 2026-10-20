@@ -15,15 +15,18 @@
 ||| of a block the next lines align with (`p` in `Just f => do p <- emit x`),
 ||| nor in a named argument's braces. The pieces break again until they fit or
 ||| nowhere is left, and a block whose statements come to span pieces has each
-||| on a line of its own. A line wider only for the comment after its code
-||| keeps its code whole, and the comment goes on a line of its own above
-||| it, at its indentation. A comment line is left as it is. Layout is all
+||| on a line of its own. A line past a signature's first breaks as the
+||| signature does, its pieces at the column its own text belongs at
+||| (`Signature.continuations`), not two past it. A line wider only for
+||| the comment after its code keeps its code whole, and the comment goes on
+||| a line of its own above it, at its indentation. A comment line is left as it is. Layout is all
 ||| the text tells; the type checker judges the rest.
 module Lint.Refactor.ReflowLines
 
 import Lint.Refactor.Change
 import Lint.Refactor.Edit
 import Lint.Refactor.Refactoring
+import Lint.Refactor.Signature
 import Lint.Refactor.Subject
 
 import Data.List
@@ -109,12 +112,14 @@ width : String -> Int
 width l = cast (length l)
 
 ||| A line broken into pieces each no wider than the limit, as far as it
-||| can be; nothing if it cannot be broken at all.
+||| can be; nothing if it cannot be broken at all. A line past a
+||| signature's first is given the column its pieces go to outside
+||| brackets (`signature`).
 export
-reflow : (limit : Int) -> String -> Maybe (List String)
-reflow limit l = let ps =
-                       go (the Nat 50) 0 (everyStatement (the Nat 50) 0 (go (the Nat 50) 0 [l])) in
-                  if length ps > 1 then Just ps else Nothing
+reflow : (limit : Int) -> (signature : Maybe Int) -> String -> Maybe (List String)
+reflow limit given l =
+  let ps = go (the Nat 50) 0 (everyStatement (the Nat 50) 0 (go (the Nat 50) 0 [l])) in
+  if length ps > 1 then Just ps else Nothing
   where
     split : Nat -> Break -> List String -> List String
     split i b ps = case splitAt i ps of
@@ -134,7 +139,7 @@ reflow limit l = let ps =
       let st = lexPieces target ps
           ownIndent = maybe 0 indentOf (head' (drop target ps))
           firstIndent = maybe 0 indentOf (head' ps)
-          signature = head' ps >>= signatureColumn
+          signature = maybe (head' ps >>= signatureColumn) Just given
           -- the blocks this piece starts that the pieces or lines after it
           -- align with: nothing at or before their first tokens moves
           held =
@@ -212,7 +217,12 @@ reflow limit l = let ps =
                 then Just (MkBreak g b.column True) else Nothing
               [] => Nothing
           else
-            let lower = max (firstIndent + 1) (foldl (\m, b => max m (b.column + 2)) 0 g.blocks)
+            -- past the line's start and its blocks; a line past a
+            -- signature's first at the signature's column itself
+            let lower = case given of
+                          Just c => c
+                          Nothing =>
+                            max (firstIndent + 1) (foldl (\m, b => max m (b.column + 2)) 0 g.blocks)
                 -- inside a bracket, past it, unless what follows would not
                 -- fit there
                 preferred = case (g.bracket, signature) of
@@ -372,6 +382,48 @@ reflow limit l = let ps =
                               (if b.statement then statementsFrom fuel (S i) ps' else ps')
             Nothing => go (S fuel) (S i) ps
 
+||| The width a refactoring's arguments give (`--arg WIDTH`), 100 if none.
+export
+widthOf : (arguments : List String) -> Int
+widthOf [w] = maybe 100 id (parsePositive w)
+widthOf _ = 100
+
+||| Each line of the file wider than the limit, broken: all of them, then
+||| each alone.
+export
+wideLines : (limit : Int) -> Subject -> List Refactoring.Candidate
+wideLines limit s = case wide of
+  [] => []
+  ws =>
+    Refactoring.candidate ("lines wider than " ++ show limit)
+      (Right (Change.inFile s.file.path [ Edit.replaceLines i i ps | (i, _, ps) <- ws ]))
+      :: [ Refactoring.candidate ("`" ++ trim l ++ "`")
+             (Right (Change.inFile s.file.path [Edit.replaceLines i i ps]))
+         | (i, l, ps) <- ws ]
+  where
+    comment : String -> Bool
+    comment l = isPrefixOf "--" (ltrim l) || isPrefixOf "|||" (ltrim l)
+
+    -- the column the pieces of each line past a signature's first go to
+    columns : List (Int, Int)
+    columns = Signature.continuations s
+
+    -- each wide line that breaks, where it is, with its pieces
+    wide : List (Int, String, List String)
+    wide = mapMaybe one (zip [0 .. length (Subject.linesOf s)] (Subject.linesOf s))
+      where
+        one : (Nat, String) -> Maybe (Int, String, List String)
+        one (i, l) =
+          let given = lookup (cast i) columns in
+          if width l <= limit || comment l then Nothing
+          else case trailingComment l of
+            -- wide for its comment alone: the comment above, the code whole
+            Just (code, note) =>
+              if width code <= limit
+                 then Just (cast i, l, [pack (takeWhile (== ' ') (unpack l)) ++ note, code])
+                 else map (cast i, l,) (reflow limit given l)
+            Nothing => map (cast i, l,) (reflow limit given l)
+
 ||| `reflow-lines`: each line wider than the width (`--arg WIDTH`, 100 by
 ||| default) broken into lines that fit.
 export
@@ -379,37 +431,4 @@ reflowLines : (arguments : List String) -> Refactoring
 reflowLines args =
   Refactoring.fileRefactoring "reflow-lines"
     "break each line wider than a width (--arg WIDTH, 100 by default) into lines that fit"
-      candidates
-  where
-    limit : Int
-    limit = case args of
-      [w] => maybe 100 id (parsePositive w)
-      _ => 100
-
-    comment : String -> Bool
-    comment l = isPrefixOf "--" (ltrim l) || isPrefixOf "|||" (ltrim l)
-
-    -- each wide line that breaks, where it is, with its pieces
-    wide : Subject -> List (Int, String, List String)
-    wide s = mapMaybe one (zip [0 .. length (Subject.linesOf s)] (Subject.linesOf s))
-      where
-        one : (Nat, String) -> Maybe (Int, String, List String)
-        one (i, l) =
-          if width l <= limit || comment l then Nothing
-          else case trailingComment l of
-            -- wide for its comment alone: the comment above, the code whole
-            Just (code, note) =>
-              if width code <= limit
-                 then Just (cast i, l, [pack (takeWhile (== ' ') (unpack l)) ++ note, code])
-                 else map (cast i, l,) (reflow limit l)
-            Nothing => map (cast i, l,) (reflow limit l)
-
-    candidates : Subject -> List Refactoring.Candidate
-    candidates s = case wide s of
-      [] => []
-      ws =>
-        Refactoring.candidate ("lines wider than " ++ show limit)
-          (Right (Change.inFile s.file.path [ Edit.replaceLines i i ps | (i, _, ps) <- ws ]))
-            ::
-              [ Refactoring.candidate ("`" ++ trim l ++ "`") (Right (Change.inFile s.file.path [Edit.replaceLines i i ps]))
-               | (i, l, ps) <- ws ]
+    (wideLines (widthOf args))

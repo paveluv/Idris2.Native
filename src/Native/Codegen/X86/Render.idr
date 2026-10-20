@@ -670,7 +670,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
 
           block : (LocatedIR.Label -> Asm.Label) -> (results : List (IRCommon.Ty enc)) ->
                   SortedMap LocatedIR.Label (List (LocatedIR.Reg enc), Integer) ->
-                    LocatedIR.Block enc -> Render enc ()
+                  LocatedIR.Block enc -> Render enc ()
           block blk res rs b = do
             case lookup b.label rs of
               Just (live, word) => do
@@ -1074,7 +1074,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                   fixArith : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} ->
                              IRCommon.Op.ArithOp ->
                              LocatedIR.Opnd enc -> LocatedIR.Opnd enc ->
-                               (overflow : Maybe Asm.Label) -> Render enc ()
+                             (overflow : Maybe Asm.Label) -> Render enc ()
                   fixArith o x y ov = case o of
                       IRCommon.Op.Add => do loadAs IRCommon.Ty.Fix Asm.RAX x; aluTwice Asm.ADD y; jo
                       IRCommon.Op.Sub => do loadAs IRCommon.Ty.Fix Asm.RAX x; aluTwice Asm.SUB y; jo

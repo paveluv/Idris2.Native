@@ -34,7 +34,7 @@ export
 put : (i : Bits64) -> {auto 0 next : cast i = k} ->
       {auto 0 inside : Types.Struct.Below k (length vs)} ->
       Obj.Building r vs k -> Flat.Uniform (Types.Struct.valueType vs inside) ->
-        IO (Obj.Building r vs (S k))
+      IO (Obj.Building r vs (S k))
 put i b x = primIO $ \w =>
   let (Runtime.MkOrdo # b') = Obj.putValue i b x Runtime.MkOrdo in MkIORes b' w
 
@@ -48,14 +48,14 @@ done b = primIO $ \w => let (Runtime.MkOrdo # v) = Obj.endStruct b Runtime.MkOrd
 ||| Raw word `i` of the record, and storing one.
 export
 readWord : (i : Bits64) -> {auto 0 inside : Types.Struct.Below (cast i) r} ->
-       Flat.Uniform (Types.Struct r vs) -> IO Bits64
+           Flat.Uniform (Types.Struct r vs) -> IO Bits64
 readWord i v = primIO $ \w => let (Runtime.MkOrdo # x) =
                                     Obj.structWord i v Runtime.MkOrdo in MkIORes x w
 
 %cg native flat Support.StructObj.writeWord
 export
 writeWord : (i : Bits64) -> {auto 0 inside : Types.Struct.Below (cast i) r} ->
-          Flat.Uniform (Types.Struct r vs) -> (value : Bits64) -> IO ()
+            Flat.Uniform (Types.Struct r vs) -> (value : Bits64) -> IO ()
 writeWord i v x = primIO $ \w =>
   let (Runtime.MkOrdo # ()) = Obj.setStructWord i v x Runtime.MkOrdo in MkIORes () w
 
@@ -71,6 +71,6 @@ readValue i v = primIO $ \w => let (Runtime.MkOrdo # x) =
 export
 writeValue : (i : Bits64) -> {auto 0 inside : Types.Struct.Below (cast i) (length vs)} ->
              Flat.Uniform (Types.Struct r vs) -> Flat.Uniform (Types.Struct.valueType vs inside) ->
-               IO ()
+             IO ()
 writeValue i v x = primIO $ \w =>
   let (Runtime.MkOrdo # ()) = Obj.setStructValue i v x Runtime.MkOrdo in MkIORes () w

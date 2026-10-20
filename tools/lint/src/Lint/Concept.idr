@@ -169,7 +169,9 @@ conceptsOf f ds =
     concept owner memberOf n =
       let mine = filter (\d => owner d == n) ds
           refs =
-            nub (filter (/= n) (mapMaybe (\m => lookup m memberOf) (Finding.joined (map (.mentions) mine))))
+            nub
+              (filter (/= n)
+               (mapMaybe (\m => lookup m memberOf) (Finding.joined (map (.mentions) mine))))
       in MkConcept n (nub (Finding.joined (map membersOf mine))) (any exportedHere mine) refs
         (sum (map linesOf mine))
 

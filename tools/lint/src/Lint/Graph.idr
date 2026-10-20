@@ -180,7 +180,8 @@ groupOf m = parentOf m >>= \p => last' (forget (Data.String.split (== '.') p))
 ||| the two modules' names share, `TermIR.StaticDef.SWord` in
 ||| `Native.Codegen.RegAlloc`.
 export
-importAlias : (exportsOf : SortedMap String (List String)) -> Source.SourceFile -> List (FC, Name) ->
+importAlias : (exportsOf : SortedMap String (List String)) -> Source.SourceFile ->
+              List (FC, Name) ->
               List Finding
 importAlias exportsOf f refs =
   [ MkFinding "import-alias" f.path l c m
@@ -259,7 +260,8 @@ selfQualified f defines refs = mapMaybe one refs
           decl _ = []
 
           clause : PClause -> List ((Int, Int), (Int, Int))
-          clause (MkPatClause _ _ rhs wh) = maybe [] (\b => [b]) (Refactor.Span.bounds (getPTermLoc rhs))
+          clause (MkPatClause _ _ rhs wh) =
+            maybe [] (\b => [b]) (Refactor.Span.bounds (getPTermLoc rhs))
             ++ rhsOf wh
           clause (MkWithClause _ _ _ _ cs) = foldr (\c, rest => clause c ++ rest) [] cs
           clause (MkImpossible _ _) = []
@@ -360,7 +362,7 @@ meetings fds =
     meet : SortedMap String (SortedSet String, SortedSet String) ->
            SortedMap String (List String) -> SortedMap String (List String) ->
            SortedMap String (List String) -> (Source.SourceFile, List Rules.Declared) ->
-             SortedMap String (SortedSet String, SortedSet String)
+           SortedMap String (SortedSet String, SortedSet String)
     meet acc imports reexports visibleIn (f, ds) =
       let m = moduleOf f
           own = tag m (Finding.joined (map (.defines) ds))
@@ -481,7 +483,8 @@ health fds =
           imports = Finding.joined (map (\f => f.mod.imports) notFacades)
           privates = length (filter (not . (.reexport)) imports)
       in MkComponent "structure" "encapsulation" (percent privates (length imports))
-           ("private imports, façades exempt: " ++ show privates ++ " of " ++ show (length imports))
+           ("private imports, façades exempt: " ++ show privates ++ " of "
+            ++ show (length imports))
            [ MkOffender (moduleOf f) (length pub) ("imports publicly " ++ listed pub)
            | f <- notFacades, let pub = [ show i.path | i <- f.mod.imports, i.reexport ],
                                     not (null pub) ]
@@ -584,7 +587,8 @@ health fds =
     moduleWide (f, (s, _)) =
       Just
         (MkOffender (moduleOf f) (length s)
-         ("module-wide, each used by one: " ++ listed (Finding.joined (map (\hu => (fst hu).defines) s))))
+         ("module-wide, each used by one: "
+           ++ listed (Finding.joined (map (\hu => (fst hu).defines) s))))
 
     scoping : Component
     scoping =

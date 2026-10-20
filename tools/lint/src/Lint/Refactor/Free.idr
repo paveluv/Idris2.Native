@@ -384,7 +384,8 @@ claimsWithin globals around cls = foldr (\cl, rest => inPat cl ++ rest) [] cls
     -- the clauses of the local function a claim among the block's declares
     defsOf : List PDecl -> List String -> List PClause
     defsOf ds names = foldr (\d, rest => case d.val of
-                                         PDef cs => if any (`elem` names) (Rules.definesOf d) then cs
+                                         PDef cs => if any (`elem` names) (Rules.definesOf d)
+                                           then cs
                                            ++ rest else rest
                                          _ => rest) [] ds
 

@@ -97,7 +97,7 @@ reach roots p =
     -- once, so the fuel, every function and static once, is enough
     go : SortedMap Name (Function enc) -> SortedMap Name (Static enc) -> Refs ->
          (code, statics, tables : SortedSet Name) -> (fuel : Nat) ->
-           (SortedSet Name, SortedSet Name, SortedSet Name)
+         (SortedSet Name, SortedSet Name, SortedSet Name)
     go funs stats (MkRefs [] [] ts) cs ss tables _ = (cs, ss, foldr insert tables ts)
     go funs stats _ cs ss tables Z = (cs, ss, tables)
     go funs stats (MkRefs (f :: fs) ss' ts) cs ss tables (S k) =

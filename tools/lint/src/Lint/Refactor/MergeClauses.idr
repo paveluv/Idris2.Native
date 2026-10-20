@@ -419,7 +419,8 @@ mergeClauses = Refactoring.fileRefactoring "merge-clauses"
         nothingBetween : (Int, Int) -> Either String ()
         nothingBetween (a, b) =
           if any
-            (\d => let l = fst (Span.lineSpan d.decl.fc) in l >= a && l <= b && Span.lineSpan d.decl.fc
+            (\d => let l = fst (Span.lineSpan d.decl.fc) in l >= a && l <= b
+              && Span.lineSpan d.decl.fc
              /= Span.lineSpan u.decl.fc)
               s.declared
             then Left "other declarations lie between its clauses" else Right ()
@@ -478,7 +479,8 @@ mergeClauses = Refactoring.fileRefactoring "merge-clauses"
         patternVariables ps p =
           foldr (\(i, pos), rest => case pos of
                                       Matched =>
-                                        maybe rest (\t => union (Free.boundBy t) rest) (patternAt i p)
+                                        maybe rest (\t => union (Free.boundBy t) rest)
+                                          (patternAt i p)
                                       _ => rest) empty (zip [0 .. length ps] ps)
 
         -- a name kept as an argument binds, in a clause that left it `_`,
@@ -494,7 +496,8 @@ mergeClauses = Refactoring.fileRefactoring "merge-clauses"
           where
             captured : (Nat, Position) -> Bool
             captured (i, Kept n) = n /= "_"
-              && any (\p => maybe False isWild (patternAt i p) && contains n (Free.inClause p.clause))
+              && any
+                (\p => maybe False isWild (patternAt i p) && contains n (Free.inClause p.clause))
                 parts
               where
                 isWild : PTerm -> Bool
@@ -513,7 +516,8 @@ mergeClauses = Refactoring.fileRefactoring "merge-clauses"
             one : Parts -> Either String ()
             one p =
               let defs = fromList (Free.definedBy p.wheres)
-                  used = difference (foldr (\d, rest => union (Free.inDecl d) rest) empty p.wheres) defs
+                  used =
+                    difference (foldr (\d, rest => union (Free.inDecl d) rest) empty p.wheres) defs
                   others = filter (\q => q.first /= p.first) parts
               in if contains Free.unknown used
                 then Left
@@ -563,20 +567,23 @@ mergeClauses = Refactoring.fileRefactoring "merge-clauses"
     -- the user, or methods of it if it is an implementation
     targetsOf : Subject -> (Rules.Declared, Rules.Declared) -> List Refactoring.Candidate
     targetsOf s (h, u) = case u.decl.val of
-      PDef cls => if usedBy cls >= 2 then [Refactoring.candidate (Refactoring.labelOf u) (plan s u cls (claimType s u))]
+      PDef cls => if usedBy cls >= 2
+        then [Refactoring.candidate (Refactoring.labelOf u) (plan s u cls (claimType s u))]
         else []
       PImplementation _ _ _ _ _ _ _ _ _ (Just body) =>
         mapMaybe (\d => case d.val of
                           PDef cls => if usedBy cls >= 2
                             then Just
-                              (Refactoring.candidate (fastConcat (Rules.definesOf d) ++ " of " ++ Refactoring.labelOf u)
+                              (Refactoring.candidate
+                                (fastConcat (Rules.definesOf d) ++ " of " ++ Refactoring.labelOf u)
                                (plan s u cls Nothing))
                                 else Nothing
                           _ => Nothing) (foldr (\d, rest => Rules.byFunction d ++ rest) [] body)
       _ => []
       where
         usedBy : List PClause -> Nat
-        usedBy cls = length (filter (\cl => any (\n => contains n (Free.inClause cl)) h.defines) cls)
+        usedBy cls =
+          length (filter (\cl => any (\n => contains n (Free.inClause cl)) h.defines) cls)
 
     candidates : Subject -> List Refactoring.Candidate
     candidates s =
