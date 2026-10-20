@@ -96,26 +96,26 @@ data Service
 public export
 port : Service -> Port
 port Exit = MkPort [Port.Word] Nothing
-port Write = MkPort [Port.Word, Port.Raw, Port.Word] (Just Port.Word)
-port Reserve = MkPort [Port.Word] (Just Port.Raw)
-port Commit = MkPort [Port.Raw, Port.Word] (Just Port.Word)
-port Release = MkPort [Port.Raw, Port.Word] Nothing
+port Write = MkPort [Port.Word, Port.ByteAddr, Port.Word] (Just Port.Word)
+port Reserve = MkPort [Port.Word] (Just Port.ByteAddr)
+port Commit = MkPort [Port.ByteAddr, Port.Word] (Just Port.Word)
+port Release = MkPort [Port.ByteAddr, Port.Word] Nothing
 port StackLimit = MkPort [] (Just Port.Word)
 port PageBytes = MkPort [] (Just Port.Word)
 port PrepareTerminal = MkPort [] Nothing
 port TerminalColumns = MkPort [] (Just Port.Word)
 port TerminalLines = MkPort [] (Just Port.Word)
-port ChangeDirectory = MkPort [Port.Raw] (Just Port.Word)
-port CurrentDirectory = MkPort [Port.Raw, Port.Word] (Just Port.Word)
-port CreateDirectory = MkPort [Port.Raw] (Just Port.Word)
-port RemoveDirectory = MkPort [Port.Raw] (Just Port.Word)
-port Open = MkPort [Port.Raw, Port.Word] (Just Port.Word)
+port ChangeDirectory = MkPort [Port.ByteAddr] (Just Port.Word)
+port CurrentDirectory = MkPort [Port.ByteAddr, Port.Word] (Just Port.Word)
+port CreateDirectory = MkPort [Port.ByteAddr] (Just Port.Word)
+port RemoveDirectory = MkPort [Port.ByteAddr] (Just Port.Word)
+port Open = MkPort [Port.ByteAddr, Port.Word] (Just Port.Word)
 port Close = MkPort [Port.Word] (Just Port.Word)
-port Read = MkPort [Port.Word, Port.Raw, Port.Word] (Just Port.Word)
+port Read = MkPort [Port.Word, Port.ByteAddr, Port.Word] (Just Port.Word)
 port FileSize = MkPort [Port.Word] (Just Port.Word)
 port IsTerminal = MkPort [Port.Word] (Just Port.Word)
-port RemoveFile = MkPort [Port.Raw] (Just Port.Word)
-port ReadEntry = MkPort [Port.Word, Port.Raw, Port.Word] (Just Port.Word)
+port RemoveFile = MkPort [Port.ByteAddr] (Just Port.Word)
+port ReadEntry = MkPort [Port.Word, Port.ByteAddr, Port.Word] (Just Port.Word)
 
 ||| Every service, once. The code generator pairs this list's term, as the
 ||| loaded runtime's context holds it, with its own copy, element by element.

@@ -31,9 +31,9 @@ module Native.Support.Obj
 
 import Native.Flat.Uniform as Flat
 import Native.HeapObj.Shape as HeapObj
+import Native.Runtime.ByteAddr as Runtime
 import Native.Runtime.Memory
 import Native.Runtime.Ordo as Runtime
-import Native.Runtime.Raw as Runtime
 import Native.Runtime.Space
 import Native.Types.ConstructorId as Types
 import Native.Types.Header
@@ -114,10 +114,10 @@ setHeader (MkObj _ a) ps = do
   h <- checked k ps
   Runtime.Memory.store64 a 0 h
 
-||| The bytes of an object's payload from the offset, as raw memory: for
+||| The bytes of an object's payload from the offset, by its byte address: for
 ||| the system to read or write them.
 export %inline
-objectBytes : Obj k -> (offset : Bits64) -> Runtime.Raw
+objectBytes : Obj k -> (offset : Bits64) -> Runtime.ByteAddr
 objectBytes (MkObj _ a) n = Runtime.Memory.objectBytes a (8 + n)
 
 ||| The object a value is, of a kind that holds every value of its type.
@@ -267,7 +267,7 @@ beginStruct raws values _ _ = do
   a <- Runtime.Space.allocate (8 * words)
   let o = Runtime.Memory.objectAt {s = HeapObj.Shape.MIXED} a
   Runtime.Memory.store64 o 0 h
-  Runtime.Memory.fillRaw (Runtime.Memory.objectBytes o 8) (8 * (words - 1)) 0
+  Runtime.Memory.fillBytes (Runtime.Memory.objectBytes o 8) (8 * (words - 1)) 0
   v <- Runtime.Memory.objectValue o
   Runtime.Ordo.pure (MkBuilding v)
 

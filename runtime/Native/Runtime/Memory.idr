@@ -13,10 +13,10 @@ module Native.Runtime.Memory
 
 -- the runtime's own, never re-exported: each module that uses it imports it
 import Native.Runtime.Bits
+import Native.Runtime.ByteAddr
 import Native.Runtime.Ordo
 import Native.Runtime.OS
 import Native.Runtime.PortTy
-import Native.Runtime.Raw
 
 import Native.Flat.Uniform as Flat
 import Native.HeapObj.Shape as HeapObj
@@ -63,57 +63,57 @@ record Addr (0 s : HeapObj.Shape) where
   word : Bits64
 
 
-||| The memory an object is, as raw memory.
-raw : Addr s -> Raw
-raw a = Raw.fromWord a.word
+||| The memory an object is, by its byte address.
+byteAddr : Addr s -> ByteAddr
+byteAddr a = ByteAddr.fromWord a.word
 
 ||| The word at the address plus the offset.
 export %inline
 load64 : Addr s -> (offset : Bits64) -> Ordo.Op Ordo Bits64
-load64 a = intrinsic__load64 (raw a)
+load64 a = intrinsic__load64 (byteAddr a)
 
 ||| The 32, 16 or 8 bits at the address plus the offset, as a word.
 export %inline
 load32, load16, load8 : Addr s -> (offset : Bits64) -> Ordo.Op Ordo Bits64
-load32 a = intrinsic__load32 (raw a)
-load16 a = intrinsic__load16 (raw a)
-load8 a = intrinsic__load8 (raw a)
+load32 a = intrinsic__load32 (byteAddr a)
+load16 a = intrinsic__load16 (byteAddr a)
+load8 a = intrinsic__load8 (byteAddr a)
 
 ||| Store the word at the address plus the offset.
 export %inline
 store64 : Addr s -> (offset, value : Bits64) -> Ordo.Op Ordo ()
-store64 a = intrinsic__store64 (raw a)
+store64 a = intrinsic__store64 (byteAddr a)
 
 ||| Store the word's low 32, 16 or 8 bits at the address plus the offset.
 export %inline
 store32, store16, store8 : Addr s -> (offset, value : Bits64) -> Ordo.Op Ordo ()
-store32 a = intrinsic__store32 (raw a)
-store16 a = intrinsic__store16 (raw a)
-store8 a = intrinsic__store8 (raw a)
+store32 a = intrinsic__store32 (byteAddr a)
+store16 a = intrinsic__store16 (byteAddr a)
+store8 a = intrinsic__store8 (byteAddr a)
 
 ------------------------------------------------------------------------------
--- Raw memory and objects
+-- Byte addresses and objects
 
-||| The object at raw memory the allocator gave: for the modules that lay
+||| The object at a byte address the allocator gave: for the modules that lay
 ||| out the heap's spaces and its objects.
 export %inline
-objectAt : Raw -> Addr s
-objectAt r = MkAddr (Raw.rawWord r)
+objectAt : ByteAddr -> Addr s
+objectAt r = MkAddr (ByteAddr.toWord r)
 
-||| An object's bytes from the offset, as raw memory: for the system to
+||| An object's bytes from the offset, by its byte address: for the system to
 ||| read or write them.
 export %inline
-objectBytes : Addr s -> (offset : Bits64) -> Raw
-objectBytes a n = Raw.offset (raw a) n
+objectBytes : Addr s -> (offset : Bits64) -> ByteAddr
+objectBytes a n = ByteAddr.offset (byteAddr a) n
 
-||| The word at raw memory plus a byte offset, and storing one: the loads
+||| The word at a byte address plus a byte offset, and storing one: the loads
 ||| and stores of the memory that holds no object.
 export %inline
-loadAt : Raw -> (offset : Bits64) -> Ordo.Op Ordo Bits64
+loadAt : ByteAddr -> (offset : Bits64) -> Ordo.Op Ordo Bits64
 loadAt = intrinsic__load64
 
 export %inline
-storeAt : Raw -> (offset, value : Bits64) -> Ordo.Op Ordo ()
+storeAt : ByteAddr -> (offset, value : Bits64) -> Ordo.Op Ordo ()
 storeAt = intrinsic__store64
 
 ------------------------------------------------------------------------------
@@ -123,15 +123,15 @@ storeAt = intrinsic__store64
 ||| The allocation window: inline allocation bumps the allocation pointer
 ||| until the limit, and takes the slow path past it.
 export %inline
-allocationPointer : Ordo.Op Ordo Raw
+allocationPointer : Ordo.Op Ordo ByteAddr
 allocationPointer = intrinsic__getHp
 
 export %inline
-allocationLimit : Ordo.Op Ordo Raw
+allocationLimit : Ordo.Op Ordo ByteAddr
 allocationLimit = intrinsic__getHpLim
 
 export %inline
-setAllocation : (hp, hplim : Raw) -> Ordo.Op Ordo ()
+setAllocation : (hp, hplim : ByteAddr) -> Ordo.Op Ordo ()
 setAllocation hp hplim = do
   intrinsic__setHp hp
   intrinsic__setHpLim hplim
@@ -155,36 +155,36 @@ export %inline
 pointerTag : Ordo.Op Ordo Bits64
 pointerTag = intrinsic__pointerTag
 
-||| The per-thread areas, as raw memory, since they hold no object: the
-||| word that holds the lowest the machine stack pointer may
-||| go in direct code; the word that holds the stack pointer at the
-||| program's entry, where the argument count, the arguments' addresses and
-||| the environment's are; the root buffer and the word that counts its
-||| entries in use; and the runtime's state.
+||| The per-thread areas, by their byte addresses, since they hold no object:
+||| the word that holds the lowest the machine stack pointer may go in direct
+||| code; the word that holds the stack pointer at the program's entry, where
+||| the argument count, the arguments' addresses and the environment's are;
+||| the root buffer and the word that counts its entries in use; and the
+||| runtime's state.
 export %inline
-stackLimitArea : Ordo.Op Ordo Raw
+stackLimitArea : Ordo.Op Ordo ByteAddr
 stackLimitArea = intrinsic__stackLimitArea
 
 export %inline
-argvArea : Ordo.Op Ordo Raw
+argvArea : Ordo.Op Ordo ByteAddr
 argvArea = intrinsic__argvArea
 
 export %inline
-rootsArea : Ordo.Op Ordo Raw
+rootsArea : Ordo.Op Ordo ByteAddr
 rootsArea = intrinsic__rootsArea
 
 export %inline
-nrootsArea : Ordo.Op Ordo Raw
+nrootsArea : Ordo.Op Ordo ByteAddr
 nrootsArea = intrinsic__nrootsArea
 
 export %inline
-runtimeArea : Ordo.Op Ordo Raw
+runtimeArea : Ordo.Op Ordo ByteAddr
 runtimeArea = intrinsic__runtimeArea
 
 ||| The program's top-level constants (`Area.CONSTANTS`): their cells, and
 ||| how many there are.
 export %inline
-constantsArea : Ordo.Op Ordo Raw
+constantsArea : Ordo.Op Ordo ByteAddr
 constantsArea = intrinsic__constantsArea
 
 export %inline
@@ -199,15 +199,15 @@ argumentCount : Ordo.Op Ordo Bits64
 argumentCount = do
   argv <- argvArea
   entry <- loadAt argv 0
-  loadAt (Raw.fromWord entry) 0
+  loadAt (ByteAddr.fromWord entry) 0
 
 export
-argumentBytes : (n : Bits64) -> Ordo.Op Ordo Raw
+argumentBytes : (n : Bits64) -> Ordo.Op Ordo ByteAddr
 argumentBytes n = do
   argv <- argvArea
   entry <- loadAt argv 0
-  p <- loadAt (Raw.fromWord entry) (8 + 8 * n)
-  Ordo.pure (Raw.fromWord p)
+  p <- loadAt (ByteAddr.fromWord entry) (8 + 8 * n)
+  Ordo.pure (ByteAddr.fromWord p)
 
 ||| The program's environment, as the system put it after the arguments and
 ||| the zero word that ends them: entry `n`'s address, as a foreign pointer
@@ -218,41 +218,41 @@ environmentEntry : (n : Bits64) -> Ordo.Op Ordo Bits64
 environmentEntry n = do
   argv <- argvArea
   entry <- loadAt argv 0
-  let start = Raw.fromWord entry
+  let start = ByteAddr.fromWord entry
   count <- loadAt start 0
   scan start (8 + 8 * (count + 1)) n
   where
     -- the entry `k` on from the one at `at`, stopping at the zero word
     covering
-    scan : Raw -> (at, k : Bits64) -> Ordo.Op Ordo Bits64
+    scan : ByteAddr -> (at, k : Bits64) -> Ordo.Op Ordo Bits64
     scan start at k = do
       p <- loadAt start at
       if p == 0 || k == 0 then Ordo.pure p else scan start (at + 8) (k - 1)
 
-||| The raw memory a foreign pointer's word addresses, such as an
+||| The memory a foreign pointer's word addresses, such as an
 ||| environment entry's: memory outside the heap, which the collector never
 ||| moves.
 export %inline
-foreignBytes : (word : Bits64) -> Raw
-foreignBytes = Raw.fromWord
+foreignBytes : (word : Bits64) -> ByteAddr
+foreignBytes = ByteAddr.fromWord
 
-||| The byte at raw memory plus a byte offset, and storing one, the low
+||| The byte at a byte address plus a byte offset, and storing one, the low
 ||| byte of the word.
 export %inline
-loadByteAt : Raw -> (offset : Bits64) -> Ordo.Op Ordo Bits64
+loadByteAt : ByteAddr -> (offset : Bits64) -> Ordo.Op Ordo Bits64
 loadByteAt = intrinsic__load8
 
 export %inline
-storeByteAt : Raw -> (offset, value : Bits64) -> Ordo.Op Ordo ()
+storeByteAt : ByteAddr -> (offset, value : Bits64) -> Ordo.Op Ordo ()
 storeByteAt = intrinsic__store8
 
-||| `count` bytes copied from raw memory to raw memory, the copy where it
+||| `count` bytes copied from one byte address to another, the copy where it
 ||| overlaps the bytes it copies too, as the C library's `memmove`: first
 ||| to last, or last to first where the copy starts inside them.
 export covering
-copyRaw : (from, to : Raw) -> (count : Bits64) -> Ordo.Op Ordo ()
-copyRaw from to n =
-  if Raw.rawWord to > Raw.rawWord from && Raw.rawWord to - Raw.rawWord from < n then down n
+copyBytes : (from, to : ByteAddr) -> (count : Bits64) -> Ordo.Op Ordo ()
+copyBytes from to n =
+  if ByteAddr.toWord to > ByteAddr.toWord from && ByteAddr.toWord to - ByteAddr.toWord from < n then down n
     else up 0
   where
     covering
@@ -270,11 +270,11 @@ copyRaw from to n =
       storeByteAt to (i - 1) c
       down (i - 1)
 
-||| `count` bytes of raw memory set to the byte, as the C library's
+||| `count` bytes from a byte address set to the byte, as the C library's
 ||| `memset`.
 export covering
-fillRaw : (to : Raw) -> (count, byte : Bits64) -> Ordo.Op Ordo ()
-fillRaw to n b = go 0
+fillBytes : (to : ByteAddr) -> (count, byte : Bits64) -> Ordo.Op Ordo ()
+fillBytes to n b = go 0
   where
     covering
     go : Bits64 -> Ordo.Op Ordo ()
@@ -368,22 +368,22 @@ roundToPage x = do
   Ordo.pure ((x + (page - 1)) .&. (0 - page))
 
 export
-alignToPage : Raw -> Ordo.Op Ordo Raw
+alignToPage : ByteAddr -> Ordo.Op Ordo ByteAddr
 alignToPage r = do
   page <- OS.osPageBytes
-  Ordo.pure (Raw.alignUp r page)
+  Ordo.pure (ByteAddr.alignUp r page)
 
 ||| `bytes` of address space reserved, not yet usable; the null address if
 ||| the system has no such range.
 export %inline
-reserveMemory : (bytes : Bits64) -> Ordo.Op Ordo Raw
+reserveMemory : (bytes : Bits64) -> Ordo.Op Ordo ByteAddr
 reserveMemory = OS.osReserve
 
 ||| Memory committed to `bytes` of a reserved range from `addr`, both whole
 ||| pages: readable, writable and zero. The program ends if the system has
 ||| none.
 export
-commitMemory : (addr : Raw) -> (bytes : Bits64) -> Ordo.Op Ordo ()
+commitMemory : (addr : ByteAddr) -> (bytes : Bits64) -> Ordo.Op Ordo ()
 commitMemory addr bytes = do
   ok <- OS.osCommit addr bytes
   -- lint: allow trust-escape: memory the system refuses ends the program, which returns nothing
@@ -392,7 +392,7 @@ commitMemory addr bytes = do
 ||| Memory given back from `bytes` of a committed range from `addr`, both
 ||| whole pages, and the range reserved again.
 export %inline
-releaseMemory : (addr : Raw) -> (bytes : Bits64) -> Ordo.Op Ordo ()
+releaseMemory : (addr : ByteAddr) -> (bytes : Bits64) -> Ordo.Op Ordo ()
 releaseMemory = OS.osRelease
 
 ||| `bytes` of fresh memory, zeroed, readable and writable, at an address the
@@ -402,7 +402,7 @@ mapMemory : (bytes : Bits64) -> Ordo.Op Ordo (Addr s)
 mapMemory bytes = do
   whole <- roundToPage bytes
   a <- OS.osReserve whole
-  ok <- if Raw.isNull a then Ordo.pure 0 else OS.osCommit a whole
+  ok <- if ByteAddr.isNull a then Ordo.pure 0 else OS.osCommit a whole
   -- lint: allow trust-escape: memory the system refuses ends the program, which returns nothing
   if ok == 0
      then assert_total (idris_crash "idris: cannot map memory")

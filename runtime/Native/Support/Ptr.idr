@@ -27,9 +27,9 @@ import Native.Support.Obj
 
 import Native.Flat.Uniform as Flat
 import Native.HeapObj.Shape as HeapObj
+import Native.Runtime.ByteAddr as Runtime
 import Native.Runtime.Memory
 import Native.Runtime.Ordo as Runtime
-import Native.Runtime.Raw as Runtime
 import Native.Types.Header
 import Native.Types.Kind
 import Native.Types.Represents as Types
@@ -45,7 +45,7 @@ public export
 data Pointee : Type where
   ||| An address of memory outside the heap; the null address the null
   ||| pointer.
-  Address : (address : Runtime.Raw) -> Pointee
+  Address : (address : Runtime.ByteAddr) -> Pointee
   ||| A string of the heap, given for a pointer to its bytes.
   HeapString : Obj Types.Kind.STRING -> Pointee
   ||| A handle: a number the system tier gives for a value of its own.
@@ -53,18 +53,18 @@ data Pointee : Type where
 
 ||| A new pointer of the address, as ordinary code holds it.
 export %inline
-newPtr : {auto 0 rep : Types.Represents Types.Kind.PTR a} -> (address : Runtime.Raw) ->
+newPtr : {auto 0 rep : Types.Represents Types.Kind.PTR a} -> (address : Runtime.ByteAddr) ->
          Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform a)
 newPtr address = do
   p <- Obj.allocate Types.Kind.PTR Types.Header.noParts
-  Obj.store64 p 0 (Runtime.Raw.rawWord address)
+  Obj.store64 p 0 (Runtime.ByteAddr.toWord address)
   Obj.objectValue p
 
 ||| The null pointer.
 export %inline
 nullPtr : {auto 0 rep : Types.Represents Types.Kind.PTR a} ->
           Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform a)
-nullPtr = newPtr Runtime.Raw.null
+nullPtr = newPtr Runtime.ByteAddr.null
 
 ||| A string given for a pointer to its bytes: the string itself.
 export %inline

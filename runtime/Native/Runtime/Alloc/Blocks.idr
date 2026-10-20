@@ -19,9 +19,9 @@ module Native.Runtime.Alloc.Blocks
 import Native.Runtime.Alloc.Block
 import Native.Runtime.Alloc.System
 
+import Native.Runtime.ByteAddr
 import Native.Runtime.Memory
 import Native.Runtime.Ordo
-import Native.Runtime.Raw
 import Native.Runtime.State
 
 %hide Prelude.Interfaces.(>>=)
@@ -34,7 +34,7 @@ import Native.Runtime.State
 ||| address, null until it is made.
 export
 data Blocks : Type where
-  MkBlocks : State Raw -> Blocks
+  MkBlocks : State ByteAddr -> Blocks
 
 ||| The environment's entries (`System.Environment`), once the program
 ||| changes it.
@@ -43,7 +43,7 @@ environment : Blocks
 environment = MkBlocks State.environArray
 
 ||| The array's address, null if it is not made.
-arrayOf : Blocks -> Ordo.Op Ordo Raw
+arrayOf : Blocks -> Ordo.Op Ordo ByteAddr
 arrayOf (MkBlocks s) = State.getState s
 
 ||| Where block `i`'s address is in the array.
@@ -55,7 +55,7 @@ export
 made : Blocks -> Ordo.Op Ordo Bool
 made xs = do
   a <- arrayOf xs
-  Ordo.pure (not (Raw.isNull a))
+  Ordo.pure (not (ByteAddr.isNull a))
 
 ||| The array made, empty, with room for `capacity` blocks, if it is not
 ||| yet; whether it is, which it is not if there is no memory for it.
@@ -63,7 +63,7 @@ export covering
 make : Blocks -> (capacity : Bits64) -> Ordo.Op Ordo Bool
 make xs@(MkBlocks s) capacity = do
   a <- arrayOf xs
-  if not (Raw.isNull a) then Ordo.pure True else do
+  if not (ByteAddr.isNull a) then Ordo.pure True else do
     w <- System.allocateBlock (slot capacity)
     if w == 0 then Ordo.pure False else do
       let r = Memory.foreignBytes w
@@ -77,15 +77,15 @@ export
 size : Blocks -> Ordo.Op Ordo Bits64
 size xs = do
   a <- arrayOf xs
-  if Raw.isNull a then Ordo.pure 0 else Memory.loadAt a 0
+  if ByteAddr.isNull a then Ordo.pure 0 else Memory.loadAt a 0
 
 ||| Where block `i` is, which the array keeps; the program ends for an `i`
 ||| the array has no block for.
 export
-at : Blocks -> (i : Bits64) -> Ordo.Op Ordo Raw
+at : Blocks -> (i : Bits64) -> Ordo.Op Ordo ByteAddr
 at xs i = do
   a <- arrayOf xs
-  n <- if Raw.isNull a then Ordo.pure 0 else Memory.loadAt a 0
+  n <- if ByteAddr.isNull a then Ordo.pure 0 else Memory.loadAt a 0
   if i >= n then Ordo.crashOp "idris: a block the array does not hold" else do
     w <- Memory.loadAt a (slot i)
     Ordo.pure (Memory.foreignBytes w)
@@ -104,7 +104,7 @@ push xs b none done = do
       r <- Block.releaseBlock b
       a <- arrayOf xs
       n <- Memory.loadAt a 0
-      Memory.storeAt a (slot n) (Raw.rawWord r)
+      Memory.storeAt a (slot n) (ByteAddr.toWord r)
       Memory.storeAt a 0 (n + 1)
       done
     False => none b
@@ -116,16 +116,16 @@ push xs b none done = do
     room : Blocks -> Ordo.Op Ordo Bool
     room xs@(MkBlocks s) = do
       a <- arrayOf xs
-      if Raw.isNull a then Ordo.pure False else do
+      if ByteAddr.isNull a then Ordo.pure False else do
         n <- Memory.loadAt a 0
         c <- Memory.loadAt a 8
         if n < c then Ordo.pure True else do
           w <- System.allocateBlock (slot (2 * c))
           if w == 0 then Ordo.pure False else do
             let r = Memory.foreignBytes w
-            Memory.copyRaw a r (slot n)
+            Memory.copyBytes a r (slot n)
             Memory.storeAt r 8 (2 * c)
-            System.freeBlock (Raw.rawWord a)
+            System.freeBlock (ByteAddr.toWord a)
             State.setState s r
             Ordo.pure True
 
@@ -139,7 +139,7 @@ replace xs i b k = do
   a <- arrayOf xs
   old <- Memory.loadAt a (slot i)
   r <- Block.releaseBlock b
-  Memory.storeAt a (slot i) (Raw.rawWord r)
+  Memory.storeAt a (slot i) (ByteAddr.toWord r)
   k (Block.adoptBlock (Memory.foreignBytes old))
 
 ||| Block `i` taken out of the array, the last moved into its place, and
@@ -162,14 +162,14 @@ export covering
 dispose : Blocks -> Ordo.Op Ordo ()
 dispose xs@(MkBlocks s) = do
   a <- arrayOf xs
-  if Raw.isNull a then Ordo.pure () else do
+  if ByteAddr.isNull a then Ordo.pure () else do
     n <- Memory.loadAt a 0
     freeAll a 0 n
-    System.freeBlock (Raw.rawWord a)
+    System.freeBlock (ByteAddr.toWord a)
     State.setState s (Memory.foreignBytes 0)
   where
     covering
-    freeAll : Raw -> (i, n : Bits64) -> Ordo.Op Ordo ()
+    freeAll : ByteAddr -> (i, n : Bits64) -> Ordo.Op Ordo ()
     freeAll a i n = if i >= n then Ordo.pure () else do
       w <- Memory.loadAt a (slot i)
       System.freeBlock w

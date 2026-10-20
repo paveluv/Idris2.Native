@@ -8,8 +8,8 @@ module Native.System.Foreign.System.FFI
 
 import Native.Flat.Uniform as Flat
 import Native.Runtime.Alloc.Block as Runtime.Alloc
+import Native.Runtime.ByteAddr as Runtime
 import Native.Runtime.Ordo as Runtime
-import Native.Runtime.Raw as Runtime
 import Native.Support.Ptr
 import Native.Types.Represents
 
@@ -51,7 +51,7 @@ prim__free p w = let (Runtime.MkOrdo # ()) = freeOp p Runtime.MkOrdo in MkIORes 
       target <- Support.Ptr.pointee p
       case target of
         Support.Ptr.Address a =>
-          if Runtime.Raw.isNull a then Runtime.Ordo.pure () else
+          if Runtime.ByteAddr.isNull a then Runtime.Ordo.pure () else
             -- lint: allow sealed-allocator: an address the program gives back, as C's free takes
             -- one; the allocator ends the program for one it did not give
             Runtime.Alloc.Block.free (Runtime.Alloc.Block.adoptBlock a)

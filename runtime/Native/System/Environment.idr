@@ -17,9 +17,9 @@ module Native.System.Environment
 
 import Native.Runtime.Alloc.Block as Runtime.Alloc
 import Native.Runtime.Alloc.Blocks
+import Native.Runtime.ByteAddr as Runtime
 import Native.Runtime.Memory
 import Native.Runtime.Ordo as Runtime
-import Native.Runtime.Raw as Runtime
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
@@ -36,16 +36,16 @@ entryAt n = do
     count <- Runtime.Alloc.Blocks.size Runtime.Alloc.Blocks.environment
     if n >= count then Runtime.Ordo.pure 0 else do
       e <- Runtime.Alloc.Blocks.at Runtime.Alloc.Blocks.environment n
-      Runtime.Ordo.pure (Runtime.Raw.rawWord e)
+      Runtime.Ordo.pure (Runtime.ByteAddr.toWord e)
 
 ||| The index of the first entry of the name, if there is one.
 export covering
-find : (name : Runtime.Raw) -> (len : Bits64) -> Runtime.Ordo.Op Runtime.Ordo (Maybe Bits64)
+find : (name : Runtime.ByteAddr) -> (len : Bits64) -> Runtime.Ordo.Op Runtime.Ordo (Maybe Bits64)
 find name len = go 0
   where
     ||| Whether the entry at `e` holds the name's `len` bytes, then `=`.
     covering
-    holds : (name : Runtime.Raw) -> (len, e : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bool
+    holds : (name : Runtime.ByteAddr) -> (len, e : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bool
     holds name len e = go 0
       where
         covering
@@ -68,7 +68,7 @@ find name len = go 0
 ||| zero byte, which would end it in an entry, as the C library's `setenv`
 ||| refuses.
 covering
-validName : (name : Runtime.Raw) -> (len : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bool
+validName : (name : Runtime.ByteAddr) -> (len : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bool
 validName name len = if len == 0 then Runtime.Ordo.pure False else go 0
   where
     covering
@@ -97,7 +97,7 @@ own = do
 
     -- the bytes of an entry before its zero byte
     covering
-    lengthOf : Runtime.Raw -> (i : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
+    lengthOf : Runtime.ByteAddr -> (i : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
     lengthOf e i = do
       c <- Runtime.Memory.loadByteAt e i
       if c == 0 then Runtime.Ordo.pure i else lengthOf e (i + 1)
@@ -117,7 +117,7 @@ own = do
       len <- lengthOf e 0
       Runtime.Alloc.Block.allocate (len + 1) noMemory (\b => do
         let Runtime.Alloc.Block.MkAddressed p b' = Runtime.Alloc.Block.address b
-        Runtime.Memory.copyRaw e p (len + 1)
+        Runtime.Memory.copyBytes e p (len + 1)
         Runtime.Alloc.Blocks.push Runtime.Alloc.Blocks.environment b'
           (\b'' => do
             Runtime.Alloc.Block.free b''
@@ -128,7 +128,7 @@ own = do
 ||| and `overwrite` is false; whether it is, which it is not for a name
 ||| that cannot be a variable's (`validName`) or when there is no memory.
 export covering
-set : (name : Runtime.Raw) -> (nameLen : Bits64) -> (value : Runtime.Raw) -> (valueLen : Bits64) ->
+set : (name : Runtime.ByteAddr) -> (nameLen : Bits64) -> (value : Runtime.ByteAddr) -> (valueLen : Bits64) ->
       (overwrite : Bool) ->
       Runtime.Ordo.Op Runtime.Ordo Bool
 set name nl value vl overwrite = do
@@ -163,16 +163,16 @@ set name nl value vl overwrite = do
     newEntry none use =
       Runtime.Alloc.Block.allocate (nl + vl + 2) none (\b => do
         let Runtime.Alloc.Block.MkAddressed e b' = Runtime.Alloc.Block.address b
-        Runtime.Memory.copyRaw name e nl
+        Runtime.Memory.copyBytes name e nl
         Runtime.Memory.storeByteAt e nl 0x3D
-        Runtime.Memory.copyRaw value (Runtime.Raw.offset e (nl + 1)) vl
+        Runtime.Memory.copyBytes value (Runtime.ByteAddr.offset e (nl + 1)) vl
         Runtime.Memory.storeByteAt e (nl + 1 + vl) 0
         use b')
 
 ||| `unsetenv`: every entry of the name removed and freed, the last entry
 ||| moved into each one's place; whether the name can be a variable's.
 export covering
-unset : (name : Runtime.Raw) -> (nameLen : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bool
+unset : (name : Runtime.ByteAddr) -> (nameLen : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bool
 unset name nl = do
   valid <- validName name nl
   if not valid then Runtime.Ordo.pure False else go

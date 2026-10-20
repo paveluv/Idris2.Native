@@ -20,7 +20,7 @@
 ./Native/Data/Upward.idr:5:1 layering: `Native.Data.Upward` may not import `Native.Codegen.Thing`: the layers
 ./Native/Flat/Upward.idr:5:1 layering: `Native.Flat.Upward` may not import `Native.Codegen.Thing`: the layers
 ./Native/Port.idr:5:1 layering: `Native.Port` may not import `Native.Types.Thing`: the layers
-./Native/Runtime/Direct.idr:5:1 syscall: the raw system call outside `Native.Runtime.OS`: the platform's services reach the system
+./Native/Runtime/Direct.idr:5:1 syscall: the direct system call outside `Native.Runtime.OS`: the platform's services reach the system
 ./Native/Runtime/Named.idr:11:1 extern-name: `prim__store` is an extern of the runtime: it is named by its contract, `intrinsic__` for an intrinsic's port, `service__` for a service's, `string__` for a string routine's
 ./Native/Runtime/Named.idr:12:1 extern-name: `service__peek` is an extern of the runtime: it is named by its contract, `intrinsic__` for an intrinsic's port, `service__` for a service's, `string__` for a string routine's
 ./NoDefault.idr:1:1 default-totality: no `%default` directive

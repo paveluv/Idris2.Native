@@ -40,8 +40,8 @@ data Carrier
     Address
   | ||| The address of memory that holds no object: a run of bytes, a range
     ||| of address space, an area. A word, with an address's arithmetic only
-    ||| (`Native.Runtime.Raw`).
-    Raw
+    ||| (`Native.Runtime.ByteAddr`).
+    ByteAddr
 
 ||| An entry's shape: what its arguments carry, in order, and what its
 ||| result does, if it has one. Every entry takes the token too, last, and

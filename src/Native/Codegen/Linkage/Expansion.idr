@@ -22,11 +22,11 @@ public export
 data Width = Whole | Narrow IRCommon.Op.SubWord
 
 ||| What a pinned register carries across the boundary: the window's
-||| registers are raw addresses, the continuation its pointer word.
+||| registers are byte addresses, the continuation its pointer word.
 public export
 pinnedCarrier : IRCommon.Pinned -> Port.Carrier
-pinnedCarrier IRCommon.Pinned.Hp = Port.Raw
-pinnedCarrier IRCommon.Pinned.HpLim = Port.Raw
+pinnedCarrier IRCommon.Pinned.Hp = Port.ByteAddr
+pinnedCarrier IRCommon.Pinned.HpLim = Port.ByteAddr
 pinnedCarrier IRCommon.Pinned.K = Port.Word
 
 ||| The instructions an inline extern expands to, by the port they
@@ -34,9 +34,9 @@ pinnedCarrier IRCommon.Pinned.K = Port.Word
 public export
 data Expansion : Port -> Type where
   ||| Load the width at a base address plus an offset, extended with zeros.
-  Load : Width -> Expansion (MkPort [Port.Raw, Port.Word] (Just Port.Word))
+  Load : Width -> Expansion (MkPort [Port.ByteAddr, Port.Word] (Just Port.Word))
   ||| Store the width of a word at a base address plus an offset.
-  Store : Width -> Expansion (MkPort [Port.Raw, Port.Word, Port.Word] Nothing)
+  Store : Width -> Expansion (MkPort [Port.ByteAddr, Port.Word, Port.Word] Nothing)
   ||| Read a pinned register, as what it carries.
   Get : (r : IRCommon.Pinned) -> Expansion (MkPort [] (Just (pinnedCarrier r)))
   ||| Set a pinned register.
@@ -45,7 +45,7 @@ data Expansion : Port -> Type where
   ||| beyond the object's address.
   PointerTag : Expansion (MkPort [] (Just Port.Word))
   ||| The address of an area.
-  AreaAddress : Area -> Expansion (MkPort [] (Just Port.Raw))
+  AreaAddress : Area -> Expansion (MkPort [] (Just Port.ByteAddr))
   ||| The number of the program's top-level constants.
   ConstantCount : Expansion (MkPort [] (Just Port.Word))
   ||| The word a uniform value is.

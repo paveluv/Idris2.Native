@@ -16,9 +16,9 @@ import Native.Support.Obj
 import Data.Buffer
 import Native.Flat.Uniform as Flat
 import Native.HeapObj.Shape as HeapObj
+import Native.Runtime.ByteAddr as Runtime
 import Native.Runtime.Memory
 import Native.Runtime.Ordo as Runtime
-import Native.Runtime.Raw as Runtime
 import Native.Types.Header
 import Native.Types.Kind
 import Native.Types.Represents
@@ -46,7 +46,7 @@ zeroBuffer : (n : Bits64) -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform Buffer)
 zeroBuffer n = do
   o <- Obj.allocate Types.Kind.BUFFER
     (Types.Header.withPart Types.Header.BufferBytes n Types.Header.noParts)
-  Runtime.Memory.fillRaw (Obj.objectBytes o 0) n 0
+  Runtime.Memory.fillBytes (Obj.objectBytes o 0) n 0
   Obj.objectValue o
 
 ||| The buffer's bytes.
@@ -72,7 +72,7 @@ inside b offset n = do
 ||| the buffer. An address of the heap, good while the runtime's function
 ||| runs, as no collection comes before it returns.
 export
-bytesAt : Flat.Uniform Buffer -> (offset, n : Int) -> Runtime.Ordo.Op Runtime.Ordo Runtime.Raw
+bytesAt : Flat.Uniform Buffer -> (offset, n : Int) -> Runtime.Ordo.Op Runtime.Ordo Runtime.ByteAddr
 bytesAt b offset n = do
   o <- inside b offset n
   Runtime.Ordo.pure (Obj.objectBytes o (cast offset))

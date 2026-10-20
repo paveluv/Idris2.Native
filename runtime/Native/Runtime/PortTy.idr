@@ -8,8 +8,8 @@ module Native.Runtime.PortTy
 -- (`Native.Port`), which every module that writes one in a signature needs
 import public Native.Port
 
+import Native.Runtime.ByteAddr
 import Native.Runtime.Ordo
-import Native.Runtime.Raw
 
 import Native.Flat.Uniform as Flat
 import Native.HeapObj.Shape as HeapObj
@@ -55,7 +55,7 @@ PortTy addr p =
     carried _ _ (Port.ValueOf t) = Flat.Uniform t
     carried _ a Port.Value = Flat.Uniform a
     carried s _ Port.Address = addr s
-    carried _ _ Port.Raw = Raw
+    carried _ _ Port.ByteAddr = ByteAddr
 
     result : (0 s : HeapObj.Shape) -> (0 a : Type) -> Maybe Port.Carrier -> Type
     result _ _ Nothing = ()

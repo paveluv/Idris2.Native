@@ -11,7 +11,7 @@ import Native.Types.Kind as Types
 
 %default total
 
-||| A memory reference's base: an object pointer or a raw address, never a
+||| A memory reference's base: an object pointer or a byte address, never a
 ||| `Val`, which may be a fixnum.
 public export
 data Base : (var : IRCommon.Ty enc -> Type) -> Type where

@@ -6,9 +6,9 @@
 module Native.System.Foreign.System
 
 import Native.Flat.Uniform as Flat
+import Native.Runtime.ByteAddr as Runtime
 import Native.Runtime.Memory
 import Native.Runtime.Ordo as Runtime
-import Native.Runtime.Raw as Runtime
 import Native.Runtime.System
 import Native.Support.Ptr
 import Native.Support.Text

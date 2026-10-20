@@ -1,6 +1,6 @@
 . ../../testutils.sh
 
-# Flat code over raw memory, with the runtime library's operations: a page
+# Flat code over memory by byte address, with the runtime library's operations: a page
 # mapped by a system call, written and read back at every width.
 idris2 --cg native -p idris2-native-runtime -p idris2-native -o memory Main.idr > /dev/null
 ./build/exec/memory

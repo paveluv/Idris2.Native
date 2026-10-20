@@ -21,11 +21,11 @@
 module Native.Runtime.Space
 
 import Native.Runtime.Bits
+import Native.Runtime.ByteAddr
 import Native.Runtime.Collect
 import Native.Runtime.Memory
 import Native.Runtime.Ordo
 import Native.Runtime.PortTy
-import Native.Runtime.Raw
 import Native.Runtime.State
 
 import Native.Area
@@ -41,25 +41,25 @@ import Native.Routine
 
 ||| Memory committed to a space up to `need` and a window beyond, in whole
 ||| pages: `committed` and `end` are the state words of the space.
-commitSpace : (committed, end : State Raw) -> (need : Raw) -> Ordo.Op Ordo ()
+commitSpace : (committed, end : State ByteAddr) -> (need : ByteAddr) -> Ordo.Op Ordo ()
 commitSpace committed end need = do
   have <- State.getState committed
   limit <- State.getState end
   win <- State.getState State.windowBytes
   if need <= have then Ordo.pure () else do
-    upto <- Memory.alignToPage (Raw.offset need win)
+    upto <- Memory.alignToPage (ByteAddr.offset need win)
     if upto > limit then Ordo.crashOp "idris: the heap's reserved space is exhausted" else do
-      Memory.commitMemory have (Raw.distance upto have)
+      Memory.commitMemory have (ByteAddr.distance upto have)
       State.setState committed upto
 
 ||| The first word of an object with a header, or of a continuation, at an
 ||| address the collector holds as a word.
 firstWord : Bits64 -> Ordo.Op Ordo Bits64
-firstWord a = Memory.loadAt (Raw.fromWord a) 0
+firstWord a = Memory.loadAt (ByteAddr.fromWord a) 0
 
 ||| The collector's interface (`Memory`) holds addresses as words, as it
 ||| holds values: this module, its instance for the program's heap, makes
-||| them the raw addresses the rest of the runtime's memory is reached by.
+||| them the byte addresses the rest of the runtime's memory is reached by.
 |||
 ||| The size and the scanned words of the object at the address, by its
 ||| first word: a header's shape and counts, or a continuation's layout
@@ -68,7 +68,7 @@ sizeAt : Bits64 -> Ordo.Op Ordo Bits64
 sizeAt a = do
   h <- firstWord a
   if HeapObj.Shape.isFrame h
-     then do l <- Memory.loadAt (Raw.fromWord h) (0 - 8)
+     then do l <- Memory.loadAt (ByteAddr.fromWord h) (0 - 8)
              Ordo.pure (HeapObj.LayoutWord.continuationWords l)
      else Ordo.pure (HeapObj.Shape.objectWordsOf h)
 
@@ -79,7 +79,7 @@ Memory Ordo where
     base <- State.getState State.fromBase
     hp <- Memory.allocationPointer
     let a = v - tag
-    Ordo.pure (v .&. 1 == tag && Raw.rawWord base <= a && a < Raw.rawWord hp)
+    Ordo.pure (v .&. 1 == tag && ByteAddr.toWord base <= a && a < ByteAddr.toWord hp)
   addressOf v = do
     tag <- Memory.pointerTag
     Ordo.pure (v - tag)
@@ -93,28 +93,28 @@ Memory Ordo where
       scannedAt a = do
         h <- firstWord a
         if HeapObj.Shape.isFrame h
-           then do l <- Memory.loadAt (Raw.fromWord h) (0 - 8)
+           then do l <- Memory.loadAt (ByteAddr.fromWord h) (0 - 8)
                    Ordo.pure (HeapObj.LayoutWord.continuationScanned l)
            else Ordo.pure (HeapObj.Shape.scannedOf h)
   forwarded a = do
     h <- firstWord a
     Ordo.pure (if HeapObj.Shape.isForwarding h then Just (HeapObj.Shape.forwardedTo h) else Nothing)
-  setForwarded from to = Memory.storeAt (Raw.fromWord from) 0 (HeapObj.Shape.forwardingHeader to)
-  readWord a i = Memory.loadAt (Raw.fromWord a) (8 * i)
-  writeWord a i v = Memory.storeAt (Raw.fromWord a) (8 * i) v
+  setForwarded from to = Memory.storeAt (ByteAddr.fromWord from) 0 (HeapObj.Shape.forwardingHeader to)
+  readWord a i = Memory.loadAt (ByteAddr.fromWord a) (8 * i)
+  writeWord a i v = Memory.storeAt (ByteAddr.fromWord a) (8 * i) v
   reserve n = do
     top <- State.getState State.toTop
-    let need = Raw.offset top (8 * n)
+    let need = ByteAddr.offset top (8 * n)
     commitSpace State.toCommitted State.toEnd need
     State.setState State.toTop need
-    Ordo.pure (Raw.rawWord top)
+    Ordo.pure (ByteAddr.toWord top)
   nextToScan = do
     scan <- State.getState State.scanCursor
     top <- State.getState State.toTop
     if scan >= top then Ordo.pure Nothing else do
-      n <- sizeAt (Raw.rawWord scan)
-      State.setState State.scanCursor (Raw.offset scan (8 * n))
-      Ordo.pure (Just (Raw.rawWord scan))
+      n <- sizeAt (ByteAddr.toWord scan)
+      State.setState State.scanCursor (ByteAddr.offset scan (8 * n))
+      Ordo.pure (Just (ByteAddr.toWord scan))
   rootCount = do
     nr <- Memory.nrootsArea
     Memory.loadAt nr 0
@@ -142,7 +142,7 @@ Memory Ordo where
     tc <- State.getState State.toCommitted
     tt <- State.getState State.toTop
     -- the old from-space is given back whole, and becomes the empty to-space
-    Memory.releaseMemory fb (Raw.distance fc fb)
+    Memory.releaseMemory fb (ByteAddr.distance fc fb)
     State.setState State.fromBase tb
     State.setState State.fromEnd te
     State.setState State.fromCommitted tc
@@ -151,7 +151,7 @@ Memory Ordo where
     State.setState State.toCommitted fb
     State.setState State.toTop fb
     State.setState State.scanCursor fb
-    State.setState State.liveBytes (Raw.distance tt tb)
+    State.setState State.liveBytes (ByteAddr.distance tt tb)
     count <- State.getState State.collections
     State.setState State.collections (count + 1)
     -- the program allocates after the copies
@@ -166,23 +166,23 @@ collectionDue bytes = do
   live <- State.getState State.liveBytes
   win <- State.getState State.windowBytes
   let threshold = if 2 * live > 4 * win then 2 * live else 4 * win
-  Ordo.pure (Raw.distance hp base + bytes > threshold)
+  Ordo.pure (ByteAddr.distance hp base + bytes > threshold)
 
 ||| Room for `bytes` at the allocation pointer: the from-space committed to
 ||| a window beyond them, under the limit; the window moved past them; the
 ||| object's address.
-grow : (bytes : Bits64) -> Ordo.Op Ordo Raw
+grow : (bytes : Bits64) -> Ordo.Op Ordo ByteAddr
 grow bytes = do
   hp <- Memory.allocationPointer
   base <- State.getState State.fromBase
   limit <- State.getState State.heapLimit
   win <- State.getState State.windowBytes
-  let next = Raw.offset hp bytes
-  if limit /= 0 && Raw.distance next base > Bits.shiftR limit 1
+  let next = ByteAddr.offset hp bytes
+  if limit /= 0 && ByteAddr.distance next base > Bits.shiftR limit 1
      then Ordo.crashOp "idris: heap limit exceeded"
      else do
-       commitSpace State.fromCommitted State.fromEnd (Raw.offset next win)
-       Memory.setAllocation next (Raw.offset next win)
+       commitSpace State.fromCommitted State.fromEnd (ByteAddr.offset next win)
+       Memory.setAllocation next (ByteAddr.offset next win)
        Ordo.pure hp
 
 %cg native flat Runtime.Space.allocSlow
@@ -205,13 +205,13 @@ allocSlow bytes = do
 ||| collects. The space allocated past the window that way is bounded by one
 ||| primitive's objects. The object's address.
 export
-allocate : (bytes : Bits64) -> Ordo.Op Ordo Raw
+allocate : (bytes : Bits64) -> Ordo.Op Ordo ByteAddr
 allocate bytes = do
   hp <- Memory.allocationPointer
   lim <- Memory.allocationLimit
-  if Raw.offset hp bytes <= lim
+  if ByteAddr.offset hp bytes <= lim
      then do
-       Memory.setAllocation (Raw.offset hp bytes) lim
+       Memory.setAllocation (ByteAddr.offset hp bytes) lim
        Ordo.pure hp
      else do
        due <- collectionDue bytes
@@ -229,9 +229,9 @@ allocMutable : PortTy Memory.Addr (Routine.port Routine.AllocMutable)
 allocMutable bytes = do
   hp <- Memory.allocationPointer
   lim <- Memory.allocationLimit
-  if Raw.offset hp bytes <= lim
+  if ByteAddr.offset hp bytes <= lim
      then do
-       Memory.setAllocation (Raw.offset hp bytes) lim
+       Memory.setAllocation (ByteAddr.offset hp bytes) lim
        Ordo.pure (Memory.objectAt hp)
      else allocSlow bytes
 

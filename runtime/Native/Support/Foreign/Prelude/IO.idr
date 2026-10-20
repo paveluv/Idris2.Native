@@ -5,8 +5,8 @@
 module Native.Support.Foreign.Prelude.IO
 
 import Native.Flat.Uniform as Flat
+import Native.Runtime.ByteAddr as Runtime
 import Native.Runtime.Ordo as Runtime
-import Native.Runtime.Raw as Runtime
 import Native.Support.Obj
 import Native.Support.Ptr
 import Native.Support.Text
@@ -34,5 +34,5 @@ prim__getString p = let (Runtime.MkOrdo # r) = getOp Runtime.MkOrdo in r
       target <- Ptr.pointee p
       case target of
         Ptr.HeapString s => Obj.objectValue s
-        Ptr.Address a => if Runtime.Raw.isNull a then Text.emptyText else Text.zeroEndedText a
+        Ptr.Address a => if Runtime.ByteAddr.isNull a then Text.emptyText else Text.zeroEndedText a
         Ptr.Handle _ => Runtime.Ordo.crashOp "idris: getString of a handle, which points to no text"

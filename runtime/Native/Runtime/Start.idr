@@ -5,11 +5,11 @@
 module Native.Runtime.Start
 
 import Native.Runtime.Bits
+import Native.Runtime.ByteAddr
 import Native.Runtime.Memory
 import Native.Runtime.Ordo
 import Native.Runtime.OS
 import Native.Runtime.PortTy
-import Native.Runtime.Raw
 import Native.Runtime.State
 
 import Native.HeapObj.Shape
@@ -36,10 +36,10 @@ start entry window = do
   (fb, fs) <- reserveSpace 35184372088832
   (tb, ts) <- reserveSpace 35184372088832
   State.setState State.fromBase fb
-  State.setState State.fromEnd (Raw.offset fb fs)
+  State.setState State.fromEnd (ByteAddr.offset fb fs)
   State.setState State.fromCommitted fb
   State.setState State.toBase tb
-  State.setState State.toEnd (Raw.offset tb ts)
+  State.setState State.toEnd (ByteAddr.offset tb ts)
   State.setState State.toCommitted tb
   State.setState State.toTop tb
   State.setState State.scanCursor tb
@@ -47,18 +47,18 @@ start entry window = do
   State.setState State.heapLimit 0
   State.setState State.windowBytes window
   State.setState State.collections 0
-  firstEnd <- Memory.alignToPage (Raw.offset fb window)
-  Memory.commitMemory fb (Raw.distance firstEnd fb)
+  firstEnd <- Memory.alignToPage (ByteAddr.offset fb window)
+  Memory.commitMemory fb (ByteAddr.distance firstEnd fb)
   State.setState State.fromCommitted firstEnd
-  Memory.setAllocation fb (Raw.offset fb window)
+  Memory.setAllocation fb (ByteAddr.offset fb window)
   given <- OS.osStackLimit
   let soft = if given == 0 then defaultStack else given
   limit <- Memory.stackLimitArea
   Memory.storeAt limit 0
-    (Raw.rawWord
-      (Raw.offset (Raw.before entry (if soft > stackCap then stackCap else soft)) stackMargin))
+    (ByteAddr.toWord
+      (ByteAddr.offset (ByteAddr.before entry (if soft > stackCap then stackCap else soft)) stackMargin))
   argv <- Memory.argvArea
-  Memory.storeAt argv 0 (Raw.rawWord entry)
+  Memory.storeAt argv 0 (ByteAddr.toWord entry)
   where
     ||| The most of the process stack direct code may use, whatever the stack's
     ||| limit: 1 GiB.
@@ -80,8 +80,8 @@ start entry window = do
     ||| halving to 64 MiB, so that only the system, or a limit the user set on
     ||| the process's address space, bounds the heap. Its address and size.
     covering
-    reserveSpace : (bytes : Bits64) -> Ordo.Op Ordo (Raw, Bits64)
+    reserveSpace : (bytes : Bits64) -> Ordo.Op Ordo (ByteAddr, Bits64)
     reserveSpace bytes =
       if bytes < 67108864 then Ordo.crashOp "idris: cannot reserve memory" else do
         a <- Memory.reserveMemory bytes
-        if Raw.isNull a then reserveSpace (Bits.shiftR bytes 1) else Ordo.pure (a, bytes)
+        if ByteAddr.isNull a then reserveSpace (Bits.shiftR bytes 1) else Ordo.pure (a, bytes)

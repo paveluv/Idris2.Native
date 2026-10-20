@@ -13,8 +13,8 @@ module Native.Support.Lease
 -- lint: allow layering: the runtime's modules come from its installed package, not from among the files
 import Native.Runtime.Alloc.Block
 import Native.Runtime.Alloc.System
+import Native.Runtime.ByteAddr
 import Native.Runtime.Ordo
-import Native.Runtime.Raw
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
@@ -30,11 +30,11 @@ scratch = Block.allocate 64 (pure 0) (\b => do
   pure 1)
 
 export covering
-prim__leaked : (none : Raw) -> Op Ordo Raw
+prim__leaked : (none : ByteAddr) -> Op Ordo ByteAddr
 prim__leaked none = Block.allocate 64 (pure none) (\b => Block.releaseBlock b)
 
 export covering
-prim__leased : (none : Raw) -> Op Ordo Raw
+prim__leased : (none : ByteAddr) -> Op Ordo ByteAddr
 prim__leased none = Block.allocate 64 (pure none) (\b =>
   -- lint: allow sealed-allocator: the caller frees it, by `prim__returned`
   Block.releaseBlock b)
@@ -47,11 +47,11 @@ prim__relet = Block.allocate 64 (pure ()) (\b => do
   Block.free (Block.adoptBlock a))
 
 export covering
-prim__returned : Raw -> Op Ordo ()
+prim__returned : ByteAddr -> Op Ordo ()
 prim__returned a = Block.free (Block.adoptBlock a)
 
 export covering
-spilled : (none : Raw) -> Op Ordo Raw
+spilled : (none : ByteAddr) -> Op Ordo ByteAddr
 spilled none = Block.allocate 64 (pure none) (\b =>
   -- lint: allow sealed-boundary: a reason does not lift it
   Block.releaseBlock b)

@@ -12,9 +12,9 @@ module Native.Support.Foreign.Data.Buffer
 import Data.Buffer
 import Native.Flat.Uniform as Flat
 import Native.Primitive.DoubleBits
+import Native.Runtime.ByteAddr as Runtime
 import Native.Runtime.Memory
 import Native.Runtime.Ordo as Runtime
-import Native.Runtime.Raw as Runtime
 import Native.Support.BufferObj
 import Native.Support.Text
 
@@ -239,7 +239,7 @@ prim__setString b offset s w = let (Runtime.MkOrdo # ()) = setOp Runtime.MkOrdo 
     setOp = do
       n <- Text.textBytes s
       to <- BufferObj.bytesAt b offset (cast n)
-      Text.withText s (Runtime.Ordo.pure ()) (\p, k => Runtime.Memory.copyRaw p to k)
+      Text.withText s (Runtime.Ordo.pure ()) (\p, k => Runtime.Memory.copyBytes p to k)
 
 %cg native flat Support.Foreign.Data.Buffer.prim__getString
 ||| The string of the buffer's `len` bytes from the offset, as the system's
@@ -268,4 +268,4 @@ prim__copyData src from len dst to w = let (Runtime.MkOrdo # ()) =
     copyOp = do
       p <- BufferObj.bytesAt src from len
       q <- BufferObj.bytesAt dst to len
-      Runtime.Memory.copyRaw p q (cast len)
+      Runtime.Memory.copyBytes p q (cast len)

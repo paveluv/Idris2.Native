@@ -29,10 +29,10 @@ import Native.HeapObj.Shape as HeapObj
 import Native.Port
 import Native.Primitive.DoubleBits
 import Native.Runtime.Bits
+import Native.Runtime.ByteAddr as Runtime
 import Native.Runtime.Memory
 import Native.Runtime.Ordo as Runtime
 import Native.Runtime.PortTy as Runtime
-import Native.Runtime.Raw as Runtime
 import Native.Support.CodePoint
 import Native.Support.Double.Between
 import Native.Support.Double.Limbs as Double
@@ -145,13 +145,13 @@ offsetOf s h n =
 ||| Copy `n` bytes from `i` in one string to `j` in another; the OR of the
 ||| bytes, whose top bit says whether any is not ASCII. Ends: `n` falls to 0.
 covering
-copyBytes : (from : Obj Types.Kind.STRING) -> (i : Bits64) -> (to : Obj Types.Kind.STRING) ->
+copyStringBytes : (from : Obj Types.Kind.STRING) -> (i : Bits64) -> (to : Obj Types.Kind.STRING) ->
             (j, n, seen : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
-copyBytes from i to j n seen =
+copyStringBytes from i to j n seen =
   if n == 0 then Runtime.Ordo.pure seen else do
     b <- byteAt from i
     setByte to j b
-    copyBytes from (i + 1) to (j + 1) (n - 1) (seen .|. b)
+    copyStringBytes from (i + 1) to (j + 1) (n - 1) (seen .|. b)
 
 ||| The bytes from `from` to `to` of a string, as a new string: ASCII if the
 ||| string is, or if the bytes copied are.
@@ -161,7 +161,7 @@ slice : Obj Types.Kind.STRING -> (header, from, to : Bits64) ->
 slice s h from to = do
   let n = to - from
   r <- newString n
-  seen <- copyBytes s from r 0 n 0
+  seen <- copyStringBytes s from r 0 n 0
   finish r (asciiOf h || seen < 0x80) n
 
 ------------------------------------------------------------------------------
@@ -219,7 +219,7 @@ cons c str = do
   let n = bytesOf h
   r <- newString (k + n)
   encodeAt r 0 c
-  _ <- copyBytes s 0 r k n 0
+  _ <- copyStringBytes s 0 r k n 0
   finish r (c < 0x80 && asciiOf h) (k + n)
 
 %cg native flat Support.String.Utf8.append
@@ -234,8 +234,8 @@ append x y = do
   let na = bytesOf ha
   let nb = bytesOf hb
   r <- newString (na + nb)
-  _ <- copyBytes a 0 r 0 na 0
-  _ <- copyBytes b 0 r na nb 0
+  _ <- copyStringBytes a 0 r 0 na 0
+  _ <- copyStringBytes b 0 r na nb 0
   finish r (asciiOf ha && asciiOf hb) (na + nb)
 
 %cg native flat Support.String.Utf8.reverse
@@ -259,7 +259,7 @@ reverse str = do
       if i >= n then Runtime.Ordo.pure () else do
         b <- byteAt s i
         let k = seqLength b
-        _ <- copyBytes s i r (n - i - k) k 0
+        _ <- copyStringBytes s i r (n - i - k) k 0
         reverseFrom s (i + k) n r
 
 %cg native flat Support.String.Utf8.substr
@@ -437,7 +437,7 @@ fastConcat xs = let (Runtime.MkOrdo # r) = concatOp xs Runtime.MkOrdo in r
               v <- Obj.field {f = String} 0 c
               s <- stringObject v
               h <- headerOf s
-              _ <- copyBytes s 0 r j (bytesOf h) 0
+              _ <- copyStringBytes s 0 r j (bytesOf h) 0
               t <- Obj.field {f = List String} 1 c
               concatWrite t r (j + bytesOf h)
 
@@ -658,7 +658,7 @@ copyText : Runtime.PortTy Runtime.Memory.Addr
 copyText str to = do
   s <- stringObject str
   h <- headerOf s
-  Runtime.Memory.copyRaw (Obj.objectBytes s 0) to (bytesOf h)
+  Runtime.Memory.copyBytes (Obj.objectBytes s 0) to (bytesOf h)
 
 ||| What a decoder takes of a run of bytes, from one of them: how many,
 ||| and whether they are a character as they stand, or one U+FFFD.
@@ -704,7 +704,7 @@ ofText p len = do
     ||| of the length its lead says that is no character's shortest form, or a
     ||| surrogate's, or past U+10FFFF, all its bytes, for one U+FFFD.
     covering
-    decodedAt : Runtime.Raw -> (len, i : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Decoded
+    decodedAt : Runtime.ByteAddr -> (len, i : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Decoded
     decodedAt p len i = do
       b1 <- Runtime.Memory.loadByteAt p i
       if b1 < 0x80 then Runtime.Ordo.pure (MkDecoded 1 True)
@@ -759,7 +759,7 @@ ofText p len = do
       d <- decodedAt p len i
       if d.whole
         then do
-          Runtime.Memory.copyRaw (Runtime.Raw.offset p i) (Obj.objectBytes s j) d.taken
+          Runtime.Memory.copyBytes (Runtime.ByteAddr.offset p i) (Obj.objectBytes s j) d.taken
           write s (i + d.taken) (j + d.taken)
         else do
           setByte s j 0xEF

@@ -7,7 +7,7 @@
 # package's module through a package's re-export, all reported; `Spare` imports
 # a module it does not use, and `Frame` one that gives it only what it
 # imports directly; `Shape` exports a generic helper;
-# `Page` makes a raw address from a word; `Native.Support.Lease` leaves
+# `Page` makes a byte address from a word; `Native.Support.Lease` leaves
 # the allocator's linear blocks, at base's foreign surface and outside it;
 # `Values` converts a value through the core's conversion, not the support
 # tier's door; `Plain` writes names of our modules bare.

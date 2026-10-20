@@ -8,7 +8,7 @@
 ./Native/Support/Lease.idr:56:3 suppression: `sealed-boundary` is not to be suppressed: change what it reports
 ./Native/Support/Lease.idr:57:3 sealed-boundary: `releaseBlock` leaves the linear blocks of `Native.Runtime.Alloc.Block` outside `base`'s foreign surface, the `prim__` functions of `Native.Support` and `Native.System`: keep the block linear
 ./Native/Support/Lease.idr:61:7 sealed-boundary: `allocateBlock` leaves the linear blocks of `Native.Runtime.Alloc.Block` outside `base`'s foreign surface, the `prim__` functions of `Native.Support` and `Native.System`: keep the block linear
-./Page.idr:1:1 raw-maker: `Page` makes a raw address from a word, which only the modules that keep addresses as words do
+./Page.idr:1:1 byte-addr-maker: `Page` makes a byte address from a word, which only the modules that keep addresses as words do
 ./Plain.idr:14:11 unqualified: `frame` is written bare: write `Frame.frame`
 ./Plain.idr:18:8 unqualified: `Square` is written bare: write `Shape.Square`
 ./Report.idr:6:1 import-indirect: `Shape` is used (`Show Shape`) only through `Canvas`: import it

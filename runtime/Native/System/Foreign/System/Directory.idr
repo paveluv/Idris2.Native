@@ -11,9 +11,9 @@ module Native.System.Foreign.System.Directory
 import Native.Flat.Uniform as Flat
 import Native.OpenFlag
 import Native.Runtime.Alloc.Block as Runtime.Alloc
+import Native.Runtime.ByteAddr as Runtime
 import Native.Runtime.Ordo as Runtime
 import Native.Runtime.OS
-import Native.Runtime.Raw as Runtime
 import Native.Support.Ptr
 import Native.Support.Text
 import Native.System.Call
@@ -62,7 +62,7 @@ prim__closeDir p = toPrim $ File.withFile p () (\slot, d => do
 ||| path (`Text.withPath`): 0 when it succeeds, -1 when it fails or there is
 ||| no memory for the path, as the C library's calls answer.
 %inline covering
-ofPath : (Runtime.Raw -> Runtime.Ordo.Op Runtime.Ordo Bits64) -> Flat.Uniform String ->
+ofPath : (Runtime.ByteAddr -> Runtime.Ordo.Op Runtime.Ordo Bits64) -> Flat.Uniform String ->
          Runtime.Ordo.Op Runtime.Ordo Int
 ofPath service path = Support.Text.withPath path (Runtime.Ordo.pure (-1)) (\p => do
   ok <- service p

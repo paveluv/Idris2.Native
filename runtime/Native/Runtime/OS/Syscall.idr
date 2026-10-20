@@ -1,10 +1,10 @@
-||| The raw system call: one instruction that hands the kernel a number and
+||| The direct system call: one instruction that hands the kernel a number and
 ||| six arguments and takes back its result, on the operating systems that
 ||| keep a stable system-call ABI. Only the modules that implement the OS
 ||| services import it; the rest of the runtime asks for services
 ||| (`Native.Runtime.OS`), which on other operating systems are not system
-||| calls. The extern is an inline extern (`Native.Intrinsic`), declared
-||| here, privately, by its port.
+||| calls. The extern is an inline extern (`Native.Intrinsic`), declared here,
+||| privately, by its port.
 module Native.Runtime.OS.Syscall
 
 import Native.Intrinsic

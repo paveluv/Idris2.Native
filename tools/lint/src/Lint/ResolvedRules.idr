@@ -115,7 +115,7 @@ modulesOf fms r =
 export
 resolvedRuleNames : List String
 resolvedRuleNames =
-  ["import-unused", "import-indirect", "generic-export", "public-unneeded", "raw-maker",
+  ["import-unused", "import-indirect", "generic-export", "public-unneeded", "byte-addr-maker",
    "sealed-allocator", "sealed-boundary", "sealed-values", "unqualified"]
 
 ||| The rules whose suppression covers one use, the first after it: each
@@ -132,7 +132,7 @@ resolvedRules : List (Source.SourceFile, List Rules.Declared, Rules.Mentions) ->
 resolvedRules fms programNames r =
   Finding.joined [ importUnused m ++ importIndirect r m ++ genericExport m | m <- modulesOf fms r ]
   ++ Finding.joined
-    [ publicUnneeded f ds ++ rawMaker f ++ sealedAllocator f ds ms ++ sealedValues f ms
+    [ publicUnneeded f ds ++ byteAddrMaker f ++ sealedAllocator f ds ms ++ sealedValues f ms
       ++ unqualifiedNames f ds ms
      | (f, ds, ms) <- fms ]
   where
@@ -251,28 +251,28 @@ resolvedRules fms programNames r =
                    && not (u.definer == "Native.Runtime.Alloc.Block" && any (== u.name) linear)
                    && u.definer /= "Native.Runtime.Alloc.Blocks"
 
-    ||| `raw-maker`: a raw address made from a word (`Raw.fromWord`) outside the
-    ||| modules that keep addresses as words or are given them so: the memory
-    ||| module, the state, the spaces (the collector's interface holds addresses
-    ||| as words), the allocator's page source (`Pages` holds them so too) and the
-    ||| platforms (the system gives its results as words). Elsewhere a raw address
-    ||| comes from an operation that gives one, so a count is not taken for an
-    ||| address.
-    rawMaker : Source.SourceFile -> List Finding
-    rawMaker f =
+    ||| `byte-addr-maker`: a byte address made from a word (`ByteAddr.fromWord`)
+    ||| outside the modules that keep addresses as words or are given them so: the
+    ||| memory module, the state, the spaces (the collector's interface holds
+    ||| addresses as words), the allocator's page source (`Pages` holds them so
+    ||| too) and the platforms (the system gives its results as words). Elsewhere
+    ||| a byte address comes from an operation that gives one, so a count is not
+    ||| taken for an address.
+    byteAddrMaker : Source.SourceFile -> List Finding
+    byteAddrMaker f =
       let m = show f.mod.moduleNS in
       if elem m makers || isPrefixOf "Native.Runtime.OS." m then [] else
-        [ Rules.finding f "raw-maker" f.mod.headerLoc u.name
+        [ Rules.finding f "byte-addr-maker" f.mod.headerLoc u.name
             ("`" ++ m
               ++
-                ("` makes a raw address from a word, which only the modules that keep addresses " ++
+                ("` makes a byte address from a word, which only the modules that keep addresses " ++
                  "as words do"))
         | rm <- r.modules, rm.name == m, u <- rm.uses, u.name == "fromWord",
-          u.definer == "Native.Runtime.Raw" ]
+          u.definer == "Native.Runtime.ByteAddr" ]
       where
         makers : List String
         makers =
-          ["Native.Runtime.Raw", "Native.Runtime.Memory", "Native.Runtime.State",
+          ["Native.Runtime.ByteAddr", "Native.Runtime.Memory", "Native.Runtime.State",
            "Native.Runtime.Space", "Native.Runtime.Alloc.System"]
 
     ||| `public-unneeded`: a `public export` that only its module

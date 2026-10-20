@@ -144,7 +144,7 @@ graphRules fs =
       ++
       [ MkFinding "syscall" f.path (fst (start i.loc)) (snd (start i.loc))
         "Native.Runtime.OS.Syscall"
-          ("the raw system call outside `Native.Runtime.OS`: the platform's services reach the " ++
+          ("the direct system call outside `Native.Runtime.OS`: the platform's services reach the " ++
            "system")
       | i <- f.mod.imports, show i.path == "Native.Runtime.OS.Syscall",
         not (isPrefixOf "Native.Runtime.OS." (moduleOf f)) ]

@@ -22,9 +22,9 @@ module Native.Runtime.Alloc.Block
 
 import Native.Runtime.Alloc.System
 
+import Native.Runtime.ByteAddr
 import Native.Runtime.Memory
 import Native.Runtime.Ordo
-import Native.Runtime.Raw
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
@@ -32,16 +32,16 @@ import Native.Runtime.Raw
 
 %default total
 
-||| A block of the process's allocator, owned, by its address: raw memory,
+||| A block of the process's allocator, owned, by its byte address: memory,
 ||| as the allocator's words become where they leave it.
 export
 data Block : Type where
-  MkBlock : (address : Raw) -> Block
+  MkBlock : (address : ByteAddr) -> Block
 
 ||| A block's bytes, and the block, still to be used.
 public export
 data Addressed : Type where
-  MkAddressed : (bytes : Raw) -> (1 b : Block) -> Addressed
+  MkAddressed : (bytes : ByteAddr) -> (1 b : Block) -> Addressed
 
 ||| A block of `bytes`, aligned to 16, its contents unspecified, for `use`;
 ||| `none` if there is no memory for it.
@@ -60,16 +60,16 @@ address (MkBlock a) = MkAddressed a (MkBlock a)
 ||| The block given back to the allocator.
 export %inline covering
 free : (1 b : Block) -> Ordo.Op Ordo ()
-free (MkBlock a) = System.freeBlock (Raw.rawWord a)
+free (MkBlock a) = System.freeBlock (ByteAddr.toWord a)
 
 ||| The block given up, as its address: from here nothing checks that it is
 ||| freed once, by whatever takes the address, or never.
 export %inline
-releaseBlock : (1 b : Block) -> Ordo.Op Ordo Raw
+releaseBlock : (1 b : Block) -> Ordo.Op Ordo ByteAddr
 releaseBlock (MkBlock a) = Ordo.pure a
 
 ||| An address taken for a block the allocator gave: nothing checks that it
 ||| is one, nor that no one else holds it.
 export %inline
-adoptBlock : (address : Raw) -> Block
+adoptBlock : (address : ByteAddr) -> Block
 adoptBlock a = MkBlock a

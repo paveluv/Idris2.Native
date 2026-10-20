@@ -7,9 +7,9 @@ module Main
 import Native.HeapObj.Shape
 import Native.Intrinsic
 import Native.Port
+import Native.Runtime.ByteAddr
 import Native.Runtime.Ordo
 import Native.Runtime.PortTy
-import Native.Runtime.Raw
 
 %extern intrinsic__again : PortTy.ExternTy (Intrinsic.port Intrinsic.Load64)
 

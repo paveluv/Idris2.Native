@@ -1,9 +1,10 @@
-||| The system calls of the system tier, on the language's values: a path
-||| as a string, the bytes of a buffer, a string's text (`openPath`,
-||| `readInto`, `writeFrom`, `writeText`, ...), and the few other places
-||| where its ordinary code meets raw memory or a value's representation:
-||| the scan of a buffer for a newline (`newlineFrom`), and the handles and
-||| the strings given as pointers (`handlePointer`, `stringPointer`).
+||| The system calls of the system tier, on the language's values: a path as a
+||| string, the bytes of a buffer, a string's text (`openPath`, `readInto`,
+||| `writeFrom`, `writeText`, ...), and the few other places where its
+||| ordinary code meets memory by its byte address or a value's
+||| representation: the scan of a buffer for a newline (`newlineFrom`), and
+||| the handles and the strings given as pointers (`handlePointer`,
+||| `stringPointer`).
 |||
 ||| Each is a flat function with an IO type, which ordinary code calls as
 ||| any other, over the core's OS services and the support tier's door. A
@@ -15,10 +16,10 @@ import Data.Buffer
 import Native.Failure
 import Native.Flat.Uniform as Flat
 import Native.Runtime.Alloc.Block as Runtime.Alloc
+import Native.Runtime.ByteAddr as Runtime
 import Native.Runtime.Memory
 import Native.Runtime.Ordo as Runtime
 import Native.Runtime.OS
-import Native.Runtime.Raw as Runtime
 import Native.Runtime.State
 import Native.Support.BufferObj
 import Native.Support.Obj
@@ -172,7 +173,7 @@ newlineFrom b from to = primIO $ \w => let (Runtime.MkOrdo # i) = op Runtime.MkO
   where
     -- the first newline from byte `i` of the `n` at the address
     covering
-    scan : Runtime.Raw -> (i, n : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
+    scan : Runtime.ByteAddr -> (i, n : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
     scan p i n = if i >= n then Runtime.Ordo.pure n else do
       c <- Runtime.Memory.loadByteAt p i
       if c == 10 then Runtime.Ordo.pure i else scan p (i + 1) n

@@ -103,9 +103,9 @@ port ShowDouble = MkPort [Port.Dbl] (Just (Port.ValueOf String))
 port ReadDouble = MkPort [Port.ValueOf String] (Just Port.Dbl)
 port ReadWord = MkPort [Port.ValueOf String] (Just Port.Word)
 port TextBytes = MkPort [Port.ValueOf String] (Just Port.Word)
-port TextAddress = MkPort [Port.ValueOf String] (Just Port.Raw)
-port CopyText = MkPort [Port.ValueOf String, Port.Raw] Nothing
-port OfText = MkPort [Port.Raw, Port.Word] (Just (Port.ValueOf String))
+port TextAddress = MkPort [Port.ValueOf String] (Just Port.ByteAddr)
+port CopyText = MkPort [Port.ValueOf String, Port.ByteAddr] Nothing
+port OfText = MkPort [Port.ByteAddr, Port.Word] (Just (Port.ValueOf String))
 
 ||| Every string routine, once, which the code generator pairs with its own
 ||| copy, element by element.

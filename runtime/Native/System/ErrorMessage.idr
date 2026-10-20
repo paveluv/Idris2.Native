@@ -9,9 +9,9 @@ import public Native.Table
 
 import Native.Flat.Uniform as Flat
 import Native.Runtime.Alloc.Block as Runtime.Alloc
+import Native.Runtime.ByteAddr as Runtime
 import Native.Runtime.Memory
 import Native.Runtime.Ordo as Runtime
-import Native.Runtime.Raw as Runtime
 import Native.Support.Text
 
 %hide Prelude.Interfaces.(>>=)
@@ -195,7 +195,7 @@ errorMessage n =
 
     -- the row's words from the table's word `i`, the row's first `r`
     covering
-    row : Runtime.Raw -> (r, i : Int) -> Runtime.Ordo.Op Runtime.Ordo ()
+    row : Runtime.ByteAddr -> (r, i : Int) -> Runtime.Ordo.Op Runtime.Ordo ()
     row p r i with (0 <= i && i <= 937) proof inside
       _ | True = if i >= r + rowWords then Runtime.Ordo.pure () else do
         Runtime.Memory.storeAt p (cast (8 * (i - r))) (errorText i inside)
@@ -204,7 +204,7 @@ errorMessage n =
 
     -- the bytes up to the first zero byte from `i`
     covering
-    textBytes : Runtime.Raw -> Bits64 -> Runtime.Ordo.Op Runtime.Ordo Bits64
+    textBytes : Runtime.ByteAddr -> Bits64 -> Runtime.Ordo.Op Runtime.Ordo Bits64
     textBytes p i = if i >= cast (8 * rowWords) then Runtime.Ordo.pure i else do
       c <- Runtime.Memory.loadByteAt p i
       if c == 0 then Runtime.Ordo.pure i else textBytes p (i + 1)
@@ -212,14 +212,14 @@ errorMessage n =
     -- the decimal digits of `v` written backwards from `i` down; where the
     -- first digit is
     covering
-    digits : Runtime.Raw -> (i, v : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
+    digits : Runtime.ByteAddr -> (i, v : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
     digits p i v = do
       Runtime.Memory.storeByteAt p i (0x30 + v `mod` 10)
       if v < 10 then Runtime.Ordo.pure i else digits p (i - 1) (v `div` 10)
 
     -- "Unknown error " and the number, written at the start; their bytes
     covering
-    unknown : Runtime.Raw -> Runtime.Ordo.Op Runtime.Ordo Bits64
+    unknown : Runtime.ByteAddr -> Runtime.Ordo.Op Runtime.Ordo Bits64
     unknown p = do
       -- "Unknown " and "error ", eight bytes and six
       Runtime.Memory.storeAt p 0 0x206E776F6E6B6E55
@@ -228,7 +228,7 @@ errorMessage n =
       let at : Bits64 = if n < 0 then 15 else 14
           magnitude : Bits64 = if n < 0 then 0 - cast n else cast n
       first <- digits p (blockBytes - 1) magnitude
-      Runtime.Memory.copyRaw (Runtime.Raw.offset p first) (Runtime.Raw.offset p at)
+      Runtime.Memory.copyBytes (Runtime.ByteAddr.offset p first) (Runtime.ByteAddr.offset p at)
         (blockBytes - first)
       Runtime.Ordo.pure (at + blockBytes - first)
 
@@ -238,7 +238,7 @@ errorMessage n =
     lastNumber = 133
 
     covering
-    written : Runtime.Raw -> Runtime.Ordo.Op Runtime.Ordo Bits64
+    written : Runtime.ByteAddr -> Runtime.Ordo.Op Runtime.Ordo Bits64
     written p =
       if n < 0 || n > lastNumber then unknown p else do
         row p (rowWords * n) (rowWords * n)

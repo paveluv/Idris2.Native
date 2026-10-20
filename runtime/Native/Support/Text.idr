@@ -17,10 +17,10 @@ import Native.Flat.Uniform as Flat
 import Native.HeapObj.Shape as HeapObj
 import Native.Port
 import Native.Runtime.Alloc.Block as Runtime.Alloc
+import Native.Runtime.ByteAddr as Runtime
 import Native.Runtime.Memory
 import Native.Runtime.Ordo as Runtime
 import Native.Runtime.PortTy
-import Native.Runtime.Raw as Runtime
 import Native.Runtime.State
 import Native.Types.StringRoutine
 
@@ -46,20 +46,20 @@ textBytes = string__textBytes
 
 ||| A new string of the `len` bytes of the system's text at the address.
 export %inline
-ofText : (bytes : Runtime.Raw) -> (len : Bits64) ->
+ofText : (bytes : Runtime.ByteAddr) -> (len : Bits64) ->
          Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform String)
 ofText = string__ofText
 
 ||| The empty string.
 export %inline
 emptyText : Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform String)
-emptyText = string__ofText Runtime.Raw.null 0
+emptyText = string__ofText Runtime.ByteAddr.null 0
 
 ||| The string of the system's text at the address up to the zero byte
 ||| that ends it: an argument, an environment entry, a path, as the system
 ||| gave it.
 export covering
-zeroEndedText : Runtime.Raw -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform String)
+zeroEndedText : Runtime.ByteAddr -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform String)
 zeroEndedText p = do
   len <- zeroAt 0
   string__ofText p len
@@ -77,12 +77,12 @@ zeroEndedText p = do
 ||| failure that there is no memory, if there is none for the copy.
 export %inline covering
 withText : Flat.Uniform String -> (none : Runtime.Ordo.Op Runtime.Ordo a) ->
-           (use : Runtime.Raw -> Bits64 -> Runtime.Ordo.Op Runtime.Ordo a) ->
+           (use : Runtime.ByteAddr -> Bits64 -> Runtime.Ordo.Op Runtime.Ordo a) ->
            Runtime.Ordo.Op Runtime.Ordo a
 withText s none use = do
   n <- string__textBytes s
   own <- string__textAddress s
-  if not (Runtime.Raw.isNull own) then use own n else
+  if not (Runtime.ByteAddr.isNull own) then use own n else
     Runtime.Alloc.Block.allocate n
       (do Runtime.State.setState Runtime.State.lastFailure (Failure.code Failure.NoMemory)
           none)
@@ -101,7 +101,7 @@ withText s none use = do
 ||| library's callers find.
 export %inline covering
 withPath : Flat.Uniform String -> (none : Runtime.Ordo.Op Runtime.Ordo a) ->
-           (use : Runtime.Raw -> Runtime.Ordo.Op Runtime.Ordo a) -> Runtime.Ordo.Op Runtime.Ordo a
+           (use : Runtime.ByteAddr -> Runtime.Ordo.Op Runtime.Ordo a) -> Runtime.Ordo.Op Runtime.Ordo a
 withPath s none use = do
   n <- string__textBytes s
   Runtime.Alloc.Block.allocate (n + 1)

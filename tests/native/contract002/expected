@@ -3,10 +3,10 @@ Error: While processing right hand side of start. When unifying:
 Mismatch between: (1 _ : Ordo) -> Ret Ordo ?b and Ret Ordo (result (port Start) Addr VALUES () ((port Start) .gives)).
 crash by allocSlow's port:
 Error: While processing right hand side of crash. When unifying:
-Mismatch between: Bits64 and Raw.
-allocSlow giving its raw memory:
+Mismatch between: Bits64 and ByteAddr.
+allocSlow giving its byte address:
 Error: While processing right hand side of allocSlow. When unifying:
-Mismatch between: Raw and Addr s.
+Mismatch between: ByteAddr and Addr s.
 reserve by commit's port:
 Error: While processing right hand side of reserve. When unifying:
-Mismatch between: Raw and Bits64.
+Mismatch between: ByteAddr and Bits64.

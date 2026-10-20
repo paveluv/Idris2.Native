@@ -22,9 +22,9 @@ import Native.Runtime.Alloc.Pages
 import Native.Runtime.Alloc.SizeClasses
 import Native.Runtime.Alloc.System
 import Native.Runtime.Bits
+import Native.Runtime.ByteAddr
 import Native.Runtime.Memory
 import Native.Runtime.Ordo
-import Native.Runtime.Raw
 import Native.Runtime.State
 
 %default covering
@@ -39,11 +39,11 @@ nativeFree a = primIO $ \w => let (MkOrdo # ()) = freeBlock a MkOrdo in MkIORes 
 
 nativeLoad : Bits64 -> IO Bits64
 nativeLoad a = primIO $ \w => let (MkOrdo # v) =
-                                    Memory.loadAt (Raw.fromWord a) 0 MkOrdo in MkIORes v w
+                                    Memory.loadAt (ByteAddr.fromWord a) 0 MkOrdo in MkIORes v w
 
 nativeStore : Bits64 -> Bits64 -> IO ()
 nativeStore a v = primIO $ \w => let (MkOrdo # ()) =
-                                       Memory.storeAt (Raw.fromWord a) 0 v MkOrdo in MkIORes () w
+                                       Memory.storeAt (ByteAddr.fromWord a) 0 v MkOrdo in MkIORes () w
 
 main : IO ()
 main = do

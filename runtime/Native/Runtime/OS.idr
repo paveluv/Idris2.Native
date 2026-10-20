@@ -10,9 +10,9 @@
 ||| (`State.lastFailure`); the caller decides what a failure means.
 module Native.Runtime.OS
 
+import Native.Runtime.ByteAddr
 import Native.Runtime.Ordo
 import Native.Runtime.PortTy
-import Native.Runtime.Raw
 
 import Native.Service
 
@@ -65,25 +65,25 @@ failedWord = 0xFFFFFFFFFFFFFFFF
 ||| Write `bytes` at the address to a handle; the bytes written, 0 if it
 ||| fails.
 export %inline
-osWrite : (handle : Bits64) -> (address : Raw) -> (bytes : Bits64) -> Ordo.Op Ordo Bits64
+osWrite : (handle : Bits64) -> (address : ByteAddr) -> (bytes : Bits64) -> Ordo.Op Ordo Bits64
 osWrite = service__write
 
 ||| Reserve `bytes` of address space, readable by nothing and with no memory
 ||| committed to it; its address, the null one if the system has none.
 export %inline
-osReserve : (bytes : Bits64) -> Ordo.Op Ordo Raw
+osReserve : (bytes : Bits64) -> Ordo.Op Ordo ByteAddr
 osReserve = service__reserve
 
 ||| Make `bytes` of reserved whole pages from the address readable,
 ||| writable and zero; 1 on success.
 export %inline
-osCommit : (address : Raw) -> (bytes : Bits64) -> Ordo.Op Ordo Bits64
+osCommit : (address : ByteAddr) -> (bytes : Bits64) -> Ordo.Op Ordo Bits64
 osCommit = service__commit
 
 ||| Give `bytes` of committed whole pages from the address back to the
 ||| system, and reserve them again.
 export %inline
-osRelease : (address : Raw) -> (bytes : Bits64) -> Ordo.Op Ordo ()
+osRelease : (address : ByteAddr) -> (bytes : Bits64) -> Ordo.Op Ordo ()
 osRelease = service__release
 
 ||| The most bytes the process's stack may grow to; 0 if the system does
@@ -113,26 +113,26 @@ osTerminalLines = service__terminalLines
 ||| Make the directory of the path, zero-ended bytes at the address, the
 ||| current one; 1 on success.
 export %inline
-osChangeDirectory : (path : Raw) -> Ordo.Op Ordo Bits64
+osChangeDirectory : (path : ByteAddr) -> Ordo.Op Ordo Bits64
 osChangeDirectory = service__changeDirectory
 
 ||| Write the current directory's path, zero-ended, into the `bytes` at the
 ||| address; 1 on success, which it is not for a path longer.
 export %inline
-osCurrentDirectory : (address : Raw) -> (bytes : Bits64) -> Ordo.Op Ordo Bits64
+osCurrentDirectory : (address : ByteAddr) -> (bytes : Bits64) -> Ordo.Op Ordo Bits64
 osCurrentDirectory = service__currentDirectory
 
 ||| Make a directory at the path, zero-ended bytes at the address, and remove
 ||| the empty one at it; 1 on success.
 export %inline
-osCreateDirectory, osRemoveDirectory : (path : Raw) -> Ordo.Op Ordo Bits64
+osCreateDirectory, osRemoveDirectory : (path : ByteAddr) -> Ordo.Op Ordo Bits64
 osCreateDirectory = service__createDirectory
 osRemoveDirectory = service__removeDirectory
 
 ||| Open the file at the path, zero-ended bytes at the address, with the
 ||| flags (`Native.OpenFlag`); its handle, `failedWord` if it fails.
 export %inline
-osOpen : (path : Raw) -> (flags : Bits64) -> Ordo.Op Ordo Bits64
+osOpen : (path : ByteAddr) -> (flags : Bits64) -> Ordo.Op Ordo Bits64
 osOpen = service__open
 
 ||| Close a handle `osOpen` gave; 1 on success.
@@ -143,7 +143,7 @@ osClose = service__close
 ||| Read at most `bytes` from the handle into the bytes at the address;
 ||| the bytes read, 0 at the end, `failedWord` if it fails.
 export %inline
-osRead : (handle : Bits64) -> (address : Raw) -> (bytes : Bits64) -> Ordo.Op Ordo Bits64
+osRead : (handle : Bits64) -> (address : ByteAddr) -> (bytes : Bits64) -> Ordo.Op Ordo Bits64
 osRead = service__read
 
 ||| The bytes of the handle's file; `failedWord` if it fails.
@@ -159,21 +159,21 @@ osIsTerminal = service__isTerminal
 ||| Remove the file at the path, zero-ended bytes at the address, which is
 ||| not a directory; 1 on success.
 export %inline
-osRemoveFile : (path : Raw) -> Ordo.Op Ordo Bits64
+osRemoveFile : (path : ByteAddr) -> Ordo.Op Ordo Bits64
 osRemoveFile = service__removeFile
 
 ||| The next entry of a directory `osOpen` gave with `ADirectory`: its
 ||| name written, zero-ended, into the `bytes` at the address, 256 enough;
 ||| the name's bytes, 0 when there are no more, `failedWord` if it fails.
 export %inline
-osReadEntry : (handle : Bits64) -> (address : Raw) -> (bytes : Bits64) -> Ordo.Op Ordo Bits64
+osReadEntry : (handle : Bits64) -> (address : ByteAddr) -> (bytes : Bits64) -> Ordo.Op Ordo Bits64
 osReadEntry = service__readEntry
 
 ||| Write all `bytes` at the address to a handle, in as many writes as it
 ||| takes; whether they all went, as a write that fails ends it.
 export covering
-osWriteAll : (handle : Bits64) -> (address : Raw) -> (bytes : Bits64) -> Ordo.Op Ordo Bool
+osWriteAll : (handle : Bits64) -> (address : ByteAddr) -> (bytes : Bits64) -> Ordo.Op Ordo Bool
 osWriteAll h a n =
   if n == 0 then Ordo.pure True else do
     w <- osWrite h a n
-    if w == 0 then Ordo.pure False else osWriteAll h (Raw.offset a w) (n - w)
+    if w == 0 then Ordo.pure False else osWriteAll h (ByteAddr.offset a w) (n - w)

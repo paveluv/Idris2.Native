@@ -37,10 +37,10 @@ data Routine
 ||| Each routine's arrow: what its arguments and its result carry.
 public export
 port : Routine -> Port
-port Start = MkPort [Port.Raw, Port.Word] Nothing
+port Start = MkPort [Port.ByteAddr, Port.Word] Nothing
 port AllocSlow = MkPort [Port.Word] (Just Port.Address)
 port AllocMutable = MkPort [Port.Word] (Just Port.Address)
-port Crash = MkPort [Port.Raw, Port.Word] Nothing
+port Crash = MkPort [Port.ByteAddr, Port.Word] Nothing
 
 ||| Every routine, once. The code generator pairs this list's term, as the
 ||| loaded runtime's context holds it, with its own copy, element by element.

@@ -1,10 +1,10 @@
--- Flat code over raw memory, written as the runtime is: with the runtime
--- library's own operations, imported here as a package. The runtime has no
--- monad and no `IO`. Each operation takes the token `Ordo` and returns it
--- with its value, and the `do` below is the runtime's own bind over that
--- shape, so the operations happen in the order they are written: a load
--- after a store sees the store. The token takes no register, so the order
--- costs nothing.
+-- Flat code over memory by byte address, written as the runtime is: with the
+-- runtime library's own operations, imported here as a package. The runtime
+-- has no monad and no `IO`. Each operation takes the token `Ordo` and
+-- returns it with its value, and the `do` below is the runtime's own bind
+-- over that shape, so the operations happen in the order they are written: a
+-- load after a store sees the store. The token takes no register, so the
+-- order costs nothing.
 --
 -- `mapMemory` asks the system for a page; `store64` and `load64` write and
 -- read a word at an address plus a byte offset; the narrow ones the low 8,
@@ -16,9 +16,9 @@ module Probe
 -- re-export; flat code that reaches into them imports those too
 import Native.HeapObj.Shape
 import Native.Runtime.Bits
+import Native.Runtime.ByteAddr
 import Native.Runtime.Memory
 import Native.Runtime.Ordo
-import Native.Runtime.Raw
 
 -- this module's `do` is the runtime's, over the token
 %hide Prelude.Interfaces.(>>=)

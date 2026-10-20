@@ -2,7 +2,7 @@
 
 # The platform structure. The generic runtime reaches the system only
 # through the OS services (Native.Runtime.OS): no module of it outside
-# Native/Runtime/OS/ imports the raw system call or names one. The
+# Native/Runtime/OS/ imports the direct system call or names one. The
 # platform is chosen by the
 # directive `target=<arch>-<os>`: x86_64-linux, the default, is built; every
 # other platform the backend names is refused by name, and a name that is no

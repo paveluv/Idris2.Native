@@ -9,11 +9,11 @@
 ||| `Native.Codegen.Linkage.Expansion` says, which Idris checks against the
 ||| same port. Neither side restates it.
 |||
-||| Each takes words, raw addresses or values as ordinary code holds them,
+||| Each takes words, byte addresses or values as ordinary code holds them,
 ||| and returns its value; the runtime adds the token that orders them. A
-||| memory access is at a raw base address plus a byte offset; a narrow
-||| load extends the bits with zeros. The raw system call is one of them, though only the
-||| platforms' modules may make one (the linter's `syscall`).
+||| memory access is at a base byte address plus a byte offset; a narrow load
+||| extends the bits with zeros. The direct system call is one of them, though
+||| only the platforms' modules may make one (the linter's `syscall`).
 |||
 ||| Part of the contract between compiled code and the runtime, with the
 ||| heap-object model (`HeapObj.Shape` says what it is).
@@ -53,27 +53,27 @@ data Intrinsic
 ||| Each intrinsic's arrow: what its arguments and its result carry.
 public export
 port : Intrinsic -> Port
-port Load64 = MkPort [Port.Raw, Port.Word] (Just Port.Word)
-port Load32 = MkPort [Port.Raw, Port.Word] (Just Port.Word)
-port Load16 = MkPort [Port.Raw, Port.Word] (Just Port.Word)
-port Load8 = MkPort [Port.Raw, Port.Word] (Just Port.Word)
-port Store64 = MkPort [Port.Raw, Port.Word, Port.Word] Nothing
-port Store32 = MkPort [Port.Raw, Port.Word, Port.Word] Nothing
-port Store16 = MkPort [Port.Raw, Port.Word, Port.Word] Nothing
-port Store8 = MkPort [Port.Raw, Port.Word, Port.Word] Nothing
-port GetHp = MkPort [] (Just Port.Raw)
-port SetHp = MkPort [Port.Raw] Nothing
-port GetHpLim = MkPort [] (Just Port.Raw)
-port SetHpLim = MkPort [Port.Raw] Nothing
+port Load64 = MkPort [Port.ByteAddr, Port.Word] (Just Port.Word)
+port Load32 = MkPort [Port.ByteAddr, Port.Word] (Just Port.Word)
+port Load16 = MkPort [Port.ByteAddr, Port.Word] (Just Port.Word)
+port Load8 = MkPort [Port.ByteAddr, Port.Word] (Just Port.Word)
+port Store64 = MkPort [Port.ByteAddr, Port.Word, Port.Word] Nothing
+port Store32 = MkPort [Port.ByteAddr, Port.Word, Port.Word] Nothing
+port Store16 = MkPort [Port.ByteAddr, Port.Word, Port.Word] Nothing
+port Store8 = MkPort [Port.ByteAddr, Port.Word, Port.Word] Nothing
+port GetHp = MkPort [] (Just Port.ByteAddr)
+port SetHp = MkPort [Port.ByteAddr] Nothing
+port GetHpLim = MkPort [] (Just Port.ByteAddr)
+port SetHpLim = MkPort [Port.ByteAddr] Nothing
 port GetK = MkPort [] (Just Port.Word)
 port SetK = MkPort [Port.Word] Nothing
 port PointerTag = MkPort [] (Just Port.Word)
-port StackLimitArea = MkPort [] (Just Port.Raw)
-port ArgvArea = MkPort [] (Just Port.Raw)
-port RootsArea = MkPort [] (Just Port.Raw)
-port NrootsArea = MkPort [] (Just Port.Raw)
-port RuntimeArea = MkPort [] (Just Port.Raw)
-port ConstantsArea = MkPort [] (Just Port.Raw)
+port StackLimitArea = MkPort [] (Just Port.ByteAddr)
+port ArgvArea = MkPort [] (Just Port.ByteAddr)
+port RootsArea = MkPort [] (Just Port.ByteAddr)
+port NrootsArea = MkPort [] (Just Port.ByteAddr)
+port RuntimeArea = MkPort [] (Just Port.ByteAddr)
+port ConstantsArea = MkPort [] (Just Port.ByteAddr)
 port ConstantCount = MkPort [] (Just Port.Word)
 port ValueWord = MkPort [Port.Value] (Just Port.Word)
 port WordValue = MkPort [Port.Word] (Just Port.Value)

@@ -6,10 +6,10 @@
 module Native.System.Foreign.Prelude.IO
 
 import Native.Flat.Uniform as Flat
+import Native.Runtime.ByteAddr as Runtime
 import Native.Runtime.Memory
 import Native.Runtime.Ordo as Runtime
 import Native.Runtime.OS
-import Native.Runtime.Raw as Runtime
 import Native.Runtime.State
 import Native.Support.CodePoint
 import Native.Support.Text

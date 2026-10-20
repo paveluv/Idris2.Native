@@ -1,4 +1,4 @@
-||| The OS services on x86-64 Linux, by raw system calls. Linux keeps a
+||| The OS services on x86-64 Linux, by direct system calls. Linux keeps a
 ||| stable system-call ABI: the number in rax and the arguments in rdi, rsi,
 ||| rdx, r10, r8 and r9, the result in rax, an error as a number from -4095
 ||| to -1. The numbers here are x86-64's; another architecture's Linux has
@@ -17,10 +17,10 @@ import Native.OpenFlag
 import Native.Port
 import Native.Runtime.Alloc.Block as Alloc
 import Native.Runtime.Bits
+import Native.Runtime.ByteAddr
 import Native.Runtime.Memory
 import Native.Runtime.Ordo
 import Native.Runtime.PortTy
-import Native.Runtime.Raw
 import Native.Runtime.State
 import Native.Service
 
@@ -83,7 +83,7 @@ export
 write : PortTy Memory.Addr (Service.port Service.Write)
 write handle address bytes = do
   -- write(handle, address, bytes)
-  r <- Syscall.syscall 1 handle (Raw.rawWord address) bytes 0 0 0
+  r <- Syscall.syscall 1 handle (ByteAddr.toWord address) bytes 0 0 0
   ok <- succeeded r
   Ordo.pure (if ok then r else 0)
 
@@ -96,14 +96,14 @@ reserve bytes = do
   r <- Syscall.syscall 9 0 bytes 0 0x4022 0xFFFFFFFFFFFFFFFF 0
   ok <- succeeded r
   -- the system gives the range's address as a word
-  Ordo.pure (Raw.fromWord (if ok then r else 0))
+  Ordo.pure (ByteAddr.fromWord (if ok then r else 0))
 
 %cg native flat Runtime.OS.LinuxX86_64.commit
 export
 commit : PortTy Memory.Addr (Service.port Service.Commit)
 commit address bytes = do
   -- mprotect(address, bytes, PROT_READ | PROT_WRITE): the pages are zero when first touched
-  r <- Syscall.syscall 10 (Raw.rawWord address) bytes 3 0 0 0
+  r <- Syscall.syscall 10 (ByteAddr.toWord address) bytes 3 0 0 0
   ok <- succeeded r
   Ordo.pure (if ok then 1 else 0)
 
@@ -112,8 +112,8 @@ export
 release : PortTy Memory.Addr (Service.port Service.Release)
 release address bytes = do
   -- madvise(address, bytes, MADV_DONTNEED), then mprotect(address, bytes, PROT_NONE)
-  _ <- Syscall.syscall 28 (Raw.rawWord address) bytes 4 0 0 0
-  _ <- Syscall.syscall 10 (Raw.rawWord address) bytes 0 0 0 0
+  _ <- Syscall.syscall 28 (ByteAddr.toWord address) bytes 4 0 0 0
+  _ <- Syscall.syscall 10 (ByteAddr.toWord address) bytes 0 0 0 0
   Ordo.pure ()
 
 %cg native flat Runtime.OS.LinuxX86_64.pageBytes
@@ -129,7 +129,7 @@ stackLimit = do
   -- left 0 if the call fails
   buffer <- State.scratchArea
   Memory.storeAt buffer 0 0
-  _ <- Syscall.syscall 97 3 (Raw.rawWord buffer) 0 0 0 0
+  _ <- Syscall.syscall 97 3 (ByteAddr.toWord buffer) 0 0 0 0
   Memory.loadAt buffer 0
 
 %cg native flat Runtime.OS.LinuxX86_64.prepareTerminal
@@ -147,8 +147,8 @@ terminalSize = do
   -- columns the first two of four 16-bit fields
   buffer <- State.scratchArea
   Memory.storeAt buffer 0 0
-  r <- Syscall.syscall 16 0 0x5413 (Raw.rawWord buffer) 0 0 0
-  r' <- if failed r then Syscall.syscall 16 1 0x5413 (Raw.rawWord buffer) 0 0 0 else Ordo.pure r
+  r <- Syscall.syscall 16 0 0x5413 (ByteAddr.toWord buffer) 0 0 0
+  r' <- if failed r then Syscall.syscall 16 1 0x5413 (ByteAddr.toWord buffer) 0 0 0 else Ordo.pure r
   if failed r' then Ordo.pure 0 else Memory.loadAt buffer 0
 
 %cg native flat Runtime.OS.LinuxX86_64.terminalColumns
@@ -170,7 +170,7 @@ export
 changeDirectory : PortTy Memory.Addr (Service.port Service.ChangeDirectory)
 changeDirectory path = do
   -- chdir(path)
-  r <- Syscall.syscall 80 (Raw.rawWord path) 0 0 0 0 0
+  r <- Syscall.syscall 80 (ByteAddr.toWord path) 0 0 0 0 0
   ok <- succeeded r
   Ordo.pure (if ok then 1 else 0)
 
@@ -179,7 +179,7 @@ export
 currentDirectory : PortTy Memory.Addr (Service.port Service.CurrentDirectory)
 currentDirectory address bytes = do
   -- getcwd(address, bytes): the path's length with its zero byte
-  r <- Syscall.syscall 79 (Raw.rawWord address) bytes 0 0 0 0
+  r <- Syscall.syscall 79 (ByteAddr.toWord address) bytes 0 0 0 0
   ok <- succeeded r
   Ordo.pure (if ok then 1 else 0)
 
@@ -188,7 +188,7 @@ export
 createDirectory : PortTy Memory.Addr (Service.port Service.CreateDirectory)
 createDirectory path = do
   -- mkdir(path, 0777), which the process's umask narrows
-  r <- Syscall.syscall 83 (Raw.rawWord path) 0x1FF 0 0 0 0
+  r <- Syscall.syscall 83 (ByteAddr.toWord path) 0x1FF 0 0 0 0
   ok <- succeeded r
   Ordo.pure (if ok then 1 else 0)
 
@@ -197,7 +197,7 @@ export
 removeDirectory : PortTy Memory.Addr (Service.port Service.RemoveDirectory)
 removeDirectory path = do
   -- rmdir(path)
-  r <- Syscall.syscall 84 (Raw.rawWord path) 0 0 0 0 0
+  r <- Syscall.syscall 84 (ByteAddr.toWord path) 0 0 0 0 0
   ok <- succeeded r
   Ordo.pure (if ok then 1 else 0)
 
@@ -207,7 +207,7 @@ openFile : PortTy Memory.Addr (Service.port Service.Open)
 openFile path flags = do
   -- openat(AT_FDCWD, path, flags, 0666), which the process's umask narrows;
   -- closed in a program the process runs, whose files are its own
-  r <- Syscall.syscall 257 0xFFFFFFFFFFFFFF9C (Raw.rawWord path) (systemFlags flags) 0x1B6 0 0
+  r <- Syscall.syscall 257 0xFFFFFFFFFFFFFF9C (ByteAddr.toWord path) (systemFlags flags) 0x1B6 0 0
   ok <- succeeded r
   Ordo.pure (if ok then r else 0xFFFFFFFFFFFFFFFF)
   where
@@ -238,7 +238,7 @@ export
 read : PortTy Memory.Addr (Service.port Service.Read)
 read handle address bytes = do
   -- read(handle, address, bytes)
-  r <- Syscall.syscall 0 handle (Raw.rawWord address) bytes 0 0 0
+  r <- Syscall.syscall 0 handle (ByteAddr.toWord address) bytes 0 0 0
   ok <- succeeded r
   Ordo.pure (if ok then r else 0xFFFFFFFFFFFFFFFF)
 
@@ -252,7 +252,7 @@ fileSize handle =
         Ordo.pure 0xFFFFFFFFFFFFFFFF)
     (\b => do
       let Alloc.Block.MkAddressed buffer b' = Alloc.Block.address b
-      r <- Syscall.syscall 5 handle (Raw.rawWord buffer) 0 0 0 0
+      r <- Syscall.syscall 5 handle (ByteAddr.toWord buffer) 0 0 0 0
       ok <- succeeded r
       size <- Memory.loadAt buffer 48
       Alloc.Block.free b'
@@ -265,7 +265,7 @@ isTerminal handle = do
   -- ioctl(handle, TIOCGWINSZ, buffer), which only a terminal answers; its
   -- struct winsize fits the state's scratch bytes
   buffer <- State.scratchArea
-  r <- Syscall.syscall 16 handle 0x5413 (Raw.rawWord buffer) 0 0 0
+  r <- Syscall.syscall 16 handle 0x5413 (ByteAddr.toWord buffer) 0 0 0
   Ordo.pure (if failed r then 0 else 1)
 
 %cg native flat Runtime.OS.LinuxX86_64.removeFile
@@ -273,7 +273,7 @@ export
 removeFile : PortTy Memory.Addr (Service.port Service.RemoveFile)
 removeFile path = do
   -- unlink(path)
-  r <- Syscall.syscall 87 (Raw.rawWord path) 0 0 0 0 0
+  r <- Syscall.syscall 87 (ByteAddr.toWord path) 0 0 0 0 0
   ok <- succeeded r
   Ordo.pure (if ok then 1 else 0)
 
@@ -290,18 +290,18 @@ readEntry handle address bytes =
         Ordo.pure 0xFFFFFFFFFFFFFFFF)
     (\b => do
       let Alloc.Block.MkAddressed buffer b' = Alloc.Block.address b
-      r <- Syscall.syscall 217 handle (Raw.rawWord buffer) 280 0 0 0
+      r <- Syscall.syscall 217 handle (ByteAddr.toWord buffer) 280 0 0 0
       ok <- succeeded r
       n <- if not ok then Ordo.pure 0xFFFFFFFFFFFFFFFF else if r == 0 then Ordo.pure 0 else do
         next <- Memory.loadAt buffer 8
         _ <- Syscall.syscall 8 handle next 0 0 0 0
-        name (Raw.offset buffer 19) 0
+        name (ByteAddr.offset buffer 19) 0
       Alloc.Block.free b'
       Ordo.pure n)
   where
     -- the name's bytes from `i` copied, its zero byte too; how many before it
     covering
-    name : Raw -> Bits64 -> Ordo.Op Ordo Bits64
+    name : ByteAddr -> Bits64 -> Ordo.Op Ordo Bits64
     name from i = do
       c <- Memory.loadByteAt from i
       if i + 1 >= bytes then do

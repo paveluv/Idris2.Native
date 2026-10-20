@@ -4,8 +4,8 @@
 module Native.Support.Foreign.PrimIO
 
 import Native.Flat.Uniform as Flat
+import Native.Runtime.ByteAddr as Runtime
 import Native.Runtime.Ordo as Runtime
-import Native.Runtime.Raw as Runtime
 import Native.Support.Ptr
 import Native.Types.Represents
 
@@ -26,6 +26,6 @@ prim__nullAnyPtr p = let (Runtime.MkOrdo # r) = nullOp p Runtime.MkOrdo in r
     nullOp p = do
       target <- Ptr.pointee p
       case target of
-        Ptr.Address a => Runtime.Ordo.pure (if Runtime.Raw.isNull a then 1 else 0)
+        Ptr.Address a => Runtime.Ordo.pure (if Runtime.ByteAddr.isNull a then 1 else 0)
         Ptr.HeapString _ => Runtime.Ordo.pure 0
         Ptr.Handle _ => Runtime.Ordo.pure 0

@@ -9,9 +9,9 @@
 ||| program sets decides how far the heap may grow.
 module Native.Runtime.State
 
+import Native.Runtime.ByteAddr
 import Native.Runtime.Memory
 import Native.Runtime.Ordo
-import Native.Runtime.Raw
 
 import Native.Area
 
@@ -24,7 +24,7 @@ import Native.Area
 ||| What a word of the state holds: an address, or a count.
 public export
 data Holds : Type -> Type where
-  AnAddress : Holds Raw
+  AnAddress : Holds ByteAddr
   ACount : Holds Bits64
 
 ||| A word of the state, by its index in the area, and what it holds.
@@ -37,7 +37,7 @@ record State (t : Type) where
 ||| The state's word `i`, which the area holds, an address or a count: a
 ||| word past the area's (`Area.runtimeWords`) does not typecheck.
 public export
-address : (i : Bits64) -> {auto 0 fits : i < Area.runtimeWords = True} -> State Raw
+address : (i : Bits64) -> {auto 0 fits : i < Area.runtimeWords = True} -> State ByteAddr
 address i = MkState i AnAddress
 
 public export
@@ -47,7 +47,7 @@ count i = MkState i ACount
 ||| The from-space: its first address, the end of its reservation, and the
 ||| end of the memory committed to it.
 public export
-fromBase, fromEnd, fromCommitted : State Raw
+fromBase, fromEnd, fromCommitted : State ByteAddr
 fromBase = address 0
 fromEnd = address 1
 fromCommitted = address 2
@@ -55,7 +55,7 @@ fromCommitted = address 2
 ||| The to-space: the same, and during a collection the end of what has
 ||| been copied into it and the address of the next copy to scan.
 public export
-toBase, toEnd, toCommitted, toTop, scanCursor : State Raw
+toBase, toEnd, toCommitted, toTop, scanCursor : State ByteAddr
 toBase = address 3
 toEnd = address 4
 toCommitted = address 5
@@ -74,14 +74,14 @@ collections = count 11
 ||| The arena of the process's allocator of memory outside the heap
 ||| (`Alloc.System`), null until the first allocation makes it.
 export
-foreignArena : State Raw
+foreignArena : State ByteAddr
 foreignArena = address 12
 
 ||| The array of the environment's blocks (`Alloc.Blocks.environment`),
 ||| null while the environment is the one the system gave. Only the
 ||| allocator's sealed modules read or write it. Words 14 and 15 are free.
 export
-environArray : State Raw
+environArray : State ByteAddr
 environArray = address 13
 
 ||| Why the last OS service that failed did, by the reason's code
@@ -104,7 +104,7 @@ getState : State t -> Ordo.Op Ordo t
 getState (MkState i AnAddress) = do
   rt <- Memory.runtimeArea
   w <- Memory.loadAt rt (8 * i)
-  Ordo.pure (Raw.fromWord w)
+  Ordo.pure (ByteAddr.fromWord w)
 getState (MkState i ACount) = do
   rt <- Memory.runtimeArea
   Memory.loadAt rt (8 * i)
@@ -113,17 +113,17 @@ export
 setState : State t -> t -> Ordo.Op Ordo ()
 setState (MkState i AnAddress) v = do
   rt <- Memory.runtimeArea
-  Memory.storeAt rt (8 * i) (Raw.rawWord v)
+  Memory.storeAt rt (8 * i) (ByteAddr.toWord v)
 setState (MkState i ACount) v = do
   rt <- Memory.runtimeArea
   Memory.storeAt rt (8 * i) v
 
-||| The address of the scratch bytes, raw memory, since they hold no object.
+||| The byte address of the scratch bytes, since they hold no object.
 export
-scratchArea : Ordo.Op Ordo Raw
+scratchArea : Ordo.Op Ordo ByteAddr
 scratchArea = do
   rt <- Memory.runtimeArea
-  Ordo.pure (Raw.offset rt (8 * scratch))
+  Ordo.pure (ByteAddr.offset rt (8 * scratch))
   where
     ||| The first of the two words, sixteen bytes, that a system call writes
     ||| into: getrlimit's answer.
