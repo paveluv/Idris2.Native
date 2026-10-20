@@ -48,6 +48,10 @@ data Kind
   | ||| A mutable array, with its number of elements in its header: element
     ||| i, a `Val`, at 8 + 8i.
     ARRAY
+  | ||| A mutable record (`Native.Types.Struct`): with its numbers of raw
+    ||| words and of values in its header, the raw words at 8, which the
+    ||| collector does not scan, then the values, `Val`s.
+    STRUCT
   | ||| A byte buffer, laid out as a `STRING`, without the claim of an
     ||| encoding.
     BUFFER
@@ -72,6 +76,7 @@ shapeOf CON = Just HeapObj.Shape.VALUES
 shapeOf IOREF = Just HeapObj.Shape.VALUES
 shapeOf ARRAY = Just HeapObj.Shape.VALUES
 shapeOf CLOSURE = Just HeapObj.Shape.MIXED
+shapeOf STRUCT = Just HeapObj.Shape.MIXED
 shapeOf INT64 = Just HeapObj.Shape.RAW
 shapeOf DOUBLE = Just HeapObj.Shape.RAW
 shapeOf PTR = Just HeapObj.Shape.RAW
@@ -87,6 +92,7 @@ tagOf CON = 0
 tagOf IOREF = 1
 tagOf ARRAY = 2
 tagOf CLOSURE = 0
+tagOf STRUCT = 1
 tagOf INT64 = 0
 tagOf DOUBLE = 1
 tagOf PTR = 2
@@ -111,6 +117,7 @@ kindOfCode 0x001 = Just CON
 kindOfCode 0x101 = Just IOREF
 kindOfCode 0x201 = Just ARRAY
 kindOfCode 0x003 = Just CLOSURE
+kindOfCode 0x103 = Just STRUCT
 kindOfCode 0x002 = Just INT64
 kindOfCode 0x102 = Just DOUBLE
 kindOfCode 0x202 = Just PTR
@@ -143,6 +150,7 @@ DecEq Kind where
       kindRoundTrip BIGNUM = Refl
       kindRoundTrip IOREF = Refl
       kindRoundTrip ARRAY = Refl
+      kindRoundTrip STRUCT = Refl
       kindRoundTrip BUFFER = Refl
       kindRoundTrip PTR = Refl
       kindRoundTrip CONT = Refl
@@ -160,6 +168,7 @@ Show Kind where
   show BIGNUM = "BIGNUM"
   show IOREF = "IOREF"
   show ARRAY = "ARRAY"
+  show STRUCT = "STRUCT"
   show BUFFER = "BUFFER"
   show PTR = "PTR"
   show CONT = "CONT"

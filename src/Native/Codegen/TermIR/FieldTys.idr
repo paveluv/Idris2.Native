@@ -25,6 +25,7 @@ fieldTys h@(Types.Header.StringCharsH _) = replicate (Types.Header.fieldWords h)
 fieldTys (Types.Header.BignumH _ n) = replicate n IRCommon.Ty.W64
 fieldTys Types.Header.IORefH = [IRCommon.Ty.Val]
 fieldTys (Types.Header.ArrayH n) = replicate n IRCommon.Ty.Val
+fieldTys (Types.Header.StructH r v) = replicate r IRCommon.Ty.W64 ++ replicate v IRCommon.Ty.Val
 fieldTys h@(Types.Header.BufferH _) = replicate (Types.Header.fieldWords h) IRCommon.Ty.W64
 fieldTys Types.Header.PtrH = [IRCommon.Ty.W64]
 

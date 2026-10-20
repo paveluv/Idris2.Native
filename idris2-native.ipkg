@@ -110,7 +110,8 @@ modules =
     Native.Types.Kind,
     Native.Types.Represents,
     Native.Types.StringEnc,
-    Native.Types.StringRoutine
+    Native.Types.StringRoutine,
+    Native.Types.Struct
 
 main = Main
 executable = idris2-native

@@ -15,9 +15,8 @@ import Native.System.File
 ||| passed over; 0, or -1 if a read failed.
 export covering
 prim__seekLine : AnyPtr -> PrimIO Int
-prim__seekLine p = toPrim $ File.withFile p (-1) (\slot, f => do
-  (f', ok) <- File.skipLine f
-  File.keep slot f'
+prim__seekLine p = toPrim $ File.withFile p (-1) (\_, f => do
+  ok <- File.skipLine f
   pure (if ok then 0 else -1))
 
 ||| `fGetLine`: the file's text through the next newline, the newline
@@ -25,9 +24,8 @@ prim__seekLine p = toPrim $ File.withFile p (-1) (\slot, f => do
 ||| pointer (`Support.Ptr`), which `base` reads at once.
 export covering
 prim__readLine : AnyPtr -> PrimIO (Ptr String)
-prim__readLine p = toPrim $ File.withFile p Call.nullString.value (\slot, f => do
-  (f', s) <- File.readLine f
-  File.keep slot f'
+prim__readLine p = toPrim $ File.withFile p Call.nullString.value (\_, f => do
+  s <- File.readLine f
   pure (Call.stringPointer (MkUniform s)).value)
 
 ||| `fGetChars`: at most `n` bytes of the file's text, as many as there are
@@ -38,35 +36,33 @@ export covering
 prim__readChars : Int -> AnyPtr -> PrimIO (Ptr String)
 prim__readChars n p = toPrim $
   if n <= 0 then pure Call.nullString.value else
-    File.withFile p Call.nullString.value (\slot, f => do
-      (f', s) <- File.readChars f n
-      File.keep slot f'
+    File.withFile p Call.nullString.value (\_, f => do
+      s <- File.readChars f n
       pure (if s == "" then Call.nullString.value else (Call.stringPointer (MkUniform s)).value))
 
 ||| `fGetChar`: the file's next byte, or -1 at its end or for a read that
 ||| fails, as the C library's `fgetc`.
 export covering
 prim__readChar : AnyPtr -> PrimIO Int
-prim__readChar p = toPrim $ File.withFile p (-1) (\slot, f => do
-  (f', c) <- File.readByte f
-  File.keep slot f'
-  pure c)
+prim__readChar p = toPrim $ File.withFile p (-1) (\_, f => File.readByte f)
 
 ||| `fPutStr`: the string's text written to the file, all of it; 1 if it
 ||| was, 0 if not, the file then marked as failed.
 export covering
 prim__writeLine : AnyPtr -> String -> PrimIO Int
-prim__writeLine p s = toPrim $ File.withFile p 0 (\slot, f => do
-  ok <- Call.writeText f.handle (MkUniform s)
+prim__writeLine p s = toPrim $ File.withFile p 0 (\_, f => do
+  ok <- Call.writeText !(File.handle f) (MkUniform s)
   if ok then pure 1 else do
-    File.keep slot ({ failed := True } f)
+    File.markFailed f
     pure 0)
 
 ||| `fEOF`: 1 once a read found the file's end, 0 before; 1 for a closed
 ||| file, which reads nothing more.
 export covering
 prim__eof : AnyPtr -> PrimIO Int
-prim__eof p = toPrim $ File.withFile p 1 (\_, f => pure (if f.atEnd then 1 else 0))
+prim__eof p = toPrim $ File.withFile p 1 (\_, f => do
+  e <- File.foundEnd f
+  pure (if e then 1 else 0))
 
 ||| `removeFile`: the file at the path removed, or the empty directory, as
 ||| the C library's `remove`; 0 if it is, -1 if not, the reason the last

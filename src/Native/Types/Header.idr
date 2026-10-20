@@ -52,6 +52,7 @@ data Header : Enc -> Kind -> Type where
              Header enc Kind.BIGNUM
   IORefH   : Header enc Kind.IOREF
   ArrayH   : (elems : Nat) -> Header enc Kind.ARRAY
+  StructH  : (raws : Nat) -> (values : Nat) -> Header enc Kind.STRUCT
   BufferH  : (bytes : Nat) -> Header enc Kind.BUFFER
   PtrH     : Header enc Kind.PTR
 
@@ -67,6 +68,7 @@ Uninhabited (Header enc Kind.CONT) where
   uninhabited (BignumH _ _) impossible
   uninhabited IORefH impossible
   uninhabited (ArrayH _) impossible
+  uninhabited (StructH _ _) impossible
   uninhabited (BufferH _) impossible
   uninhabited PtrH impossible
 
@@ -83,6 +85,8 @@ data HeaderPart : Kind -> Type where
   BignumNegative : HeaderPart Kind.BIGNUM
   BignumWords    : HeaderPart Kind.BIGNUM
   ArrayElems     : HeaderPart Kind.ARRAY
+  StructRaws     : HeaderPart Kind.STRUCT
+  StructValues   : HeaderPart Kind.STRUCT
   BufferBytes    : HeaderPart Kind.BUFFER
 
 public export
@@ -97,6 +101,8 @@ Show (HeaderPart kn) where
   show BignumNegative = "BignumNegative"
   show BignumWords = "BignumWords"
   show ArrayElems = "ArrayElems"
+  show StructRaws = "StructRaws"
+  show StructValues = "StructValues"
   show BufferBytes = "BufferBytes"
 
 ||| A header's parts with their values, in order.
@@ -108,6 +114,7 @@ parts (StringH a n) = [(StringAscii, if a then 1 else 0), (StringBytes, n)]
 parts (StringCharsH n) = [(StringChars, n)]
 parts (BignumH neg n) = [(BignumNegative, if neg then 1 else 0), (BignumWords, n)]
 parts (ArrayH n) = [(ArrayElems, n)]
+parts (StructH r v) = [(StructRaws, r), (StructValues, v)]
 parts (BufferH n) = [(BufferBytes, n)]
 parts Int64H = []
 parts DoubleH = []
@@ -142,6 +149,8 @@ place BignumWords =
   (fst (HeapObj.Shape.place HeapObj.Shape.Bytes) + 3,
    snd (HeapObj.Shape.place HeapObj.Shape.Bytes) - 3)
 place ArrayElems = HeapObj.Shape.place HeapObj.Shape.Values
+place StructRaws = HeapObj.Shape.place HeapObj.Shape.Raws
+place StructValues = HeapObj.Shape.place HeapObj.Shape.MixedValues
 place BufferBytes = HeapObj.Shape.place HeapObj.Shape.Bytes
 
 ||| The bits every header of the kind has: its code, and the counts of its
@@ -283,6 +292,7 @@ decodeHeader enc w = do
     parse (Just Kind.BIGNUM) = bignum enc
     parse (Just Kind.IOREF) = Just (Kind.IOREF ** IORefH)
     parse (Just Kind.ARRAY) = Just (Kind.ARRAY ** ArrayH (get ArrayElems))
+    parse (Just Kind.STRUCT) = Just (Kind.STRUCT ** StructH (get StructRaws) (get StructValues))
     parse (Just Kind.BUFFER) = Just (Kind.BUFFER ** BufferH (get BufferBytes))
     parse (Just Kind.PTR) = Just (Kind.PTR ** PtrH)
     parse (Just Kind.CONT) = Nothing
@@ -301,6 +311,7 @@ counts h = case h of
   BignumH _ n => (_ ** HeapObj.Shape.WordsOf n)
   IORefH => (_ ** HeapObj.Shape.ValuesOf 1)
   ArrayH n => (_ ** HeapObj.Shape.ValuesOf n)
+  StructH r v => (_ ** HeapObj.Shape.MixedOf r v)
   BufferH n => (_ ** HeapObj.Shape.BytesOf n)
   PtrH => (_ ** HeapObj.Shape.WordsOf 1)
 

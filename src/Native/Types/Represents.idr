@@ -17,6 +17,7 @@ module Native.Types.Represents
 
 import Native.Types.ConstructorId
 import Native.Types.Kind
+import Native.Types.Struct
 
 import Data.Buffer
 
@@ -33,6 +34,8 @@ data Only : Kind -> Type -> Type where
   AList : Only CON (List a)
   ||| A buffer of `Data.Buffer` is a `BUFFER` always, the empty one too.
   ABuffer : Only BUFFER Buffer
+  ||| A mutable record is a `STRUCT` always.
+  AStruct : Only STRUCT (Struct r vs)
 
 ||| An object of kind `k` is a value of `a`: one can be given as a value of
 ||| `a`.

@@ -1,0 +1,7 @@
+. ../../testutils.sh
+
+# Mutable records, kept and rewritten across hundreds of collections. The
+# program imports the runtime as a package.
+idris2 --cg native -p idris2-native-runtime -p idris2-native --directive nursery=4096 \
+  -o struct Main.idr > /dev/null
+./build/exec/struct

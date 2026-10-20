@@ -43,7 +43,7 @@ prim__dirEntry : AnyPtr -> PrimIO (Ptr String)
 prim__dirEntry p = toPrim $ do
   Call.clearFailure
   File.withFile p Call.nullString.value (\_, d => do
-    name <- Call.readEntry d.handle
+    name <- Call.readEntry !(File.handle d)
     pure (if name.value == "" then Call.nullString.value
           else (Call.stringPointer name).value))
 
@@ -51,7 +51,7 @@ prim__dirEntry p = toPrim $ do
 export covering
 prim__closeDir : AnyPtr -> PrimIO ()
 prim__closeDir p = toPrim $ File.withFile p () (\slot, d => do
-  Call.close d.handle
+  Call.close !(File.handle d)
   File.release slot)
 
 %hide Prelude.Interfaces.(>>=)

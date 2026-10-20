@@ -43,7 +43,8 @@ headers =
   , (_ ** StringH True 0), (_ ** StringH False 1), (_ ** StringH True (largest 47))
   , (_ ** BufferH 0), (_ ** BufferH (largest 47))
   , (_ ** BignumH False 0), (_ ** BignumH True 1), (_ ** BignumH True (largest 44))
-  , (_ ** ArrayH 0), (_ ** ArrayH 1), (_ ** ArrayH (largest 28)) ]
+  , (_ ** ArrayH 0), (_ ** ArrayH 1), (_ ** ArrayH (largest 28))
+  , (_ ** StructH 0 0), (_ ** StructH 4 1), (_ ** StructH (largest 4) (largest 28)) ]
 
 roundTrips : (k : Kind ** Header TestEnc k) -> Bool
 roundTrips (_ ** h) = case decodeHeader TestEnc (encodeHeader h) of

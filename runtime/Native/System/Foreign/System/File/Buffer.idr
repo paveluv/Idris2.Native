@@ -17,18 +17,16 @@ import Native.System.File
 ||| outside the buffer.
 export covering
 prim__readBufferData : AnyPtr -> Buffer -> (offset, max : Int) -> PrimIO Int
-prim__readBufferData p b offset max = toPrim $ File.withFile p (-1) (\slot, f => do
-  (f', n) <- File.readInto f b offset max
-  File.keep slot f'
-  pure n)
+prim__readBufferData p b offset max = toPrim $
+  File.withFile p (-1) (\_, f => File.readInto f b offset max)
 
 ||| `writeBufferData`: `size` of the buffer's bytes from the offset written
 ||| to the file; how many, all of them or 0 if a write failed, the file
 ||| then marked as failed. The program ends for bytes outside the buffer.
 export covering
 prim__writeBufferData : AnyPtr -> Buffer -> (offset, size : Int) -> PrimIO Int
-prim__writeBufferData p b offset size = toPrim $ File.withFile p 0 (\slot, f => do
-  ok <- Call.writeFrom f.handle (MkUniform b) offset size
+prim__writeBufferData p b offset size = toPrim $ File.withFile p 0 (\_, f => do
+  ok <- Call.writeFrom !(File.handle f) (MkUniform b) offset size
   if ok then pure size else do
-    File.keep slot ({ failed := True } f)
+    File.markFailed f
     pure 0)

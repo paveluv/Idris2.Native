@@ -1141,6 +1141,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                   mutableKind : Types.Kind -> Bool
                   mutableKind Types.Kind.IOREF = True
                   mutableKind Types.Kind.ARRAY = True
+                  mutableKind Types.Kind.STRUCT = True
                   mutableKind Types.Kind.BUFFER = True
                   mutableKind _ = False
 

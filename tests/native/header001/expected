@@ -1,4 +1,4 @@
-round trip: 20 headers, 0 failed
+round trip: 23 headers, 0 failed
 too wide for fits: 8 of 8
 id 0, a continuation's first word: rejected
 id 4, no shape's: rejected

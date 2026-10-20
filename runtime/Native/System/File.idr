@@ -1,7 +1,8 @@
-||| Files as the system tier keeps them (`File`): a value of an ordinary
-||| record, its handle, what its reads found, and its input buffer, kept in
-||| the table of open files (`table`), whose slot `base` holds the number
-||| of, a handle (`Types.Represents.Handles`), as a `FilePtr`.
+||| Files as the system tier keeps them (`File`): a mutable record
+||| (`Types.Struct`), its handle, what its reads found and the offsets into
+||| its input buffer as raw words, and the buffer, kept in the table of open
+||| files (`table`), whose slot `base` holds the number of, a handle
+||| (`Types.Represents.Handles`), as a `FilePtr`.
 |||
 ||| Output is not buffered: each write goes to the system as it is made,
 ||| so that nothing waits to be flushed, and the standard output's writes,
@@ -13,13 +14,11 @@
 ||| once a read finds it, is kept: the file reads nothing more, as the C
 ||| library's do since glibc 2.28.
 |||
-||| A file is a value, not mutated: an operation reads it from its slot and
-||| writes the file it makes back, its buffer's bytes the one thing written
-||| in place. A handle is its slot and the times the slot has been taken,
-||| so that a handle kept after its file is closed finds none, and a use of
-||| it fails as of a bad handle, never as of the file a later open put in
-||| its slot. The standard files are slots 0, 1 and 2, there from the
-||| start.
+||| A file is rewritten in place as it is read and written. A handle is its
+||| slot and the times the slot has been taken, so that a handle kept after
+||| its file is closed finds none, and a use of it fails as of a bad
+||| handle, never as of the file a later open put in its slot. The standard
+||| files are slots 0, 1 and 2, there from the start.
 module Native.System.File
 
 import Native.System.Call
@@ -30,20 +29,66 @@ import Data.IORef
 import Native.Failure
 import Native.Flat.Uniform as Flat
 import Native.Runtime.OS
+import Native.Support.StructObj
+import Native.Types.Struct as Types
 
 %default total
 
-||| A file the system tier opened: its handle, the system's; whether a read
-||| found its end, and whether a read or a write failed; the offsets in its
-||| buffer of the first byte not yet read from it and after the last byte
-||| read into it; and the buffer.
-public export
-record File where
-  constructor MkFile
-  handle : Bits64
-  atEnd, failed : Bool
-  start, end : Int
-  input : Buffer
+||| A file the system tier opened. Its raw words: its handle, the system's;
+||| its flags (`atEnd`, `failed`); the offsets in its buffer of the first
+||| byte not yet read from it and after the last byte read into it. Its one
+||| value: the buffer. Its layout is the module's own: others reach a file
+||| by its operations.
+export
+File : Type
+File = Types.Struct 4 [Buffer]
+
+||| The flags of a file: a read found its end; a read or a write failed.
+atEnd, failed : Bits64
+atEnd = 1
+failed = 2
+
+||| The file's handle.
+export
+handle : File -> IO Bits64
+handle f = Support.StructObj.readWord 0 (Flat.MkUniform f)
+
+||| Whether the file has the flag, and the flag set.
+hasFlag : File -> (flag : Bits64) -> IO Bool
+hasFlag f flag = do
+  w <- Support.StructObj.readWord 1 (Flat.MkUniform f)
+  pure (prim__and_Bits64 w flag /= 0)
+
+setFlag : File -> (flag : Bits64) -> IO ()
+setFlag f flag = do
+  w <- Support.StructObj.readWord 1 (Flat.MkUniform f)
+  Support.StructObj.writeWord 1 (Flat.MkUniform f) (prim__or_Bits64 w flag)
+
+||| Whether a read found the file's end, and whether a read or a write
+||| failed: the C library's `feof` and `ferror`; and the file marked as
+||| failed.
+export
+foundEnd, hasFailed : File -> IO Bool
+foundEnd f = hasFlag f atEnd
+hasFailed f = hasFlag f failed
+
+export
+markFailed : File -> IO ()
+markFailed f = setFlag f failed
+
+||| The offsets of the first unread byte and after the last byte read in,
+||| and setting them.
+start, end : File -> IO Int
+start f = cast <$> Support.StructObj.readWord 2 (Flat.MkUniform f)
+end f = cast <$> Support.StructObj.readWord 3 (Flat.MkUniform f)
+
+setStart, setEnd : File -> Int -> IO ()
+setStart f n = Support.StructObj.writeWord 2 (Flat.MkUniform f) (cast n)
+setEnd f n = Support.StructObj.writeWord 3 (Flat.MkUniform f) (cast n)
+
+||| The file's input buffer.
+input : File -> IO Buffer
+input f = (.value) <$> Support.StructObj.readValue 0 (Flat.MkUniform f)
 
 ||| A slot of the table: the times it has been taken, and its file while
 ||| it is open.
@@ -58,11 +103,15 @@ slotSpan : Int
 slotSpan = 16777216
 
 ||| A new file of the system's handle, with nothing read yet.
-export
+export covering
 newFile : (handle : Bits64) -> IO File
 newFile h = do
   b <- emptyBuffer
-  pure (MkFile h False False 0 0 b)
+  s <- Support.StructObj.new 4 1
+  s <- Support.StructObj.put 0 s (Flat.MkUniform b)
+  f <- Support.StructObj.done s
+  Support.StructObj.writeWord 0 f h
+  pure f.value
 
 ||| The table of open files, made on its first use with the standard files
 ||| in slots 0, 1 and 2; slots grown as files are opened.
@@ -86,22 +135,13 @@ standard n = (Call.handlePointer n).value
 export covering
 fileOf : AnyPtr -> IO (Maybe (Int, File))
 fileOf p =
-  let n = Call.pointerHandle (MkUniform p)
+  let n = Call.pointerHandle (Flat.MkUniform p)
       slot = n `mod` slotSpan in
   if n < 0 then pure Nothing else do
     a <- readIORef table
     Just s <- readArray a slot
       | Nothing => pure Nothing
     pure (if s.taken == n `div` slotSpan then map (slot,) s.file else Nothing)
-
-||| The file of a slot written back.
-export covering
-keep : (slot : Int) -> File -> IO ()
-keep slot f = do
-  a <- readIORef table
-  Just s <- readArray a slot
-    | Nothing => pure ()
-  ignore (writeArray a slot ({ file := Just f } s))
 
 ||| A new file put in a free slot of the table, grown if none is free: the
 ||| pointer of its handle.
@@ -142,122 +182,161 @@ release slot = do
     | Nothing => pure ()
   ignore (writeArray a slot ({ file := Nothing } s))
 
-||| The file with more bytes read into its buffer, after its unread ones,
-||| which move to its start, and whether any came. None come once a read
-||| found the end, or when a read fails, which marks the file so.
+||| More bytes read into the file's buffer, after its unread ones, which
+||| move to its start: whether any came. None come once a read found the
+||| end, or when a read fails, which marks the file so.
 covering
-more : File -> IO (File, Bool)
-more f =
-  if f.atEnd then pure (f, False) else do
-    f' <- room f
-    cap <- rawSize f'.input
-    r <- Call.readInto f'.handle (MkUniform f'.input) f'.end (cap - f'.end)
-    pure (if r == Runtime.OS.failedWord then ({ failed := True } f', False)
-          else if r == 0 then ({ atEnd := True } f', False)
-          else ({ end := f'.end + cast r } f', True))
+more : File -> IO Bool
+more f = if !(foundEnd f) then pure False else do
+  room f
+  b <- input f
+  cap <- rawSize b
+  e <- end f
+  h <- handle f
+  r <- Call.readInto h (Flat.MkUniform b) e (cap - e)
+  if r == Runtime.OS.failedWord then do setFlag f failed; pure False
+    else if r == 0 then do setFlag f atEnd; pure False
+    else do setEnd f (e + cast r); pure True
   where
     ||| Room in the file's buffer after its unread bytes, which move to its
     ||| start: the buffer made on the first read, and made twice as large when
     ||| the unread bytes fill it.
     covering
-    room : File -> IO File
+    room : File -> IO ()
     room f = do
-      cap <- rawSize f.input
-      let unread = f.end - f.start
-      if cap == 0 then fresh bufferBytes unread
-        else if unread == cap then fresh (2 * cap) unread
-        else if f.start == 0 then pure f
+      b <- input f
+      cap <- rawSize b
+      s <- start f
+      e <- end f
+      let unread = e - s
+      if cap == 0 then fresh b s unread bufferBytes
+        else if unread == cap then fresh b s unread (2 * cap)
+        else if s == 0 then pure ()
         else do
-          copyData f.input f.start unread f.input 0
-          pure ({ start := 0, end := unread } f)
+          copyData b s unread b 0
+          setStart f 0
+          setEnd f unread
       where
-        -- a new buffer of `n` bytes, the unread bytes of the old one at its start
-        covering
-        fresh : Int -> (unread : Int) -> IO File
-        fresh n unread = do
-          Just b <- newBuffer n
-            | Nothing => pure f
-          copyData f.input f.start unread b 0
-          pure ({ input := b, start := 0, end := unread } f)
-
         ||| The bytes of a file's input buffer when it is made: 64 KiB, which few
         ||| reads of the system fill for a source file.
         bufferBytes : Int
         bufferBytes = 65536
 
+        -- the file's input buffer replaced by another
+        setInput : File -> Buffer -> IO ()
+        setInput f b = Support.StructObj.writeValue 0 (Flat.MkUniform f) (Flat.MkUniform b)
+
+        -- a new buffer of `n` bytes, the unread bytes of the old one at its start
+        covering
+        fresh : Buffer -> (s, unread, n : Int) -> IO ()
+        fresh old s unread n = do
+          Just b <- newBuffer n
+            | Nothing => pure ()
+          copyData old s unread b 0
+          setInput f b
+          setStart f 0
+          setEnd f unread
+
 ||| The file's next `n` unread bytes as a string, which are read then.
 covering
-takeBytes : File -> (n : Int) -> IO (File, String)
+takeBytes : File -> (n : Int) -> IO String
 takeBytes f n = do
-  s <- getString f.input f.start n
-  pure ({ start := f.start + n } f, s)
+  b <- input f
+  s <- start f
+  setStart f (s + n)
+  getString b s n
 
 ||| The file's text through the next newline, or to its end, or to a read
 ||| that fails: the C library's `getline`.
 export covering
-readLine : File -> IO (File, String)
-readLine f = from f 0
+readLine : File -> IO String
+readLine f = from 0
   where
     -- the line's bytes searched from `i` past the file's first unread byte
     covering
-    from : File -> Int -> IO (File, String)
-    from f i = do
-      nl <- Call.newlineFrom (MkUniform f.input) (f.start + i) f.end
-      if nl < f.end then takeBytes f (nl + 1 - f.start) else do
-        (f', got) <- more f
-        if got then from f' (f.end - f.start) else takeBytes f' (f'.end - f'.start)
+    from : Int -> IO String
+    from i = do
+      s <- start f
+      e <- end f
+      b <- input f
+      nl <- Call.newlineFrom (Flat.MkUniform b) (s + i) e
+      if nl < e then takeBytes f (nl + 1 - s) else do
+        got <- more f
+        if got then from (e - s) else do
+          s' <- start f
+          e' <- end f
+          takeBytes f (e' - s')
 
 ||| At most `n` bytes of the file's text, as many as there are before its
 ||| end or a read that fails: the C library's `fread`.
 export covering
-readChars : File -> (n : Int) -> IO (File, String)
-readChars f n =
-  if f.end - f.start >= n then takeBytes f n else do
-    (f', got) <- more f
-    if got then readChars f' n else takeBytes f' (f'.end - f'.start)
+readChars : File -> (n : Int) -> IO String
+readChars f n = do
+  s <- start f
+  e <- end f
+  if e - s >= n then takeBytes f n else do
+    got <- more f
+    if got then readChars f n else do
+      s' <- start f
+      e' <- end f
+      takeBytes f (e' - s')
 
 ||| The file's next byte, or -1 at its end or for a read that fails: the C
 ||| library's `fgetc`.
 export covering
-readByte : File -> IO (File, Int)
-readByte f =
-  if f.start < f.end then do
-      b <- getBits8 f.input f.start
-      pure ({ start := f.start + 1 } f, cast b)
+readByte : File -> IO Int
+readByte f = do
+  s <- start f
+  e <- end f
+  if s < e
+    then do
+      b <- input f
+      c <- getBits8 b s
+      setStart f (s + 1)
+      pure (cast c)
     else do
-      (f', got) <- more f
-      if got then readByte f' else pure (f', -1)
+      got <- more f
+      if got then readByte f else pure (-1)
 
 ||| The file's bytes through the next newline, or to its end, passed over;
 ||| whether no read failed: the C support's `seekLine`.
 export covering
-skipLine : File -> IO (File, Bool)
+skipLine : File -> IO Bool
 skipLine f = do
-  nl <- Call.newlineFrom (MkUniform f.input) f.start f.end
-  if nl < f.end then pure ({ start := nl + 1 } f, True) else do
-    (f', got) <- more ({ start := f.end } f)
-    if got then skipLine f' else pure (f', not f'.failed)
+  s <- start f
+  e <- end f
+  b <- input f
+  nl <- Call.newlineFrom (Flat.MkUniform b) s e
+  if nl < e then do setStart f (nl + 1); pure True else do
+    setStart f e
+    got <- more f
+    if got then skipLine f else map not (hasFailed f)
 
 ||| At most `n` of the file's bytes read into the buffer from the offset, as
 ||| many as there are before its end or a read that fails: those in its
 ||| buffer first, the rest read from the system straight there, so that a
 ||| large read passes through no other buffer; how many.
 export covering
-readInto : File -> Buffer -> (offset, n : Int) -> IO (File, Int)
-readInto f b offset n = do
-  let k = min (f.end - f.start) n
-  copyData f.input f.start k b offset
-  direct ({ start := f.start + k } f) k
+readInto : File -> Buffer -> (offset, n : Int) -> IO Int
+readInto f dst offset n = do
+  s <- start f
+  e <- end f
+  b <- input f
+  let k = min (e - s) n
+  copyData b s k dst offset
+  setStart f (s + k)
+  direct k
   where
     -- the bytes from `i` read from the system, until `n`, the end or a
     -- read that fails
     covering
-    direct : File -> Int -> IO (File, Int)
-    direct f i = if i >= n || f.atEnd then pure (f, i) else do
-      r <- Call.readInto f.handle (MkUniform b) (offset + i) (n - i)
-      if r == Runtime.OS.failedWord then pure ({ failed := True } f, i)
-        else if r == 0 then pure ({ atEnd := True } f, i)
-        else direct f (i + cast r)
+    direct : Int -> IO Int
+    direct i = if i >= n || !(foundEnd f) then pure i else do
+      h <- handle f
+      r <- Call.readInto h (Flat.MkUniform dst) (offset + i) (n - i)
+      if r == Runtime.OS.failedWord then do setFlag f failed; pure i
+        else if r == 0 then do setFlag f atEnd; pure i
+        else direct (i + cast r)
 
 ||| `use` of the file of a pointer `base` gives back and its slot; `none`,
 ||| with the last failure that the handle is bad, for a pointer that is no

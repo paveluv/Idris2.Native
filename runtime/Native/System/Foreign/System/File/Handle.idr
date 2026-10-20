@@ -51,5 +51,5 @@ prim__open path mode = toPrim $ do
 export covering
 prim__close : AnyPtr -> PrimIO ()
 prim__close p = toPrim $ File.withFile p () (\slot, f => do
-  Call.close f.handle
+  Call.close !(File.handle f)
   File.release slot)

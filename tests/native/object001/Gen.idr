@@ -39,7 +39,8 @@ headers =
     (_ ** StringH False (largest 47))
   , (_ ** BufferH 0), (_ ** BufferH 17), (_ ** BufferH (largest 47))
   , (_ ** BignumH False 0), (_ ** BignumH True 3), (_ ** BignumH True (largest 44))
-  , (_ ** ArrayH 0), (_ ** ArrayH 5), (_ ** ArrayH (largest 28)) ]
+  , (_ ** ArrayH 0), (_ ** ArrayH 5), (_ ** ArrayH (largest 28))
+  , (_ ** StructH 0 0), (_ ** StructH 4 1), (_ ** StructH (largest 4) (largest 28)) ]
 
 -- The words that so many bytes fill, padded to whole words.
 padded : Nat -> Nat
@@ -58,6 +59,7 @@ layout (StringCharsH n) = (1 + padded (4 * n), (1, 0))
 layout (BignumH _ n) = (1 + n, (1, 0))          -- the limbs, raw
 layout IORefH = (2, (1, 1))                     -- the one value
 layout (ArrayH n) = (1 + n, (1, n))             -- the elements, all values
+layout (StructH r v) = (1 + r + v, (1 + r, v))  -- the raw words, then the values
 layout (BufferH n) = (1 + padded n, (1, 0))
 
 check : (k : Kind ** Header TestEnc k) -> List String

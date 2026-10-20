@@ -15,12 +15,12 @@ import Native.System.File
 export covering
 prim__fileSize : AnyPtr -> PrimIO Int
 prim__fileSize p = toPrim $ File.withFile p (-1) (\_, f => do
-  n <- Call.fileSize f.handle
+  n <- Call.fileSize !(File.handle f)
   pure (if n == Runtime.OS.failedWord then -1 else cast n))
 
 ||| `isTTY`: 1 if the file is a terminal's, 0 if not.
 export covering
 prim__fileIsTTY : AnyPtr -> PrimIO Int
 prim__fileIsTTY p = toPrim $ File.withFile p 0 (\_, f => do
-  t <- Call.isTerminal f.handle
+  t <- Call.isTerminal !(File.handle f)
   pure (if t then 1 else 0))

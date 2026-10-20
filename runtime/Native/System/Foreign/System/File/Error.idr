@@ -15,7 +15,9 @@ import Native.System.File
 ||| for a closed file.
 export covering
 prim__error : AnyPtr -> PrimIO Int
-prim__error p = toPrim $ File.withFile p 1 (\_, f => pure (if f.failed then 1 else 0))
+prim__error p = toPrim $ File.withFile p 1 (\_, f => do
+  e <- File.hasFailed f
+  pure (if e then 1 else 0))
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
