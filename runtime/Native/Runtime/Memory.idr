@@ -138,15 +138,20 @@ setAllocation hp hplim = do
 
 ||| The current continuation, as the pointer word it is, and setting it:
 ||| the collector's first root, which it rewrites when it moves the
-||| continuation. The conversions between the continuation and its word are
-||| this module's, so these are not inlined into their callers.
+||| continuation. The pinned register holds a value; the conversions between
+||| it and its word are this module's, so these are not inlined into their
+||| callers, and do the register and the conversion in one call.
 export
 continuation : Ordo.Op Ordo Bits64
-continuation = intrinsic__getK
+continuation = do
+  k <- intrinsic__getK {a = ()}
+  intrinsic__valueWord k
 
 export
 setContinuation : Bits64 -> Ordo.Op Ordo ()
-setContinuation = intrinsic__setK
+setContinuation w = do
+  k <- intrinsic__wordValue {a = ()} w
+  intrinsic__setK k
 
 ||| The pointer tag of the program's encoding: a pointer word is the
 ||| object's address plus the tag, and a word is a pointer exactly when its

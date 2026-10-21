@@ -11,20 +11,35 @@ module Native.Codegen.Linkage.Expansion
 import Native.Area
 import Native.Carrier
 import Native.Codegen.IRCommon.Pinned as IRCommon
+import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.Intrinsic
 import Native.Mach
 import Native.Port
+import Native.Rep
+import Native.Types.Enc as Types
 import Native.Width
 
 %default total
 
 ||| What a pinned register carries across the boundary: the window's
-||| registers are byte addresses, the continuation its pointer word.
+||| registers are byte addresses, the continuation a value, which the
+||| collector rewrites when it moves the continuation. The one table of the
+||| pinned registers' carriers; their IR types refine it (`pinnedAgrees`).
 public export
 pinnedCarrier : IRCommon.Pinned -> Carrier
 pinnedCarrier IRCommon.Pinned.Hp = Carrier.ByteAddr
 pinnedCarrier IRCommon.Pinned.HpLim = Carrier.ByteAddr
-pinnedCarrier IRCommon.Pinned.K = (Carrier.Machine Mach.U64)
+pinnedCarrier IRCommon.Pinned.K = Carrier.Value
+
+||| A pinned register's IR type refines what it carries: both say it is
+||| held as the same rep, so no register crosses the contract as what the
+||| IR does not take it for.
+export
+pinnedAgrees : {0 enc : Types.Enc} -> (r : IRCommon.Pinned) ->
+               IRCommon.Ty.rep (IRCommon.Pinned.ty {enc} r) = Carrier.rep (pinnedCarrier r)
+pinnedAgrees IRCommon.Pinned.Hp = Refl
+pinnedAgrees IRCommon.Pinned.HpLim = Refl
+pinnedAgrees IRCommon.Pinned.K = Refl
 
 ||| The instructions an inline extern expands to, by the port they
 ||| implement: what they take and give is the port's.

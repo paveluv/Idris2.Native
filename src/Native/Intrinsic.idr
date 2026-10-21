@@ -36,7 +36,8 @@ data Intrinsic
     ||| offset.
     Store64 | Store32 | Store16 | Store8
   | ||| The allocation pointer and its limit, the pinned registers of the
-    ||| allocation window, and the current continuation, a pinned register.
+    ||| allocation window, and the current continuation, a pinned register
+    ||| that holds a value, which the collector rewrites when it moves it.
     GetHp | SetHp | GetHpLim | SetHpLim | GetK | SetK
   | ||| The pointer tag of the program's encoding: what a pointer word is
     ||| beyond the object's address.
@@ -67,8 +68,8 @@ port GetHp = MkPort [] (Just Carrier.ByteAddr)
 port SetHp = MkPort [Carrier.ByteAddr] Nothing
 port GetHpLim = MkPort [] (Just Carrier.ByteAddr)
 port SetHpLim = MkPort [Carrier.ByteAddr] Nothing
-port GetK = MkPort [] (Just (Carrier.Machine Mach.U64))
-port SetK = MkPort [Carrier.Machine Mach.U64] Nothing
+port GetK = MkPort [] (Just Carrier.Value)
+port SetK = MkPort [Carrier.Value] Nothing
 port PointerTag = MkPort [] (Just (Carrier.Machine Mach.U64))
 port StackLimitArea = MkPort [] (Just Carrier.ByteAddr)
 port ArgvArea = MkPort [] (Just Carrier.ByteAddr)

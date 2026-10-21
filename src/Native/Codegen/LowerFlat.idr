@@ -22,8 +22,8 @@
 ||| lowering is the same under every encoding but for the inline extern that
 ||| names the encoding's pointer tag. The functions of the module that
 ||| implements the runtime's memory may convert between words and addresses
-||| (`convertsIn`), which the inline externs on the current continuation need; no
-||| other may. A `case` on a sum is a switch on the tag, and one that is not
+||| (`convertsIn`), which the inline externs between a value and its word
+||| need; no other may. A `case` on a sum is a switch on the tag, and one that is not
 ||| in tail position a join, whose parameters are the case's registers. A
 ||| call of a form is a `DirectCall`; a call of the form itself in tail
 ||| position jumps back to its start, so self tail recursion is a loop. The
@@ -529,8 +529,7 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
             bytes a = MkValue [Rep.ByteAddr] [a]
 
             -- the instructions an expansion stands for, on its port's operands;
-            -- the continuation is a pointer, converted from or to its word, so
-            -- that only this module's functions read or set it
+            -- the continuation is a pointer, a value as the port carries it
             expand : Linkage.Expansion p ->
                      All (TermIR.Opnd v) (Linkage.Routine.portParams {enc} p) ->
                      B (Value enc v)
@@ -557,23 +556,20 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
               bytes <$> TermIR.Build.emit1 (TermIR.Instr.GetPinned IRCommon.Pinned.Hp)
             expand (Linkage.Expansion.Get IRCommon.Pinned.HpLim) [] =
               bytes <$> TermIR.Build.emit1 (TermIR.Instr.GetPinned IRCommon.Pinned.HpLim)
-            expand (Linkage.Expansion.Get IRCommon.Pinned.K) [] = case m of
-              True => do
-                p <- TermIR.Build.emit1 (TermIR.Instr.GetPinned IRCommon.Pinned.K)
-                word <$> TermIR.Build.emit1 (TermIR.Instr.AddrToWord p)
-              False => outside
+            expand (Linkage.Expansion.Get IRCommon.Pinned.K) [] = do
+              p <- TermIR.Build.emit1 (TermIR.Instr.GetPinned IRCommon.Pinned.K)
+              u <- TermIR.Build.emit1 (TermIR.Instr.WidenPtr p)
+              pure (MkValue [Rep.Uniform] [u])
             expand (Linkage.Expansion.Set IRCommon.Pinned.Hp) [x] = do
               TermIR.Build.emit0 (TermIR.Instr.SetPinned IRCommon.Pinned.Hp x)
               pure noRegs
             expand (Linkage.Expansion.Set IRCommon.Pinned.HpLim) [x] = do
               TermIR.Build.emit0 (TermIR.Instr.SetPinned IRCommon.Pinned.HpLim x)
               pure noRegs
-            expand (Linkage.Expansion.Set IRCommon.Pinned.K) [x] = case m of
-              True => do
-                p <- TermIR.Build.emit1 (TermIR.Instr.WordToAddr Types.Kind.CONT x)
-                TermIR.Build.emit0 (TermIR.Instr.SetPinned IRCommon.Pinned.K p)
-                pure noRegs
-              False => outside
+            expand (Linkage.Expansion.Set IRCommon.Pinned.K) [x] = do
+              p <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr Types.Kind.CONT x)
+              TermIR.Build.emit0 (TermIR.Instr.SetPinned IRCommon.Pinned.K p)
+              pure noRegs
             expand Linkage.Expansion.PointerTag [] =
               pure (word (TermIR.Opnd.W (cast (HeapObj.ValEnc.pointerTag enc.val))))
             expand (Linkage.Expansion.AreaAddress a) [] =
