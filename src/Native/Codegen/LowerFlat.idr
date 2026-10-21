@@ -68,11 +68,13 @@ import Native.Flat.ConstType
 import Native.Flat.Exp as Flat
 import Native.HeapObj.ValEnc
 import Native.Intrinsic
+import Native.Mach
 import Native.Port
 import Native.Primitive
 import Native.Rep
 import Native.Types.Enc as Types
 import Native.Types.Kind
+import Native.Width
 
 %default covering
 
@@ -292,10 +294,6 @@ constWord (B64 n) = let i : Integer = cast n in
                     Just (cast (if i >= 9223372036854775808 then i - 18446744073709551616 else i))
 constWord (Ch c) = Just (cast (ord c))
 constWord _ = Nothing
-
-||| How a machine integer type is held in a word: narrower than it, extended
-||| from the width as the type is signed or not, or the whole word.
-data Held = Narrower IRCommon.Op.SubWord Bool | Whole Bool
 
 ------------------------------------------------------------------------------
 -- The lowering
@@ -535,21 +533,21 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
             expand : Linkage.Expansion p ->
                      All (TermIR.Opnd v) (Linkage.Routine.portParams {enc} p) ->
                      B (Value enc v)
-            expand (Linkage.Expansion.Load Linkage.Expansion.Whole) [base, off] = do
+            expand (Linkage.Expansion.Load Width.Whole) [base, off] = do
               a <- TermIR.Build.emit1 (TermIR.Instr.Offset base off)
               word <$> TermIR.Build.emit1
                 (TermIR.Instr.Load IRCommon.Ty.W64 (TermIR.MkMem (TermIR.Mem.AtBytes a) Nothing 0))
-            expand (Linkage.Expansion.Load (Linkage.Expansion.Narrow sw)) [base, off] = do
+            expand (Linkage.Expansion.Load (Width.Narrow sw)) [base, off] = do
               a <- TermIR.Build.emit1 (TermIR.Instr.Offset base off)
               word <$> TermIR.Build.emit1
                 (TermIR.Instr.LoadN sw False (TermIR.MkMem (TermIR.Mem.AtBytes a) Nothing 0))
-            expand (Linkage.Expansion.Store Linkage.Expansion.Whole) [base, off, x] = do
+            expand (Linkage.Expansion.Store Width.Whole) [base, off, x] = do
               a <- TermIR.Build.emit1 (TermIR.Instr.Offset base off)
               TermIR.Build.emit0
                 (TermIR.Instr.Store IRCommon.Ty.W64 (TermIR.MkMem (TermIR.Mem.AtBytes a) Nothing 0)
                  x)
               pure noRegs
-            expand (Linkage.Expansion.Store (Linkage.Expansion.Narrow sw)) [base, off, x] = do
+            expand (Linkage.Expansion.Store (Width.Narrow sw)) [base, off, x] = do
               a <- TermIR.Build.emit1 (TermIR.Instr.Offset base off)
               TermIR.Build.emit0
                 (TermIR.Instr.StoreN sw (TermIR.MkMem (TermIR.Mem.AtBytes a) Nothing 0) x)
@@ -666,32 +664,22 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
           (op, _) => TermIR.Build.unsupported ("the primitive " ++ show op ++ " in a flat form")
           where
             ||| A word wrapped to the type's width, extended again.
-            wrap : Held -> TermIR.Opnd v IRCommon.Ty.W64 -> B (TermIR.Opnd v IRCommon.Ty.W64)
-            wrap (Narrower sw s) w = TermIR.Build.emit1 (TermIR.Instr.Ext sw s w)
-            wrap (Whole _) w = pure w
+            wrap : (Width, Bool) -> TermIR.Opnd v IRCommon.Ty.W64 ->
+                   B (TermIR.Opnd v IRCommon.Ty.W64)
+            wrap (Width.Narrow sw, s) w = TermIR.Build.emit1 (TermIR.Instr.Ext sw s w)
+            wrap (Width.Whole, _) w = pure w
 
             double : Value enc v -> B (TermIR.Opnd v IRCommon.Ty.F64)
             double x =
               maybe (TermIR.Build.unsupported "a double of another layout") pure (valueDouble x)
 
-            withHeld : PrimType -> String -> (Held -> B a) -> B a
-            withHeld t what k = case held t of
+            ||| An integer type's or `Char`'s width and sign, as its machine type
+            ||| has them (`Mach.width`); `Char` as its code point.
+            withHeld : PrimType -> String -> ((Width, Bool) -> B a) -> B a
+            withHeld t what k =
+              case the (Maybe (Width, Bool)) (Flat.Exp.primMach t >>= Mach.width) of
               Just h => k h
               Nothing => TermIR.Build.unsupported (what ++ " on " ++ show t ++ " in a flat form")
-              where
-                ||| How an integer type or `Char` is held; `Char` as its code point.
-                held : PrimType -> Maybe Held
-                held IntType = Just (Whole True)
-                held Int64Type = Just (Whole True)
-                held Bits64Type = Just (Whole False)
-                held Int8Type = Just (Narrower IRCommon.Op.Sub8 True)
-                held Int16Type = Just (Narrower IRCommon.Op.Sub16 True)
-                held Int32Type = Just (Narrower IRCommon.Op.Sub32 True)
-                held Bits8Type = Just (Narrower IRCommon.Op.Sub8 False)
-                held Bits16Type = Just (Narrower IRCommon.Op.Sub16 False)
-                held Bits32Type = Just (Narrower IRCommon.Op.Sub32 False)
-                held CharType = Just (Narrower IRCommon.Op.Sub32 False)
-                held _ = Nothing
 
             ||| A cast between the primitive types.
             castTo : PrimType -> PrimType -> Value enc v -> B (Flat.Exp.Skeleton, Value enc v)
@@ -699,7 +687,7 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
               if from == to then pure (prim to x) else
               case (from, to) of
                 (DoubleType, CharType) => do f <- double x
-                                             w <- doubleToWord (Whole True) f
+                                             w <- doubleToWord (Width.Whole, True) f
                                              wordVal to <$> toChar w
                 (DoubleType, _) => withHeld to "a cast" $ \h => do f <- double x
                                                                    wordVal to <$> doubleToWord h f
@@ -726,9 +714,9 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
 
                 ||| A word of the integer type as a double. A `Bits64` at or above 2^63
                 ||| is halved, its low bit kept for the rounding, converted and doubled.
-                wordToDouble : Held -> TermIR.Opnd v IRCommon.Ty.W64 ->
+                wordToDouble : (Width, Bool) -> TermIR.Opnd v IRCommon.Ty.W64 ->
                                B (TermIR.Opnd v IRCommon.Ty.F64)
-                wordToDouble (Whole False) w = do
+                wordToDouble (Width.Whole, False) w = do
                   [f] <- TermIR.Build.joinPoint [IRCommon.Ty.F64] $ \done =>
                     TermIR.Build.branch IRCommon.Op.GeS w (TermIR.Opnd.W 0)
                       (do f <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.I2F w)
@@ -746,9 +734,9 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
 
                 ||| A double truncated to the integer type. A `Bits64` at or above 2^63 is
                 ||| converted less 2^63, which is added back to the word.
-                doubleToWord : Held -> TermIR.Opnd v IRCommon.Ty.F64 ->
+                doubleToWord : (Width, Bool) -> TermIR.Opnd v IRCommon.Ty.F64 ->
                                B (TermIR.Opnd v IRCommon.Ty.W64)
-                doubleToWord (Whole False) f = do
+                doubleToWord (Width.Whole, False) f = do
                   big <- TermIR.Build.emit1 (TermIR.Instr.FConst 9223372036854775808.0)
                   above <- TermIR.Build.emit1 (TermIR.Instr.FCmp IRCommon.Op.GeS f big)
                   [w] <- TermIR.Build.joinPoint [IRCommon.Ty.W64] $ \done =>
@@ -785,9 +773,8 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
               w <- TermIR.Build.emit1 (TermIR.Instr.Arith o a b)
               wordVal t <$> wrap h w
 
-            signed : Held -> Bool
-            signed (Narrower _ s) = s
-            signed (Whole s) = s
+            signed : (Width, Bool) -> Bool
+            signed = snd
 
             shifting : PrimType -> (left : Bool) -> (x, y : Value enc v) ->
                        B (Flat.Exp.Skeleton, Value enc v)

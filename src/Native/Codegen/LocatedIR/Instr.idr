@@ -19,6 +19,7 @@ import Native.HeapObj.ValEnc
 import Native.Types.Enc as Types
 import Native.Types.Header as Types
 import Native.Types.Kind as Types
+import Native.Width
 
 %default total
 
@@ -66,7 +67,7 @@ data Instr : Types.Enc -> Type where
   ArithOv    : IRCommon.Op.ArithOp -> Reg enc -> Opnd enc -> Opnd enc -> Label -> Instr enc
   ||| Narrow a `W64` to the width, then sign- or zero-extend it back to 64
   ||| bits.
-  Ext        : IRCommon.Op.SubWord -> (signed : Bool) -> Reg enc -> Reg enc -> Instr enc
+  Ext        : Width.SubWord -> (signed : Bool) -> Reg enc -> Reg enc -> Instr enc
   ||| Double arithmetic on `F64`s.
   FArith     : IRCommon.Op.FOp -> Reg enc -> Reg enc -> Reg enc -> Instr enc
   ||| Double negation.
@@ -85,9 +86,9 @@ data Instr : Types.Enc -> Type where
   Store      : IRCommon.Ty enc -> Mem enc -> Reg enc -> Instr enc
   ||| Load 8, 16 or 32 bits into a `W64`, zero- or sign-extended: the bytes
   ||| of strings and buffers, the limbs of bignums.
-  LoadN      : IRCommon.Op.SubWord -> (signed : Bool) -> Reg enc -> Mem enc -> Instr enc
+  LoadN      : Width.SubWord -> (signed : Bool) -> Reg enc -> Mem enc -> Instr enc
   ||| Store the low 8, 16 or 32 bits of a `W64`.
-  StoreN     : IRCommon.Op.SubWord -> Mem enc -> Reg enc -> Instr enc
+  StoreN     : Width.SubWord -> Mem enc -> Reg enc -> Instr enc
   ||| The fixnum of a `W64`, as a `Fix`. The producer guarantees that the
   ||| value is in the fixnum range.
   Tag        : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Reg enc -> Reg enc -> Instr enc

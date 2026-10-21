@@ -9,17 +9,12 @@
 module Native.Codegen.Linkage.Expansion
 
 import Native.Area
-import Native.Codegen.IRCommon.Op
 import Native.Codegen.IRCommon.Pinned as IRCommon
 import Native.Intrinsic
 import Native.Port
+import Native.Width
 
 %default total
-
-||| How much of a word a memory access moves: all of it, or its low 32, 16
-||| or 8 bits.
-public export
-data Width = Whole | Narrow IRCommon.Op.SubWord
 
 ||| What a pinned register carries across the boundary: the window's
 ||| registers are byte addresses, the continuation its pointer word.
@@ -60,14 +55,14 @@ data Expansion : Port -> Type where
 ||| Each intrinsic's expansion, of its port.
 export
 expansion : (i : Intrinsic) -> Expansion (Intrinsic.port i)
-expansion Intrinsic.Load64 = Load Whole
-expansion Intrinsic.Load32 = Load (Narrow IRCommon.Op.Sub32)
-expansion Intrinsic.Load16 = Load (Narrow IRCommon.Op.Sub16)
-expansion Intrinsic.Load8 = Load (Narrow IRCommon.Op.Sub8)
-expansion Intrinsic.Store64 = Store Whole
-expansion Intrinsic.Store32 = Store (Narrow IRCommon.Op.Sub32)
-expansion Intrinsic.Store16 = Store (Narrow IRCommon.Op.Sub16)
-expansion Intrinsic.Store8 = Store (Narrow IRCommon.Op.Sub8)
+expansion Intrinsic.Load64 = Load Width.Whole
+expansion Intrinsic.Load32 = Load (Width.Narrow Width.Sub32)
+expansion Intrinsic.Load16 = Load (Width.Narrow Width.Sub16)
+expansion Intrinsic.Load8 = Load (Width.Narrow Width.Sub8)
+expansion Intrinsic.Store64 = Store Width.Whole
+expansion Intrinsic.Store32 = Store (Width.Narrow Width.Sub32)
+expansion Intrinsic.Store16 = Store (Width.Narrow Width.Sub16)
+expansion Intrinsic.Store8 = Store (Width.Narrow Width.Sub8)
 expansion Intrinsic.GetHp = Get IRCommon.Pinned.Hp
 expansion Intrinsic.SetHp = Set IRCommon.Pinned.Hp
 expansion Intrinsic.GetHpLim = Get IRCommon.Pinned.HpLim

@@ -24,8 +24,10 @@ import Core.Name
 import Core.Name.Namespace
 import Core.TT.Primitive
 import Data.List
+import Data.Maybe
 import Data.Vect
 import Native.Data.Builder as Data
+import Native.Mach
 import Native.Rep
 
 %default covering
@@ -47,6 +49,33 @@ byteAddrType = NS (mkNamespace "Native.Runtime.ByteAddr") (UN (Basic "ByteAddr")
 public export
 Layout : Type
 Layout = List Rep
+
+||| The machine type a primitive type is (`Native.Mach`): `Integer` and
+||| `String` are boxed, and `%World` is erased, so none of them is one.
+public export
+primMach : PrimType -> Maybe Mach
+primMach IntType = Just Mach.IWord
+primMach Int8Type = Just Mach.I8
+primMach Int16Type = Just Mach.I16
+primMach Int32Type = Just Mach.I32
+primMach Int64Type = Just Mach.I64
+primMach Bits8Type = Just Mach.U8
+primMach Bits16Type = Just Mach.U16
+primMach Bits32Type = Just Mach.U32
+primMach Bits64Type = Just Mach.U64
+primMach CharType = Just Mach.Rune
+primMach DoubleType = Just Mach.F64
+primMach IntegerType = Nothing
+primMach StringType = Nothing
+primMach WorldType = Nothing
+
+||| The layout of a primitive type: its machine type's register, none for
+||| `%World`; nothing for `Integer` and `String`, which are boxed and so not
+||| flat.
+public export
+primLayout : PrimType -> Maybe Layout
+primLayout WorldType = Just []
+primLayout t = (\m => [Mach.rep m]) <$> primMach t
 
 ||| A type as a code generator recognises it: a primitive, or a type or data
 ||| constructor applied to skeletons, so that `Addr CON` is told from `Addr
@@ -134,14 +163,13 @@ mutual
 
 mutual
   ||| The registers a value of the shape takes, as the judgement of its type
-  ||| lays them out (`Flat.Judgement`): a primitive's own; a data type of one
+  ||| lays them out (`Flat.Judgement`): a primitive's own, a boxed one having
+  ||| no shape, as the judgement rejects it; a data type of one
   ||| constructor its fields' in turn; one of several a tag, then each
   ||| constructor's fields in turn (`sumSlices`).
   public export
   shapeLayout : Shape -> Layout
-  shapeLayout (PrimShape DoubleType) = [Rep.Dbl]
-  shapeLayout (PrimShape WorldType) = []
-  shapeLayout (PrimShape _) = [Rep.Word]
+  shapeLayout (PrimShape t) = fromMaybe [] (primLayout t)
   shapeLayout (DataShape []) = []
   shapeLayout (DataShape [c]) = fieldsLayout c.fields
   shapeLayout (DataShape cs@(_ :: _ :: _)) = Rep.Word :: consLayout cs
@@ -316,13 +344,6 @@ Show FlatDef where
 ------------------------------------------------------------------------------
 -- The type of an expression
 
-||| The layout of a primitive type.
-export
-primLayout : PrimType -> Layout
-primLayout DoubleType = [Rep.Dbl]
-primLayout WorldType = []
-primLayout _ = [Rep.Word]
-
 ||| The skeleton and layout of an expression's value, from its variables'
 ||| (`var`) and the results of the forms it calls (`form`). Nothing if no
 ||| value comes of it, a crash or every alternative one, or a form's result
@@ -337,8 +358,8 @@ expType var form (FLet _ fv _ sc) = expType (bound [fv]) form sc
     bound vs y = case find (\v => v.name == y) vs of
       Just v => Just (v.skeleton, v.layout)
       Nothing => var y
-expType var form (FConst _ k) = (\t => (SPrim t, primLayout t)) <$> ConstType.constType k
-expType var form (FOp _ op _) = (\t => (SPrim t, primLayout t)) <$> opResult op
+expType var form (FConst _ k) = ConstType.constType k >>= \t => (SPrim t,) <$> primLayout t
+expType var form (FOp _ op _) = opResult op >>= \t => (SPrim t,) <$> primLayout t
   where
     -- The type of a primitive operation's result.
     opResult : PrimFn n -> Maybe PrimType

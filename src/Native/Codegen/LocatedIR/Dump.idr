@@ -24,6 +24,7 @@ import Native.Data.Builder as Data
 import Native.Types.Enc as Types
 import Native.Types.Header as Types
 import Native.Types.Kind as Types
+import Native.Width
 
 %default covering
 
@@ -84,8 +85,8 @@ functionPieces f =
           Instr.Cmp r d x y => show d ++ " := Cmp " ++ show x ++ " " ++ rel r ++ " " ++ show y
           Instr.Load t d m => show d ++ " := Load " ++ show t ++ " " ++ mem 8 m
           Instr.Store t m x => "Store " ++ show t ++ " " ++ mem 8 m ++ " := " ++ show x
-          Instr.LoadN sw _ d m => show d ++ " := LoadN " ++ mem (IRCommon.Op.subWordBytes sw) m
-          Instr.StoreN sw m x => "StoreN " ++ mem (IRCommon.Op.subWordBytes sw) m ++ " := "
+          Instr.LoadN sw _ d m => show d ++ " := LoadN " ++ mem (Width.subWordBytes sw) m
+          Instr.StoreN sw m x => "StoreN " ++ mem (Width.subWordBytes sw) m ++ " := "
             ++ show x
           Instr.Tag d x => show d ++ " := Tag " ++ show x
           Instr.Untag d x => show d ++ " := Untag " ++ show x

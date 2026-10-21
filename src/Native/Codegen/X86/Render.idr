@@ -95,6 +95,7 @@ import Native.Rep
 import Native.Types.Enc as Types
 import Native.Types.Header as Types
 import Native.Types.Kind as Types
+import Native.Width
 
 %default covering
 
@@ -929,13 +930,13 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                       [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.AE Asm.RDX]
                                   store d Asm.RDX
                 LocatedIR.Instr.LoadN sw s d m => do
-                                  address Asm.RAX m (IRCommon.Op.subWordBytes sw)
+                                  address Asm.RAX m (Width.subWordBytes sw)
                                   emit
                                     (Asm.Load (width sw) s Asm.RCX
                                      (Asm.MBase Asm.RAX (m.offset - baseTag m.base)))
                                   store d Asm.RCX
                 LocatedIR.Instr.StoreN sw m x => do
-                                  address Asm.RAX m (IRCommon.Op.subWordBytes sw)
+                                  address Asm.RAX m (Width.subWordBytes sw)
                                   loadReg Asm.RCX x
                                   emit
                                     (Asm.Store (width sw)
@@ -1178,7 +1179,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                       shiftFor _ = 3
 
                   ||| The width of a sub-word access.
-                  width : IRCommon.Op.SubWord -> Asm.Width
-                  width IRCommon.Op.Sub8 = Asm.W8
-                  width IRCommon.Op.Sub16 = Asm.W16
-                  width IRCommon.Op.Sub32 = Asm.W32
+                  width : Width.SubWord -> Asm.Width
+                  width Width.Sub8 = Asm.W8
+                  width Width.Sub16 = Asm.W16
+                  width Width.Sub32 = Asm.W32

@@ -83,7 +83,6 @@ modules =
     Native.Flat.Check,
     Native.Flat.ConstType,
     Native.Flat.Exp,
-    Native.Rep,
     Native.Flat.Judgement,
     Native.Flat.Marked,
     Native.Flat.Oracle,
@@ -95,11 +94,13 @@ modules =
     Native.HeapObj.Shape,
     Native.HeapObj.ValEnc,
     Native.Intrinsic,
+    Native.Mach,
     Native.OpenFlag,
     Native.Port,
     Native.Primitive,
     Native.Primitive.DoubleBits,
     Native.Primitive.Mul128,
+    Native.Rep,
     Native.Routine,
     Native.Service,
     Native.Table,
@@ -112,7 +113,8 @@ modules =
     Native.Types.Represents,
     Native.Types.StringEnc,
     Native.Types.StringRoutine,
-    Native.Types.Struct
+    Native.Types.Struct,
+    Native.Width
 
 main = Main
 executable = idris2-native

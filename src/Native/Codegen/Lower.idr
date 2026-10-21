@@ -100,9 +100,11 @@ import Decidable.Equality.Core
 import Native.Area
 import Native.Data.Builder as Data
 import Native.Data.Distinct
+import Native.Flat.ConstType
 import Native.Flat.Exp
 import Native.HeapObj.Shape as HeapObj
 import Native.HeapObj.ValEnc
+import Native.Mach
 import Native.Port
 import Native.Rep
 import Native.Types.BignumEnc
@@ -111,6 +113,7 @@ import Native.Types.Header as Types
 import Native.Types.IntegerRoutine as Types
 import Native.Types.Kind
 import Native.Types.StringRoutine as Types
+import Native.Width
 
 %default covering
 
@@ -144,45 +147,35 @@ mainExpression = MN "__mainExpression" 0
 -- being tagged if it fits and boxed if not, and an `Integer` operation calls
 -- the runtime's routine on the original operands.
 
-||| How an integer type is held, and how it wraps.
-data IntWidth
-  = ||| Fewer than 64 bits, signed or not: always a fixnum.
-    Narrow Nat Bool
-  | ||| 64 bits, signed or not: a fixnum or an `INT64` box, by its pattern.
-    Wide Bool
-  | ||| `Integer`: a fixnum or a `BIGNUM`.
-    Unbounded
+||| How an integer type is held, and how it wraps: of a machine type's width
+||| and sign (`Mach.width`), or `Integer`'s, which only ordinary code has. A
+||| narrow integer is always a fixnum; a 64-bit one is a fixnum or an `INT64`
+||| box, by its pattern; an `Integer` a fixnum or a `BIGNUM`.
+data IntWidth = Bounded Width Bool | Unbounded
 
 ||| The width of an integer type. A `Char` counts as an unsigned narrow
 ||| integer, its code point, except as the target of a cast.
 intWidth : PrimType -> Maybe IntWidth
-intWidth IntType = Just (Wide True)
-intWidth Int64Type = Just (Wide True)
-intWidth Bits64Type = Just (Wide False)
-intWidth Int8Type = Just (Narrow 8 True)
-intWidth Int16Type = Just (Narrow 16 True)
-intWidth Int32Type = Just (Narrow 32 True)
-intWidth Bits8Type = Just (Narrow 8 False)
-intWidth Bits16Type = Just (Narrow 16 False)
-intWidth Bits32Type = Just (Narrow 32 False)
-intWidth CharType = Just (Narrow 32 False)
 intWidth IntegerType = Just Unbounded
-intWidth _ = Nothing
+intWidth t = (\(w, s) => Bounded w s) <$> (Flat.Exp.primMach t >>= Mach.width)
 
 ||| An integer constant: its type's width and its value.
 intConst : Constant -> Maybe (IntWidth, Integer)
-intConst (I n) = Just (Wide True, cast n)
-intConst (I8 n) = Just (Narrow 8 True, cast n)
-intConst (I16 n) = Just (Narrow 16 True, cast n)
-intConst (I32 n) = Just (Narrow 32 True, cast n)
-intConst (I64 n) = Just (Wide True, cast n)
-intConst (BI n) = Just (Unbounded, n)
-intConst (B8 n) = Just (Narrow 8 False, cast n)
-intConst (B16 n) = Just (Narrow 16 False, cast n)
-intConst (B32 n) = Just (Narrow 32 False, cast n)
-intConst (B64 n) = Just (Wide False, cast n)
-intConst (Ch c) = Just (Narrow 32 False, cast (ord c))
-intConst _ = Nothing
+intConst k = [| (,) (Flat.ConstType.constType k >>= intWidth) (value k) |]
+  where
+    value : Constant -> Maybe Integer
+    value (I n) = Just (cast n)
+    value (I8 n) = Just (cast n)
+    value (I16 n) = Just (cast n)
+    value (I32 n) = Just (cast n)
+    value (I64 n) = Just (cast n)
+    value (BI n) = Just n
+    value (B8 n) = Just (cast n)
+    value (B16 n) = Just (cast n)
+    value (B32 n) = Just (cast n)
+    value (B64 n) = Just (cast n)
+    value (Ch c) = Just (cast (ord c))
+    value _ = Nothing
 
 ||| The signed value of a 64-bit pattern, from its value read signed or not.
 patternValue : Integer -> Integer
@@ -479,9 +472,12 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                    pure (LowerFlat.MkValue [Rep.Dbl] [f])
         Flat.Exp.PrimShape WorldType => pure LowerFlat.noRegs
         Flat.Exp.PrimShape t => case intWidth t of
-                   Just (Narrow _ _) => do w <- fixValue x
-                                           pure (LowerFlat.MkValue [Rep.Word] [w])
-                   Just (Wide _) => do w <- wideWord x; pure (LowerFlat.MkValue [Rep.Word] [w])
+                   Just (Bounded (Width.Narrow _) _) => do
+                     w <- fixValue x
+                     pure (LowerFlat.MkValue [Rep.Word] [w])
+                   Just (Bounded Width.Whole _) => do
+                     w <- wideWord x
+                     pure (LowerFlat.MkValue [Rep.Word] [w])
                    _ => TermIR.Build.unsupported ("a value of " ++ show t ++ " passed to flat code")
         Flat.Exp.UniformShape => pure (LowerFlat.MkValue [Rep.Uniform] [x])
         Flat.Exp.ByteAddrShape => TermIR.Build.unsupported "a byte address passed to flat code"
@@ -555,9 +551,10 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                    Nothing => TermIR.Build.unsupported "a double of another layout from flat code"
         Flat.Exp.PrimShape WorldType => pure TermIR.Opnd.Erased
         Flat.Exp.PrimShape t => case (intWidth t, LowerFlat.valueWord x) of
-                   (Just (Narrow _ _), Just w) => do f <- TermIR.Build.emit1 (TermIR.Instr.Tag w)
-                                                     widen f
-                   (Just (Wide _), Just w) => wideVal w
+                   (Just (Bounded (Width.Narrow _) _), Just w) => do
+                     f <- TermIR.Build.emit1 (TermIR.Instr.Tag w)
+                     widen f
+                   (Just (Bounded Width.Whole _), Just w) => wideVal w
                    _ =>
                      TermIR.Build.unsupported ("a value of " ++ show t ++ " returned by flat code")
         Flat.Exp.UniformShape => case x of
@@ -916,7 +913,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
         ||| the fixnum range.
         constCase : TermIR.Opnd v IRCommon.Ty.Val -> List (Integer, E) -> Maybe IntWidth -> E -> E
         constCase x cs y other = case y of
-          Just (Wide _) => do
+          Just (Bounded Width.Whole _) => do
             -- each alternative is reached from both switches, so it is a block
             alts <- traverse
               (\(n, code) => do j <- TermIR.Build.block [] (\[] => code)
@@ -963,9 +960,8 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
         constant (Str s) = staticVal (stringStatic s)
         constant (Db _) = TermIR.Build.unsupported "a double constant"
         constant k = case intConst k of
-          Just (Wide _, n) => let p =
-                                    patternValue n in maybe (staticVal (int64Static p)) pure
-                                      (fixnum p)
+          Just (Bounded Width.Whole _, n) =>
+            let p = patternValue n in maybe (staticVal (int64Static p)) pure (fixnum p)
           Just (Unbounded, n) =>
             maybe (case Types.BignumEnc.signInHeader enc.bignum of
                      Just _ => staticVal (bignumStatic n)
@@ -974,7 +970,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                          ("an Integer constant outside the fixnum range, under bignums in two's " ++
                           "complement"))
                   pure (fixnum n)
-          Just (Narrow _ _, n) =>
+          Just (Bounded (Width.Narrow _) _, n) =>
             maybe (TermIR.Build.unsupported ("the constant " ++ show k)) pure (fixnum n)
           Nothing => TermIR.Build.unsupported ("the constant " ++ show k)
 
@@ -1019,8 +1015,8 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                  else do
                    [w] <- strings Types.StringRoutine.ReadWord [get env x]
                    c <- case wt of
-                     Narrow n s => narrowVal n s w
-                     Wide _ => wideVal w
+                     Bounded (Width.Narrow n) s => narrowVal n s w
+                     Bounded Width.Whole _ => wideVal w
                      Unbounded =>
                        TermIR.Build.unsupported
                          ("an Integer read from a string, beyond what the runtime's Integer " ++
@@ -1049,8 +1045,8 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
             toChar : IntWidth -> TermIR.Opnd v IRCommon.Ty.Val -> B (TermIR.Opnd v IRCommon.Ty.Val)
             toChar wf x = do
               w <- case wf of
-                Narrow _ _ => fixValue x
-                Wide _ => wideWord x
+                Bounded (Width.Narrow _) _ => fixValue x
+                Bounded Width.Whole _ => wideWord x
                 Unbounded => do
                   [w] <- TermIR.Build.joinPoint [IRCommon.Ty.W64] $ \done =>
                     TermIR.Build.ifFixnums [x] (\[f] => do w <- untag (f); done [w])
@@ -1071,17 +1067,12 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
 
             ||| A word wrapped to a narrow width, as a uniform value: a fixnum, which it
             ||| always fits.
-            narrowVal : Nat -> Bool -> TermIR.Opnd v IRCommon.Ty.W64 ->
+            narrowVal : Width.SubWord -> Bool -> TermIR.Opnd v IRCommon.Ty.W64 ->
                         B (TermIR.Opnd v IRCommon.Ty.Val)
             narrowVal n s w = do
-              e <- TermIR.Build.emit1 (TermIR.Instr.Ext (subWord n) s w)
+              e <- TermIR.Build.emit1 (TermIR.Instr.Ext n s w)
               f <- TermIR.Build.emit1 (TermIR.Instr.Tag e)
               widen f
-              where
-                subWord : Nat -> IRCommon.Op.SubWord
-                subWord 8 = IRCommon.Op.Sub8
-                subWord 16 = IRCommon.Op.Sub16
-                subWord _ = IRCommon.Op.Sub32
 
             ||| A uniform integer of one width as one of another, wrapping as Idris's
             ||| casts do.
@@ -1089,22 +1080,23 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                      B (TermIR.Opnd v IRCommon.Ty.Val)
             retype wf wt x =
               if keeps wf wt then pure x else case (wf, wt) of
-                (Narrow _ _, Narrow n s) => fixValue x >>= narrowVal n s
-                (Wide _, Narrow n s) => wideWord x >>= narrowVal n s
-                (Unbounded, Narrow n s) => integerBits x >>= narrowVal n s
-                (Unbounded, Wide _) => do
+                (Bounded (Width.Narrow _) _, Bounded (Width.Narrow n) s) => fixValue x
+                  >>= narrowVal n s
+                (Bounded Width.Whole _, Bounded (Width.Narrow n) s) => wideWord x >>= narrowVal n s
+                (Unbounded, Bounded (Width.Narrow n) s) => integerBits x >>= narrowVal n s
+                (Unbounded, Bounded Width.Whole _) => do
                   [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done =>
                     TermIR.Build.ifFixnums [x] (\_ => done [x])
                       (do a <- integerBits x; r <- wideVal a; done [r])
                   pure r
-                (Wide True, Unbounded) => do
+                (Bounded Width.Whole True, Unbounded) => do
                   [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done =>
                     TermIR.Build.ifFixnums [x] (\_ => done [x])
                       (do a <- boxWord x
                           [r] <- integers Types.IntegerRoutine.FromInt64 [a]
                           done [r])
                   pure r
-                (Wide False, Unbounded) => do
+                (Bounded Width.Whole False, Unbounded) => do
                   a <- wideWord x
                   [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done =>
                     TermIR.Build.branch IRCommon.Op.LtU a (TermIR.Opnd.W 4611686018427387904)
@@ -1117,11 +1109,14 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                 ||| Whether every value of the first width is a value of the second, held the
                 ||| same way, so that a cast between them is a move.
                 keeps : IntWidth -> IntWidth -> Bool
-                keeps (Wide _) (Wide _) = True
-                keeps (Narrow _ _) (Wide _) = True
-                keeps (Narrow _ _) Unbounded = True
+                keeps (Bounded Width.Whole _) (Bounded Width.Whole _) = True
+                keeps (Bounded (Width.Narrow _) _) (Bounded Width.Whole _) = True
+                keeps (Bounded (Width.Narrow _) _) Unbounded = True
                 keeps Unbounded Unbounded = True
-                keeps (Narrow n s) (Narrow m t) = if s == t then m >= n else not s && t && m > n
+                keeps (Bounded (Width.Narrow n) s) (Bounded (Width.Narrow m) t) =
+                  let a = Width.subWordBytes n
+                      b = Width.subWordBytes m
+                  in if s == t then b >= a else not s && t && b > a
                 keeps _ _ = False
 
                 ||| An `Integer`'s value modulo 2^64, as a word.
@@ -1147,8 +1142,12 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
             ||| A number of the width in decimal, by its word; an `Integer` outside
             ||| the fixnums is not yet.
             decimal : IntWidth -> TermIR.Opnd v IRCommon.Ty.Val -> B (TermIR.Opnd v IRCommon.Ty.Val)
-            decimal (Narrow _ signed) x = do w <- fixValue x; decimalWord signed w
-            decimal (Wide signed) x = do w <- wideWord x; decimalWord signed w
+            decimal (Bounded (Width.Narrow _) signed) x = do
+              w <- fixValue x
+              decimalWord signed w
+            decimal (Bounded Width.Whole signed) x = do
+              w <- wideWord x
+              decimalWord signed w
             decimal Unbounded x = do
               [t] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done =>
                 TermIR.Build.ifFixnums [x] (\[f] => do w <- untag f
@@ -1200,11 +1199,11 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
 
             negation : IntWidth -> TermIR.Opnd v IRCommon.Ty.Val ->
                        B (TermIR.Opnd v IRCommon.Ty.Val)
-            negation (Narrow n s) x = do
+            negation (Bounded (Width.Narrow n) s) x = do
               a <- fixValue x
               w <- TermIR.Build.emit1 (TermIR.Instr.Unary IRCommon.Op.Negate a)
               narrowVal n s w
-            negation (Wide _) x = do
+            negation (Bounded Width.Whole _) x = do
               [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done => do
                 word <- TermIR.Build.block [IRCommon.Ty.W64] $ \[wa] => do
                   w <- TermIR.Build.emit1 (TermIR.Instr.Unary IRCommon.Op.Negate wa)
@@ -1233,13 +1232,13 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
             ||| `div` or `mod`.
             division : IntWidth -> (remainder : Bool) -> (x, y : TermIR.Opnd v IRCommon.Ty.Val) ->
                        B (TermIR.Opnd v IRCommon.Ty.Val)
-            division (Narrow n s) m x y = do
+            division (Bounded (Width.Narrow n) s) m x y = do
               a <- fixValue x
               b <- fixValue y
               Words.nonZero b
               w <- Words.divide s m a b
               narrowVal n s w
-            division (Wide s) m x y = do
+            division (Bounded Width.Whole s) m x y = do
               a <- wideWord x
               b <- wideWord y
               Words.nonZero b
@@ -1265,14 +1264,14 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
             ||| `shiftL` or `shiftR`: arithmetic on signed types, logical on unsigned.
             shifting : IntWidth -> (left : Bool) -> (x, y : TermIR.Opnd v IRCommon.Ty.Val) ->
                        B (TermIR.Opnd v IRCommon.Ty.Val)
-            shifting (Narrow n s) left x y = do
+            shifting (Bounded (Width.Narrow n) s) left x y = do
               a <- fixValue x
               k <- fixValue y
               w <- Words.shiftBy
                 (if left then IRCommon.Op.Shl else if s then IRCommon.Op.Sar else IRCommon.Op.Shr) a
                   k
               narrowVal n s w
-            shifting (Wide s) left x y = do
+            shifting (Bounded Width.Whole s) left x y = do
               a <- wideWord x
               k <- wideWord y
               w <- Words.shiftBy
@@ -1318,12 +1317,12 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
             arithmetic : IntWidth -> IRCommon.Op.ArithOp -> (routine : Types.IntegerRoutine) ->
                          (x, y : TermIR.Opnd v IRCommon.Ty.Val) -> B (TermIR.Opnd v IRCommon.Ty.Val)
             arithmetic width o routine x y = case width of
-              Narrow n s => do
+              Bounded (Width.Narrow n) s => do
                 a <- fixValue x
                 b <- fixValue y
                 w <- TermIR.Build.emit1 (TermIR.Instr.Arith o a b)
                 narrowVal n s w
-              Wide _ => do
+              Bounded Width.Whole _ => do
                 [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done => do
                   words <- TermIR.Build.block [IRCommon.Ty.W64, IRCommon.Ty.W64] $ \[wa, wb] => do
                     w <- TermIR.Build.emit1 (TermIR.Instr.Arith o wa wb)
@@ -1363,12 +1362,12 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
             comparison : IntWidth -> IRCommon.Op.Rel -> (x, y : TermIR.Opnd v IRCommon.Ty.Val) ->
                          B (TermIR.Opnd v IRCommon.Ty.Val)
             comparison width rel x y = case width of
-              Narrow _ _ => do
+              Bounded (Width.Narrow _) _ => do
                 a <- asFix x
                 b <- asFix y
                 c <- TermIR.Build.emit1 (TermIR.Instr.Cmp rel a b)
                 boolVal c
-              Wide s => do
+              Bounded Width.Whole s => do
                 let rel' = if s then rel else unsignedRel rel
                 [c] <- TermIR.Build.joinPoint [IRCommon.Ty.W64] $ \done =>
                   TermIR.Build.ifFixnums [x, y]
@@ -1917,7 +1916,7 @@ lowerProgram enc platform realised forms shapes tables constants flat implemente
         -- leaves out a static nothing reaches
         plan : Constant -> Maybe (Name, StaticPlan)
         plan k = case intConst k of
-          Just (Wide _, v) => let p = patternValue v in
+          Just (Bounded Width.Whole _, v) => let p = patternValue v in
                               if HeapObj.ValEnc.inFixnumRange p then Nothing
                                 else Just (int64Static p, Boxed p)
           Just (Unbounded, v) => if HeapObj.ValEnc.inFixnumRange v then Nothing

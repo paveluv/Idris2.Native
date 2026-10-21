@@ -156,11 +156,8 @@ mutual
   judge : {auto c : Ref Ctxt Defs} ->
           Judging -> ClosedNF -> Core Judgement
   judge j f = case f of
-    NPrimVal _ (PrT IntegerType) => pure (Rejected (Problem.BoxedPrimitive IntegerType))
-    NPrimVal _ (PrT StringType) => pure (Rejected (Problem.BoxedPrimitive StringType))
-    NPrimVal _ (PrT DoubleType) => pure (LaidOut [Rep.Dbl])
-    NPrimVal _ (PrT WorldType) => pure (LaidOut [])
-    NPrimVal _ (PrT _) => pure (LaidOut [Rep.Word])
+    NPrimVal _ (PrT t) =>
+      pure (maybe (Rejected (Problem.BoxedPrimitive t)) LaidOut (Exp.primLayout t))
     NTCon _ n _ args
        => do tn <- toFullNames n
              if tn == Exp.uniformType then pure (LaidOut [Rep.Uniform])

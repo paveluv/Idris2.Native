@@ -63,17 +63,6 @@ Show FOp where
 public export
 data Rel = EqR | NeR | LtS | LeS | GtS | GeS | LtU | LeU | GtU | GeU
 
-||| The narrow widths of `Ext`, `LoadN` and `StoreN`: 8, 16 and 32 bits.
-public export
-data SubWord = Sub8 | Sub16 | Sub32
-
-||| A sub-word's width in bytes: the unit of a `LoadN` or `StoreN` index.
-public export
-subWordBytes : SubWord -> Nat
-subWordBytes Sub8 = 1
-subWordBytes Sub16 = 2
-subWordBytes Sub32 = 4
-
 ||| `Negate` is two's-complement negation; `Complement` flips every bit.
 public export
 data UnOp = Negate | Complement

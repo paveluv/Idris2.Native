@@ -73,7 +73,7 @@ allowed ours importer imported = case moduleLayer importer of
     contract : List String
     contract =
       ["HeapObj", "Area", "Port", "Routine", "Intrinsic", "Service", "Failure", "OpenFlag",
-       "Primitive", "Table", "Rep"]
+       "Primitive", "Table", "Rep", "Mach", "Width"]
 
     ||| A module's layer: the group under the product's root its name is in
     ||| (`Codegen` for `Native.Codegen.TermIR.Instr`), or the linter's.
@@ -97,8 +97,8 @@ allowed ours importer imported = case moduleLayer importer of
     ||| the system tier, which takes all of them, and the libraries, as any
     ||| library may; of the flat fragment, the contract, the type layer and the
     ||| runtime take `Native.Flat.Uniform` alone, and of the contract, the flat
-    ||| fragment takes `Native.Rep` alone, the reps its layouts are made of
-    ||| (`mayImport`).
+    ||| fragment takes the register vocabulary alone (`registerVocabulary`),
+    ||| the reps and machine types its layouts are made of (`mayImport`).
     imports : Layer -> List Layer
     imports DataLayer = [DataLayer]
     imports ContractLayer = [DataLayer, ContractLayer]
@@ -110,10 +110,14 @@ allowed ours importer imported = case moduleLayer importer of
     imports SystemLayer = [ContractLayer, TypesLayer, RuntimeLayer, SupportLayer, SystemLayer]
     imports LintLayer = [LintLayer]
 
+    ||| The contract's modules that say how a register holds a value.
+    registerVocabulary : List String
+    registerVocabulary = ["Native.Rep", "Native.Mach", "Native.Width"]
+
     ||| Whether a layer's module may import a module: one of the layers it
     ||| imports, or for the contract and the runtime `Native.Flat.Uniform`, or
-    ||| for the flat fragment `Native.Rep`; a module of no layer among ours (a
-    ||| program) by none.
+    ||| for the flat fragment the register vocabulary; a module of no layer
+    ||| among ours (a program) by none.
     mayImport : Layer -> String -> Bool
     mayImport l m =
       maybe False (`elem` imports l) (moduleLayer m)
@@ -122,7 +126,7 @@ allowed ours importer imported = case moduleLayer importer of
             (the (List Layer) [ContractLayer, TypesLayer, RuntimeLayer, SupportLayer, SystemLayer])
            && m
            == "Native.Flat.Uniform")
-        || (l == FlatLayer && m == "Native.Rep")
+        || (l == FlatLayer && elem m registerVocabulary)
 
 fileModule : Source.SourceFile -> String
 fileModule f = show f.mod.moduleNS

@@ -73,6 +73,7 @@ import Native.Types.IntegerRoutine
 import Native.Types.Kind
 import Native.Types.StringEnc
 import Native.Types.StringRoutine
+import Native.Width
 import System.File
 
 %default total

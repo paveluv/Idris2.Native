@@ -28,6 +28,7 @@ import Native.HeapObj.ValEnc
 import Native.Types.Enc as Types
 import Native.Types.Header as Types
 import Native.Types.Kind as Types
+import Native.Width
 
 %default total
 
@@ -73,7 +74,7 @@ data Instr : Decls enc -> Bool -> (var : IRCommon.Ty enc -> Type) -> List (IRCom
            Instr d m var [IRCommon.Ty.W64, IRCommon.Ty.W64]
   Unary : IRCommon.Op.UnOp -> Opnd var IRCommon.Ty.W64 -> Instr d m var [IRCommon.Ty.W64]
   ||| Narrow a word to the width, then extend it back, signed or not.
-  Ext : IRCommon.Op.SubWord -> (signed : Bool) -> Opnd var IRCommon.Ty.W64 ->
+  Ext : Width.SubWord -> (signed : Bool) -> Opnd var IRCommon.Ty.W64 ->
         Instr d m var [IRCommon.Ty.W64]
   FArith : IRCommon.Op.FOp -> Opnd var IRCommon.Ty.F64 -> Opnd var IRCommon.Ty.F64 ->
            Instr d m var [IRCommon.Ty.F64]
@@ -93,9 +94,9 @@ data Instr : Decls enc -> Bool -> (var : IRCommon.Ty enc -> Type) -> List (IRCom
   Store : (t : IRCommon.Ty enc) -> Mem var c -> Opnd var t -> {auto 0 ok : So (Mem.admits c t)} ->
           Instr d m var []
   ||| Load 8, 16 or 32 bits, extended to a word.
-  LoadN : IRCommon.Op.SubWord -> (signed : Bool) -> Mem var c -> Instr d m var [IRCommon.Ty.W64]
+  LoadN : Width.SubWord -> (signed : Bool) -> Mem var c -> Instr d m var [IRCommon.Ty.W64]
   ||| Store a word's low 8, 16 or 32 bits.
-  StoreN : IRCommon.Op.SubWord -> Mem var c -> Opnd var IRCommon.Ty.W64 -> Instr d m var []
+  StoreN : Width.SubWord -> Mem var c -> Opnd var IRCommon.Ty.W64 -> Instr d m var []
   ||| The fixnum of a word the producer knows is in range.
   Tag : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Opnd var IRCommon.Ty.W64 ->
         Instr d m var [IRCommon.Ty.Fix {enc}]
