@@ -21,28 +21,41 @@ import Native.Area
 
 %default total
 
-||| What a word of the state holds: an address, or a count.
+||| What a word of the state can hold, and how it is that word: an address,
+||| which the state keeps as its word, or a count. By the type, so that
+||| each access is the one of its kind: a copy of `getState` for one kind
+||| holds no alternative of the other's.
 public export
-data Holds : Type -> Type where
-  AnAddress : Holds ByteAddr
-  ACount : Holds Bits64
+interface Cell t where
+  fromCell : Bits64 -> t
+  toCell : t -> Bits64
 
-||| A word of the state, by its index in the area, and what it holds.
+public export
+Cell ByteAddr where
+  fromCell = ByteAddr.fromWord
+  toCell = ByteAddr.toWord
+
+public export
+Cell Bits64 where
+  fromCell w = w
+  toCell w = w
+
+||| A word of the state, by its index in the area; what it holds is its
+||| type's (`Cell`).
 public export
 record State (t : Type) where
   constructor MkState
   index : Bits64
-  holds : Holds t
 
 ||| The state's word `i`, which the area holds, an address or a count: a
 ||| word past the area's (`Area.runtimeWords`) does not typecheck.
 public export
 address : (i : Bits64) -> {auto 0 fits : i < Area.runtimeWords = True} -> State ByteAddr
-address i = MkState i AnAddress
+address i = MkState i
 
 public export
 count : (i : Bits64) -> {auto 0 fits : i < Area.runtimeWords = True} -> State Bits64
-count i = MkState i ACount
+count i = MkState i
 
 ||| The from-space: its first address, the end of its reservation, and the
 ||| end of the memory committed to it.
@@ -100,23 +113,17 @@ words i _ = i
 ||| The word of the state, as what it holds: the state keeps an address as
 ||| its word.
 export
-getState : State t -> Ordo.Op Ordo t
-getState (MkState i AnAddress) = do
+getState : Cell t => State t -> Ordo.Op Ordo t
+getState s = do
   rt <- Memory.runtimeArea
-  w <- Memory.loadAt rt (8 * i)
-  Ordo.pure (ByteAddr.fromWord w)
-getState (MkState i ACount) = do
-  rt <- Memory.runtimeArea
-  Memory.loadAt rt (8 * i)
+  w <- Memory.loadAt rt (8 * s.index)
+  Ordo.pure (fromCell w)
 
 export
-setState : State t -> t -> Ordo.Op Ordo ()
-setState (MkState i AnAddress) v = do
+setState : Cell t => State t -> t -> Ordo.Op Ordo ()
+setState s v = do
   rt <- Memory.runtimeArea
-  Memory.storeAt rt (8 * i) (ByteAddr.toWord v)
-setState (MkState i ACount) v = do
-  rt <- Memory.runtimeArea
-  Memory.storeAt rt (8 * i) v
+  Memory.storeAt rt (8 * s.index) (toCell v)
 
 ||| The byte address of the scratch bytes, since they hold no object.
 export

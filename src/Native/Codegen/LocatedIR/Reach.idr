@@ -60,7 +60,7 @@ reach roots p =
 
         ||| The names an instruction refers to.
         instr : Instr enc -> Refs
-        instr (Instr.CodeAddr _ f) = MkRefs [f] [] []
+        instr (Instr.CodeOf _ f) = MkRefs [f] [] []
         instr (Instr.StaticAddr _ s) = MkRefs [] [s] []
         instr (Instr.TableAddr _ t) = MkRefs [] [] [t]
         instr (Instr.Arith _ _ x y) = opnds [x, y]

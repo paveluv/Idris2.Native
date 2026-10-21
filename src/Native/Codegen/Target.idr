@@ -32,6 +32,8 @@
 ||| so that code following that convention leaves them intact.
 module Native.Codegen.Target
 
+import Native.Rep
+
 %default total
 
 ||| A hardware register, by the target's own numbering (on x86-64, the
@@ -45,11 +47,6 @@ TargetReg = Nat
 public export
 FloatReg : Type
 FloatReg = Nat
-
-||| The register class a value crosses a call boundary in: an `F64` in a
-||| floating-point register, every other value in a word register.
-public export
-data RegClass = WordClass | FloatClass
 
 ||| Where one value of a call's arguments or of a `Direct` function's results
 ||| travels.
@@ -86,21 +83,21 @@ record Abi where
 ||| results both go where this places them: a return passes values as a call
 ||| does.
 public export
-place : Abi -> List RegClass -> List Loc
+place : Abi -> List Rep.RegClass -> List Loc
 place abi = go abi.wordRegs abi.floatRegs 0
   where
-    go : List TargetReg -> List FloatReg -> Nat -> List RegClass -> List Loc
+    go : List TargetReg -> List FloatReg -> Nat -> List Rep.RegClass -> List Loc
     go _ _ _ [] = []
-    go ws fs n (WordClass :: cs) = case ws of
+    go ws fs n (Rep.WordClass :: cs) = case ws of
       w :: ws' => InWordReg w :: go ws' fs n cs
       [] => InArgs n :: go [] fs (S n) cs
-    go ws fs n (FloatClass :: cs) = case fs of
+    go ws fs n (Rep.FloatClass :: cs) = case fs of
       f :: fs' => InFloatReg f :: go ws fs' n cs
       [] => InArgs n :: go ws [] (S n) cs
 
 ||| The words of `ARGS` that values of these classes take.
 public export
-argsWords : Abi -> List RegClass -> Nat
+argsWords : Abi -> List Rep.RegClass -> Nat
 argsWords abi cs = length (filter inArgs (place abi cs))
   where
     inArgs : Loc -> Bool

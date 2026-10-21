@@ -66,7 +66,7 @@ functionPieces f =
         instr instr' = case instr' of
           Instr.Const d c => show d ++ " := Const " ++ show c
           Instr.FConst d c => show d ++ " := FConst " ++ show c
-          Instr.CodeAddr d f => show d ++ " := CodeAddr " ++ show f
+          Instr.CodeOf d f => show d ++ " := CodeOf " ++ show f
           Instr.StaticAddr d s => show d ++ " := StaticAddr " ++ show s
           Instr.AreaAddr d _ => show d ++ " := AreaAddr"
           Instr.TableAddr d n => show d ++ " := TableAddr " ++ show n

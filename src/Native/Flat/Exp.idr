@@ -26,38 +26,20 @@ import Core.TT.Primitive
 import Data.List
 import Data.Vect
 import Native.Data.Builder as Data
+import Native.Rep
 
 %default covering
-
-||| One register of a flat value.
-public export
-data Rep
-  = ||| A machine word: an integer of any width up to the word's, a `Char`,
-    ||| a constructor's tag, or an address.
-    Word
-  | ||| An IEEE 754 double.
-    Dbl
-  | ||| A value as the ordinary regime holds it (`Flat.Uniform`), opaque to
-    ||| flat code.
-    Uniform
-
-export
-Eq Rep where
-  Word == Word = True
-  Dbl == Dbl = True
-  Uniform == Uniform = True
-  _ == _ = False
-
-export
-Show Rep where
-  show Word = "Word"
-  show Dbl = "Dbl"
-  show Uniform = "Uniform"
 
 ||| The flat regime's type of values held as the ordinary regime holds them.
 public export
 uniformType : Name
 uniformType = NS (mkNamespace "Native.Flat.Uniform") (UN (Basic "Uniform"))
+
+||| The runtime core's type of the address of memory that holds no object,
+||| held as an address (`Rep.ByteAddr`), not as the word it is made of.
+public export
+byteAddrType : Name
+byteAddrType = NS (mkNamespace "Native.Runtime.ByteAddr") (UN (Basic "ByteAddr"))
 
 ||| The registers a value of a flat type takes, in order. A token, `%World`
 ||| and anything erased take none; a type with several constructors takes a
@@ -121,6 +103,9 @@ mutual
       DataShape (List ConShape)
     | ||| `Uniform a`: the value as ordinary code holds it, unchanged.
       UniformShape
+    | ||| The runtime's byte address: an address, whose one constructor makes
+      ||| it from its word and whose case takes the word back.
+      ByteAddrShape
 
   ||| A constructor of a flat data type: its tag, how ordinary code represents
   ||| it, and the shapes of its run-time fields.
@@ -145,6 +130,7 @@ mutual
                              [] => ""
                              fs => " (" ++ concat (intersperse ", " (map show fs)) ++ ")")
     show UniformShape = "uniform"
+    show ByteAddrShape = "byte address"
 
 mutual
   ||| The registers a value of the shape takes, as the judgement of its type
@@ -153,13 +139,14 @@ mutual
   ||| constructor's fields in turn (`sumSlices`).
   public export
   shapeLayout : Shape -> Layout
-  shapeLayout (PrimShape DoubleType) = [Dbl]
+  shapeLayout (PrimShape DoubleType) = [Rep.Dbl]
   shapeLayout (PrimShape WorldType) = []
-  shapeLayout (PrimShape _) = [Word]
+  shapeLayout (PrimShape _) = [Rep.Word]
   shapeLayout (DataShape []) = []
   shapeLayout (DataShape [c]) = fieldsLayout c.fields
-  shapeLayout (DataShape cs@(_ :: _ :: _)) = Word :: consLayout cs
-  shapeLayout UniformShape = [Uniform]
+  shapeLayout (DataShape cs@(_ :: _ :: _)) = Rep.Word :: consLayout cs
+  shapeLayout UniformShape = [Rep.Uniform]
+  shapeLayout ByteAddrShape = [Rep.ByteAddr]
 
   ||| The registers of a constructor's fields, in turn.
   public export
@@ -332,9 +319,9 @@ Show FlatDef where
 ||| The layout of a primitive type.
 export
 primLayout : PrimType -> Layout
-primLayout DoubleType = [Dbl]
+primLayout DoubleType = [Rep.Dbl]
 primLayout WorldType = []
-primLayout _ = [Word]
+primLayout _ = [Rep.Word]
 
 ||| The skeleton and layout of an expression's value, from its variables'
 ||| (`var`) and the results of the forms it calls (`form`). Nothing if no

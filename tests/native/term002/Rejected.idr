@@ -186,13 +186,14 @@ failing "Mismatch between: Direct ?rs ?col and CPS"
 failing "Mismatch between: Direct [W64] False and CPS"
   directCode : Closed D CPS False [Val]
   directCode = build $ \[x] => do
-    c <- emit1 (CodeAddr direct)
+    c <- emit1 (CodeOf direct)
     return x
 
 ------------------------------------------------------------------------------
 -- Objects: what is allocated or read fits the object's kind and header:
--- a constructor's fields are uniform values, a closure has fewer arguments
--- than its arity, an array has a fill and a string none.
+-- a constructor's fields are uniform values, a closure's first field is its
+-- code and it has fewer arguments than its arity, an array has a fill and a
+-- string none, and a field is loaded as its kind has it.
 
 -- A constructor's field that is not a `Val`.
 failing "Mismatch between: W64 and Val"
@@ -205,7 +206,25 @@ failing "Mismatch between: W64 and Val"
 failing "Can't find an implementation for So False"
   fullClosure : Closed D CPS False [Val]
   fullClosure = build $ \[x] => do
-    p <- emit1 (AllocObj (ClosureH 1 1) [W 0, x])
+    c <- emit1 (CodeOf cps)
+    p <- emit1 (AllocObj (ClosureH 1 1) [c, x])
+    return x
+
+-- A closure whose code is a word: a code address is no word.
+failing "Mismatch between: W64 and CodeAddr"
+  wordCode : Closed D CPS False [Val]
+  wordCode = build $ \[x] => do
+    p <- emit1 (AllocObj (ClosureH 2 1) [W 0, x])
+    return x
+
+-- A constructor's field loaded as a word: every field of a constructor is
+-- a `Val`, which the load's type must be. In Idris terms, the field of
+-- `Just x` read as if it were a `Bits64`.
+failing "Can't find an implementation for So False"
+  rawLoad : Closed D CPS False [Val]
+  rawLoad = build $ \[x] => do
+    p <- emit1 (NarrowPtr CON x)
+    w <- emit1 (Load W64 (MkMem (AtPtr p) Nothing 8))
     return x
 
 -- An array without its fill.
@@ -236,6 +255,27 @@ failing "Mismatch between: CON and STRING"
     p <- emit1 (StaticAddr nil)
     n <- emit1 (LoadPart StringBytes p)
     return x
+
+------------------------------------------------------------------------------
+-- Byte addresses: memory that holds no object is reached through a byte
+-- address, which is no word. A word is no memory base, and is a byte
+-- address only by a retyping (`WordToByteAddr`).
+
+-- A load at a word.
+failing "Mismatch between: W64 and ByteAddr"
+  wordBase : Closed D (Direct [W64] False) False [W64]
+  wordBase = build $ \[w] => do
+    x <- emit1 (Load W64 (MkMem (AtBytes w) Nothing 0))
+    ret [x]
+
+-- Integer arithmetic on byte addresses: two addresses are never added. An
+-- address moves by a count of bytes (`Offset`) and nothing else.
+failing "Can't find an implementation for IsInt ByteAddr"
+  addAddresses : Closed D (Direct [W64] False) False [W64]
+  addAddresses = build $ \[w] => do
+    a <- emit1 (WordToByteAddr w)
+    b <- emit1 (Arith Add a a)
+    ret [w]
 
 ------------------------------------------------------------------------------
 -- Word/address conversion: only a function allowed to make one may turn a

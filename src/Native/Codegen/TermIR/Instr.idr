@@ -54,13 +54,16 @@ data Instr : Decls enc -> Bool -> (var : IRCommon.Ty enc -> Type) -> List (IRCom
   Type where
   FConst : Double -> Instr d m var [IRCommon.Ty.F64]
   ||| The entry address of a CPS function of the program: a closure's code.
-  CodeAddr : Var d.sigs (MkSig n IRCommon.Conv.CPS ps cv) -> Instr d m var [IRCommon.Ty.W64]
+  CodeOf : Var d.sigs (MkSig n IRCommon.Conv.CPS ps cv) -> Instr d m var [IRCommon.Ty.CodeAddr]
   ||| The address of a static object, as a pointer to its kind.
   StaticAddr : Var d.statics (MkStaticSig s k) -> Instr d m var [IRCommon.Ty.PtrTo k]
-  AreaAddr : Area -> Instr d m var [IRCommon.Ty.W64]
+  AreaAddr : Area -> Instr d m var [IRCommon.Ty.ByteAddr]
   ||| The address of a table's rows, which the code generator computed
   ||| (`Native.Table`).
-  TableAddr : Name -> Instr d m var [IRCommon.Ty.W64]
+  TableAddr : Name -> Instr d m var [IRCommon.Ty.ByteAddr]
+  ||| A byte address moved by a count of bytes.
+  Offset : Opnd var IRCommon.Ty.ByteAddr -> Opnd var IRCommon.Ty.W64 ->
+           Instr d m var [IRCommon.Ty.ByteAddr]
   ||| Integer arithmetic on two `W64`s or two `Fix`es; on `Fix`es the
   ||| producer guarantees the result is a fixnum.
   Arith : {auto 0 int : IsInt t} -> IRCommon.Op.ArithOp -> Opnd var t -> Opnd var t ->
@@ -82,12 +85,17 @@ data Instr : Decls enc -> Bool -> (var : IRCommon.Ty enc -> Type) -> List (IRCom
   ||| Compare two integers: 1 or 0.
   Cmp : {auto 0 int : IsInt t} -> IRCommon.Op.Rel -> Opnd var t -> Opnd var t ->
         Instr d m var [IRCommon.Ty.W64]
-  Load : (t : IRCommon.Ty enc) -> Mem var -> Instr d m var [t]
-  Store : (t : IRCommon.Ty enc) -> Mem var -> Opnd var t -> Instr d m var []
+  ||| Load a register of the type from a word the reference names, which
+  ||| admits the type: a field of an object is loaded as its kind has it.
+  Load : (t : IRCommon.Ty enc) -> Mem var c -> {auto 0 ok : So (Mem.admits c t)} ->
+         Instr d m var [t]
+  ||| Store a register of the type in a word that admits it.
+  Store : (t : IRCommon.Ty enc) -> Mem var c -> Opnd var t -> {auto 0 ok : So (Mem.admits c t)} ->
+          Instr d m var []
   ||| Load 8, 16 or 32 bits, extended to a word.
-  LoadN : IRCommon.Op.SubWord -> (signed : Bool) -> Mem var -> Instr d m var [IRCommon.Ty.W64]
+  LoadN : IRCommon.Op.SubWord -> (signed : Bool) -> Mem var c -> Instr d m var [IRCommon.Ty.W64]
   ||| Store a word's low 8, 16 or 32 bits.
-  StoreN : IRCommon.Op.SubWord -> Mem var -> Opnd var IRCommon.Ty.W64 -> Instr d m var []
+  StoreN : IRCommon.Op.SubWord -> Mem var c -> Opnd var IRCommon.Ty.W64 -> Instr d m var []
   ||| The fixnum of a word the producer knows is in range.
   Tag : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Opnd var IRCommon.Ty.W64 ->
         Instr d m var [IRCommon.Ty.Fix {enc}]
@@ -108,6 +116,12 @@ data Instr : Decls enc -> Bool -> (var : IRCommon.Ty enc -> Type) -> List (IRCom
   ||| as `AddrToWord` is.
   ValToWord : Opnd var IRCommon.Ty.Val -> Instr d True var [IRCommon.Ty.W64]
   WordToVal : Opnd var IRCommon.Ty.W64 -> Instr d True var [IRCommon.Ty.Val]
+  ||| The word a byte address is, and the byte address a word is: the same
+  ||| register, retyped, with no code. Neither is a value, so the collector
+  ||| sees neither; the runtime's byte address makes and opens its word by
+  ||| them, its constructor and its case.
+  ByteAddrToWord : Opnd var IRCommon.Ty.ByteAddr -> Instr d m var [IRCommon.Ty.W64]
+  WordToByteAddr : Opnd var IRCommon.Ty.W64 -> Instr d m var [IRCommon.Ty.ByteAddr]
   ||| The header word of an object; a continuation's layout word.
   LoadHeader : Opnd var (IRCommon.Ty.PtrTo k) -> Instr d m var [IRCommon.Ty.W64]
   LoadPart : {0 k : Types.Kind} -> Types.Header.HeaderPart k -> Opnd var (IRCommon.Ty.PtrTo k) ->
@@ -142,10 +156,11 @@ traverseInstr : Applicative f => ({0 t : IRCommon.Ty enc} -> Opnd v t -> f (Opnd
                 Instr d m v ts ->
                 f (Instr d m w ts)
 traverseInstr g (FConst x) = pure (FConst x)
-traverseInstr g (CodeAddr r) = pure (CodeAddr r)
+traverseInstr g (CodeOf r) = pure (CodeOf r)
 traverseInstr g (StaticAddr r) = pure (StaticAddr r)
 traverseInstr g (AreaAddr a) = pure (AreaAddr a)
 traverseInstr g (TableAddr n) = pure (TableAddr n)
+traverseInstr g (Offset a n) = [| Offset (g a) (g n) |]
 traverseInstr g (Arith {int} o x y) = [| (\x', y' => Arith {int} o x' y') (g x) (g y) |]
 traverseInstr g (Mul128 x y) = [| Mul128 (g x) (g y) |]
 traverseInstr g (Unary o x) = Unary o <$> g x
@@ -155,8 +170,9 @@ traverseInstr g (FNeg x) = FNeg <$> g x
 traverseInstr g (FCmp r x y) = [| FCmp (pure r) (g x) (g y) |]
 traverseInstr g (Convert op x) = Convert op <$> g x
 traverseInstr g (Cmp {int} r x y) = [| (\x', y' => Cmp {int} r x' y') (g x) (g y) |]
-traverseInstr g (Load t mem) = Load t <$> Mem.traverseMem g mem
-traverseInstr g (Store t mem x) = [| (\mem', x' => Store t mem' x') (Mem.traverseMem g mem) (g x) |]
+traverseInstr g (Load {ok} t mem) = (\mem' => Load {ok} t mem') <$> Mem.traverseMem g mem
+traverseInstr g (Store {ok} t mem x) =
+  [| (\mem', x' => Store {ok} t mem' x') (Mem.traverseMem g mem) (g x) |]
 traverseInstr g (LoadN w s mem) = LoadN w s <$> Mem.traverseMem g mem
 traverseInstr g (StoreN w mem x) = [| StoreN (pure w) (Mem.traverseMem g mem) (g x) |]
 traverseInstr g (Tag {fx} x) = Tag {fx} <$> g x
@@ -169,6 +185,8 @@ traverseInstr g (AddrToWord x) = AddrToWord <$> g x
 traverseInstr g (WordToAddr k x) = WordToAddr k <$> g x
 traverseInstr g (ValToWord x) = ValToWord <$> g x
 traverseInstr g (WordToVal x) = WordToVal <$> g x
+traverseInstr g (ByteAddrToWord x) = ByteAddrToWord <$> g x
+traverseInstr g (WordToByteAddr x) = WordToByteAddr <$> g x
 traverseInstr g (LoadHeader x) = LoadHeader <$> g x
 traverseInstr g (LoadPart p x) = LoadPart p <$> g x
 traverseInstr g (AllocObj h {ok} fs) = (\fs' => AllocObj h {ok} fs') <$> Opnd.traverseAll g fs

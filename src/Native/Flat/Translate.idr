@@ -102,6 +102,7 @@ import Libraries.Data.NameMap
 import Libraries.Data.WithDefault
 import Native.Data.Builder as Data
 import Native.Data.WriteBuilder
+import Native.Rep
 import System.File
 import System.File.ReadWrite
 
@@ -1713,6 +1714,7 @@ shape sk
                pure (Just (Exp.PrimShape t))
       typeShape ty@(NTCon _ n _ args)
           = if !(toFullNames n) == Exp.uniformType then pure (Just Exp.UniformShape) else
+            if !(toFullNames n) == Exp.byteAddrType then pure (Just Exp.ByteAddrShape) else
             do Judgement.LaidOut _ <- layout [] ty
                            | _ => pure Nothing
                defs <- get Ctxt

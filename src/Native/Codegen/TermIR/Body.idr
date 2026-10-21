@@ -83,7 +83,7 @@ data Body : Decls enc -> IRCommon.Conv enc -> Bool -> List (List (IRCommon.Ty en
   Return : Opnd (Var ctx) IRCommon.Ty.Val -> Body d IRCommon.Conv.CPS m ls ctx
   ||| Jump to a code address with arguments, under the current continuation:
   ||| the runtime's one way into Idris code.
-  Enter : Opnd (Var ctx) IRCommon.Ty.W64 -> List (Opnd (Var ctx) IRCommon.Ty.Val) ->
+  Enter : Opnd (Var ctx) IRCommon.Ty.CodeAddr -> List (Opnd (Var ctx) IRCommon.Ty.Val) ->
           Body d c m ls ctx
   Ret : All (Opnd (Var ctx)) rs -> Body d (IRCommon.Conv.Direct rs col) m ls ctx
   Crash : String -> Body d c m ls ctx

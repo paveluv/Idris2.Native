@@ -1,11 +1,15 @@
 ||| The flat lowering: a flat form (`Flat.Exp`) to a `Direct` function of
 ||| the term IR (`Native.Codegen.TermIR.Program`), written in `Build`.
 |||
-||| A flat value is its layout's registers: a `W64` for each `Word` and an
-||| `F64` for each `Dbl`. An integer narrower than 64 bits is held extended
+||| A flat value is its layout's registers, each of its rep's plain type
+||| (`IRCommon.Ty.plain`): a `W64` for each `Word`, an `F64` for each `Dbl`,
+||| a byte address for each `ByteAddr`. An integer narrower than 64 bits is held extended
 ||| to the word, as its type is signed or not, so an operation on it computes
 ||| on words and wraps the result to the width again, as ordinary code does;
-||| a `Char` is its code point. A data type is recognised by its shape
+||| a `Char` is its code point. The runtime's byte address is an address,
+||| not its word: its constructor and its case are the retypings between
+||| the two (`WordToByteAddr`, `ByteAddrToWord`), which have no code. A data
+||| type is recognised by its shape
 ||| (`Flat.Exp.Shape`), which the lowering is given. One of one
 ||| constructor is its fields' registers in turn; one of several is a tag,
 ||| the constructor's own, then every constructor's fields' registers in
@@ -66,6 +70,7 @@ import Native.HeapObj.ValEnc
 import Native.Intrinsic
 import Native.Port
 import Native.Primitive
+import Native.Rep
 import Native.Types.Enc as Types
 import Native.Types.Kind
 
@@ -74,30 +79,11 @@ import Native.Types.Kind
 ------------------------------------------------------------------------------
 -- Registers
 
-export
-DecEq Flat.Exp.Rep where
-  decEq Flat.Exp.Word Flat.Exp.Word = Yes Refl
-  decEq Flat.Exp.Dbl Flat.Exp.Dbl = Yes Refl
-  decEq Flat.Exp.Uniform Flat.Exp.Uniform = Yes Refl
-  decEq Flat.Exp.Word Flat.Exp.Dbl = No (\case Refl impossible)
-  decEq Flat.Exp.Word Flat.Exp.Uniform = No (\case Refl impossible)
-  decEq Flat.Exp.Dbl Flat.Exp.Word = No (\case Refl impossible)
-  decEq Flat.Exp.Dbl Flat.Exp.Uniform = No (\case Refl impossible)
-  decEq Flat.Exp.Uniform Flat.Exp.Word = No (\case Refl impossible)
-  decEq Flat.Exp.Uniform Flat.Exp.Dbl = No (\case Refl impossible)
-
-||| The type of a register of the representation.
-public export
-repTy : Flat.Exp.Rep -> IRCommon.Ty enc
-repTy Flat.Exp.Word = IRCommon.Ty.W64
-repTy Flat.Exp.Dbl = IRCommon.Ty.F64
-repTy Flat.Exp.Uniform = IRCommon.Ty.Val
-
-||| The types of a layout's registers.
+||| The types of a layout's registers: each rep's plain type.
 public export
 tys : Flat.Exp.Layout -> List (IRCommon.Ty enc)
 tys [] = []
-tys (r :: rs) = repTy r :: tys rs
+tys (r :: rs) = IRCommon.Ty.plain r :: tys rs
 
 ||| The registers of a form's parameters, in turn.
 public export
@@ -171,19 +157,19 @@ splitBy (a :: as) val = do
 ||| The tag of a sum's value: its first register.
 export
 valueTag : Value enc v -> Maybe (TermIR.Opnd v IRCommon.Ty.W64)
-valueTag (MkValue (Flat.Exp.Word :: _) (t :: _)) = Just t
+valueTag (MkValue (Rep.Word :: _) (t :: _)) = Just t
 valueTag _ = Nothing
 
 ||| A word, the value of one register of an integer type.
 export
 valueWord : Value enc v -> Maybe (TermIR.Opnd v IRCommon.Ty.W64)
-valueWord (MkValue [Flat.Exp.Word] [w]) = Just w
+valueWord (MkValue [Rep.Word] [w]) = Just w
 valueWord _ = Nothing
 
 ||| A double, the value of one register of `Double`.
 export
 valueDouble : Value enc v -> Maybe (TermIR.Opnd v IRCommon.Ty.F64)
-valueDouble (MkValue [Flat.Exp.Dbl] [f]) = Just f
+valueDouble (MkValue [Rep.Dbl] [f]) = Just f
 valueDouble _ = Nothing
 
 ||| Zeros for the registers of the layout: what the registers of a sum's
@@ -191,10 +177,15 @@ valueDouble _ = Nothing
 export
 zeros : (a : Flat.Exp.Layout) -> TermIR.Build d c m v l (All (TermIR.Opnd v) (tys a))
 zeros [] = pure []
-zeros (Flat.Exp.Word :: rs) = (TermIR.Opnd.W 0 ::) <$> zeros rs
-zeros (Flat.Exp.Dbl :: rs) = do z <- TermIR.Build.emit1 (TermIR.Instr.FConst 0.0)
-                                (z ::) <$> zeros rs
-zeros (Flat.Exp.Uniform :: rs) = (TermIR.Opnd.Erased ::) <$> zeros rs
+zeros (Rep.Word :: rs) = (TermIR.Opnd.W 0 ::) <$> zeros rs
+zeros (Rep.Dbl :: rs) = do
+  z <- TermIR.Build.emit1 (TermIR.Instr.FConst 0.0)
+  (z ::) <$> zeros rs
+zeros (Rep.Uniform :: rs) = (TermIR.Opnd.Erased ::) <$> zeros rs
+zeros (Rep.ByteAddr :: rs) = do
+  z <- TermIR.Build.emit1 (TermIR.Instr.WordToByteAddr (TermIR.Opnd.W 0))
+  (z ::) <$> zeros rs
+zeros (Rep.CodeAddr :: _) = TermIR.Build.unsupported "a code address in a flat value"
 
 ------------------------------------------------------------------------------
 -- Shapes
@@ -238,7 +229,7 @@ conValue p fs = do
   let body = appendValues (MkValue p.before b) (appendValues fs (MkValue p.after a))
   pure $ case p.tag of
     Nothing => body
-    Just t => appendValues (MkValue [Flat.Exp.Word] [TermIR.Opnd.W (cast t)]) body
+    Just t => appendValues (MkValue [Rep.Word] [TermIR.Opnd.W (cast t)]) body
 
 ||| The registers of a constructor's fields in a value of its data type.
 export
@@ -246,7 +237,7 @@ valueFields : Placement -> Value enc v -> Maybe (Value enc v)
 valueFields p val = do
   rest <- case p.tag of
     Nothing => Just val
-    Just _ => snd <$> takeRegs [Flat.Exp.Word] val
+    Just _ => snd <$> takeRegs [Rep.Word] val
   (_, rest') <- takeRegs p.before rest
   (own, _) <- takeRegs p.own rest'
   pure (MkValue p.own own)
@@ -442,10 +433,10 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
         prim t x = (Flat.Exp.SPrim t, x)
 
         wordVal : PrimType -> TermIR.Opnd v IRCommon.Ty.W64 -> (Flat.Exp.Skeleton, Value enc v)
-        wordVal t w = prim t (MkValue [Flat.Exp.Word] [w])
+        wordVal t w = prim t (MkValue [Rep.Word] [w])
 
         doubleVal : TermIR.Opnd v IRCommon.Ty.F64 -> (Flat.Exp.Skeleton, Value enc v)
-        doubleVal f = prim DoubleType (MkValue [Flat.Exp.Dbl] [f])
+        doubleVal f = prim DoubleType (MkValue [Rep.Dbl] [f])
 
         constant : Constant -> B (Flat.Exp.Skeleton, Value enc v)
         constant (Db x) = doubleVal <$> TermIR.Build.emit1 (TermIR.Instr.FConst x)
@@ -459,7 +450,7 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
         ||| each register its word of the row.
         row : Name -> (lo : Int) -> (width : Nat) -> (lay : Flat.Exp.Layout) -> Value enc v ->
               B (All (TermIR.Opnd v) (tys lay))
-        row n lo width lay (MkValue [Flat.Exp.Word] [k]) =
+        row n lo width lay (MkValue [Rep.Word] [k]) =
           if length lay /= width
              then TermIR.Build.unsupported ("the table " ++ show n ++ " of rows of another layout")
              else do
@@ -468,38 +459,40 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
                  (TermIR.Instr.Arith IRCommon.Op.Sub k (TermIR.Opnd.W (cast lo)))
                off <- TermIR.Build.emit1
                  (TermIR.Instr.Arith IRCommon.Op.Mul i (TermIR.Opnd.W (cast (8 * width))))
-               a <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.Add base off)
+               a <- TermIR.Build.emit1 (TermIR.Instr.Offset base off)
                words a 0 lay
           where
-            words : TermIR.Opnd v IRCommon.Ty.W64 -> Int -> (l : Flat.Exp.Layout) ->
+            words : TermIR.Opnd v IRCommon.Ty.ByteAddr -> Int -> (l : Flat.Exp.Layout) ->
                     B (All (TermIR.Opnd v) (tys l))
             words a j [] = pure []
-            words a j (Flat.Exp.Word :: l) = do
+            words a j (Rep.Word :: l) = do
               w <- TermIR.Build.emit1
-                (TermIR.Instr.Load IRCommon.Ty.W64 (TermIR.MkMem (TermIR.Mem.AtWord a) Nothing j))
+                (TermIR.Instr.Load IRCommon.Ty.W64 (TermIR.MkMem (TermIR.Mem.AtBytes a) Nothing j))
               (w ::) <$> words a (j + 8) l
-            words a j (Flat.Exp.Dbl :: l) = do
+            words a j (Rep.Dbl :: l) = do
               f <- TermIR.Build.emit1
-                (TermIR.Instr.Load IRCommon.Ty.F64 (TermIR.MkMem (TermIR.Mem.AtWord a) Nothing j))
+                (TermIR.Instr.Load IRCommon.Ty.F64 (TermIR.MkMem (TermIR.Mem.AtBytes a) Nothing j))
               (f ::) <$> words a (j + 8) l
-            words a j (Flat.Exp.Uniform :: _) =
+            words a j (Rep.Uniform :: _) =
               TermIR.Build.unsupported
                 ("the table " ++ show n ++ " of a value as ordinary code holds it")
+            words a j (_ :: _) =
+              TermIR.Build.unsupported ("the table " ++ show n ++ " of an address")
         row n _ _ _ _ =
           TermIR.Build.unsupported ("the table " ++ show n ++ " at an index of another layout")
 
         ||| A primitive's instructions, from its arguments' registers, which are
         ||| its signature's, into its results'.
         primitive : Name -> Primitive -> Value enc v -> B (Value enc v)
-        primitive n Primitive.Mul128 (MkValue [Flat.Exp.Word, Flat.Exp.Word] [x, y]) = do
+        primitive n Primitive.Mul128 (MkValue [Rep.Word, Rep.Word] [x, y]) = do
           [h, l] <- TermIR.Build.emit (TermIR.Instr.Mul128 x y)
-          pure (MkValue [Flat.Exp.Word, Flat.Exp.Word] [TermIR.Opnd.V h, TermIR.Opnd.V l])
-        primitive n Primitive.DoubleBits (MkValue [Flat.Exp.Dbl] [f]) = do
+          pure (MkValue [Rep.Word, Rep.Word] [TermIR.Opnd.V h, TermIR.Opnd.V l])
+        primitive n Primitive.DoubleBits (MkValue [Rep.Dbl] [f]) = do
           w <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.FBits f)
-          pure (MkValue [Flat.Exp.Word] [w])
-        primitive n Primitive.BitsDouble (MkValue [Flat.Exp.Word] [w]) = do
+          pure (MkValue [Rep.Word] [w])
+        primitive n Primitive.BitsDouble (MkValue [Rep.Word] [w]) = do
           f <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.BitsF w)
-          pure (MkValue [Flat.Exp.Dbl] [f])
+          pure (MkValue [Rep.Dbl] [f])
         primitive n _ _ =
           TermIR.Build.unsupported
             ("the primitive " ++ show n ++ " on registers other than its signature's")
@@ -525,75 +518,67 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
                        All (TermIR.Opnd v) (tys l) ->
                        Maybe (All (TermIR.Opnd v) ts)
             operands [] [] [] = Just []
-            operands (IRCommon.Ty.W64 :: ts) (Flat.Exp.Word :: l) (r :: rs) =
-              (r ::) <$> operands ts l rs
-            operands (IRCommon.Ty.Val :: ts) (Flat.Exp.Uniform :: l) (r :: rs) =
-              (r ::) <$> operands ts l rs
+            operands (t :: ts) (r :: l) (x :: xs) = case decEq t (IRCommon.Ty.plain r) of
+              Yes Refl => (x ::) <$> operands ts l xs
+              No _ => Nothing
             operands _ _ _ = Nothing
 
             word : TermIR.Opnd v IRCommon.Ty.W64 -> Value enc v
-            word w = MkValue [Flat.Exp.Word] [w]
+            word w = MkValue [Rep.Word] [w]
 
-            -- a pinned register as a word, and set from one: the continuation is
-            -- a pointer, converted from or to its word, so that only this
-            -- module's functions read or set it
-            getWord : IRCommon.Pinned -> B (TermIR.Opnd v IRCommon.Ty.W64)
-            getWord IRCommon.Pinned.Hp =
-              TermIR.Build.emit1 (TermIR.Instr.GetPinned IRCommon.Pinned.Hp)
-            getWord IRCommon.Pinned.HpLim =
-              TermIR.Build.emit1 (TermIR.Instr.GetPinned IRCommon.Pinned.HpLim)
-            getWord IRCommon.Pinned.K = case m of
-              True => do
-                p <- TermIR.Build.emit1 (TermIR.Instr.GetPinned IRCommon.Pinned.K)
-                TermIR.Build.emit1 (TermIR.Instr.AddrToWord p)
-              False => outside
+            bytes : TermIR.Opnd v IRCommon.Ty.ByteAddr -> Value enc v
+            bytes a = MkValue [Rep.ByteAddr] [a]
 
-            setWord : IRCommon.Pinned -> TermIR.Opnd v IRCommon.Ty.W64 -> B ()
-            setWord IRCommon.Pinned.Hp x =
-              TermIR.Build.emit0 (TermIR.Instr.SetPinned IRCommon.Pinned.Hp x)
-            setWord IRCommon.Pinned.HpLim x =
-              TermIR.Build.emit0 (TermIR.Instr.SetPinned IRCommon.Pinned.HpLim x)
-            setWord IRCommon.Pinned.K x = case m of
-              True => do
-                p <- TermIR.Build.emit1 (TermIR.Instr.WordToAddr Types.Kind.CONT x)
-                TermIR.Build.emit0 (TermIR.Instr.SetPinned IRCommon.Pinned.K p)
-              False => outside
-
-            -- the instructions an expansion stands for, on its port's operands
+            -- the instructions an expansion stands for, on its port's operands;
+            -- the continuation is a pointer, converted from or to its word, so
+            -- that only this module's functions read or set it
             expand : Linkage.Expansion p ->
                      All (TermIR.Opnd v) (Linkage.Routine.portParams {enc} p) ->
                      B (Value enc v)
             expand (Linkage.Expansion.Load Linkage.Expansion.Whole) [base, off] = do
-              a <- TermIR.Build.emit1 (TermIR.Instr.Arith Add base off)
+              a <- TermIR.Build.emit1 (TermIR.Instr.Offset base off)
               word <$> TermIR.Build.emit1
-                (TermIR.Instr.Load IRCommon.Ty.W64 (TermIR.MkMem (TermIR.Mem.AtWord a) Nothing 0))
+                (TermIR.Instr.Load IRCommon.Ty.W64 (TermIR.MkMem (TermIR.Mem.AtBytes a) Nothing 0))
             expand (Linkage.Expansion.Load (Linkage.Expansion.Narrow sw)) [base, off] = do
-              a <- TermIR.Build.emit1 (TermIR.Instr.Arith Add base off)
+              a <- TermIR.Build.emit1 (TermIR.Instr.Offset base off)
               word <$> TermIR.Build.emit1
-                (TermIR.Instr.LoadN sw False (TermIR.MkMem (TermIR.Mem.AtWord a) Nothing 0))
+                (TermIR.Instr.LoadN sw False (TermIR.MkMem (TermIR.Mem.AtBytes a) Nothing 0))
             expand (Linkage.Expansion.Store Linkage.Expansion.Whole) [base, off, x] = do
-              a <- TermIR.Build.emit1 (TermIR.Instr.Arith Add base off)
+              a <- TermIR.Build.emit1 (TermIR.Instr.Offset base off)
               TermIR.Build.emit0
-                (TermIR.Instr.Store IRCommon.Ty.W64 (TermIR.MkMem (TermIR.Mem.AtWord a) Nothing 0)
+                (TermIR.Instr.Store IRCommon.Ty.W64 (TermIR.MkMem (TermIR.Mem.AtBytes a) Nothing 0)
                  x)
               pure noRegs
             expand (Linkage.Expansion.Store (Linkage.Expansion.Narrow sw)) [base, off, x] = do
-              a <- TermIR.Build.emit1 (TermIR.Instr.Arith Add base off)
+              a <- TermIR.Build.emit1 (TermIR.Instr.Offset base off)
               TermIR.Build.emit0
-                (TermIR.Instr.StoreN sw (TermIR.MkMem (TermIR.Mem.AtWord a) Nothing 0) x)
+                (TermIR.Instr.StoreN sw (TermIR.MkMem (TermIR.Mem.AtBytes a) Nothing 0) x)
               pure noRegs
-            expand (Linkage.Expansion.Get r) [] = word <$> getWord r
-            expand (Linkage.Expansion.Set IRCommon.Pinned.Hp) [x] = do setWord IRCommon.Pinned.Hp x
-                                                                       pure noRegs
-            expand (Linkage.Expansion.Set IRCommon.Pinned.HpLim) [x] = do setWord
-                                                                            IRCommon.Pinned.HpLim x
-                                                                          pure noRegs
-            expand (Linkage.Expansion.Set IRCommon.Pinned.K) [x] = do setWord IRCommon.Pinned.K x
-                                                                      pure noRegs
+            expand (Linkage.Expansion.Get IRCommon.Pinned.Hp) [] =
+              bytes <$> TermIR.Build.emit1 (TermIR.Instr.GetPinned IRCommon.Pinned.Hp)
+            expand (Linkage.Expansion.Get IRCommon.Pinned.HpLim) [] =
+              bytes <$> TermIR.Build.emit1 (TermIR.Instr.GetPinned IRCommon.Pinned.HpLim)
+            expand (Linkage.Expansion.Get IRCommon.Pinned.K) [] = case m of
+              True => do
+                p <- TermIR.Build.emit1 (TermIR.Instr.GetPinned IRCommon.Pinned.K)
+                word <$> TermIR.Build.emit1 (TermIR.Instr.AddrToWord p)
+              False => outside
+            expand (Linkage.Expansion.Set IRCommon.Pinned.Hp) [x] = do
+              TermIR.Build.emit0 (TermIR.Instr.SetPinned IRCommon.Pinned.Hp x)
+              pure noRegs
+            expand (Linkage.Expansion.Set IRCommon.Pinned.HpLim) [x] = do
+              TermIR.Build.emit0 (TermIR.Instr.SetPinned IRCommon.Pinned.HpLim x)
+              pure noRegs
+            expand (Linkage.Expansion.Set IRCommon.Pinned.K) [x] = case m of
+              True => do
+                p <- TermIR.Build.emit1 (TermIR.Instr.WordToAddr Types.Kind.CONT x)
+                TermIR.Build.emit0 (TermIR.Instr.SetPinned IRCommon.Pinned.K p)
+                pure noRegs
+              False => outside
             expand Linkage.Expansion.PointerTag [] =
               pure (word (TermIR.Opnd.W (cast (HeapObj.ValEnc.pointerTag enc.val))))
             expand (Linkage.Expansion.AreaAddress a) [] =
-              word <$> TermIR.Build.emit1 (TermIR.Instr.AreaAddr a)
+              bytes <$> TermIR.Build.emit1 (TermIR.Instr.AreaAddr a)
             expand Linkage.Expansion.ConstantCount [] =
               pure (word (TermIR.Opnd.W (cast pr.constants)))
             -- a uniform value and a word: the conversions, so this module's
@@ -604,7 +589,7 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
             expand Linkage.Expansion.WordValue [w] = case m of
               True => do
                 u <- TermIR.Build.emit1 (TermIR.Instr.WordToVal w)
-                pure (MkValue [Flat.Exp.Uniform] [u])
+                pure (MkValue [Rep.Uniform] [u])
               False => outside
             expand Linkage.Expansion.Syscall [a0, a1, a2, a3, a4, a5, a6] =
               word <$> TermIR.Build.emit1 (TermIR.Instr.SystemCall 6 [a0, a1, a2, a3, a4, a5, a6])
@@ -612,6 +597,12 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
         ||| A constructor's value, from its fields'.
         construct : Flat.Exp.Skeleton -> Name -> Value enc v -> B (Value enc v)
         construct sk c fs = case Flat.Exp.skeletonShape pr.shapes sk of
+          -- the runtime's byte address, from its word: the same register
+          Just Flat.Exp.ByteAddrShape => case valueWord fs of
+            Just w => do
+              a <- TermIR.Build.emit1 (TermIR.Instr.WordToByteAddr w)
+              pure (MkValue [Rep.ByteAddr] [a])
+            Nothing => TermIR.Build.unsupported ("the constructor " ++ show c ++ " of no word")
           Just (Flat.Exp.DataShape cs) => case placement cs c of
             Just (_, p) => conValue p fs
             Nothing =>
@@ -883,6 +874,14 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
         conCase : Env enc v -> Flat.Exp.Skeleton -> Value enc v -> List Flat.Exp.FlatAlt -> E ->
                   (Env enc v -> Flat.Exp -> E) -> E
         conCase env sk x alts other k = case Flat.Exp.skeletonShape pr.shapes sk of
+          -- the runtime's byte address, opened: its word, the same register
+          Just Flat.Exp.ByteAddrShape => case (find conAlt alts, x) of
+            (Just (Flat.Exp.FConAlt _ _ vs b), MkValue [Rep.ByteAddr] [a]) => do
+              w <- TermIR.Build.emit1 (TermIR.Instr.ByteAddrToWord a)
+              alternative env (MkPlacement Nothing [] [Rep.Word] []) (MkValue [Rep.Word] [w]) vs
+                b k
+            (Nothing, _) => other
+            _ => TermIR.Build.unsupported ("a case on " ++ show sk ++ " of another layout")
           Just (Flat.Exp.DataShape [c]) => case find (named c.name) alts of
             Just (Flat.Exp.FConAlt _ _ vs b) =>
               alternative env (MkPlacement Nothing [] (Flat.Exp.fieldsLayout c.fields) []) x vs b k
@@ -908,6 +907,10 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
             named : Name -> Flat.Exp.FlatAlt -> Bool
             named n (Flat.Exp.FConAlt cn _ _ _) = cn == n
             named _ _ = False
+
+            conAlt : Flat.Exp.FlatAlt -> Bool
+            conAlt (Flat.Exp.FConAlt _ _ _ _) = True
+            conAlt _ = False
 
             alternative : Env enc v -> Placement -> Value enc v -> List Flat.Exp.FlatVar ->
                           Flat.Exp ->

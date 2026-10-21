@@ -1,16 +1,20 @@
 ||| Register allocation: the term IR (`Native.Codegen.TermIR.Program`) into the
 ||| located IR (`Native.Codegen.LocatedIR.Program`), spill-everything for now.
 |||
-||| Every binding gets a `SCRATCH` slot of its own. A value is never
-||| redefined, so a variable is the same slot wherever it is in scope, and a
-||| slot holds values of one type. The IR names no machine register, so none
-||| of the target's reserved ones can occur; an allocator that assigns
-||| registers will take them from the target's allocatable ones. A join point
-||| becomes a block, and its parameters registers that each jump assigns:
-||| every argument first into a fresh register, then into the parameters, so
-||| that no argument is overwritten before it is read. A call's continuation
-||| becomes a resume block. An immediate where the IR wants a register is
-||| materialised just before its use.
+||| Every binding gets a `SCRATCH` slot of its own, but a retyping's: a byte
+||| address and its word are one register, so the retyping between them
+||| binds its operand's slot under the other type, and has no code. A value
+||| is never redefined, so a variable is the same slot wherever it is in
+||| scope, and a slot holds values of one type, or the two raw types a
+||| retyping joins, neither of which the collector sees. The IR names no
+||| machine register, so none of the target's reserved ones can occur; an
+||| allocator that assigns registers will take them from the target's
+||| allocatable ones. A join point becomes a block, and its parameters
+||| registers that each jump assigns: every argument first into a fresh
+||| register, then into the parameters, so that no argument is overwritten
+||| before it is read. A call's continuation becomes a resume block. An
+||| immediate where the IR wants a register is materialised just before its
+||| use.
 |||
 ||| What is live is computed, not stored. Lowering a body returns, with its
 ||| code, the registers of its environment it reads, directly or through
@@ -444,12 +448,28 @@ parameters (d : TermIR.Decls enc)
            TermIR.Body d c m ls (ts ++ ctx) ->
            All (HV enc) ctx -> All (LI enc) ls -> M enc (Lowered enc)
     bind ts i k env li = do
-      ds <- freshAll ts
+      ds <- results ts i
       (after, (is, t)) <- body k (append (held ds) env) li
       let outer = without (regs ds) after
       pre <- instr env ds outer i
       pure (mergeLeft (instrUses env i) outer, (Data.Builder.piece pre <+> is, t))
       where
+        ||| The variable's register under the type, or a fresh one if it has
+        ||| none.
+        retyped : (t : IRCommon.Ty enc) -> TermIR.Var ctx s -> M enc (All (RV enc) [t])
+        retyped t x = case TermIR.Var.fetch x env of
+          InReg r => pure [LocatedIR.Reg.Slot (LocatedIR.Reg.slot r) t]
+          OfStatic _ => freshAll [t]
+
+        ||| The registers an instruction binds: fresh ones, but for a retyping
+        ||| of a register, which binds that register under the new type, as
+        ||| both are raw words.
+        results : (ts' : List (IRCommon.Ty enc)) -> TermIR.Instr d m (TermIR.Var ctx) ts' ->
+                  M enc (All (RV enc) ts')
+        results _ (TermIR.Instr.ByteAddrToWord (TermIR.Opnd.V x)) = retyped IRCommon.Ty.W64 x
+        results _ (TermIR.Instr.WordToByteAddr (TermIR.Opnd.V x)) = retyped IRCommon.Ty.ByteAddr x
+        results ts' _ = freshAll ts'
+
         ||| The registers of the environment an instruction reads.
         instrUses : All (HV enc) ctx -> TermIR.Instr d m (TermIR.Var ctx) ts -> RegMap enc
         instrUses env i = execState empty (TermIR.Instr.traverseInstr (collect env) i)
@@ -466,11 +486,13 @@ parameters (d : TermIR.Decls enc)
                 M enc (List (LocatedIR.Instr enc))
         instr env z after instr' = case (z, instr') of
           ([r], TermIR.Instr.FConst x) => pure [LocatedIR.Instr.FConst r x]
-          ([r], TermIR.Instr.CodeAddr f) => pure [LocatedIR.Instr.CodeAddr r (varName f)]
+          ([r], TermIR.Instr.CodeOf f) => pure [LocatedIR.Instr.CodeOf r (varName f)]
           -- not reached: `body` holds a static's address as itself, in no register
           ([r], TermIR.Instr.StaticAddr s) => pure [LocatedIR.Instr.StaticAddr r (varSym s)]
           ([r], TermIR.Instr.AreaAddr a) => pure [LocatedIR.Instr.AreaAddr r a]
           ([r], TermIR.Instr.TableAddr n) => pure [LocatedIR.Instr.TableAddr r n]
+          ([r], TermIR.Instr.Offset a n) =>
+            pure [LocatedIR.Instr.Arith IRCommon.Op.Add r (operand env a) (operand env n)]
           ([r], TermIR.Instr.Arith o x y) =>
             pure [LocatedIR.Instr.Arith o r (operand env x) (operand env y)]
           ([h, l], TermIR.Instr.Mul128 x y) =>
@@ -507,6 +529,11 @@ parameters (d : TermIR.Decls enc)
           ([r], TermIR.Instr.WordToAddr k x) => unary env x (LocatedIR.Instr.WordToAddr k r)
           ([r], TermIR.Instr.ValToWord x) => unary env x (LocatedIR.Instr.ValToWord r)
           ([r], TermIR.Instr.WordToVal x) => unary env x (LocatedIR.Instr.WordToVal r)
+          -- a retyping of a register is the register (`results`); of a word,
+          -- the word in the result's
+          ([r], TermIR.Instr.ByteAddrToWord (TermIR.Opnd.V x)) => retyping x r
+          ([r], TermIR.Instr.WordToByteAddr (TermIR.Opnd.V x)) => retyping x r
+          ([r], TermIR.Instr.WordToByteAddr (TermIR.Opnd.W w)) => pure [LocatedIR.Instr.Const r w]
           ([r], TermIR.Instr.LoadHeader x) => unary env x (LocatedIR.Instr.LoadHeader r)
           ([r], TermIR.Instr.LoadPart p x) => unary env x (LocatedIR.Instr.LoadPart p r)
           ([r], TermIR.Instr.AllocObj h fs) =>
@@ -546,7 +573,7 @@ parameters (d : TermIR.Decls enc)
               IRCommon.Conv.CPS => False
               IRCommon.Conv.Direct _ col => col
 
-            memRef : All (HV enc'') ctx'' -> TermIR.Mem (TermIR.Var ctx'') ->
+            memRef : All (HV enc'') ctx'' -> TermIR.Mem (TermIR.Var ctx'') cell ->
                      M enc'' (List (LocatedIR.Instr enc''), LocatedIR.Mem enc'')
             memRef env (TermIR.MkMem b i o) = do
               (pb, rb) <- baseReg env b
@@ -555,10 +582,18 @@ parameters (d : TermIR.Decls enc)
                 Just x => do (pi, ri) <- asReg env x
                              pure (pb ++ pi, LocatedIR.MkMem rb (Just ri) o)
               where
-                baseReg : All (HV enc') ctx' -> TermIR.Mem.Base (TermIR.Var ctx') ->
+                baseReg : All (HV enc') ctx' -> TermIR.Mem.Base (TermIR.Var ctx') b' ->
                           M enc' (List (LocatedIR.Instr enc'), LocatedIR.Reg enc')
-                baseReg env (TermIR.Mem.AtWord x) = asReg env x
+                baseReg env (TermIR.Mem.AtBytes x) = asReg env x
                 baseReg env (TermIR.Mem.AtPtr x) = asReg env x
+
+            ||| A retyping of a variable: nothing if it is in a register, which
+            ||| the result is already; a static's address put in the result.
+            retyping : TermIR.Var ctx''' s -> LocatedIR.Reg enc ->
+                       M enc (List (LocatedIR.Instr enc))
+            retyping x r = case TermIR.Var.fetch x env of
+              InReg _ => pure []
+              OfStatic n => pure [LocatedIR.Instr.StaticAddr r n]
 
             ||| One register, through an instruction that reads it from an operand.
             unary : All (HV enc) ctx' -> TermIR.Opnd (TermIR.Var ctx') t ->

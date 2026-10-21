@@ -54,6 +54,7 @@ import Data.Maybe
 import Data.Zippable
 import Libraries.Data.NameMap
 import Native.Data.Builder
+import Native.Rep
 
 %default covering
 
@@ -157,12 +158,14 @@ mutual
   judge j f = case f of
     NPrimVal _ (PrT IntegerType) => pure (Rejected (Problem.BoxedPrimitive IntegerType))
     NPrimVal _ (PrT StringType) => pure (Rejected (Problem.BoxedPrimitive StringType))
-    NPrimVal _ (PrT DoubleType) => pure (LaidOut [Exp.Dbl])
+    NPrimVal _ (PrT DoubleType) => pure (LaidOut [Rep.Dbl])
     NPrimVal _ (PrT WorldType) => pure (LaidOut [])
-    NPrimVal _ (PrT _) => pure (LaidOut [Exp.Word])
+    NPrimVal _ (PrT _) => pure (LaidOut [Rep.Word])
     NTCon _ n _ args
-       => if !(toFullNames n) == Exp.uniformType then pure (LaidOut [Exp.Uniform])
-         else judgeTyCon j n args
+       => do tn <- toFullNames n
+             if tn == Exp.uniformType then pure (LaidOut [Rep.Uniform])
+               else if tn == Exp.byteAddrType then pure (LaidOut [Rep.ByteAddr])
+               else judgeTyCon j n args
     NType {} => pure (Rejected Problem.RuntimeType)
     NBind _ _ (Pi {}) _ => pure (Rejected Problem.FunctionType)
     NDelayed {} => pure (Rejected Problem.LazyType)
@@ -197,7 +200,7 @@ mutual
                              else LaidOut [])
                         [cdef] => judgeCon j cdef args
                         _ => do js <- traverse (\cdef => judgeCon j cdef args) cdefs
-                                pure (concatJudgements (LaidOut [Exp.Word] :: js))
+                                pure (concatJudgements (LaidOut [Rep.Word] :: js))
         where
           -- Constructors flagged as a type of natural numbers' zero and successor.
           natural : List GlobalDef -> Bool
@@ -254,7 +257,7 @@ mutual
           concatJudgements = go [<] False
             where
               -- the layouts accumulate at their end, a part at a time
-              go : SnocList Exp.Rep -> (deferred : Bool) -> List Judgement -> Judgement
+              go : SnocList Rep -> (deferred : Bool) -> List Judgement -> Judgement
               go acc d [] = if d then Deferred else LaidOut (acc <>> [])
               go acc d (Rejected why :: _) = Rejected why
               go acc d (Deferred :: js) = go acc True js

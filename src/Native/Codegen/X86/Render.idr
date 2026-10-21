@@ -91,6 +91,7 @@ import Native.Codegen.Target
 import Native.Data.Builder as Data
 import Native.HeapObj.LayoutWord
 import Native.HeapObj.ValEnc
+import Native.Rep
 import Native.Types.Enc as Types
 import Native.Types.Header as Types
 import Native.Types.Kind as Types
@@ -169,7 +170,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
         -- its function's number of parameters, and its function is CPS.
         arity = foldl max 0 [length f.params | f <- p.functions, f.conv == IRCommon.Conv.CPS]
         applyAreas =
-          Linkage.MkAreas (Target.argsWords abi (replicate arity Target.WordClass)) 0 arity 0
+          Linkage.MkAreas (Target.argsWords abi (replicate arity Rep.WordClass)) 0 arity 0
     (s, _) <- runStateT
       (MkRS next2 funs params statics (fromList tableLabels) [<] [<] [<] applyAreas) $ do
       entry <- funLabel p.entry
@@ -696,9 +697,9 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                                   (Asm.MovRI Asm.RAX
                                                    (immWord (LocatedIR.Reg.ty d) c))
                                                 store d Asm.RAX
-                LocatedIR.Instr.CodeAddr d f => do l <- funLabel f
-                                                   emit (Asm.Lea Asm.RAX (Asm.MRip l 0))
-                                                   store d Asm.RAX
+                LocatedIR.Instr.CodeOf d f => do l <- funLabel f
+                                                 emit (Asm.Lea Asm.RAX (Asm.MRip l 0))
+                                                 store d Asm.RAX
                 LocatedIR.Instr.StaticAddr d s => do l <- staticLabel s
                                                      emit (Asm.Lea Asm.RAX (Asm.MRip l ptag))
                                                      store d Asm.RAX

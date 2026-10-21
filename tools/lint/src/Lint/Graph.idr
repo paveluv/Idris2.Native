@@ -73,7 +73,7 @@ allowed ours importer imported = case moduleLayer importer of
     contract : List String
     contract =
       ["HeapObj", "Area", "Port", "Routine", "Intrinsic", "Service", "Failure", "OpenFlag",
-       "Primitive", "Table"]
+       "Primitive", "Table", "Rep"]
 
     ||| A module's layer: the group under the product's root its name is in
     ||| (`Codegen` for `Native.Codegen.TermIR.Instr`), or the linter's.
@@ -95,8 +95,10 @@ allowed ours importer imported = case moduleLayer importer of
     ||| the contract, so it knows no type; its support tier the core, the
     ||| contract and the type layer, and nothing imports the support tier but
     ||| the system tier, which takes all of them, and the libraries, as any
-    ||| library may; and of the flat fragment, the contract, the type layer and the
-    ||| runtime take `Native.Flat.Uniform` alone (`mayImport`).
+    ||| library may; of the flat fragment, the contract, the type layer and the
+    ||| runtime take `Native.Flat.Uniform` alone, and of the contract, the flat
+    ||| fragment takes `Native.Rep` alone, the reps its layouts are made of
+    ||| (`mayImport`).
     imports : Layer -> List Layer
     imports DataLayer = [DataLayer]
     imports ContractLayer = [DataLayer, ContractLayer]
@@ -109,8 +111,9 @@ allowed ours importer imported = case moduleLayer importer of
     imports LintLayer = [LintLayer]
 
     ||| Whether a layer's module may import a module: one of the layers it
-    ||| imports, or for the contract and the runtime `Native.Flat.Uniform`; a
-    ||| module of no layer among ours (a program) by none.
+    ||| imports, or for the contract and the runtime `Native.Flat.Uniform`, or
+    ||| for the flat fragment `Native.Rep`; a module of no layer among ours (a
+    ||| program) by none.
     mayImport : Layer -> String -> Bool
     mayImport l m =
       maybe False (`elem` imports l) (moduleLayer m)
@@ -119,6 +122,7 @@ allowed ours importer imported = case moduleLayer importer of
             (the (List Layer) [ContractLayer, TypesLayer, RuntimeLayer, SupportLayer, SystemLayer])
            && m
            == "Native.Flat.Uniform")
+        || (l == FlatLayer && m == "Native.Rep")
 
 fileModule : Source.SourceFile -> String
 fileModule f = show f.mod.moduleNS

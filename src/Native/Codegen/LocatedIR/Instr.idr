@@ -36,18 +36,19 @@ data Instr : Types.Enc -> Type where
   Const      : Reg enc -> Int64 -> Instr enc
   ||| A double constant, into an `F64`.
   FConst     : Reg enc -> Double -> Instr enc
-  ||| The entry address of a function of this program, into a `W64`: a
+  ||| The entry address of a function of this program, into a `CodeAddr`: a
   ||| closure's code pointer.
-  CodeAddr   : Reg enc -> Name -> Instr enc
+  CodeOf     : Reg enc -> Name -> Instr enc
   ||| The address of a static object of this program, into a `Val`, or into a
   ||| `PtrTo k` of the static's kind.
   StaticAddr : Reg enc -> Name -> Instr enc
-  ||| The address of a per-thread area, into a `W64`.
+  ||| The address of a per-thread area, into a `ByteAddr`.
   AreaAddr   : Reg enc -> Area -> Instr enc
-  ||| The address of a table's rows, into a `W64`.
+  ||| The address of a table's rows, into a `ByteAddr`.
   TableAddr  : Reg enc -> Name -> Instr enc
   ||| Integer arithmetic: the operands and the result are all `W64`s, or all
-  ||| `Fix`es. On `Fix`es it is the operation on the fixnums' values, which
+  ||| `Fix`es; or a byte address moved by a `W64`, an `Add` into a
+  ||| `ByteAddr`. On `Fix`es it is the operation on the fixnums' values, which
   ||| the producer guarantees is in the fixnum range, and the rendering
   ||| computes it on the words, without untagging where the value encoding has
   ||| an identity for it. There is no arithmetic on `Val`s: a `Val` is narrowed
@@ -190,7 +191,7 @@ public export
 instrName : Instr enc -> String
 instrName (Const _ _) = "Const"
 instrName (FConst _ _) = "FConst"
-instrName (CodeAddr _ _) = "CodeAddr"
+instrName (CodeOf _ _) = "CodeOf"
 instrName (StaticAddr _ _) = "StaticAddr"
 instrName (AreaAddr _ _) = "AreaAddr"
 instrName (TableAddr _ _) = "TableAddr"

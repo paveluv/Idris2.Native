@@ -31,10 +31,10 @@ Show Pinned where
   show HpLim = "HpLim"
   show K = "K"
 
-||| What a pinned register holds: a word for the window's, the continuation
-||| for `K`.
+||| What a pinned register holds: a byte address for the window's, which
+||| holds no object yet, the continuation for `K`.
 public export
 ty : Pinned -> Ty enc
-ty Hp = Ty.W64
-ty HpLim = Ty.W64
+ty Hp = Ty.ByteAddr
+ty HpLim = Ty.ByteAddr
 ty K = Ty.PtrTo Types.Kind.CONT

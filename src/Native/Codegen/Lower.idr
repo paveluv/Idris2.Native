@@ -104,6 +104,7 @@ import Native.Flat.Exp
 import Native.HeapObj.Shape as HeapObj
 import Native.HeapObj.ValEnc
 import Native.Port
+import Native.Rep
 import Native.Types.BignumEnc
 import Native.Types.Enc as Types
 import Native.Types.Header as Types
@@ -475,19 +476,20 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                    f <- TermIR.Build.emit1
                      (TermIR.Instr.Load IRCommon.Ty.F64
                        (TermIR.MkMem (TermIR.Mem.AtPtr p) Nothing 8))
-                   pure (LowerFlat.MkValue [Flat.Exp.Dbl] [f])
+                   pure (LowerFlat.MkValue [Rep.Dbl] [f])
         Flat.Exp.PrimShape WorldType => pure LowerFlat.noRegs
         Flat.Exp.PrimShape t => case intWidth t of
                    Just (Narrow _ _) => do w <- fixValue x
-                                           pure (LowerFlat.MkValue [Flat.Exp.Word] [w])
-                   Just (Wide _) => do w <- wideWord x; pure (LowerFlat.MkValue [Flat.Exp.Word] [w])
+                                           pure (LowerFlat.MkValue [Rep.Word] [w])
+                   Just (Wide _) => do w <- wideWord x; pure (LowerFlat.MkValue [Rep.Word] [w])
                    _ => TermIR.Build.unsupported ("a value of " ++ show t ++ " passed to flat code")
-        Flat.Exp.UniformShape => pure (LowerFlat.MkValue [Flat.Exp.Uniform] [x])
+        Flat.Exp.UniformShape => pure (LowerFlat.MkValue [Rep.Uniform] [x])
+        Flat.Exp.ByteAddrShape => TermIR.Build.unsupported "a byte address passed to flat code"
         Flat.Exp.DataShape [] => pure LowerFlat.noRegs
         Flat.Exp.DataShape [c] => LowerFlat.concatValues <$> fieldsFrom c x
         s@(Flat.Exp.DataShape cs) =>
           if all isTag cs then do t <- fixValue x
-                                  pure (LowerFlat.MkValue [Flat.Exp.Word] [t]) else do
+                                  pure (LowerFlat.MkValue [Rep.Word] [t]) else do
             let lay = Flat.Exp.shapeLayout s
             q <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr Types.Kind.CON x)
             i <- TermIR.Build.emit1 (TermIR.Instr.LoadPart Types.Header.ConId q)
@@ -559,8 +561,9 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                    _ =>
                      TermIR.Build.unsupported ("a value of " ++ show t ++ " returned by flat code")
         Flat.Exp.UniformShape => case x of
-                   LowerFlat.MkValue [Flat.Exp.Uniform] [u] => pure u
+                   LowerFlat.MkValue [Rep.Uniform] [u] => pure u
                    _ => TermIR.Build.unsupported "a uniform value of another layout from flat code"
+        Flat.Exp.ByteAddrShape => TermIR.Build.unsupported "a byte address returned by flat code"
         Flat.Exp.DataShape [] => pure TermIR.Opnd.Erased
         Flat.Exp.DataShape [c] => boxCon c x
         Flat.Exp.DataShape cs => case LowerFlat.valueTag x of
@@ -699,7 +702,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
             (TermIR.FieldTys.wellFormed
               (Types.Header.ClosureH {enc} (missing + length args) (length args))) of
             Left ok => do
-              c <- TermIR.Build.emit1 (TermIR.Instr.CodeAddr code)
+              c <- TermIR.Build.emit1 (TermIR.Instr.CodeOf code)
               p <- TermIR.Build.emit1
                 (TermIR.Instr.AllocObj (Types.Header.ClosureH (missing + length args) (length args))
                   (c :: vals args))
@@ -1633,9 +1636,12 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
               TermIR.Build.emit0 (TermIR.Instr.Store IRCommon.Ty.W64 (cell a' 0) (TermIR.Opnd.W 1))
               TermIR.Build.return v)
         where
-          cell : TermIR.Opnd v' IRCommon.Ty.W64 -> (word : Int) -> TermIR.Mem v'
-          cell a w =
-            TermIR.MkMem (TermIR.Mem.AtWord a) Nothing (cast (Area.constantOffset (cast i)) + w)
+          at : (word : Int) -> Int
+          at w = cast (Area.constantOffset (cast i)) + w
+
+          cell : TermIR.Opnd v' IRCommon.Ty.ByteAddr -> (word : Int) ->
+                 TermIR.Mem v' (TermIR.Mem.MkCell Nothing False (at word))
+          cell a w = TermIR.MkMem (TermIR.Mem.AtBytes a) Nothing (at w)
   planDef d refs fs s NoEntry =
     TermIR.Def.Defined (TermIR.Body.Unsupported "a program without __mainExpression")
   planDef d refs fs s _ =
@@ -1856,6 +1862,7 @@ lowerProgram enc platform realised forms shapes tables constants flat implemente
     nullaries : Flat.Exp.Shape -> Data.Builder Int
     nullaries (Flat.Exp.PrimShape _) = neutral
     nullaries Flat.Exp.UniformShape = neutral
+    nullaries Flat.Exp.ByteAddrShape = neutral
     nullaries (Flat.Exp.DataShape cs) = concatMap con cs
       where
         con : Flat.Exp.ConShape -> Data.Builder Int

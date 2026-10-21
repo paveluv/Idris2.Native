@@ -25,6 +25,7 @@ import Native.Codegen.X86.Asm
 import Native.Flat.Exp
 import Native.HeapObj.Shape
 import Native.HeapObj.ValEnc
+import Native.Rep
 import Native.Types.Enc
 import Native.Types.Header
 import Native.Types.IntegerRoutine

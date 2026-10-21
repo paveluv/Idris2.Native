@@ -163,8 +163,12 @@ startBody : Closed Run (Direct [] False) False [W64, W64]
 startBody = build $ \[entry, window] => do
   -- mmap(NULL, window, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)
   w <- emit1 (SystemCall 6 [W 9, W 0, window, W 3, W 0x22, W (-1), W 0])
-  emit0 (SetPinned Hp w)
-  lim <- emit1 (Arith Add w window)
+  -- the system gives the mapping's address as a word; the window's
+  -- registers hold byte addresses, which the word is by a retyping, and
+  -- which a count of bytes moves
+  base <- emit1 (WordToByteAddr w)
+  emit0 (SetPinned Hp base)
+  lim <- emit1 (Offset base window)
   emit0 (SetPinned HpLim lim)
   ret []
 
@@ -176,9 +180,10 @@ allocSlowBody = build $ \[bytes] => do
   size <- emit1 (Arith Add bytes (W 1048576))
   -- mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)
   w <- emit1 (SystemCall 6 [W 9, W 0, size, W 3, W 0x22, W (-1), W 0])
-  hp <- emit1 (Arith Add w bytes)
+  base <- emit1 (WordToByteAddr w)
+  hp <- emit1 (Offset base bytes)
   emit0 (SetPinned Hp hp)
-  lim <- emit1 (Arith Add w size)
+  lim <- emit1 (Offset base size)
   emit0 (SetPinned HpLim lim)
   ret [w]
 
@@ -188,9 +193,10 @@ allocMutableBody : Closed Run (Direct [W64] False) False [W64]
 allocMutableBody = build $ \[bytes] => do
   size <- emit1 (Arith Add bytes (W 1048576))
   w <- emit1 (SystemCall 6 [W 9, W 0, size, W 3, W 0x22, W (-1), W 0])
-  hp <- emit1 (Arith Add w bytes)
+  base <- emit1 (WordToByteAddr w)
+  hp <- emit1 (Offset base bytes)
   emit0 (SetPinned Hp hp)
-  lim <- emit1 (Arith Add w size)
+  lim <- emit1 (Offset base size)
   emit0 (SetPinned HpLim lim)
   ret [w]
 
@@ -387,7 +393,7 @@ mainBody = build $ \[] => do
     leaveIf NeR ff (W 0) (crash "floats: a check failed")
     [bf] <- directCall bytesRef []
     leaveIf NeR bf (W 0) (crash "bytes: a check failed")
-    code <- emit1 (CodeAddr addToRef)
+    code <- emit1 (CodeOf addToRef)
     clo <- emit1 (AllocObj (ClosureH 2 1) [code, w])
     cloV <- emit1 (WidenPtr clo)
     z <- addInteger x (val (-2))                -- 0
@@ -421,6 +427,9 @@ roundTripRef = later here
 routineRef : Var (sigs Cover) (MkSig (UN (Basic "idris_routine")) (Direct [] True) [] False)
 routineRef = later (later here)
 
+coverRef : Var (sigs Cover) (MkSig (nm "cmain") CPS [] False)
+coverRef = here
+
 ||| The word/address conversions, in a function that may make them. Only the
 ||| runtime's own code may turn a word into an address, and the producer
 ||| decides which functions those are by their module, here `Main.Memory`.
@@ -439,8 +448,15 @@ coverBody = build $ \[] => do
   bits <- emit1 (Convert FBits two)
   dbl <- emit1 (Convert BitsF bits)
   scratch <- emit1 (AreaAddr SCRATCH)
-  byte <- emit1 (LoadN Sub8 False (MkMem (AtWord scratch) Nothing 0))
-  emit0 (StoreN Sub16 (MkMem (AtWord scratch) (Just (W 1)) 0) byte)
+  byte <- emit1 (LoadN Sub8 False (MkMem (AtBytes scratch) Nothing 0))
+  emit0 (StoreN Sub16 (MkMem (AtBytes scratch) (Just (W 1)) 0) byte)
+  -- A byte address moves by a count of bytes; it is a word only by a
+  -- retyping, which takes no slot of its own and has no code: the dump
+  -- shows the add, and the store at the same slot as the address.
+  next <- emit1 (Offset scratch (W 8))
+  word <- emit1 (ByteAddrToWord next)
+  again <- emit1 (WordToByteAddr word)
+  emit0 (StoreN Sub8 (MkMem (AtBytes again) Nothing 0) byte)
   hp <- emit1 (GetPinned Hp)
   emit0 (SetPinned Hp hp)
   lim <- emit1 (GetPinned HpLim)
@@ -460,7 +476,9 @@ coverBody = build $ \[] => do
   [w] <- directCall roundTripRef [lt]
   _ <- directCall routineRef []
   i64v <- emit1 (WidenPtr i64)
-  tagOv w (\f => do v <- emit1 (WidenFix f); enter pid [v, i64v]) (tailApply i64v i64v)
+  -- `Enter` jumps to a code address, never to a word
+  code <- emit1 (CodeOf coverRef)
+  tagOv w (\f => do v <- emit1 (WidenFix f); enter code [v, i64v]) (tailApply i64v i64v)
 
 ------------------------------------------------------------------------------
 -- Through the pipeline

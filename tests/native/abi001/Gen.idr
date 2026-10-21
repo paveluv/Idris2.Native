@@ -59,6 +59,7 @@ import Native.HeapObj.ValEnc
 import Native.Intrinsic
 import Native.Port
 import Native.Primitive
+import Native.Rep
 import Native.Routine
 import Native.Types.BignumEnc
 import Native.Types.Enc
@@ -142,8 +143,12 @@ startBody : Closed D (Direct [] False) False [W64, W64]
 startBody = build $ \[entry, window] => do
   -- mmap(NULL, window, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)
   w <- emit1 (SystemCall 6 [W 9, W 0, window, W 3, W 0x22, W (-1), W 0])
-  emit0 (SetPinned Hp w)
-  lim <- emit1 (Arith Add w window)
+  -- the system gives the mapping's address as a word; the window's
+  -- registers hold byte addresses, which the word is by a retyping, and
+  -- which a count of bytes moves
+  base <- emit1 (WordToByteAddr w)
+  emit0 (SetPinned Hp base)
+  lim <- emit1 (Offset base window)
   emit0 (SetPinned HpLim lim)
   ret []
 
@@ -155,9 +160,10 @@ allocSlowBody = build $ \[bytes] => do
   size <- emit1 (Arith Add bytes (W 1048576))
   -- mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)
   w <- emit1 (SystemCall 6 [W 9, W 0, size, W 3, W 0x22, W (-1), W 0])
-  hp <- emit1 (Arith Add w bytes)
+  base <- emit1 (WordToByteAddr w)
+  hp <- emit1 (Offset base bytes)
   emit0 (SetPinned Hp hp)
-  lim <- emit1 (Arith Add w size)
+  lim <- emit1 (Offset base size)
   emit0 (SetPinned HpLim lim)
   ret [w]
 

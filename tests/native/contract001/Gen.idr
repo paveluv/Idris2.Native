@@ -44,6 +44,7 @@ import Native.HeapObj.ValEnc
 import Native.Intrinsic
 import Native.Port
 import Native.Primitive
+import Native.Rep
 import Native.Routine
 import Native.Types.BignumEnc
 import Native.Types.Enc
@@ -79,10 +80,12 @@ unit = SCon (NS (mkNamespace "Builtin") (UN (Basic "Unit"))) []
 form : Name -> List FlatVar -> Skeleton -> Layout -> FlatDef
 form n ps sk lay = MkFlatDef n ps sk lay (FNone EmptyFC) EmptyFC
 
-||| A register of the term IR as a stand-in's parameter or result: a word, or
-||| a value as ordinary code holds it.
+||| A register of the term IR as a stand-in's parameter or result: a word, a
+||| value as ordinary code holds it, or the runtime's byte address, which is
+||| an address, not its word.
 standIn : Ty TestEnc -> (Skeleton, Layout)
 standIn Val = (SCon uniformType [SOther], [Uniform])
+standIn Ty.ByteAddr = (SCon byteAddrType [], [Rep.ByteAddr])
 standIn _ = (SPrim Bits64Type, [Word])
 
 ||| A stand-in for every routine the runtime has, of its port's registers.

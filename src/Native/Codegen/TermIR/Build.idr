@@ -79,7 +79,7 @@ data PBody : Decls enc -> IRCommon.Conv enc -> Bool -> (v : IRCommon.Ty enc -> T
            PBody d IRCommon.Conv.CPS m v l
   PTailApply : (fn, arg : Opnd v IRCommon.Ty.Val) -> PBody d IRCommon.Conv.CPS m v l
   PReturn : Opnd v IRCommon.Ty.Val -> PBody d IRCommon.Conv.CPS m v l
-  PEnter : Opnd v IRCommon.Ty.W64 -> List (Opnd v IRCommon.Ty.Val) -> PBody d c m v l
+  PEnter : Opnd v IRCommon.Ty.CodeAddr -> List (Opnd v IRCommon.Ty.Val) -> PBody d c m v l
   PRet : All (Opnd v) rs -> PBody d (IRCommon.Conv.Direct rs col) m v l
   PCrash : String -> PBody d c m v l
   PUnsupported : String -> PBody d c m v l
@@ -192,7 +192,7 @@ ret : All (Opnd v) rs -> End d (IRCommon.Conv.Direct rs col) m v l
 ret xs = MkBuild (\_ => PRet xs)
 
 export
-enter : Opnd v IRCommon.Ty.W64 -> List (Opnd v IRCommon.Ty.Val) -> End d c m v l
+enter : Opnd v IRCommon.Ty.CodeAddr -> List (Opnd v IRCommon.Ty.Val) -> End d c m v l
 enter f xs = MkBuild (\_ => PEnter f xs)
 
 ||| End the body with a crash, whatever the rest would have been.
