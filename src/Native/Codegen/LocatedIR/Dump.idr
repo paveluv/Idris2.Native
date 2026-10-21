@@ -28,7 +28,7 @@ import Native.Width
 
 %default covering
 
-functionPieces : Function enc -> Data.Builder String
+functionPieces : {enc : Types.Enc} -> Function enc -> Data.Builder String
 functionPieces f =
   Data.Builder.single ("function " ++ show f.name ++ " " ++ show f.conv ++ " " ++ regs f.params
           ++
@@ -151,13 +151,13 @@ functionPieces f =
 
 ||| One function: its name, convention, parameters and blocks.
 export
-dumpFunction : Function enc -> String
+dumpFunction : {enc : Types.Enc} -> Function enc -> String
 dumpFunction f = fastConcat (toList (functionPieces f))
 
 ||| A whole program, in pieces to write a piece at a time: the statics, then
 ||| every function.
 export
-dumpProgram : Program enc -> Data.Builder String
+dumpProgram : {enc : Types.Enc} -> Program enc -> Data.Builder String
 dumpProgram p =
   concatMap (\s => Data.Builder.single ("static " ++ show s.sym ++ " " ++ show s.header ++ "\n"))
     p.statics

@@ -10,9 +10,11 @@
 ||| so that the runtime's own Idris can import it.
 module Native.Types.Kind
 
+import Data.Maybe
 import Decidable.Equality
 import Decidable.Equality.Core
 import Native.HeapObj.Shape as HeapObj
+import Native.Rep
 
 %default total
 
@@ -172,6 +174,25 @@ Show Kind where
   show BUFFER = "BUFFER"
   show PTR = "PTR"
   show CONT = "CONT"
+
+||| Whether objects of the kind have a header: those of every kind but a
+||| continuation's, the one kind with no shape.
+public export
+Headed : Kind -> Type
+Headed k = IsJust (shape k)
+
+||| The shape of a kind with a header.
+public export
+headedShape : (k : Kind) -> {auto 0 h : Headed k} -> HeapObj.Shape
+headedShape k = fromJust (shape k)
+
+||| What a raw word of an object of the kind holds: a double's bits, a
+||| closure's code, a word of every other kind's.
+public export
+rawRep : Kind -> Rep
+rawRep DOUBLE = Rep.Dbl
+rawRep CLOSURE = Rep.CodeAddr
+rawRep _ = Rep.Word
 
 ||| A header word's kind code, as `code` gives a kind's: its shape's id, in
 ||| bits 0..3, and its tag, the flags between them left out, as the

@@ -10,8 +10,6 @@ module Native.Codegen.Strings
 import Data.List
 import Data.Vect
 import Native.HeapObj.Shape as HeapObj
-import Native.HeapObj.ValEnc as HeapObj
-import Native.Types.BignumEnc as Types
 import Native.Types.Enc as Types
 import Native.Types.Header as Types
 import Native.Types.Kind
@@ -27,11 +25,13 @@ literal : (enc : Types.Enc) -> String ->
 literal enc s = case enc of
   Types.MkEnc _ _ Types.StringEnc.Utf8 =>
                    let bs = encodeAll utf8 (unpack s)
-                       h = Types.Header.StringH (all (< 0x80) bs) (length bs)
+                       h =
+                         Types.Header.StringH
+                           (Types.StringEnc.MkUtf8Parts (all (< 0x80) bs) (length bs))
                    in map (\ws => (h ** ws)) (toVect _ (words bs))
   Types.MkEnc _ _ Types.StringEnc.Utf32 =>
                    let cs = unpack s
-                       h = Types.Header.StringCharsH (length cs)
+                       h = Types.Header.StringH (Types.StringEnc.MkUtf32Parts (length cs))
                    in map (\ws => (h ** ws)) (toVect _ (words (encodeAll utf32 cs)))
   where
     ||| The UTF-8 bytes of a character, shortest form.

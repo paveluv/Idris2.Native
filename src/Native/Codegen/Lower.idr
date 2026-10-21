@@ -108,7 +108,7 @@ import Native.HeapObj.ValEnc
 import Native.Mach
 import Native.Port
 import Native.Rep
-import Native.Types.BignumEnc
+import Native.Types.BignumEnc as Types
 import Native.Types.Enc as Types
 import Native.Types.Header as Types
 import Native.Types.IntegerRoutine as Types
@@ -964,9 +964,9 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
           Just (Bounded Width.Whole _, n) =>
             let p = patternValue n in maybe (staticVal (int64Static p)) pure (fixnum p)
           Just (Unbounded, n) =>
-            maybe (case Types.BignumEnc.signInHeader enc.bignum of
-                     Just _ => staticVal (bignumStatic n)
-                     Nothing =>
+            maybe (if Types.BignumEnc.headed enc.bignum
+                     then staticVal (bignumStatic n)
+                     else
                        TermIR.Build.unsupported
                          ("an Integer constant outside the fixnum range, under bignums in two's " ++
                           "complement"))
@@ -1981,25 +1981,26 @@ lowerProgram enc platform realised forms shapes tables constants flat implemente
       Just
         (TermIR.MkStaticSig n Types.Kind.INT64 ** TermIR.MkStaticDef Types.Header.Int64H
          [TermIR.StaticDef.SWord (cast p)])
-    ready (n, Big v) = case Types.BignumEnc.signInHeader enc.bignum of
-      Just sh => bigStatic n v sh (Types.BignumEnc.magnitudeWords (abs v))
-      Nothing => Nothing
+    ready (n, Big v) = bigStatic enc (Types.BignumEnc.magnitudeWords (abs v))
       where
-        ||| A static object's declaration and definition, if its header can hold
-        ||| it. Its words name nothing, so it is defined for any declarations.
-        -- A big constant's static: a header of its sign and words.
-        bigStatic : Name -> Integer -> (sh : Types.BignumEnc.SignInHeader enc.bignum) ->
-                    (ws : List Int64) ->
-                    Maybe (s ** ({0 d : TermIR.Decls enc} -> TermIR.StaticDef d s))
-        bigStatic n v sh ws =
-          case choose
-            (TermIR.FieldTys.wellFormed (Types.Header.BignumH {enc} @{sh} (v < 0) (length ws))) of
-          Left ok =>
-            Just
-              (TermIR.MkStaticSig n Types.Kind.BIGNUM ** TermIR.MkStaticDef
-               (Types.Header.BignumH @{sh} (v < 0) (length ws))
-                 (map TermIR.StaticDef.SWord (fromList ws)))
-          Right _ => Nothing
+        ||| A big constant's static, a header of its sign and words, if the
+        ||| encoding has a header for it and the header can hold it, matched on
+        ||| the encoding so that the header's parts are of its type. Its words
+        ||| name nothing, so it is defined for any declarations.
+        bigStatic : (e : Types.Enc) -> (ws : List Int64) ->
+                    Maybe (s ** ({0 d : TermIR.Decls e} -> TermIR.StaticDef d s))
+        bigStatic e@(Types.MkEnc _ (Types.MkBignumEnc _ Types.BignumEnc.SignMagnitude) _) ws =
+          let h =
+                Types.Header.BignumH {enc = e}
+                  (Types.BignumEnc.MkSignMagnitudeParts (v < 0) (length ws)) in
+          case choose (TermIR.FieldTys.wellFormed h) of
+            Left ok => do
+              ws' <- toVect _ ws
+              Just
+                (TermIR.MkStaticSig n Types.Kind.BIGNUM ** TermIR.MkStaticDef h
+                 (map TermIR.StaticDef.SWord ws'))
+            Right _ => Nothing
+        bigStatic _ _ = Nothing
     ready (n, Text s) = do
       (h ** ws) <- Strings.literal enc s
       case choose (TermIR.FieldTys.wellFormed h) of

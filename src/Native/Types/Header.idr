@@ -28,49 +28,30 @@ import Native.Types.Enc
 import Native.Types.Kind
 import Native.Types.StringEnc
 
+import Data.Maybe
 import Native.HeapObj.Shape as HeapObj
 
 %default total
 
 ||| What a header says, per kind and under the program's encodings: one
-||| constructor for each kind that has a header, whose arguments are the
-||| header's parts, named for their meaning. No constructor makes a
-||| `Header enc CONT`, since a continuation has no header. A `BIGNUM`'s header
-||| depends on its bignum encoding; only the sign-magnitude one exists so far.
+||| constructor for each kind that has a header (`Kind.Headed`), whose
+||| arguments are the header's parts, named for their meaning. A string's
+||| and a `BIGNUM`'s parts are their encodings' (`StringParts`,
+||| `BignumParts`), so that another encoding adds a case there, not a
+||| constructor here; only the sign-magnitude `BIGNUM` has a header so far.
 public export
 data Header : Enc -> Kind -> Type where
   ConH     : (conId : Nat) -> (arity : Nat) -> Header enc Kind.CON
   ClosureH : (arity : Nat) -> (filled : Nat) -> Header enc Kind.CLOSURE
   Int64H   : Header enc Kind.INT64
   DoubleH  : Header enc Kind.DOUBLE
-  StringH  : {auto 0 u : StringEnc.Utf8Strings enc.string} -> (ascii : Bool) -> (bytes : Nat) ->
-             Header enc Kind.STRING
-  StringCharsH : {auto 0 u : StringEnc.Utf32Strings enc.string} -> (chars : Nat) ->
-                 Header enc Kind.STRING
-  BignumH  : {auto 0 sh : BignumEnc.SignInHeader enc.bignum} -> (negative : Bool) ->
-             (words : Nat) ->
-             Header enc Kind.BIGNUM
+  StringH  : StringEnc.StringParts enc.string -> Header enc Kind.STRING
+  BignumH  : BignumEnc.BignumParts enc.bignum -> Header enc Kind.BIGNUM
   IORefH   : Header enc Kind.IOREF
   ArrayH   : (elems : Nat) -> Header enc Kind.ARRAY
   StructH  : (raws : Nat) -> (values : Nat) -> Header enc Kind.STRUCT
   BufferH  : (bytes : Nat) -> Header enc Kind.BUFFER
   PtrH     : Header enc Kind.PTR
-
-||| A continuation has no header.
-public export
-Uninhabited (Header enc Kind.CONT) where
-  uninhabited (ConH _ _) impossible
-  uninhabited (ClosureH _ _) impossible
-  uninhabited Int64H impossible
-  uninhabited DoubleH impossible
-  uninhabited (StringH _ _) impossible
-  uninhabited (StringCharsH _) impossible
-  uninhabited (BignumH _ _) impossible
-  uninhabited IORefH impossible
-  uninhabited (ArrayH _) impossible
-  uninhabited (StructH _ _) impossible
-  uninhabited (BufferH _) impossible
-  uninhabited PtrH impossible
 
 ||| A part of a header, by kind: what `LoadPart` reads.
 public export
@@ -107,12 +88,20 @@ Show (HeaderPart kn) where
 
 ||| A header's parts with their values, in order.
 public export
-parts : {0 k : Kind} -> Header enc k -> List (HeaderPart k, Nat)
+parts : {enc : Enc} -> {0 k : Kind} -> Header enc k -> List (HeaderPart k, Nat)
 parts (ConH c a) = [(ConId, c), (ConArity, a)]
 parts (ClosureH a f) = [(ClosureArity, a), (ClosureFilled, f)]
-parts (StringH a n) = [(StringAscii, if a then 1 else 0), (StringBytes, n)]
-parts (StringCharsH n) = [(StringChars, n)]
-parts (BignumH neg n) = [(BignumNegative, if neg then 1 else 0), (BignumWords, n)]
+parts (StringH p) = strings enc.string p
+  where
+    strings : (s : StringEnc) -> StringEnc.StringParts s -> List (HeaderPart Kind.STRING, Nat)
+    strings StringEnc.Utf8 q = [(StringAscii, if q.ascii then 1 else 0), (StringBytes, q.bytes)]
+    strings StringEnc.Utf32 q = [(StringChars, q.chars)]
+parts (BignumH p) = bignums enc.bignum p
+  where
+    bignums : (b : BignumEnc) -> BignumEnc.BignumParts b -> List (HeaderPart Kind.BIGNUM, Nat)
+    bignums (MkBignumEnc _ BignumEnc.SignMagnitude) q =
+      [(BignumNegative, if q.negative then 1 else 0), (BignumWords, q.words)]
+    bignums (MkBignumEnc _ BignumEnc.TwosComplement) q = absurd q
 parts (ArrayH n) = [(ArrayElems, n)]
 parts (StructH r v) = [(StructRaws, r), (StructValues, v)]
 parts (BufferH n) = [(BufferBytes, n)]
@@ -122,8 +111,23 @@ parts IORefH = []
 parts PtrH = []
 
 public export
-{kn : Kind} -> Show (Header enc kn) where
+{enc : Enc} -> {kn : Kind} -> Show (Header enc kn) where
   show h = show kn ++ concatMap (\pv => " " ++ show (fst pv) ++ "=" ++ show (snd pv)) (parts h)
+
+||| A header's kind has one.
+public export
+headed : Header enc k -> Kind.Headed k
+headed (ConH _ _) = ItIsJust
+headed (ClosureH _ _) = ItIsJust
+headed Int64H = ItIsJust
+headed DoubleH = ItIsJust
+headed (StringH _) = ItIsJust
+headed (BignumH _) = ItIsJust
+headed IORefH = ItIsJust
+headed (ArrayH _) = ItIsJust
+headed (StructH _ _) = ItIsJust
+headed (BufferH _) = ItIsJust
+headed PtrH = ItIsJust
 
 ||| Where a part lives in the header word: its first bit and its width, as
 ||| the words the runtime's code shifts and masks by: a field of the kind's
@@ -222,19 +226,19 @@ partUnit p = prim__shl_Integer 1 (cast (fst (place p)))
 
 ||| Whether two headers, of any kinds, are the same header.
 public export
-sameHeader : {k, k' : Kind} -> Header enc k -> Header enc k' -> Bool
+sameHeader : {enc : Enc} -> {k, k' : Kind} -> Header enc k -> Header enc k' -> Bool
 sameHeader h h' = k == k' && map snd (parts h) == map snd (parts h')
 
 ||| Whether every part fits its width. Every header the IR carries comes with
 ||| the proof (`wellFormed` in `Native.Codegen.TermIR.FieldTys`); encoding a header that does
 ||| not fit loses the high bits of the part, and never touches its neighbours.
 public export
-fits : {0 k : Kind} -> Header enc k -> Bool
+fits : {enc : Enc} -> {0 k : Kind} -> Header enc k -> Bool
 fits h = all (\pv => cast (snd pv) < prim__shl_Integer 1 (cast (snd (place (fst pv))))) (parts h)
 
 ||| The header word, with flags 0.
 export
-encodeHeader : {k : Kind} -> Header enc k -> Int64
+encodeHeader : {enc : Enc} -> {k : Kind} -> Header enc k -> Int64
 encodeHeader h = signed (cast (fixedWord k) + sum (map part (parts h)))
   where
     part : (HeaderPart k, Nat) -> Integer
@@ -269,18 +273,21 @@ decodeHeader enc w = do
          (cast (snd (place p))))
 
     -- A sign-magnitude program's BIGNUM header, matched on the record so
-    -- that the match proves the sign is in the header.
+    -- that the match gives the parts' type.
     bignum : (enc' : Enc) -> Maybe (k : Kind ** Header enc' k)
     bignum (MkEnc _ (MkBignumEnc _ BignumEnc.SignMagnitude) _) =
-      Just (Kind.BIGNUM ** BignumH (get BignumNegative == 1) (get BignumWords))
+      Just
+        (Kind.BIGNUM **
+         BignumH (BignumEnc.MkSignMagnitudeParts (get BignumNegative == 1) (get BignumWords)))
     bignum _ = Nothing
 
-    -- A string's header, matched on the record so that the match proves the
-    -- encoding the constructor needs.
+    -- A string's header, matched on the record so that the match gives the
+    -- parts' type.
     string : (enc' : Enc) -> Maybe (k : Kind ** Header enc' k)
     string (MkEnc _ _ StringEnc.Utf8) =
-      Just (Kind.STRING ** StringH (get StringAscii == 1) (get StringBytes))
-    string (MkEnc _ _ StringEnc.Utf32) = Just (Kind.STRING ** StringCharsH (get StringChars))
+      Just (Kind.STRING ** StringH (StringEnc.MkUtf8Parts (get StringAscii == 1) (get StringBytes)))
+    string (MkEnc _ _ StringEnc.Utf32) =
+      Just (Kind.STRING ** StringH (StringEnc.MkUtf32Parts (get StringChars)))
 
     parse : Maybe Kind -> Maybe (k : Kind ** Header enc k)
     parse (Just Kind.CON) = Just (Kind.CON ** ConH (get ConId) (get ConArity))
@@ -298,35 +305,43 @@ decodeHeader enc w = do
     parse (Just Kind.CONT) = Nothing
     parse Nothing = Nothing
 
-||| The header's counts, by its kind's shape.
+||| The header's counts, of its kind's shape (`Kind.shape`), which its type
+||| says: a header's counts of another shape do not typecheck.
 public export
-counts : {0 k : Kind} -> Header enc k -> (s : HeapObj.Shape ** HeapObj.Shape.Counts s)
-counts h = case h of
-  ConH _ a => (_ ** HeapObj.Shape.ValuesOf a)
-  ClosureH _ f => (_ ** HeapObj.Shape.MixedOf 1 f)
-  Int64H => (_ ** HeapObj.Shape.WordsOf 1)
-  DoubleH => (_ ** HeapObj.Shape.WordsOf 1)
-  StringH _ n => (_ ** HeapObj.Shape.BytesOf n)
-  StringCharsH n => (_ ** HeapObj.Shape.BytesOf (4 * n))
-  BignumH _ n => (_ ** HeapObj.Shape.WordsOf n)
-  IORefH => (_ ** HeapObj.Shape.ValuesOf 1)
-  ArrayH n => (_ ** HeapObj.Shape.ValuesOf n)
-  StructH r v => (_ ** HeapObj.Shape.MixedOf r v)
-  BufferH n => (_ ** HeapObj.Shape.BytesOf n)
-  PtrH => (_ ** HeapObj.Shape.WordsOf 1)
+counts : {enc : Enc} -> {0 k : Kind} -> (h : Header enc k) ->
+         HeapObj.Shape.Counts (Kind.headedShape k @{headed h})
+counts (ConH _ a) = HeapObj.Shape.ValuesOf a
+counts (ClosureH _ f) = HeapObj.Shape.MixedOf 1 f
+counts Int64H = HeapObj.Shape.WordsOf 1
+counts DoubleH = HeapObj.Shape.WordsOf 1
+counts (StringH p) = strings enc.string p
+  where
+    strings : (s : StringEnc) -> StringEnc.StringParts s -> HeapObj.Shape.Counts HeapObj.Shape.RAW
+    strings StringEnc.Utf8 q = HeapObj.Shape.BytesOf q.bytes
+    strings StringEnc.Utf32 q = HeapObj.Shape.BytesOf (4 * q.chars)
+counts (BignumH p) = bignums enc.bignum p
+  where
+    bignums : (b : BignumEnc) -> BignumEnc.BignumParts b -> HeapObj.Shape.Counts HeapObj.Shape.RAW
+    bignums (MkBignumEnc _ BignumEnc.SignMagnitude) q = HeapObj.Shape.WordsOf q.words
+    bignums (MkBignumEnc _ BignumEnc.TwosComplement) q = absurd q
+counts IORefH = HeapObj.Shape.ValuesOf 1
+counts (ArrayH n) = HeapObj.Shape.ValuesOf n
+counts (StructH r v) = HeapObj.Shape.MixedOf r v
+counts (BufferH n) = HeapObj.Shape.BytesOf n
+counts PtrH = HeapObj.Shape.WordsOf 1
 
 ||| The number of fields: the object's words after its header.
 public export
-fieldWords : {0 k : Kind} -> Header enc k -> Nat
-fieldWords h = HeapObj.Shape.fieldWords (snd (counts h))
+fieldWords : {enc : Enc} -> {0 k : Kind} -> Header enc k -> Nat
+fieldWords h = HeapObj.Shape.fieldWords (counts h)
 
 ||| The object's size in words, its header included.
 public export
-objectWords : {0 k : Kind} -> Header enc k -> Nat
+objectWords : {enc : Enc} -> {0 k : Kind} -> Header enc k -> Nat
 objectWords h = 1 + fieldWords h
 
 ||| The collector's view: the word, counting the header as word 0, where the
 ||| scanned fields begin, and how many there are. Every other field is raw.
 public export
-scanned : {0 k : Kind} -> Header enc k -> (Nat, Nat)
-scanned h = HeapObj.Shape.scanned (snd (counts h))
+scanned : {enc : Enc} -> {0 k : Kind} -> Header enc k -> (Nat, Nat)
+scanned h = HeapObj.Shape.scanned (counts h)

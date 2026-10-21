@@ -24,12 +24,24 @@ data StringEnc
   | ||| One 32-bit code point per character, Chez's layout.
     Utf32
 
-||| The string encodings under which a `StringH` exists, with the proof.
+||| The parts of a UTF-8 string's header: whether every byte is below
+||| 0x80, and how many bytes there are.
 public export
-data Utf8Strings : StringEnc -> Type where
-  IsUtf8 : Utf8Strings Utf8
+record Utf8Parts where
+  constructor MkUtf8Parts
+  ascii : Bool
+  bytes : Nat
 
-||| The string encodings under which a `StringCharsH` exists.
+||| The part of a UTF-32 string's header: how many characters there are.
 public export
-data Utf32Strings : StringEnc -> Type where
-  IsUtf32 : Utf32Strings Utf32
+record Utf32Parts where
+  constructor MkUtf32Parts
+  chars : Nat
+
+||| The parts of a string's header under the encoding: what varies by the
+||| encoding is the encoding's, so another encoding is a case here, not a
+||| constructor of the header (`Types.Header.StringH`).
+public export
+StringParts : StringEnc -> Type
+StringParts Utf8 = Utf8Parts
+StringParts Utf32 = Utf32Parts

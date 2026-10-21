@@ -40,9 +40,11 @@ headers =
   [ (_ ** ConH 0 0), (_ ** ConH 1 1), (_ ** ConH (largest 20) (largest 28))
   , (_ ** ClosureH 1 0), (_ ** ClosureH (largest 16) (largest 28))
   , (_ ** Int64H), (_ ** DoubleH), (_ ** IORefH), (_ ** PtrH)
-  , (_ ** StringH True 0), (_ ** StringH False 1), (_ ** StringH True (largest 47))
+  , (_ ** StringH (MkUtf8Parts True 0)), (_ ** StringH (MkUtf8Parts False 1))
+  , (_ ** StringH (MkUtf8Parts True (largest 47)))
   , (_ ** BufferH 0), (_ ** BufferH (largest 47))
-  , (_ ** BignumH False 0), (_ ** BignumH True 1), (_ ** BignumH True (largest 44))
+  , (_ ** BignumH (MkSignMagnitudeParts False 0)), (_ ** BignumH (MkSignMagnitudeParts True 1))
+  , (_ ** BignumH (MkSignMagnitudeParts True (largest 44)))
   , (_ ** ArrayH 0), (_ ** ArrayH 1), (_ ** ArrayH (largest 28))
   , (_ ** StructH 0 0), (_ ** StructH 4 1), (_ ** StructH (largest 4) (largest 28)) ]
 
@@ -55,8 +57,8 @@ tooWide : List (k : Kind ** Header TestEnc k)
 tooWide =
   [ (_ ** ConH (largest 20 + 1) 0), (_ ** ConH 0 (largest 28 + 1))
   , (_ ** ClosureH (largest 16 + 1) 0), (_ ** ClosureH 0 (largest 28 + 1))
-  , (_ ** StringH False (largest 47 + 1)), (_ ** BufferH (largest 47 + 1))
-  , (_ ** BignumH False (largest 44 + 1)), (_ ** ArrayH (largest 28 + 1)) ]
+  , (_ ** StringH (MkUtf8Parts False (largest 47 + 1))), (_ ** BufferH (largest 47 + 1))
+  , (_ ** BignumH (MkSignMagnitudeParts False (largest 44 + 1))), (_ ** ArrayH (largest 28 + 1)) ]
 
 noHeader : List (String, Int64)
 noHeader =
@@ -72,8 +74,8 @@ noHeader =
 
 samples : List (k : Kind ** Header TestEnc k)
 samples =
-  [ (_ ** ConH 1 2), (_ ** ClosureH 3 1), (_ ** StringH True 9), (_ ** BignumH True 2),
-   (_ ** IORefH), (_ ** ArrayH 4) ]
+  [ (_ ** ConH 1 2), (_ ** ClosureH 3 1), (_ ** StringH (MkUtf8Parts True 9))
+  , (_ ** BignumH (MkSignMagnitudeParts True 2)), (_ ** IORefH), (_ ** ArrayH 4) ]
 
 hex : Int64 -> String
 hex w = pack (map digit (reverse (go 16 (if w < 0 then cast w + 18446744073709551616 else cast w))))
@@ -100,8 +102,9 @@ main = do
   let twos = MkEnc FixnumTag1 (MkBignumEnc Limb64 TwosComplement) Utf8
   putStrLn ("a BIGNUM header under two's complement: "
             ++ maybe "rejected" (const "ACCEPTED")
-              (decodeHeader twos (encodeHeader {enc = TestEnc} (BignumH True 2))))
-  putStrLn ("ConH 1 2 encodes as 0x" ++ hex (encodeHeader (ConH 1 2)))
+              (decodeHeader twos
+                (encodeHeader {enc = TestEnc} (BignumH (MkSignMagnitudeParts True 2)))))
+  putStrLn ("ConH 1 2 encodes as 0x" ++ hex (encodeHeader {enc = TestEnc} (ConH 1 2)))
   traverse_
     (\(_ ** h) =>
      putStrLn (show h ++ ": " ++ show (objectWords h) ++ " words, scanned " ++ show (scanned h)))

@@ -7,6 +7,8 @@
 ||| Idris can import it.
 module Native.Types.BignumEnc
 
+import Data.Maybe
+
 %default total
 
 ||| How many bits a limb holds. A `BIGNUM`'s limbs are its digits in base 2
@@ -34,18 +36,34 @@ record BignumEnc where
   limbWidth : LimbWidth
   sign : BignumSign
 
-||| The bignum encodings whose header holds the sign: those under which a
-||| `BignumH` exists.
+||| The parts of a sign-magnitude `BIGNUM`'s header: its sign, and the
+||| number of words its limbs fill.
 public export
-data SignInHeader : BignumEnc -> Type where
-  IsSignMagnitude : SignInHeader (MkBignumEnc w SignMagnitude)
+record SignMagnitudeParts where
+  constructor MkSignMagnitudeParts
+  negative : Bool
+  words : Nat
 
-||| Whether a bignum encoding keeps the sign in the header, with the proof
-||| that it does.
+||| The parts of a `BIGNUM`'s header under the encoding: its sign and its
+||| words where the header holds the sign; none under two's complement,
+||| which has no header yet, so a `Types.Header.BignumH` of it is not
+||| inhabited.
 public export
-signInHeader : (b : BignumEnc) -> Maybe (SignInHeader b)
-signInHeader (MkBignumEnc _ SignMagnitude) = Just IsSignMagnitude
-signInHeader (MkBignumEnc _ TwosComplement) = Nothing
+BignumParts : BignumEnc -> Type
+BignumParts (MkBignumEnc _ SignMagnitude) = SignMagnitudeParts
+BignumParts (MkBignumEnc _ TwosComplement) = Void
+
+||| A `BIGNUM`'s header parts for a sign and a number of words, if the
+||| encoding has a header for them.
+public export
+headerParts : (b : BignumEnc) -> (negative : Bool) -> (words : Nat) -> Maybe (BignumParts b)
+headerParts (MkBignumEnc _ SignMagnitude) neg n = Just (MkSignMagnitudeParts neg n)
+headerParts (MkBignumEnc _ TwosComplement) _ _ = Nothing
+
+||| Whether the encoding gives a `BIGNUM` a header.
+public export
+headed : BignumEnc -> Bool
+headed b = isJust (headerParts b False 0)
 
 ||| The words a `BIGNUM`'s limbs fill for a magnitude, least significant
 ||| first, none of them a zero at the top: the same under either limb width,

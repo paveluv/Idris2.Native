@@ -35,10 +35,11 @@ headers =
   [ (_ ** ConH 0 0), (_ ** ConH 1 1), (_ ** ConH 3 7), (_ ** ConH (largest 20) (largest 28))
   , (_ ** ClosureH 1 0), (_ ** ClosureH 4 2), (_ ** ClosureH (largest 16) (largest 28))
   , (_ ** Int64H), (_ ** DoubleH), (_ ** IORefH), (_ ** PtrH)
-  , (_ ** StringH True 0), (_ ** StringH False 1), (_ ** StringH True 9),
-    (_ ** StringH False (largest 47))
+  , (_ ** StringH (MkUtf8Parts True 0)), (_ ** StringH (MkUtf8Parts False 1))
+  , (_ ** StringH (MkUtf8Parts True 9)), (_ ** StringH (MkUtf8Parts False (largest 47)))
   , (_ ** BufferH 0), (_ ** BufferH 17), (_ ** BufferH (largest 47))
-  , (_ ** BignumH False 0), (_ ** BignumH True 3), (_ ** BignumH True (largest 44))
+  , (_ ** BignumH (MkSignMagnitudeParts False 0)), (_ ** BignumH (MkSignMagnitudeParts True 3))
+  , (_ ** BignumH (MkSignMagnitudeParts True (largest 44)))
   , (_ ** ArrayH 0), (_ ** ArrayH 5), (_ ** ArrayH (largest 28))
   , (_ ** StructH 0 0), (_ ** StructH 4 1), (_ ** StructH (largest 4) (largest 28)) ]
 
@@ -54,9 +55,8 @@ layout (ClosureH _ f) = (2 + f, (2, f))         -- the code's address, then the 
 layout Int64H = (2, (1, 0))                     -- the bits, raw
 layout DoubleH = (2, (1, 0))
 layout PtrH = (2, (1, 0))
-layout (StringH _ n) = (1 + padded n, (1, 0))   -- the bytes, raw
-layout (StringCharsH n) = (1 + padded (4 * n), (1, 0))
-layout (BignumH _ n) = (1 + n, (1, 0))          -- the limbs, raw
+layout (StringH p) = (1 + padded p.bytes, (1, 0))  -- the bytes, raw
+layout (BignumH p) = (1 + p.words, (1, 0))         -- the limbs, raw
 layout IORefH = (2, (1, 1))                     -- the one value
 layout (ArrayH n) = (1 + n, (1, n))             -- the elements, all values
 layout (StructH r v) = (1 + r + v, (1 + r, v))  -- the raw words, then the values
