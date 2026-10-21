@@ -19,29 +19,9 @@
 ||| heap-object model (`HeapObj.Shape` says what it is).
 module Native.Port
 
+import Native.Carrier
 
 %default total
-
-||| What a register carries across the boundary, as the Idris type it is.
-public export
-data Carrier
-  = ||| A word: `Bits64`.
-    Word
-  | ||| A signed word: `Int`.
-    Signed
-  | ||| A double, in a register of its own: `Double`.
-    Dbl
-  | ||| A value of the type, as ordinary code holds it: `Uniform t`.
-    ValueOf Type
-  | ||| Any value, as ordinary code holds it: `Uniform a`, for the call's `a`.
-    Value
-  | ||| The address of an object of the call's shape `s`, as the side that
-    ||| gives the entry types addresses: `addr s`.
-    Address
-  | ||| The address of memory that holds no object: a run of bytes, a range
-    ||| of address space, an area. A word, with an address's arithmetic only
-    ||| (`Native.Runtime.ByteAddr`).
-    ByteAddr
 
 ||| An entry's shape: what its arguments carry, in order, and what its
 ||| result does, if it has one. Every entry takes the token too, last, and

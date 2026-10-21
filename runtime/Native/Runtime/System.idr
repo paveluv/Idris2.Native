@@ -1,12 +1,10 @@
 ||| The routines that end the program.
 module Native.Runtime.System
 
-import Native.Runtime.Memory
 import Native.Runtime.Ordo
 import Native.Runtime.OS
 import Native.Runtime.PortTy
 
-import Native.HeapObj.Shape
 import Native.Routine
 
 %hide Prelude.Interfaces.(>>=)
@@ -25,7 +23,7 @@ exit = OS.osExit
 ||| `idris_crash`: writes the message, `length` bytes at `message`, to the
 ||| standard error, and ends the process with status 1.
 export
-crash : PortTy Memory.Addr (Routine.port Routine.Crash)
+crash : PortTy (Routine.port Routine.Crash)
 crash message length = do
   _ <- OS.osWrite OS.stderr message length
   exit 1

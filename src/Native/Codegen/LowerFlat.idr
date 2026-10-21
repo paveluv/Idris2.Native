@@ -63,6 +63,7 @@ import Data.SortedMap
 import Data.Vect
 import Decidable.Equality
 import Decidable.Equality.Core
+import Native.Carrier
 import Native.Data.Distinct
 import Native.Flat.ConstType
 import Native.Flat.Exp as Flat

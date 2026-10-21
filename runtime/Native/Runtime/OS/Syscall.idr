@@ -13,7 +13,7 @@ import Native.Runtime.PortTy
 
 %default total
 
-%extern intrinsic__syscall6 : PortTy.ExternTy (Intrinsic.port Intrinsic.Syscall6)
+%extern intrinsic__syscall6 : PortTy (Intrinsic.port Intrinsic.Syscall6)
 
 ||| A system call: its number and six arguments in, its result out, by the
 ||| architecture's and the operating system's convention.

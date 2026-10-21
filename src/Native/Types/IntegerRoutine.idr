@@ -15,6 +15,8 @@
 module Native.Types.IntegerRoutine
 
 import Data.List.Elem
+import Native.Carrier
+import Native.Mach
 import Native.Port
 
 %default total
@@ -59,21 +61,31 @@ Eq IntegerRoutine where
 ||| Each `Integer` routine's arrow: what its arguments and its result carry.
 public export
 port : IntegerRoutine -> Port
-port Add = MkPort [Port.ValueOf Integer, Port.ValueOf Integer] (Just (Port.ValueOf Integer))
-port Sub = MkPort [Port.ValueOf Integer, Port.ValueOf Integer] (Just (Port.ValueOf Integer))
-port Mul = MkPort [Port.ValueOf Integer, Port.ValueOf Integer] (Just (Port.ValueOf Integer))
-port And = MkPort [Port.ValueOf Integer, Port.ValueOf Integer] (Just (Port.ValueOf Integer))
-port Or = MkPort [Port.ValueOf Integer, Port.ValueOf Integer] (Just (Port.ValueOf Integer))
-port Xor = MkPort [Port.ValueOf Integer, Port.ValueOf Integer] (Just (Port.ValueOf Integer))
-port Div = MkPort [Port.ValueOf Integer, Port.ValueOf Integer] (Just (Port.ValueOf Integer))
-port Mod = MkPort [Port.ValueOf Integer, Port.ValueOf Integer] (Just (Port.ValueOf Integer))
-port Shl = MkPort [Port.ValueOf Integer, Port.ValueOf Integer] (Just (Port.ValueOf Integer))
-port Shr = MkPort [Port.ValueOf Integer, Port.ValueOf Integer] (Just (Port.ValueOf Integer))
-port Neg = MkPort [Port.ValueOf Integer] (Just (Port.ValueOf Integer))
-port Compare = MkPort [Port.ValueOf Integer, Port.ValueOf Integer] (Just Port.Signed)
-port ToBits64 = MkPort [Port.ValueOf Integer] (Just Port.Word)
-port FromInt64 = MkPort [Port.Signed] (Just (Port.ValueOf Integer))
-port FromBits64 = MkPort [Port.Word] (Just (Port.ValueOf Integer))
+port Add =
+  MkPort [Carrier.ValueOf Integer, Carrier.ValueOf Integer] (Just (Carrier.ValueOf Integer))
+port Sub =
+  MkPort [Carrier.ValueOf Integer, Carrier.ValueOf Integer] (Just (Carrier.ValueOf Integer))
+port Mul =
+  MkPort [Carrier.ValueOf Integer, Carrier.ValueOf Integer] (Just (Carrier.ValueOf Integer))
+port And =
+  MkPort [Carrier.ValueOf Integer, Carrier.ValueOf Integer] (Just (Carrier.ValueOf Integer))
+port Or = MkPort [Carrier.ValueOf Integer, Carrier.ValueOf Integer] (Just (Carrier.ValueOf Integer))
+port Xor =
+  MkPort [Carrier.ValueOf Integer, Carrier.ValueOf Integer] (Just (Carrier.ValueOf Integer))
+port Div =
+  MkPort [Carrier.ValueOf Integer, Carrier.ValueOf Integer] (Just (Carrier.ValueOf Integer))
+port Mod =
+  MkPort [Carrier.ValueOf Integer, Carrier.ValueOf Integer] (Just (Carrier.ValueOf Integer))
+port Shl =
+  MkPort [Carrier.ValueOf Integer, Carrier.ValueOf Integer] (Just (Carrier.ValueOf Integer))
+port Shr =
+  MkPort [Carrier.ValueOf Integer, Carrier.ValueOf Integer] (Just (Carrier.ValueOf Integer))
+port Neg = MkPort [Carrier.ValueOf Integer] (Just (Carrier.ValueOf Integer))
+port Compare =
+  MkPort [Carrier.ValueOf Integer, Carrier.ValueOf Integer] (Just (Carrier.Machine Mach.IWord))
+port ToBits64 = MkPort [Carrier.ValueOf Integer] (Just (Carrier.Machine Mach.U64))
+port FromInt64 = MkPort [Carrier.Machine Mach.IWord] (Just (Carrier.ValueOf Integer))
+port FromBits64 = MkPort [Carrier.Machine Mach.U64] (Just (Carrier.ValueOf Integer))
 
 ||| Every `Integer` routine, once, which the code generator pairs with its
 ||| own copy, element by element.

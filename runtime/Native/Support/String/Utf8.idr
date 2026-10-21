@@ -24,6 +24,7 @@
 ||| string.
 module Native.Support.String.Utf8
 
+import Native.Carrier
 import Native.Flat.Uniform as Flat
 import Native.HeapObj.Shape as HeapObj
 import Native.Port
@@ -170,7 +171,7 @@ slice s h from to = do
 %cg native flat Support.String.Utf8.length
 ||| The characters of a string.
 export covering
-length : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.Length)
+length : Runtime.PortTy (Types.StringRoutine.port Types.StringRoutine.Length)
 length str = do
   s <- stringObject str
   h <- stringHeader s
@@ -179,7 +180,7 @@ length str = do
 %cg native flat Support.String.Utf8.head
 ||| The first character.
 export
-head : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.Head)
+head : Runtime.PortTy (Types.StringRoutine.port Types.StringRoutine.Head)
 head str = do
   s <- stringObject str
   h <- stringHeader s
@@ -189,7 +190,7 @@ head str = do
 %cg native flat Support.String.Utf8.tail
 ||| All but the first character.
 export covering
-tail : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.Tail)
+tail : Runtime.PortTy (Types.StringRoutine.port Types.StringRoutine.Tail)
 tail str = do
   s <- stringObject str
   h <- stringHeader s
@@ -201,7 +202,7 @@ tail str = do
 ||| The character at an index. A negative index comes as a word past every
 ||| length.
 export covering
-index : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.Index)
+index : Runtime.PortTy (Types.StringRoutine.port Types.StringRoutine.Index)
 index str i = do
   s <- stringObject str
   h <- stringHeader s
@@ -212,7 +213,7 @@ index str i = do
 %cg native flat Support.String.Utf8.cons
 ||| A character, then a string.
 export covering
-cons : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.Cons)
+cons : Runtime.PortTy (Types.StringRoutine.port Types.StringRoutine.Cons)
 cons c str = do
   s <- stringObject str
   h <- stringHeader s
@@ -226,7 +227,7 @@ cons c str = do
 %cg native flat Support.String.Utf8.append
 ||| One string, then another.
 export covering
-append : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.Append)
+append : Runtime.PortTy (Types.StringRoutine.port Types.StringRoutine.Append)
 append x y = do
   a <- stringObject x
   b <- stringObject y
@@ -242,7 +243,7 @@ append x y = do
 %cg native flat Support.String.Utf8.reverse
 ||| The characters in the other order.
 export covering
-reverse : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.Reverse)
+reverse : Runtime.PortTy (Types.StringRoutine.port Types.StringRoutine.Reverse)
 reverse str = do
   s <- stringObject str
   h <- stringHeader s
@@ -268,7 +269,7 @@ reverse str = do
 ||| `string-substr` does: a negative one counts as 0, and a start past the
 ||| end gives the empty string.
 export covering
-substr : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.Substr)
+substr : Runtime.PortTy (Types.StringRoutine.port Types.StringRoutine.Substr)
 substr start len str = do
   s <- stringObject str
   h <- stringHeader s
@@ -286,7 +287,7 @@ substr start len str = do
 ||| The order of two strings, -1, 0 or 1: by code point, which is the order
 ||| of their UTF-8 bytes.
 export covering
-compare : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.Compare)
+compare : Runtime.PortTy (Types.StringRoutine.port Types.StringRoutine.Compare)
 compare x y = do
   a <- stringObject x
   b <- stringObject y
@@ -474,14 +475,14 @@ decimal negative m = do
 ||| A signed word in decimal, as Chez writes it. The most negative word's
 ||| magnitude is its own pattern, unsigned.
 export covering
-showSigned : Runtime.PortTy Runtime.Memory.Addr
+showSigned : Runtime.PortTy
              (Types.StringRoutine.port Types.StringRoutine.ShowSigned)
 showSigned n = if n < 0 then decimal True (cast {to = Bits64} (0 - n)) else decimal False (cast n)
 
 %cg native flat Support.String.Utf8.showUnsigned
 ||| A word, unsigned, in decimal.
 export covering
-showUnsigned : Runtime.PortTy Runtime.Memory.Addr
+showUnsigned : Runtime.PortTy
                (Types.StringRoutine.port Types.StringRoutine.ShowUnsigned)
 showUnsigned = decimal False
 
@@ -493,7 +494,7 @@ showUnsigned = decimal False
 ||| one, where Chez takes the upper; and a subnormal double without the
 ||| `|n` that Chez writes after it, the bits of its significand.
 export covering
-showDouble : Runtime.PortTy Runtime.Memory.Addr
+showDouble : Runtime.PortTy
              (Types.StringRoutine.port Types.StringRoutine.ShowDouble)
 showDouble x =
   let w = Primitive.DoubleBits.doubleBits x
@@ -634,7 +635,7 @@ showDouble x =
 ||| How many of the system's bytes a string's text takes: its own bytes,
 ||| which are UTF-8, as the system's text is.
 export
-textBytes : Runtime.PortTy Runtime.Memory.Addr
+textBytes : Runtime.PortTy
             (Types.StringRoutine.port Types.StringRoutine.TextBytes)
 textBytes str = do
   s <- stringObject str
@@ -645,7 +646,7 @@ textBytes str = do
 ||| Where a string's own bytes are, which are the system's text: valid
 ||| until the next collection, which no runtime primitive makes.
 export
-textAddress : Runtime.PortTy Runtime.Memory.Addr
+textAddress : Runtime.PortTy
               (Types.StringRoutine.port Types.StringRoutine.TextAddress)
 textAddress str = do
   s <- stringObject str
@@ -654,7 +655,7 @@ textAddress str = do
 %cg native flat Support.String.Utf8.copyText
 ||| A string's bytes copied to the address.
 export covering
-copyText : Runtime.PortTy Runtime.Memory.Addr
+copyText : Runtime.PortTy
            (Types.StringRoutine.port Types.StringRoutine.CopyText)
 copyText str to = do
   s <- stringObject str
@@ -676,7 +677,7 @@ record Decoded where
 ||| A byte-order mark at the start is a character like any other, kept,
 ||| where `utf8->string` drops it.
 export covering
-ofText : Runtime.PortTy Runtime.Memory.Addr (Types.StringRoutine.port Types.StringRoutine.OfText)
+ofText : Runtime.PortTy (Types.StringRoutine.port Types.StringRoutine.OfText)
 ofText p len = do
   s <- newString len
   seen <- copy s 0 0
@@ -795,7 +796,7 @@ record Scan where
 ||| by, reads 32 bits, and leading spaces and trailing text. Neither is
 ||| read here: an exponent, a space or any other character is no integer.
 export covering
-readWord : Runtime.PortTy Runtime.Memory.Addr
+readWord : Runtime.PortTy
            (Types.StringRoutine.port Types.StringRoutine.ReadWord)
 readWord u = do
   s <- stringObject u
@@ -845,7 +846,7 @@ readWord u = do
 ||| 19 raised by one round to two doubles, where it is decided exactly
 ||| (`Between.between`).
 export covering
-readDouble : Runtime.PortTy Runtime.Memory.Addr
+readDouble : Runtime.PortTy
              (Types.StringRoutine.port Types.StringRoutine.ReadDouble)
 readDouble u = do
   s <- stringObject u

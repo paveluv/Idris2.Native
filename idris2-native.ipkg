@@ -13,6 +13,7 @@ sourcedir = "src"
 -- with the code generator's own modules.
 modules =
     Native.Area,
+    Native.Carrier,
     Native.Codegen.Bytes,
     Native.Codegen.ELF,
     Native.Codegen.Evaluate,

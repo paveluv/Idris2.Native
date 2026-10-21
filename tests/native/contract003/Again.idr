@@ -10,7 +10,7 @@ import Native.Runtime.Ordo
 import Native.Runtime.PortTy
 import Native.Service
 
-%extern service__again : PortTy.ExternTy (Service.port Service.Exit)
+%extern service__again : PortTy (Service.port Service.Exit)
 
 main : IO ()
 main = putStrLn "not reached"

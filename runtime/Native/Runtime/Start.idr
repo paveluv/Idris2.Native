@@ -12,8 +12,7 @@ import Native.Runtime.OS
 import Native.Runtime.PortTy
 import Native.Runtime.State
 
-import Native.HeapObj.Shape
-import Native.Port
+import Native.Carrier
 import Native.Routine
 
 %hide Prelude.Interfaces.(>>=)
@@ -31,7 +30,7 @@ import Native.Routine
 ||| system's guard gap faults; and the stack pointer at entry, `entry`, kept
 ||| for the program's arguments.
 export covering
-start : PortTy Memory.Addr (Routine.port Routine.Start)
+start : PortTy (Routine.port Routine.Start)
 start entry window = do
   (fb, fs) <- reserveSpace 35184372088832
   (tb, ts) <- reserveSpace 35184372088832
@@ -56,7 +55,8 @@ start entry window = do
   limit <- Memory.stackLimitArea
   Memory.storeAt limit 0
     (ByteAddr.toWord
-      (ByteAddr.offset (ByteAddr.before entry (if soft > stackCap then stackCap else soft)) stackMargin))
+      (ByteAddr.offset (ByteAddr.before entry (if soft > stackCap then stackCap else soft))
+        stackMargin))
   argv <- Memory.argvArea
   Memory.storeAt argv 0 (ByteAddr.toWord entry)
   where

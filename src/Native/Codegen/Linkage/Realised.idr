@@ -3,7 +3,7 @@
 ||| the code generator.
 |||
 ||| An inline extern is found by its type alone: the runtime declares each
-||| as `ExternTy (port c)` for its intrinsic `c` (`Native.Intrinsic`), which
+||| as `PortTy (port c)` for its intrinsic `c` (`Native.Intrinsic`), which
 ||| Idris checks, and which the loaded context keeps as written. The
 ||| constructor `c` there is matched to the code generator's own by the
 ||| contract's list of every intrinsic: the list's term in the context and
@@ -11,12 +11,12 @@
 ||| pair up whatever the order. Each intrinsic must have exactly one extern.
 |||
 ||| The OS services are found the same way, by their enumeration
-||| (`Native.Service`): each extern, `ExternTy (port c)`, and the function of
-||| the platform's module that implements it, `PortTy addr (port c)`, paired
-||| by their constructor.
+||| (`Native.Service`): each extern, `PortTy (port c)`, and the function of
+||| the platform's module that implements it, of the same type, paired by
+||| their constructor.
 |||
 ||| The routines are found the same way (`Native.Routine`), each a function
-||| `PortTy addr (port c)` of the runtime, and the string routines
+||| `PortTy (port c)` of the runtime, and the string routines
 ||| (`Native.Types.StringRoutine`) in the string encoding's module. The
 ||| string routines the runtime's own code calls each have an extern, as a
 ||| service does, paired with the encoding's function by their constructor.
@@ -91,8 +91,8 @@ in' : Namespace -> String -> Name
 in' ns n = NS ns (UN (Basic n))
 
 ||| The definitions the context keeps whose type is the port of a
-||| constructor of a contract's enumeration, `f (port c)` or `f addr (port
-||| c)` for a head `f` of `heads`, or its signature, `f (signature c)`,
+||| constructor of a contract's enumeration, `f (port c)` for a head `f` of
+||| `heads`, or its signature, `f (signature c)`,
 ||| each with its constructor's name and the code generator's own
 ||| constructor; exactly one of each if `required`, else at most one, or
 ||| which have none or more. The constructors are the enumeration's list's
@@ -222,16 +222,16 @@ realise platform enc = do
   Just platformNs <- pure (OSService.platformModule platform)
     | Nothing => pure (Left ("the platform " ++ show platform ++ " has no OS services"))
   Right intrinsics <- entries True "Native.Intrinsic" "allIntrinsics" Intrinsic.allIntrinsics
-    [externTy] isExtern
+    [portTy] isExtern
     | Left e => pure (Left ("the runtime's inline externs: " ++ e))
-  Right serviceExterns <- entries True "Native.Service" "allServices" Service.allServices [externTy]
+  Right serviceExterns <- entries True "Native.Service" "allServices" Service.allServices [portTy]
     isExtern
     | Left e => pure (Left ("the runtime's OS services: " ++ e))
   Right serviceFunctions <- entries True "Native.Service" "allServices" Service.allServices [portTy]
     (inModule platformNs)
     | Left e => pure (Left ("the platform's OS services: " ++ e))
   Right textExterns <- entries False "Native.Types.StringRoutine" "allStringRoutines"
-    Types.StringRoutine.allStringRoutines [externTy] isExtern
+    Types.StringRoutine.allStringRoutines [portTy] isExtern
     | Left e => pure (Left ("the runtime's externs of the string encoding: " ++ e))
   Right prims <- primitives
     | Left e => pure (Left ("the backend's primitives: " ++ e))
@@ -250,8 +250,7 @@ realise platform enc = do
        (fromList (pairs prims))
                            (fromList (mapMaybe (\(n, r) => (n,) <$> r) ts))))
   where
-    externTy, portTy : Name
-    externTy = in' (RuntimeModule.runtimeModule "PortTy") "ExternTy"
+    portTy : Name
     portTy = in' (RuntimeModule.runtimeModule "PortTy") "PortTy"
 
     isExtern : Name -> GlobalDef -> Bool

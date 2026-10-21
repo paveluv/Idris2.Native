@@ -23,7 +23,10 @@
 ||| from the compiler, so that the runtime and any program may import it.
 module Native.Primitive
 
-import Native.Port
+-- lint: allow public-import: a `FunctionTy` reduces through the machine
+-- types' Idris types (`Mach.type`), which every module that writes one in
+-- a signature needs
+import public Native.Mach
 
 import Data.List.Elem
 
@@ -38,43 +41,36 @@ data Primitive
     ||| bits.
     DoubleBits | BitsDouble
 
-||| A primitive's arrow: what its arguments carry, and what its results do,
-||| in order.
+||| A primitive's arrow: the machine types of its arguments, and of its
+||| results, in order.
 public export
 record Signature where
   constructor MkSignature
-  takes : List Port.Carrier
-  gives : List Port.Carrier
+  takes : List Mach
+  gives : List Mach
 
 ||| Each primitive's signature.
 public export
 signature : Primitive -> Signature
-signature Mul128 = MkSignature [Port.Word, Port.Word] [Port.Word, Port.Word]
-signature DoubleBits = MkSignature [Port.Dbl] [Port.Word]
-signature BitsDouble = MkSignature [Port.Word] [Port.Dbl]
+signature Mul128 = MkSignature [Mach.U64, Mach.U64] [Mach.U64, Mach.U64]
+signature DoubleBits = MkSignature [Mach.F64] [Mach.U64]
+signature BitsDouble = MkSignature [Mach.U64] [Mach.F64]
 
 ||| The Idris type of a primitive of the signature: a function of its
-||| arguments, of its results as a tuple, or of its one result. A word is a
-||| `Bits64`, a signed word an `Int`, a double a `Double`; a primitive
-||| carries nothing else, so one that would is not inhabited.
+||| arguments, of its results as a tuple, or of its one result, each the
+||| Idris type of its machine type.
 public export
 FunctionTy : Signature -> Type
 FunctionTy sig = arrows sig.takes
   where
-    carried : Port.Carrier -> Type
-    carried Port.Word = Bits64
-    carried Port.Signed = Int
-    carried Port.Dbl = Double
-    carried _ = Void
-
-    results : List Port.Carrier -> Type
+    results : List Mach -> Type
     results [] = ()
-    results [c] = carried c
-    results (c :: cs) = (carried c, results cs)
+    results [m] = Mach.type m
+    results (m :: ms) = (Mach.type m, results ms)
 
-    arrows : List Port.Carrier -> Type
+    arrows : List Mach -> Type
     arrows [] = results sig.gives
-    arrows (c :: cs) = carried c -> arrows cs
+    arrows (m :: ms) = Mach.type m -> arrows ms
 
 ||| Every primitive, once, which the code generator pairs with its own copy,
 ||| element by element.

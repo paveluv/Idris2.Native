@@ -3,11 +3,13 @@
 |||
 ||| Four types describe one register, each from its own side. `Rep` says
 ||| what the code generator may do with it: its class, whether the collector
-||| scans it, which operations apply. The contract's carrier (`Port.Carrier`)
-||| says what Idris type crosses the boundary in it, and the IR's type
-||| (`IRCommon.Ty`) what the IR knows of it under the program's encodings;
-||| each says what it is in `Rep`'s terms, and a table from one to another is
-||| a composition through `Rep`, never a table of its own.
+||| scans it, which operations apply. The machine type (`Native.Mach`) says
+||| which Idris primitive it holds, the contract's carrier
+||| (`Native.Carrier`) what Idris type crosses the boundary in it, and the
+||| IR's type (`IRCommon.Ty`) what the IR knows of it under the program's
+||| encodings; each says what it is in `Rep`'s terms (its `rep`), and a table
+||| from one to another is a composition through `Rep`, never a table of its
+||| own.
 |||
 ||| A case of `Rep` exists exactly when the IR gives that kind of register a
 ||| set of operations of its own. So the integers are one case, `Word`: the

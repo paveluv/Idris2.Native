@@ -10,9 +10,6 @@
 # * `start` is defined with a third argument, which its port does not have;
 # * `crash` is declared by `allocSlow`'s port: its body uses its first
 #   argument as a message's byte address, where that port gives a count;
-# * `allocSlow` gives the byte address it grew rather than the object there:
-#   refused, the port giving an object's address, where a check of the
-#   registers alone would let it through, both being one word;
 # * the platform's `reserve` is declared by `commit`'s port: its body, which
 #   gives an address, does not fit that port, which gives a word.
 # The copy is made under build/, which the linter and git leave alone, so
@@ -29,8 +26,7 @@ fault() {
 }
 fault "start of three words" Start.idr -e 's/^start entry window = do/start entry window _ = do/'
 fault "crash by allocSlow's port" System.idr \
-  -e 's/^crash : PortTy Memory.Addr (Routine.port Routine.Crash)$/crash : PortTy Memory.Addr (Routine.port Routine.AllocSlow)/'
-fault "allocSlow giving its byte address" Space.idr -e 's/^  Ordo.pure (Memory.objectAt a)$/  Ordo.pure a/'
+  -e 's/^crash : PortTy (Routine.port Routine.Crash)$/crash : PortTy (Routine.port Routine.AllocSlow)/'
 fault "reserve by commit's port" OS/LinuxX86_64.idr \
-  -e 's/^reserve : PortTy Memory.Addr (Service.port Service.Reserve)$/reserve : PortTy Memory.Addr (Service.port Service.Commit)/'
+  -e 's/^reserve : PortTy (Service.port Service.Reserve)$/reserve : PortTy (Service.port Service.Commit)/'
 rm -rf build/broken

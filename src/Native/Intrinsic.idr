@@ -3,7 +3,7 @@
 |||
 ||| This module is the contract for them, and the only place it is stated:
 ||| which intrinsics there are, and each one's arrow (`port`). The runtime
-||| declares each extern by its port (`%extern intrinsic__store64 : ExternTy
+||| declares each extern by its port (`%extern intrinsic__store64 : PortTy
 ||| (port Store64)` in `Native.Runtime.Memory`), which Idris checks; the code
 ||| generator finds each extern by that type alone, and lowers it as
 ||| `Native.Codegen.Linkage.Expansion` says, which Idris checks against the
@@ -19,6 +19,8 @@
 ||| heap-object model (`HeapObj.Shape` says what it is).
 module Native.Intrinsic
 
+import Native.Carrier
+import Native.Mach
 import Native.Port
 
 import Data.List.Elem
@@ -53,33 +55,35 @@ data Intrinsic
 ||| Each intrinsic's arrow: what its arguments and its result carry.
 public export
 port : Intrinsic -> Port
-port Load64 = MkPort [Port.ByteAddr, Port.Word] (Just Port.Word)
-port Load32 = MkPort [Port.ByteAddr, Port.Word] (Just Port.Word)
-port Load16 = MkPort [Port.ByteAddr, Port.Word] (Just Port.Word)
-port Load8 = MkPort [Port.ByteAddr, Port.Word] (Just Port.Word)
-port Store64 = MkPort [Port.ByteAddr, Port.Word, Port.Word] Nothing
-port Store32 = MkPort [Port.ByteAddr, Port.Word, Port.Word] Nothing
-port Store16 = MkPort [Port.ByteAddr, Port.Word, Port.Word] Nothing
-port Store8 = MkPort [Port.ByteAddr, Port.Word, Port.Word] Nothing
-port GetHp = MkPort [] (Just Port.ByteAddr)
-port SetHp = MkPort [Port.ByteAddr] Nothing
-port GetHpLim = MkPort [] (Just Port.ByteAddr)
-port SetHpLim = MkPort [Port.ByteAddr] Nothing
-port GetK = MkPort [] (Just Port.Word)
-port SetK = MkPort [Port.Word] Nothing
-port PointerTag = MkPort [] (Just Port.Word)
-port StackLimitArea = MkPort [] (Just Port.ByteAddr)
-port ArgvArea = MkPort [] (Just Port.ByteAddr)
-port RootsArea = MkPort [] (Just Port.ByteAddr)
-port NrootsArea = MkPort [] (Just Port.ByteAddr)
-port RuntimeArea = MkPort [] (Just Port.ByteAddr)
-port ConstantsArea = MkPort [] (Just Port.ByteAddr)
-port ConstantCount = MkPort [] (Just Port.Word)
-port ValueWord = MkPort [Port.Value] (Just Port.Word)
-port WordValue = MkPort [Port.Word] (Just Port.Value)
+port Load64 = MkPort [Carrier.ByteAddr, Carrier.Machine Mach.U64] (Just (Carrier.Machine Mach.U64))
+port Load32 = MkPort [Carrier.ByteAddr, Carrier.Machine Mach.U64] (Just (Carrier.Machine Mach.U64))
+port Load16 = MkPort [Carrier.ByteAddr, Carrier.Machine Mach.U64] (Just (Carrier.Machine Mach.U64))
+port Load8 = MkPort [Carrier.ByteAddr, Carrier.Machine Mach.U64] (Just (Carrier.Machine Mach.U64))
+port Store64 = MkPort [Carrier.ByteAddr, Carrier.Machine Mach.U64, Carrier.Machine Mach.U64] Nothing
+port Store32 = MkPort [Carrier.ByteAddr, Carrier.Machine Mach.U64, Carrier.Machine Mach.U64] Nothing
+port Store16 = MkPort [Carrier.ByteAddr, Carrier.Machine Mach.U64, Carrier.Machine Mach.U64] Nothing
+port Store8 = MkPort [Carrier.ByteAddr, Carrier.Machine Mach.U64, Carrier.Machine Mach.U64] Nothing
+port GetHp = MkPort [] (Just Carrier.ByteAddr)
+port SetHp = MkPort [Carrier.ByteAddr] Nothing
+port GetHpLim = MkPort [] (Just Carrier.ByteAddr)
+port SetHpLim = MkPort [Carrier.ByteAddr] Nothing
+port GetK = MkPort [] (Just (Carrier.Machine Mach.U64))
+port SetK = MkPort [Carrier.Machine Mach.U64] Nothing
+port PointerTag = MkPort [] (Just (Carrier.Machine Mach.U64))
+port StackLimitArea = MkPort [] (Just Carrier.ByteAddr)
+port ArgvArea = MkPort [] (Just Carrier.ByteAddr)
+port RootsArea = MkPort [] (Just Carrier.ByteAddr)
+port NrootsArea = MkPort [] (Just Carrier.ByteAddr)
+port RuntimeArea = MkPort [] (Just Carrier.ByteAddr)
+port ConstantsArea = MkPort [] (Just Carrier.ByteAddr)
+port ConstantCount = MkPort [] (Just (Carrier.Machine Mach.U64))
+port ValueWord = MkPort [Carrier.Value] (Just (Carrier.Machine Mach.U64))
+port WordValue = MkPort [Carrier.Machine Mach.U64] (Just Carrier.Value)
 port Syscall6 =
-  MkPort [Port.Word, Port.Word, Port.Word, Port.Word, Port.Word, Port.Word, Port.Word]
-    (Just Port.Word)
+  MkPort [Carrier.Machine Mach.U64,
+    Carrier.Machine Mach.U64, Carrier.Machine Mach.U64, Carrier.Machine Mach.U64,
+          Carrier.Machine Mach.U64, Carrier.Machine Mach.U64, Carrier.Machine Mach.U64]
+    (Just (Carrier.Machine Mach.U64))
 
 ||| Every intrinsic, once. The code generator pairs this list's term, as the
 ||| loaded runtime's context holds it, with its own copy, element by element:

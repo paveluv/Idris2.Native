@@ -189,14 +189,14 @@ grow bytes = do
 %cg native flat Runtime.Space.allocSlow
 ||| `idris_alloc_slow`: the window is out; a collection first if the
 ||| from-space has grown past twice the live data, and a few windows at
-||| least, then room for the object.
+||| least, then room for the object: its byte address, as no object is
+||| there until generated code writes it.
 export covering
-allocSlow : PortTy Memory.Addr (Routine.port Routine.AllocSlow)
+allocSlow : PortTy (Routine.port Routine.AllocSlow)
 allocSlow bytes = do
   due <- collectionDue bytes
   if due then Collect.collect else Ordo.pure ()
-  a <- grow bytes
-  Ordo.pure (Memory.objectAt a)
+  grow bytes
 
 ||| Room for `bytes` for the runtime's own objects, which the primitives
 ||| make: never a collection, since the primitives' callers hold values a
@@ -226,14 +226,14 @@ allocate bytes = do
 ||| allocated by a call so that a collector with a nursery can keep it out
 ||| of it; in this one space, the window's bump or the slow path.
 export covering
-allocMutable : PortTy Memory.Addr (Routine.port Routine.AllocMutable)
+allocMutable : PortTy (Routine.port Routine.AllocMutable)
 allocMutable bytes = do
   hp <- Memory.allocationPointer
   lim <- Memory.allocationLimit
   if ByteAddr.offset hp bytes <= lim
      then do
        Memory.setAllocation (ByteAddr.offset hp bytes) lim
-       Ordo.pure (Memory.objectAt hp)
+       Ordo.pure hp
      else allocSlow bytes
 
 -- What a program may set and read of the heap, each a flat function that

@@ -29,8 +29,10 @@ import Native.Codegen.Linkage.Sym
 import Core.Name
 import Core.Name.Namespace
 import Data.List
+import Native.Carrier
 import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.Port
+import Native.Rep
 import Native.Routine
 import Native.Types.Enc as Types
 import Native.Types.IntegerRoutine as Types
@@ -58,19 +60,11 @@ record RoutineCall (enc : Types.Enc) where
   results : List (IRCommon.Ty enc)
   params : List (IRCommon.Ty enc)
 
-||| The register a carrier of the contract is in: a word, a signed word or
-||| an object's address in a word, a double in a double's, a byte address in
-||| a byte address's, a value as ordinary code holds it in a uniform
-||| register.
+||| The register a carrier of the contract is in: the plain type of the
+||| carrier's rep.
 public export
-carrierTy : Port.Carrier -> IRCommon.Ty enc
-carrierTy Port.Word = IRCommon.Ty.W64
-carrierTy Port.Signed = IRCommon.Ty.W64
-carrierTy Port.Dbl = IRCommon.Ty.F64
-carrierTy Port.Address = IRCommon.Ty.W64
-carrierTy Port.ByteAddr = IRCommon.Ty.ByteAddr
-carrierTy (Port.ValueOf _) = IRCommon.Ty.Val
-carrierTy Port.Value = IRCommon.Ty.Val
+carrierTy : Carrier -> IRCommon.Ty enc
+carrierTy = IRCommon.Ty.plain . Carrier.rep
 
 ||| The registers of a call of a port's entry: its arguments', the token
 ||| taking none.

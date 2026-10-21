@@ -4,10 +4,10 @@
 ||| This module is the contract for them, and the only place it is stated:
 ||| which services there are, and each one's arrow (`port`). The runtime's
 ||| module of the services declares an extern for each by its port
-||| (`%extern service__write : ExternTy (port Write)` in
+||| (`%extern service__write : PortTy (port Write)` in
 ||| `Native.Runtime.OS`), through which the rest of the runtime calls it;
 ||| each platform's module implements every service by a function declared
-||| by the same port (`write : PortTy Memory.Addr (port Write)` in
+||| by the same port (`write : PortTy (port Write)` in
 ||| `Native.Runtime.OS.LinuxX86_64`). Idris checks both against the port;
 ||| for the platform a program is compiled for, the code generator finds
 ||| both by their types, and binds the extern to the function. A service
@@ -19,6 +19,8 @@
 ||| heap-object model (`HeapObj.Shape` says what it is).
 module Native.Service
 
+import Native.Carrier
+import Native.Mach
 import Native.Port
 
 import Data.List.Elem
@@ -95,27 +97,34 @@ data Service
 ||| Each service's arrow: what its arguments and its result carry.
 public export
 port : Service -> Port
-port Exit = MkPort [Port.Word] Nothing
-port Write = MkPort [Port.Word, Port.ByteAddr, Port.Word] (Just Port.Word)
-port Reserve = MkPort [Port.Word] (Just Port.ByteAddr)
-port Commit = MkPort [Port.ByteAddr, Port.Word] (Just Port.Word)
-port Release = MkPort [Port.ByteAddr, Port.Word] Nothing
-port StackLimit = MkPort [] (Just Port.Word)
-port PageBytes = MkPort [] (Just Port.Word)
+port Exit = MkPort [Carrier.Machine Mach.U64] Nothing
+port Write =
+  MkPort [Carrier.Machine Mach.U64, Carrier.ByteAddr, Carrier.Machine Mach.U64]
+    (Just (Carrier.Machine Mach.U64))
+port Reserve = MkPort [Carrier.Machine Mach.U64] (Just Carrier.ByteAddr)
+port Commit = MkPort [Carrier.ByteAddr, Carrier.Machine Mach.U64] (Just (Carrier.Machine Mach.U64))
+port Release = MkPort [Carrier.ByteAddr, Carrier.Machine Mach.U64] Nothing
+port StackLimit = MkPort [] (Just (Carrier.Machine Mach.U64))
+port PageBytes = MkPort [] (Just (Carrier.Machine Mach.U64))
 port PrepareTerminal = MkPort [] Nothing
-port TerminalColumns = MkPort [] (Just Port.Word)
-port TerminalLines = MkPort [] (Just Port.Word)
-port ChangeDirectory = MkPort [Port.ByteAddr] (Just Port.Word)
-port CurrentDirectory = MkPort [Port.ByteAddr, Port.Word] (Just Port.Word)
-port CreateDirectory = MkPort [Port.ByteAddr] (Just Port.Word)
-port RemoveDirectory = MkPort [Port.ByteAddr] (Just Port.Word)
-port Open = MkPort [Port.ByteAddr, Port.Word] (Just Port.Word)
-port Close = MkPort [Port.Word] (Just Port.Word)
-port Read = MkPort [Port.Word, Port.ByteAddr, Port.Word] (Just Port.Word)
-port FileSize = MkPort [Port.Word] (Just Port.Word)
-port IsTerminal = MkPort [Port.Word] (Just Port.Word)
-port RemoveFile = MkPort [Port.ByteAddr] (Just Port.Word)
-port ReadEntry = MkPort [Port.Word, Port.ByteAddr, Port.Word] (Just Port.Word)
+port TerminalColumns = MkPort [] (Just (Carrier.Machine Mach.U64))
+port TerminalLines = MkPort [] (Just (Carrier.Machine Mach.U64))
+port ChangeDirectory = MkPort [Carrier.ByteAddr] (Just (Carrier.Machine Mach.U64))
+port CurrentDirectory =
+  MkPort [Carrier.ByteAddr, Carrier.Machine Mach.U64] (Just (Carrier.Machine Mach.U64))
+port CreateDirectory = MkPort [Carrier.ByteAddr] (Just (Carrier.Machine Mach.U64))
+port RemoveDirectory = MkPort [Carrier.ByteAddr] (Just (Carrier.Machine Mach.U64))
+port Open = MkPort [Carrier.ByteAddr, Carrier.Machine Mach.U64] (Just (Carrier.Machine Mach.U64))
+port Close = MkPort [Carrier.Machine Mach.U64] (Just (Carrier.Machine Mach.U64))
+port Read =
+  MkPort [Carrier.Machine Mach.U64, Carrier.ByteAddr, Carrier.Machine Mach.U64]
+    (Just (Carrier.Machine Mach.U64))
+port FileSize = MkPort [Carrier.Machine Mach.U64] (Just (Carrier.Machine Mach.U64))
+port IsTerminal = MkPort [Carrier.Machine Mach.U64] (Just (Carrier.Machine Mach.U64))
+port RemoveFile = MkPort [Carrier.ByteAddr] (Just (Carrier.Machine Mach.U64))
+port ReadEntry =
+  MkPort [Carrier.Machine Mach.U64, Carrier.ByteAddr, Carrier.Machine Mach.U64]
+    (Just (Carrier.Machine Mach.U64))
 
 ||| Every service, once. The code generator pairs this list's term, as the
 ||| loaded runtime's context holds it, with its own copy, element by element.

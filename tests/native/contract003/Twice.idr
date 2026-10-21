@@ -11,7 +11,7 @@ import Native.Runtime.ByteAddr
 import Native.Runtime.Ordo
 import Native.Runtime.PortTy
 
-%extern intrinsic__again : PortTy.ExternTy (Intrinsic.port Intrinsic.Load64)
+%extern intrinsic__again : PortTy (Intrinsic.port Intrinsic.Load64)
 
 main : IO ()
 main = putStrLn "not reached"

@@ -11,10 +11,9 @@ module Native.Runtime.OS.LinuxX86_64
 
 import Native.Runtime.OS.Syscall
 
+import Native.Carrier
 import Native.Failure
-import Native.HeapObj.Shape
 import Native.OpenFlag
-import Native.Port
 import Native.Runtime.Alloc.Block as Alloc
 import Native.Runtime.Bits
 import Native.Runtime.ByteAddr
@@ -72,7 +71,7 @@ succeeded r =
 
 %cg native flat Runtime.OS.LinuxX86_64.exit
 export
-exit : PortTy Memory.Addr (Service.port Service.Exit)
+exit : PortTy (Service.port Service.Exit)
 exit status = do
   -- exit_group(status)
   _ <- Syscall.syscall 231 status 0 0 0 0 0
@@ -80,7 +79,7 @@ exit status = do
 
 %cg native flat Runtime.OS.LinuxX86_64.write
 export
-write : PortTy Memory.Addr (Service.port Service.Write)
+write : PortTy (Service.port Service.Write)
 write handle address bytes = do
   -- write(handle, address, bytes)
   r <- Syscall.syscall 1 handle (ByteAddr.toWord address) bytes 0 0 0
@@ -89,7 +88,7 @@ write handle address bytes = do
 
 %cg native flat Runtime.OS.LinuxX86_64.reserve
 export
-reserve : PortTy Memory.Addr (Service.port Service.Reserve)
+reserve : PortTy (Service.port Service.Reserve)
 reserve bytes = do
   -- mmap(NULL, bytes, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0):
   -- no overcommit setting counts a range that is not readable
@@ -100,7 +99,7 @@ reserve bytes = do
 
 %cg native flat Runtime.OS.LinuxX86_64.commit
 export
-commit : PortTy Memory.Addr (Service.port Service.Commit)
+commit : PortTy (Service.port Service.Commit)
 commit address bytes = do
   -- mprotect(address, bytes, PROT_READ | PROT_WRITE): the pages are zero when first touched
   r <- Syscall.syscall 10 (ByteAddr.toWord address) bytes 3 0 0 0
@@ -109,7 +108,7 @@ commit address bytes = do
 
 %cg native flat Runtime.OS.LinuxX86_64.release
 export
-release : PortTy Memory.Addr (Service.port Service.Release)
+release : PortTy (Service.port Service.Release)
 release address bytes = do
   -- madvise(address, bytes, MADV_DONTNEED), then mprotect(address, bytes, PROT_NONE)
   _ <- Syscall.syscall 28 (ByteAddr.toWord address) bytes 4 0 0 0
@@ -118,12 +117,12 @@ release address bytes = do
 
 %cg native flat Runtime.OS.LinuxX86_64.pageBytes
 export
-pageBytes : PortTy Memory.Addr (Service.port Service.PageBytes)
+pageBytes : PortTy (Service.port Service.PageBytes)
 pageBytes = Ordo.pure 4096
 
 %cg native flat Runtime.OS.LinuxX86_64.stackLimit
 export
-stackLimit : PortTy Memory.Addr (Service.port Service.StackLimit)
+stackLimit : PortTy (Service.port Service.StackLimit)
 stackLimit = do
   -- getrlimit(RLIMIT_STACK, buffer): the soft limit in the buffer's first word,
   -- left 0 if the call fails
@@ -134,7 +133,7 @@ stackLimit = do
 
 %cg native flat Runtime.OS.LinuxX86_64.prepareTerminal
 export
-prepareTerminal : PortTy Memory.Addr (Service.port Service.PrepareTerminal)
+prepareTerminal : PortTy (Service.port Service.PrepareTerminal)
 prepareTerminal = Ordo.pure () -- a Linux terminal takes escape sequences as it is
 
 ||| The first word of the size of the terminal the standard input is, or else
@@ -153,21 +152,21 @@ terminalSize = do
 
 %cg native flat Runtime.OS.LinuxX86_64.terminalColumns
 export
-terminalColumns : PortTy Memory.Addr (Service.port Service.TerminalColumns)
+terminalColumns : PortTy (Service.port Service.TerminalColumns)
 terminalColumns = do
   size <- terminalSize
   Ordo.pure (Bits.shiftR size 16 .&. 0xFFFF)
 
 %cg native flat Runtime.OS.LinuxX86_64.terminalLines
 export
-terminalLines : PortTy Memory.Addr (Service.port Service.TerminalLines)
+terminalLines : PortTy (Service.port Service.TerminalLines)
 terminalLines = do
   size <- terminalSize
   Ordo.pure (size .&. 0xFFFF)
 
 %cg native flat Runtime.OS.LinuxX86_64.changeDirectory
 export
-changeDirectory : PortTy Memory.Addr (Service.port Service.ChangeDirectory)
+changeDirectory : PortTy (Service.port Service.ChangeDirectory)
 changeDirectory path = do
   -- chdir(path)
   r <- Syscall.syscall 80 (ByteAddr.toWord path) 0 0 0 0 0
@@ -176,7 +175,7 @@ changeDirectory path = do
 
 %cg native flat Runtime.OS.LinuxX86_64.currentDirectory
 export
-currentDirectory : PortTy Memory.Addr (Service.port Service.CurrentDirectory)
+currentDirectory : PortTy (Service.port Service.CurrentDirectory)
 currentDirectory address bytes = do
   -- getcwd(address, bytes): the path's length with its zero byte
   r <- Syscall.syscall 79 (ByteAddr.toWord address) bytes 0 0 0 0
@@ -185,7 +184,7 @@ currentDirectory address bytes = do
 
 %cg native flat Runtime.OS.LinuxX86_64.createDirectory
 export
-createDirectory : PortTy Memory.Addr (Service.port Service.CreateDirectory)
+createDirectory : PortTy (Service.port Service.CreateDirectory)
 createDirectory path = do
   -- mkdir(path, 0777), which the process's umask narrows
   r <- Syscall.syscall 83 (ByteAddr.toWord path) 0x1FF 0 0 0 0
@@ -194,7 +193,7 @@ createDirectory path = do
 
 %cg native flat Runtime.OS.LinuxX86_64.removeDirectory
 export
-removeDirectory : PortTy Memory.Addr (Service.port Service.RemoveDirectory)
+removeDirectory : PortTy (Service.port Service.RemoveDirectory)
 removeDirectory path = do
   -- rmdir(path)
   r <- Syscall.syscall 84 (ByteAddr.toWord path) 0 0 0 0 0
@@ -203,7 +202,7 @@ removeDirectory path = do
 
 %cg native flat Runtime.OS.LinuxX86_64.openFile
 export
-openFile : PortTy Memory.Addr (Service.port Service.Open)
+openFile : PortTy (Service.port Service.Open)
 openFile path flags = do
   -- openat(AT_FDCWD, path, flags, 0666), which the process's umask narrows;
   -- closed in a program the process runs, whose files are its own
@@ -226,7 +225,7 @@ openFile path flags = do
 
 %cg native flat Runtime.OS.LinuxX86_64.close
 export
-close : PortTy Memory.Addr (Service.port Service.Close)
+close : PortTy (Service.port Service.Close)
 close handle = do
   -- close(handle)
   r <- Syscall.syscall 3 handle 0 0 0 0 0
@@ -235,7 +234,7 @@ close handle = do
 
 %cg native flat Runtime.OS.LinuxX86_64.read
 export
-read : PortTy Memory.Addr (Service.port Service.Read)
+read : PortTy (Service.port Service.Read)
 read handle address bytes = do
   -- read(handle, address, bytes)
   r <- Syscall.syscall 0 handle (ByteAddr.toWord address) bytes 0 0 0
@@ -244,7 +243,7 @@ read handle address bytes = do
 
 %cg native flat Runtime.OS.LinuxX86_64.fileSize
 export covering
-fileSize : PortTy Memory.Addr (Service.port Service.FileSize)
+fileSize : PortTy (Service.port Service.FileSize)
 fileSize handle =
   -- fstat(handle, buffer): struct stat, 144 bytes, its st_size the word at 48
   Alloc.Block.allocate 144
@@ -260,7 +259,7 @@ fileSize handle =
 
 %cg native flat Runtime.OS.LinuxX86_64.isTerminal
 export
-isTerminal : PortTy Memory.Addr (Service.port Service.IsTerminal)
+isTerminal : PortTy (Service.port Service.IsTerminal)
 isTerminal handle = do
   -- ioctl(handle, TIOCGWINSZ, buffer), which only a terminal answers; its
   -- struct winsize fits the state's scratch bytes
@@ -270,7 +269,7 @@ isTerminal handle = do
 
 %cg native flat Runtime.OS.LinuxX86_64.removeFile
 export
-removeFile : PortTy Memory.Addr (Service.port Service.RemoveFile)
+removeFile : PortTy (Service.port Service.RemoveFile)
 removeFile path = do
   -- unlink(path)
   r <- Syscall.syscall 87 (ByteAddr.toWord path) 0 0 0 0 0
@@ -279,7 +278,7 @@ removeFile path = do
 
 %cg native flat Runtime.OS.LinuxX86_64.readEntry
 export covering
-readEntry : PortTy Memory.Addr (Service.port Service.ReadEntry)
+readEntry : PortTy (Service.port Service.ReadEntry)
 readEntry handle address bytes =
   -- getdents64(handle, buffer, 280), room for one struct linux_dirent64 of
   -- the longest name, which the system fills with the entries that fit, the

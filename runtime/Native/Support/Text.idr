@@ -14,13 +14,11 @@ module Native.Support.Text
 
 import Native.Failure
 import Native.Flat.Uniform as Flat
-import Native.HeapObj.Shape as HeapObj
-import Native.Port
 import Native.Runtime.Alloc.Block as Runtime.Alloc
 import Native.Runtime.ByteAddr as Runtime
 import Native.Runtime.Memory
 import Native.Runtime.Ordo as Runtime
-import Native.Runtime.PortTy
+import Native.Runtime.PortTy as Runtime
 import Native.Runtime.State
 import Native.Types.StringRoutine
 
@@ -30,13 +28,13 @@ import Native.Types.StringRoutine
 
 %default total
 
-%extern string__textBytes : Runtime.PortTy.ExternTy
+%extern string__textBytes : Runtime.PortTy
                             (Types.StringRoutine.port Types.StringRoutine.TextBytes)
-%extern string__textAddress : Runtime.PortTy.ExternTy
+%extern string__textAddress : Runtime.PortTy
                               (Types.StringRoutine.port Types.StringRoutine.TextAddress)
-%extern string__copyText : Runtime.PortTy.ExternTy
+%extern string__copyText : Runtime.PortTy
                            (Types.StringRoutine.port Types.StringRoutine.CopyText)
-%extern string__ofText : Runtime.PortTy.ExternTy
+%extern string__ofText : Runtime.PortTy
                          (Types.StringRoutine.port Types.StringRoutine.OfText)
 
 ||| The bytes of a string's text as the system's.
@@ -101,7 +99,8 @@ withText s none use = do
 ||| library's callers find.
 export %inline covering
 withPath : Flat.Uniform String -> (none : Runtime.Ordo.Op Runtime.Ordo a) ->
-           (use : Runtime.ByteAddr -> Runtime.Ordo.Op Runtime.Ordo a) -> Runtime.Ordo.Op Runtime.Ordo a
+           (use : Runtime.ByteAddr -> Runtime.Ordo.Op Runtime.Ordo a) ->
+           Runtime.Ordo.Op Runtime.Ordo a
 withPath s none use = do
   n <- string__textBytes s
   Runtime.Alloc.Block.allocate (n + 1)

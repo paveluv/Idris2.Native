@@ -38,7 +38,7 @@ rep F64 = Rep.Dbl
 rep _ = Rep.Word
 
 ||| The Idris type the code is of.
-export
+public export
 type : Mach -> Type
 type I8 = Int8
 type I16 = Int16

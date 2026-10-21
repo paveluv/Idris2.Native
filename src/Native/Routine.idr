@@ -3,7 +3,7 @@
 ||| This module is the contract for them, and the only place it is stated:
 ||| which routines there are, and each one's arrow (`port`). The runtime
 ||| declares the function that is each routine by its port (`allocSlow :
-||| PortTy Memory.Addr (port AllocSlow)` in `Native.Runtime.Space`), which
+||| PortTy (port AllocSlow)` in `Native.Runtime.Space`), which
 ||| Idris checks where the function is defined; the code generator finds
 ||| each by that type alone, takes the registers of its calls from the port,
 ||| and compiles its flat form into the program.
@@ -12,6 +12,8 @@
 ||| heap-object model (`HeapObj.Shape` says what it is).
 module Native.Routine
 
+import Native.Carrier
+import Native.Mach
 import Native.Port
 
 import Data.List.Elem
@@ -25,10 +27,12 @@ data Routine
     ||| bytes; the program's start-up, before `main`.
     Start
   | ||| `idris_alloc_slow`: the bytes of an object the window has no room for;
-    ||| its space, after a collection if one is due.
+    ||| room for it, after a collection if one is due: a byte address, as
+    ||| the window's pointer is on the fast path, since no object is there
+    ||| yet.
     AllocSlow
   | ||| `idris_alloc_mutable`: the bytes of an object that will be written
-    ||| after it is made; its space.
+    ||| after it is made; room for it.
     AllocMutable
   | ||| `idris_crash`: a message's address and bytes, written to the standard
     ||| error before the process ends with status 1.
@@ -37,10 +41,10 @@ data Routine
 ||| Each routine's arrow: what its arguments and its result carry.
 public export
 port : Routine -> Port
-port Start = MkPort [Port.ByteAddr, Port.Word] Nothing
-port AllocSlow = MkPort [Port.Word] (Just Port.Address)
-port AllocMutable = MkPort [Port.Word] (Just Port.Address)
-port Crash = MkPort [Port.ByteAddr, Port.Word] Nothing
+port Start = MkPort [Carrier.ByteAddr, Carrier.Machine Mach.U64] Nothing
+port AllocSlow = MkPort [Carrier.Machine Mach.U64] (Just Carrier.ByteAddr)
+port AllocMutable = MkPort [Carrier.Machine Mach.U64] (Just Carrier.ByteAddr)
+port Crash = MkPort [Carrier.ByteAddr, Carrier.Machine Mach.U64] Nothing
 
 ||| Every routine, once. The code generator pairs this list's term, as the
 ||| loaded runtime's context holds it, with its own copy, element by element.

@@ -98,6 +98,7 @@ import Data.Zippable
 import Decidable.Equality
 import Decidable.Equality.Core
 import Native.Area
+import Native.Carrier
 import Native.Data.Builder as Data
 import Native.Data.Distinct
 import Native.Flat.ConstType

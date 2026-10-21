@@ -6,7 +6,7 @@ module Native.Runtime.Named
 
 %default total
 
-%extern intrinsic__load : ExternTy (Intrinsic.port Intrinsic.Load64)
-%extern service__exit : ExternTy (Service.port Service.Exit)
-%extern prim__store : ExternTy (Intrinsic.port Intrinsic.Store64)
-%extern service__peek : ExternTy (Intrinsic.port Intrinsic.Load8)
+%extern intrinsic__load : PortTy (Intrinsic.port Intrinsic.Load64)
+%extern service__exit : PortTy (Service.port Service.Exit)
+%extern prim__store : PortTy (Intrinsic.port Intrinsic.Store64)
+%extern service__peek : PortTy (Intrinsic.port Intrinsic.Load8)

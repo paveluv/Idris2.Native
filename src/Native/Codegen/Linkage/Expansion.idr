@@ -9,8 +9,10 @@
 module Native.Codegen.Linkage.Expansion
 
 import Native.Area
+import Native.Carrier
 import Native.Codegen.IRCommon.Pinned as IRCommon
 import Native.Intrinsic
+import Native.Mach
 import Native.Port
 import Native.Width
 
@@ -19,38 +21,44 @@ import Native.Width
 ||| What a pinned register carries across the boundary: the window's
 ||| registers are byte addresses, the continuation its pointer word.
 public export
-pinnedCarrier : IRCommon.Pinned -> Port.Carrier
-pinnedCarrier IRCommon.Pinned.Hp = Port.ByteAddr
-pinnedCarrier IRCommon.Pinned.HpLim = Port.ByteAddr
-pinnedCarrier IRCommon.Pinned.K = Port.Word
+pinnedCarrier : IRCommon.Pinned -> Carrier
+pinnedCarrier IRCommon.Pinned.Hp = Carrier.ByteAddr
+pinnedCarrier IRCommon.Pinned.HpLim = Carrier.ByteAddr
+pinnedCarrier IRCommon.Pinned.K = (Carrier.Machine Mach.U64)
 
 ||| The instructions an inline extern expands to, by the port they
 ||| implement: what they take and give is the port's.
 public export
 data Expansion : Port -> Type where
   ||| Load the width at a base address plus an offset, extended with zeros.
-  Load : Width -> Expansion (MkPort [Port.ByteAddr, Port.Word] (Just Port.Word))
+  Load : Width ->
+         Expansion
+         (MkPort [Carrier.ByteAddr, Carrier.Machine Mach.U64] (Just (Carrier.Machine Mach.U64)))
   ||| Store the width of a word at a base address plus an offset.
-  Store : Width -> Expansion (MkPort [Port.ByteAddr, Port.Word, Port.Word] Nothing)
+  Store : Width ->
+          Expansion
+          (MkPort [Carrier.ByteAddr, Carrier.Machine Mach.U64, Carrier.Machine Mach.U64] Nothing)
   ||| Read a pinned register, as what it carries.
   Get : (r : IRCommon.Pinned) -> Expansion (MkPort [] (Just (pinnedCarrier r)))
   ||| Set a pinned register.
   Set : (r : IRCommon.Pinned) -> Expansion (MkPort [pinnedCarrier r] Nothing)
   ||| The pointer tag of the program's encoding: what a pointer word is
   ||| beyond the object's address.
-  PointerTag : Expansion (MkPort [] (Just Port.Word))
+  PointerTag : Expansion (MkPort [] (Just (Carrier.Machine Mach.U64)))
   ||| The address of an area.
-  AreaAddress : Area -> Expansion (MkPort [] (Just Port.ByteAddr))
+  AreaAddress : Area -> Expansion (MkPort [] (Just Carrier.ByteAddr))
   ||| The number of the program's top-level constants.
-  ConstantCount : Expansion (MkPort [] (Just Port.Word))
+  ConstantCount : Expansion (MkPort [] (Just (Carrier.Machine Mach.U64)))
   ||| The word a uniform value is.
-  ValueWord : Expansion (MkPort [Port.Value] (Just Port.Word))
+  ValueWord : Expansion (MkPort [Carrier.Value] (Just (Carrier.Machine Mach.U64)))
   ||| The uniform value a word is.
-  WordValue : Expansion (MkPort [Port.Word] (Just Port.Value))
+  WordValue : Expansion (MkPort [Carrier.Machine Mach.U64] (Just Carrier.Value))
   ||| The machine's system call, of six arguments.
   Syscall : Expansion
-            (MkPort [Port.Word, Port.Word, Port.Word, Port.Word, Port.Word, Port.Word, Port.Word]
-                             (Just Port.Word))
+            (MkPort [Carrier.Machine Mach.U64,
+              Carrier.Machine Mach.U64, Carrier.Machine Mach.U64, Carrier.Machine Mach.U64,
+                     Carrier.Machine Mach.U64, Carrier.Machine Mach.U64, Carrier.Machine Mach.U64]
+                             (Just (Carrier.Machine Mach.U64)))
 
 ||| Each intrinsic's expansion, of its port.
 export
