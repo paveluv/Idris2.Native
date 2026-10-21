@@ -1,0 +1,8 @@
+. ../../testutils.sh
+
+# Each carrier of the contract is laid out as its rep says: the judgement of
+# the Idris type the runtime gives every carrier, against the carrier's rep.
+# It uses the code generator's modules and the runtime's, installed as the
+# packages `idris2-native` and `idris2-native-runtime`.
+idris2 -p idris2 -p idris2-native -p idris2-native-runtime Carriers.idr -o carriers > /dev/null
+./build/exec/carriers
