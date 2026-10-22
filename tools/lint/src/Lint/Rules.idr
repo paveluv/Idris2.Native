@@ -6,6 +6,7 @@ module Lint.Rules
 
 import Lint.Finding
 import Lint.Source
+import Lint.SplitClause
 
 import Core.Context.Context
 import Core.Core
@@ -621,8 +622,18 @@ fileRules f ms ds =
   importOrder f ++ publicImport f ++ defaultTotality f ++ elabReflection f ms
   ++ trustEscape f ms ++ casts f ms ++ citesPlan f ++ todo f ++ headerComment f
   ++ implementationAdjacent f ds ++ moduleType f ds
-  ++ recordConstructor f ds ++ externName f ds ms ++ ofName f
+  ++ recordConstructor f ds ++ externName f ds ms ++ ofName f ++ splitClause f
   where
+    ||| `split-clause`: a clause broken after its `=` whose right side is
+    ||| one line, and fits after it, is written on one line. It was broken
+    ||| when it did not fit, and breaking a line that is too wide never
+    ||| joins one that came to fit; `format` joins it.
+    splitClause : Source.SourceFile -> List Finding
+    splitClause f =
+      [ finding f "split-clause" c.clause ""
+          "a clause broken after its `=` fits on one line: join it (`format`)"
+      | c <- SplitClause.splitClauses 100 f ]
+
     ||| `of-name`: no function is named with `Of` after what it gives
     ||| (`shapeOf`). A function is named for what it gives, and the module it
     ||| is written qualified by says whose: `Kind.shape k`, not
@@ -839,4 +850,4 @@ ruleNames =
   [ "import-order", "public-import", "default-totality", "elab-reflection"
   , "trust-escape", "cast", "cites-plan", "todo", "header-comment", "implementation-adjacent"
   , "layering", "syscall", "import-alias", "self-qualified", "record-constructor", "module-type",
-    "extern-name", "of-name" ]
+    "extern-name", "of-name", "split-clause" ]

@@ -155,5 +155,4 @@ record Target where
 ||| stack pointer.
 export
 reserved : Target -> List TargetReg
-reserved t =
-  [t.hp, t.hplim, t.stackPointer] ++ (if t.lowering == HeapLowering then [t.k] else [])
+reserved t = [t.hp, t.hplim, t.stackPointer] ++ (if t.lowering == HeapLowering then [t.k] else [])

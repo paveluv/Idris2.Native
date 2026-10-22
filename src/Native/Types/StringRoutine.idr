@@ -93,17 +93,12 @@ port : StringRoutine -> Port
 port Length = Carrier.ValueOf String ~> Mach.U64
 port Head = Carrier.ValueOf String ~> Mach.U64
 port Tail = Carrier.ValueOf String ~> Carrier.ValueOf String
-port Index =
-  Carrier.ValueOf String ~> Mach.U64 ~> Mach.U64
-port Cons =
-  Mach.U64 ~> Carrier.ValueOf String ~> Carrier.ValueOf String
-port Append =
-  Carrier.ValueOf String ~> Carrier.ValueOf String ~> Carrier.ValueOf String
+port Index = Carrier.ValueOf String ~> Mach.U64 ~> Mach.U64
+port Cons = Mach.U64 ~> Carrier.ValueOf String ~> Carrier.ValueOf String
+port Append = Carrier.ValueOf String ~> Carrier.ValueOf String ~> Carrier.ValueOf String
 port Reverse = Carrier.ValueOf String ~> Carrier.ValueOf String
-port Substr =
-  Mach.IWord ~> Mach.IWord ~> Carrier.ValueOf String ~> Carrier.ValueOf String
-port Compare =
-  Carrier.ValueOf String ~> Carrier.ValueOf String ~> Mach.IWord
+port Substr = Mach.IWord ~> Mach.IWord ~> Carrier.ValueOf String ~> Carrier.ValueOf String
+port Compare = Carrier.ValueOf String ~> Carrier.ValueOf String ~> Mach.IWord
 port ShowSigned = Mach.IWord ~> Carrier.ValueOf String
 port ShowUnsigned = Mach.U64 ~> Carrier.ValueOf String
 port ShowDouble = Mach.F64 ~> Carrier.ValueOf String

@@ -3,7 +3,9 @@
 ||| that starts inside a bracket the signature opened before, one past the
 ||| bracket; one that starts with the closing bracket, at the bracket. The
 ||| line breaks are kept, and a line wider than the width is broken as the
-||| signature's own lines are: at its type's column, not two past it.
+||| signature's own lines are: at its type's column, not two past it. A
+||| clause broken after its `=` whose right side fits after it is joined;
+||| one whose right side would not fit, and one with a comment, are left.
 module Layout
 
 %default total
@@ -43,3 +45,21 @@ export
 spread : (a : Nat) -> (b : Nat) ->
          (c : Nat) -> (d : Nat) -> (e : Nat) -> (f : Nat) -> Nat
 spread a b c d e f = a + b + c + d + e + f
+
+||| Broken after the `=`, where the right side fits: joined.
+export
+twice : Nat -> Nat
+twice n =
+  n + n
+
+||| Broken after the `=`, where the right side would not fit: left.
+export
+many : Nat -> Nat
+many n =
+  n + n + n + n + n + n + n + n + n + n + n + n + n + n
+
+||| A comment after the `=`, which joining would move: left.
+export
+same : Nat -> Nat
+same n = -- the number, unchanged
+  n

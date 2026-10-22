@@ -21,8 +21,7 @@ binderGroups t = go Z [] [] (unpack t)
     -- depth, the group so far (backwards), the groups so far (backwards)
     go : Nat -> List Char -> List (String, String) -> List Char -> List (String, String)
     go _ _ done [] = reverse done
-    go Z _ done (c :: cs) =
-      if c == '{' || c == '(' then go 1 [c] done cs else go Z [] done cs
+    go Z _ done (c :: cs) = if c == '{' || c == '(' then go 1 [c] done cs else go Z [] done cs
     go (S d) cur done (c :: cs) =
       let cur' = c :: cur in
       if c == '{' || c == '(' then go (S (S d)) cur' done cs

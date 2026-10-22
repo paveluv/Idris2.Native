@@ -37,4 +37,5 @@
 ./Self.idr:18:9 self-qualified: `Self.Colour` is this module's own: write `Colour`
 ./Self.idr:23:8 self-qualified: `Self.base` is this module's own: write `base`
 ./Spare/One/Unsorted.idr:4:1 import-order: `Spare.One.Piece` comes here: the public imports first, then the module's own group's, then the others, each alphabetical
+./Split.idr:10:1 split-clause: a clause broken after its `=` fits on one line: join it (`format`)
 ./Unordered.idr:5:1 import-order: `Data.List` comes here: the public imports first, then the module's own group's, then the others, each alphabetical

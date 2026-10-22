@@ -58,5 +58,4 @@ codegenFlatOracle primitives = MkCG compileExpr executeExpr Nothing Nothing
           else pure Nothing
 
     executeExpr : Ref Ctxt Defs -> Ref Syn SyntaxInfo -> (tmpDir : String) -> ClosedTerm -> Core ()
-    executeExpr c s tmpDir tm
-        = when !useForms $ codegenChez.executeExpr c s tmpDir tm
+    executeExpr c s tmpDir tm = when !useForms $ codegenChez.executeExpr c s tmpDir tm

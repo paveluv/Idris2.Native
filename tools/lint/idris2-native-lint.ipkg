@@ -52,7 +52,8 @@ modules =
     Lint.ResolvedRules,
     Lint.Rules,
     Lint.Separation,
-    Lint.Source
+    Lint.Source,
+    Lint.SplitClause
 
 main = Lint.Main
 executable = idris2-native-lint
