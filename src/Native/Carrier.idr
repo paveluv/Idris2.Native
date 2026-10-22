@@ -22,8 +22,9 @@ import Native.Rep
 public export
 data Carrier
   = ||| A value of a machine type, in the register its rep says:
-    ||| `Mach.type m`.
-    Machine Mach
+    ||| `Mach.type m`. `M` for machine; a port writes the machine type
+    ||| itself (`Mach.U64 ~> ...`), which its arrow takes for its carrier.
+    M Mach
   | ||| A value of the type, as ordinary code holds it: `Uniform t`.
     ValueOf Type
   | ||| Any value, as ordinary code holds it: `Uniform a`, for the call's `a`.
@@ -36,7 +37,7 @@ data Carrier
 ||| How a register of the carrier holds what it carries.
 public export
 rep : Carrier -> Rep
-rep (Machine m) = Mach.rep m
+rep (M m) = Mach.rep m
 rep (ValueOf _) = Rep.Uniform
 rep Value = Rep.Uniform
 rep ByteAddr = Rep.ByteAddr

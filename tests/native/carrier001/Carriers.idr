@@ -7,8 +7,8 @@
 -- generator's, so this does. For every carrier, its Idris type is judged to
 -- take the one register of the carrier's rep (`Carrier.rep`):
 --
---     Carried () (Machine U64)    = Bits64            judged [Word]
---     Carried () (Machine F64)    = Double            judged [Dbl]
+--     Carried () (M U64)          = Bits64            judged [Word]
+--     Carried () (M F64)          = Double            judged [Dbl]
 --     Carried () (ValueOf Bits64) = Uniform Bits64    judged [Uniform]
 --     Carried () Value            = Uniform ()        judged [Uniform]
 --     Carried () ByteAddr         = ByteAddr          judged [ByteAddr]
@@ -61,10 +61,10 @@ listed Rune = %search
 listed F64 = %search
 
 carriers : List Carrier
-carriers = map Machine machs ++ [ValueOf Bits64, Value, ByteAddr]
+carriers = map M machs ++ [ValueOf Bits64, Value, ByteAddr]
 
 -- Each carrier's Idris type, as the elaborator quotes it where this is
--- compiled: `Bits64`, not `Carried () (Machine U64)`.
+-- compiled: `Bits64`, not `Carried () (M U64)`.
 quoted : List R.TTImp
 quoted = %runElab traverse (\c => quote (Carried () c)) carriers
 

@@ -25,7 +25,7 @@ import Native.Flat.Uniform as Flat
 ||| the call's, and a byte address.
 public export
 Carried : (0 a : Type) -> Carrier -> Type
-Carried _ (Carrier.Machine m) = Mach.type m
+Carried _ (Carrier.M m) = Mach.type m
 Carried _ (Carrier.ValueOf t) = Flat.Uniform t
 Carried a Carrier.Value = Flat.Uniform a
 Carried _ Carrier.ByteAddr = ByteAddr

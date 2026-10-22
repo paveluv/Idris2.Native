@@ -9,7 +9,8 @@
 ||| Each kind of entry is an enumeration whose `port` gives each entry's
 ||| arrow, the one place its shape is stated (`Native.Routine`,
 ||| `Native.Intrinsic`, `Native.Service`, `Native.Types.StringRoutine`,
-||| `Native.Types.IntegerRoutine`). The side that provides an entry declares
+||| `Native.Types.IntegerRoutine`), written as an arrow from what the entry
+||| takes to what it gives (`~>`). The side that provides an entry declares
 ||| it by its port's Idris type, which Idris checks where it is defined; the
 ||| code generator finds it by that type, checks there is one of each, and
 ||| reads the registers of a call from the port, the same data. Neither
@@ -20,6 +21,7 @@
 module Native.Port
 
 import Native.Carrier
+import Native.Mach
 
 %default total
 
@@ -31,3 +33,55 @@ record Port where
   constructor MkPort
   takes : List Carrier
   gives : Maybe Carrier
+
+||| What may stand right of a port's arrow: the rest of the port, or what
+||| the entry gives, a carrier or a machine type's, or `()`, for an entry
+||| that gives nothing, as its Idris type then returns `()`.
+public export
+interface Rest a where
+  rest : a -> Port
+
+public export
+Rest Port where
+  rest p = p
+
+public export
+Rest Carrier where
+  rest c = MkPort [] (Just c)
+
+public export
+Rest Mach where
+  rest m = MkPort [] (Just (Carrier.M m))
+
+public export
+Rest () where
+  rest () = MkPort [] Nothing
+
+||| What may stand left of a port's arrow: a carrier the entry takes, a
+||| machine type, whose carrier it takes, or `()`, for an entry that takes
+||| nothing.
+public export
+interface Takes a where
+  carriers : a -> List Carrier
+
+public export
+Takes Carrier where
+  carriers c = [c]
+
+public export
+Takes Mach where
+  carriers m = [Carrier.M m]
+
+public export
+Takes () where
+  carriers () = []
+
+export infixr 1 ~>
+
+||| A port, written as the arrow of its entry's Idris type is, one argument
+||| at a time: `Mach.U64 ~> Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64` takes a
+||| word, a byte address and a word and gives a word; `() ~> ()` takes and
+||| gives nothing.
+public export
+(~>) : Takes a => Rest b => a -> b -> Port
+x ~> y = MkPort (carriers x ++ (rest y).takes) (rest y).gives

@@ -62,30 +62,30 @@ Eq IntegerRoutine where
 public export
 port : IntegerRoutine -> Port
 port Add =
-  MkPort [Carrier.ValueOf Integer, Carrier.ValueOf Integer] (Just (Carrier.ValueOf Integer))
+  Carrier.ValueOf Integer ~> Carrier.ValueOf Integer ~> Carrier.ValueOf Integer
 port Sub =
-  MkPort [Carrier.ValueOf Integer, Carrier.ValueOf Integer] (Just (Carrier.ValueOf Integer))
+  Carrier.ValueOf Integer ~> Carrier.ValueOf Integer ~> Carrier.ValueOf Integer
 port Mul =
-  MkPort [Carrier.ValueOf Integer, Carrier.ValueOf Integer] (Just (Carrier.ValueOf Integer))
+  Carrier.ValueOf Integer ~> Carrier.ValueOf Integer ~> Carrier.ValueOf Integer
 port And =
-  MkPort [Carrier.ValueOf Integer, Carrier.ValueOf Integer] (Just (Carrier.ValueOf Integer))
-port Or = MkPort [Carrier.ValueOf Integer, Carrier.ValueOf Integer] (Just (Carrier.ValueOf Integer))
+  Carrier.ValueOf Integer ~> Carrier.ValueOf Integer ~> Carrier.ValueOf Integer
+port Or = Carrier.ValueOf Integer ~> Carrier.ValueOf Integer ~> Carrier.ValueOf Integer
 port Xor =
-  MkPort [Carrier.ValueOf Integer, Carrier.ValueOf Integer] (Just (Carrier.ValueOf Integer))
+  Carrier.ValueOf Integer ~> Carrier.ValueOf Integer ~> Carrier.ValueOf Integer
 port Div =
-  MkPort [Carrier.ValueOf Integer, Carrier.ValueOf Integer] (Just (Carrier.ValueOf Integer))
+  Carrier.ValueOf Integer ~> Carrier.ValueOf Integer ~> Carrier.ValueOf Integer
 port Mod =
-  MkPort [Carrier.ValueOf Integer, Carrier.ValueOf Integer] (Just (Carrier.ValueOf Integer))
+  Carrier.ValueOf Integer ~> Carrier.ValueOf Integer ~> Carrier.ValueOf Integer
 port Shl =
-  MkPort [Carrier.ValueOf Integer, Carrier.ValueOf Integer] (Just (Carrier.ValueOf Integer))
+  Carrier.ValueOf Integer ~> Carrier.ValueOf Integer ~> Carrier.ValueOf Integer
 port Shr =
-  MkPort [Carrier.ValueOf Integer, Carrier.ValueOf Integer] (Just (Carrier.ValueOf Integer))
-port Neg = MkPort [Carrier.ValueOf Integer] (Just (Carrier.ValueOf Integer))
+  Carrier.ValueOf Integer ~> Carrier.ValueOf Integer ~> Carrier.ValueOf Integer
+port Neg = Carrier.ValueOf Integer ~> Carrier.ValueOf Integer
 port Compare =
-  MkPort [Carrier.ValueOf Integer, Carrier.ValueOf Integer] (Just (Carrier.Machine Mach.IWord))
-port ToBits64 = MkPort [Carrier.ValueOf Integer] (Just (Carrier.Machine Mach.U64))
-port FromInt64 = MkPort [Carrier.Machine Mach.IWord] (Just (Carrier.ValueOf Integer))
-port FromBits64 = MkPort [Carrier.Machine Mach.U64] (Just (Carrier.ValueOf Integer))
+  Carrier.ValueOf Integer ~> Carrier.ValueOf Integer ~> Mach.IWord
+port ToBits64 = Carrier.ValueOf Integer ~> Mach.U64
+port FromInt64 = Mach.IWord ~> Carrier.ValueOf Integer
+port FromBits64 = Mach.U64 ~> Carrier.ValueOf Integer
 
 ||| Every `Integer` routine, once, which the code generator pairs with its
 ||| own copy, element by element.

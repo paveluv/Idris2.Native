@@ -97,34 +97,31 @@ data Service
 ||| Each service's arrow: what its arguments and its result carry.
 public export
 port : Service -> Port
-port Exit = MkPort [Carrier.Machine Mach.U64] Nothing
+port Exit = Mach.U64 ~> ()
 port Write =
-  MkPort [Carrier.Machine Mach.U64, Carrier.ByteAddr, Carrier.Machine Mach.U64]
-    (Just (Carrier.Machine Mach.U64))
-port Reserve = MkPort [Carrier.Machine Mach.U64] (Just Carrier.ByteAddr)
-port Commit = MkPort [Carrier.ByteAddr, Carrier.Machine Mach.U64] (Just (Carrier.Machine Mach.U64))
-port Release = MkPort [Carrier.ByteAddr, Carrier.Machine Mach.U64] Nothing
-port StackLimit = MkPort [] (Just (Carrier.Machine Mach.U64))
-port PageBytes = MkPort [] (Just (Carrier.Machine Mach.U64))
-port PrepareTerminal = MkPort [] Nothing
-port TerminalColumns = MkPort [] (Just (Carrier.Machine Mach.U64))
-port TerminalLines = MkPort [] (Just (Carrier.Machine Mach.U64))
-port ChangeDirectory = MkPort [Carrier.ByteAddr] (Just (Carrier.Machine Mach.U64))
+  Mach.U64 ~> Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64
+port Reserve = Mach.U64 ~> Carrier.ByteAddr
+port Commit = Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64
+port Release = Carrier.ByteAddr ~> Mach.U64 ~> ()
+port StackLimit = () ~> Mach.U64
+port PageBytes = () ~> Mach.U64
+port PrepareTerminal = () ~> ()
+port TerminalColumns = () ~> Mach.U64
+port TerminalLines = () ~> Mach.U64
+port ChangeDirectory = Carrier.ByteAddr ~> Mach.U64
 port CurrentDirectory =
-  MkPort [Carrier.ByteAddr, Carrier.Machine Mach.U64] (Just (Carrier.Machine Mach.U64))
-port CreateDirectory = MkPort [Carrier.ByteAddr] (Just (Carrier.Machine Mach.U64))
-port RemoveDirectory = MkPort [Carrier.ByteAddr] (Just (Carrier.Machine Mach.U64))
-port Open = MkPort [Carrier.ByteAddr, Carrier.Machine Mach.U64] (Just (Carrier.Machine Mach.U64))
-port Close = MkPort [Carrier.Machine Mach.U64] (Just (Carrier.Machine Mach.U64))
+  Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64
+port CreateDirectory = Carrier.ByteAddr ~> Mach.U64
+port RemoveDirectory = Carrier.ByteAddr ~> Mach.U64
+port Open = Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64
+port Close = Mach.U64 ~> Mach.U64
 port Read =
-  MkPort [Carrier.Machine Mach.U64, Carrier.ByteAddr, Carrier.Machine Mach.U64]
-    (Just (Carrier.Machine Mach.U64))
-port FileSize = MkPort [Carrier.Machine Mach.U64] (Just (Carrier.Machine Mach.U64))
-port IsTerminal = MkPort [Carrier.Machine Mach.U64] (Just (Carrier.Machine Mach.U64))
-port RemoveFile = MkPort [Carrier.ByteAddr] (Just (Carrier.Machine Mach.U64))
+  Mach.U64 ~> Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64
+port FileSize = Mach.U64 ~> Mach.U64
+port IsTerminal = Mach.U64 ~> Mach.U64
+port RemoveFile = Carrier.ByteAddr ~> Mach.U64
 port ReadEntry =
-  MkPort [Carrier.Machine Mach.U64, Carrier.ByteAddr, Carrier.Machine Mach.U64]
-    (Just (Carrier.Machine Mach.U64))
+  Mach.U64 ~> Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64
 
 ||| Every service, once. The code generator pairs this list's term, as the
 ||| loaded runtime's context holds it, with its own copy, element by element.

@@ -41,10 +41,10 @@ data Routine
 ||| Each routine's arrow: what its arguments and its result carry.
 public export
 port : Routine -> Port
-port Start = MkPort [Carrier.ByteAddr, Carrier.Machine Mach.U64] Nothing
-port AllocSlow = MkPort [Carrier.Machine Mach.U64] (Just Carrier.ByteAddr)
-port AllocMutable = MkPort [Carrier.Machine Mach.U64] (Just Carrier.ByteAddr)
-port Crash = MkPort [Carrier.ByteAddr, Carrier.Machine Mach.U64] Nothing
+port Start = Carrier.ByteAddr ~> Mach.U64 ~> ()
+port AllocSlow = Mach.U64 ~> Carrier.ByteAddr
+port AllocMutable = Mach.U64 ~> Carrier.ByteAddr
+port Crash = Carrier.ByteAddr ~> Mach.U64 ~> ()
 
 ||| Every routine, once. The code generator pairs this list's term, as the
 ||| loaded runtime's context holds it, with its own copy, element by element.

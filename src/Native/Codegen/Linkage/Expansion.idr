@@ -46,34 +46,28 @@ pinnedAgrees IRCommon.Pinned.K = Refl
 public export
 data Expansion : Port -> Type where
   ||| Load the width at a base address plus an offset, extended with zeros.
-  Load : Width ->
-         Expansion
-         (MkPort [Carrier.ByteAddr, Carrier.Machine Mach.U64] (Just (Carrier.Machine Mach.U64)))
+  Load : Width -> Expansion (Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64)
   ||| Store the width of a word at a base address plus an offset.
-  Store : Width ->
-          Expansion
-          (MkPort [Carrier.ByteAddr, Carrier.Machine Mach.U64, Carrier.Machine Mach.U64] Nothing)
+  Store : Width -> Expansion (Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64 ~> ())
   ||| Read a pinned register, as what it carries.
-  Get : (r : IRCommon.Pinned) -> Expansion (MkPort [] (Just (pinnedCarrier r)))
+  Get : (r : IRCommon.Pinned) -> Expansion (() ~> pinnedCarrier r)
   ||| Set a pinned register.
-  Set : (r : IRCommon.Pinned) -> Expansion (MkPort [pinnedCarrier r] Nothing)
+  Set : (r : IRCommon.Pinned) -> Expansion (pinnedCarrier r ~> ())
   ||| The pointer tag of the program's encoding: what a pointer word is
   ||| beyond the object's address.
-  PointerTag : Expansion (MkPort [] (Just (Carrier.Machine Mach.U64)))
+  PointerTag : Expansion (() ~> Mach.U64)
   ||| The address of an area.
-  AreaAddress : Area -> Expansion (MkPort [] (Just Carrier.ByteAddr))
+  AreaAddress : Area -> Expansion (() ~> Carrier.ByteAddr)
   ||| The number of the program's top-level constants.
-  ConstantCount : Expansion (MkPort [] (Just (Carrier.Machine Mach.U64)))
+  ConstantCount : Expansion (() ~> Mach.U64)
   ||| The word a uniform value is.
-  ValueWord : Expansion (MkPort [Carrier.Value] (Just (Carrier.Machine Mach.U64)))
+  ValueWord : Expansion (Carrier.Value ~> Mach.U64)
   ||| The uniform value a word is.
-  WordValue : Expansion (MkPort [Carrier.Machine Mach.U64] (Just Carrier.Value))
+  WordValue : Expansion (Mach.U64 ~> Carrier.Value)
   ||| The machine's system call, of six arguments.
   Syscall : Expansion
-            (MkPort [Carrier.Machine Mach.U64,
-              Carrier.Machine Mach.U64, Carrier.Machine Mach.U64, Carrier.Machine Mach.U64,
-                     Carrier.Machine Mach.U64, Carrier.Machine Mach.U64, Carrier.Machine Mach.U64]
-                             (Just (Carrier.Machine Mach.U64)))
+              (Mach.U64 ~> Mach.U64 ~> Mach.U64 ~> Mach.U64 ~> Mach.U64 ~> Mach.U64 ~> Mach.U64 ~>
+               Mach.U64)
 
 ||| Each intrinsic's expansion, of its port.
 export

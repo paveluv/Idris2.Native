@@ -90,30 +90,29 @@ Eq StringRoutine where
 ||| Each string routine's arrow: what its arguments and its result carry.
 public export
 port : StringRoutine -> Port
-port Length = MkPort [Carrier.ValueOf String] (Just (Carrier.Machine Mach.U64))
-port Head = MkPort [Carrier.ValueOf String] (Just (Carrier.Machine Mach.U64))
-port Tail = MkPort [Carrier.ValueOf String] (Just (Carrier.ValueOf String))
+port Length = Carrier.ValueOf String ~> Mach.U64
+port Head = Carrier.ValueOf String ~> Mach.U64
+port Tail = Carrier.ValueOf String ~> Carrier.ValueOf String
 port Index =
-  MkPort [Carrier.ValueOf String, Carrier.Machine Mach.U64] (Just (Carrier.Machine Mach.U64))
+  Carrier.ValueOf String ~> Mach.U64 ~> Mach.U64
 port Cons =
-  MkPort [Carrier.Machine Mach.U64, Carrier.ValueOf String] (Just (Carrier.ValueOf String))
+  Mach.U64 ~> Carrier.ValueOf String ~> Carrier.ValueOf String
 port Append =
-  MkPort [Carrier.ValueOf String, Carrier.ValueOf String] (Just (Carrier.ValueOf String))
-port Reverse = MkPort [Carrier.ValueOf String] (Just (Carrier.ValueOf String))
+  Carrier.ValueOf String ~> Carrier.ValueOf String ~> Carrier.ValueOf String
+port Reverse = Carrier.ValueOf String ~> Carrier.ValueOf String
 port Substr =
-  MkPort [Carrier.Machine Mach.IWord, Carrier.Machine Mach.IWord, Carrier.ValueOf String]
-    (Just (Carrier.ValueOf String))
+  Mach.IWord ~> Mach.IWord ~> Carrier.ValueOf String ~> Carrier.ValueOf String
 port Compare =
-  MkPort [Carrier.ValueOf String, Carrier.ValueOf String] (Just (Carrier.Machine Mach.IWord))
-port ShowSigned = MkPort [Carrier.Machine Mach.IWord] (Just (Carrier.ValueOf String))
-port ShowUnsigned = MkPort [Carrier.Machine Mach.U64] (Just (Carrier.ValueOf String))
-port ShowDouble = MkPort [Carrier.Machine Mach.F64] (Just (Carrier.ValueOf String))
-port ReadDouble = MkPort [Carrier.ValueOf String] (Just (Carrier.Machine Mach.F64))
-port ReadWord = MkPort [Carrier.ValueOf String] (Just (Carrier.Machine Mach.U64))
-port TextBytes = MkPort [Carrier.ValueOf String] (Just (Carrier.Machine Mach.U64))
-port TextAddress = MkPort [Carrier.ValueOf String] (Just Carrier.ByteAddr)
-port CopyText = MkPort [Carrier.ValueOf String, Carrier.ByteAddr] Nothing
-port OfText = MkPort [Carrier.ByteAddr, Carrier.Machine Mach.U64] (Just (Carrier.ValueOf String))
+  Carrier.ValueOf String ~> Carrier.ValueOf String ~> Mach.IWord
+port ShowSigned = Mach.IWord ~> Carrier.ValueOf String
+port ShowUnsigned = Mach.U64 ~> Carrier.ValueOf String
+port ShowDouble = Mach.F64 ~> Carrier.ValueOf String
+port ReadDouble = Carrier.ValueOf String ~> Mach.F64
+port ReadWord = Carrier.ValueOf String ~> Mach.U64
+port TextBytes = Carrier.ValueOf String ~> Mach.U64
+port TextAddress = Carrier.ValueOf String ~> Carrier.ByteAddr
+port CopyText = Carrier.ValueOf String ~> Carrier.ByteAddr ~> ()
+port OfText = Carrier.ByteAddr ~> Mach.U64 ~> Carrier.ValueOf String
 
 ||| Every string routine, once, which the code generator pairs with its own
 ||| copy, element by element.
