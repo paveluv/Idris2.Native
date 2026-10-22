@@ -20,6 +20,7 @@ import Native.Types.Kind
 import Native.Types.Struct
 
 import Data.Buffer
+import Native.Carrier
 
 %default total
 
@@ -35,7 +36,7 @@ data Only : Kind -> Type -> Type where
   ||| A buffer of `Data.Buffer` is a `BUFFER` always, the empty one too.
   ABuffer : Only Kind.BUFFER Buffer
   ||| A mutable record is a `STRUCT` always.
-  AStruct : Only Kind.STRUCT (Struct r vs)
+  AStruct : Only Kind.STRUCT (Struct fs)
 
 ||| An object of kind `k` is a value of `a`: one can be given as a value of
 ||| `a`.

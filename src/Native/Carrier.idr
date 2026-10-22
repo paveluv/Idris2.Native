@@ -41,3 +41,25 @@ rep (M m) = Mach.rep m
 rep (ValueOf _) = Rep.Uniform
 rep Value = Rep.Uniform
 rep ByteAddr = Rep.ByteAddr
+
+||| Whether the collector must find, and may move, what a register of the
+||| carrier holds: a value's, of either kind.
+public export
+scanned : Carrier -> Bool
+scanned c = Rep.scanned (rep c)
+
+||| A machine type's carrier is one a raw word holds: the collector never
+||| needs to see a machine value.
+export
+0 machUnscanned : (0 m : Mach) -> scanned (M m) = False
+machUnscanned Mach.I8 = Refl
+machUnscanned Mach.I16 = Refl
+machUnscanned Mach.I32 = Refl
+machUnscanned Mach.I64 = Refl
+machUnscanned Mach.IWord = Refl
+machUnscanned Mach.U8 = Refl
+machUnscanned Mach.U16 = Refl
+machUnscanned Mach.U32 = Refl
+machUnscanned Mach.U64 = Refl
+machUnscanned Mach.Rune = Refl
+machUnscanned Mach.F64 = Refl

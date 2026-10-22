@@ -16,6 +16,7 @@ import Native.Failure
 import Native.Flat.Uniform as Flat
 import Native.Runtime.Alloc.Block as Runtime.Alloc
 import Native.Runtime.ByteAddr as Runtime
+import Native.Runtime.Cell
 import Native.Runtime.Memory
 import Native.Runtime.Ordo as Runtime
 import Native.Runtime.PortTy as Runtime

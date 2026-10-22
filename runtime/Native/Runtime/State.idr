@@ -10,6 +10,7 @@
 module Native.Runtime.State
 
 import Native.Runtime.ByteAddr
+import Native.Runtime.Cell
 import Native.Runtime.Memory
 import Native.Runtime.Ordo
 
@@ -20,25 +21,6 @@ import Native.Area
 %hide Prelude.Interfaces.pure
 
 %default total
-
-||| What a word of the state can hold, and how it is that word: an address,
-||| which the state keeps as its word, or a count. By the type, so that
-||| each access is the one of its kind: a copy of `getState` for one kind
-||| holds no alternative of the other's.
-public export
-interface Cell t where
-  fromCell : Bits64 -> t
-  toCell : t -> Bits64
-
-public export
-Cell ByteAddr where
-  fromCell = ByteAddr.fromWord
-  toCell = ByteAddr.toWord
-
-public export
-Cell Bits64 where
-  fromCell w = w
-  toCell w = w
 
 ||| A word of the state, by its index in the area; what it holds is its
 ||| type's (`Cell`).
@@ -117,13 +99,13 @@ getState : Cell t => State t -> Ordo.Op Ordo t
 getState s = do
   rt <- Memory.runtimeArea
   w <- Memory.loadAt rt (8 * s.index)
-  Ordo.pure (fromCell w)
+  Ordo.pure (Cell.fromCell w)
 
 export
 setState : Cell t => State t -> t -> Ordo.Op Ordo ()
 setState s v = do
   rt <- Memory.runtimeArea
-  Memory.storeAt rt (8 * s.index) (toCell v)
+  Memory.storeAt rt (8 * s.index) (Cell.toCell v)
 
 ||| The byte address of the scratch bytes, since they hold no object.
 export

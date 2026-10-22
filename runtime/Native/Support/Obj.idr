@@ -18,17 +18,18 @@
 ||| Words and bytes are loaded and stored only in objects of the raw shape,
 ||| which hold no value the collector follows, and only after the header:
 ||| their offsets are the payload's, from the word after it; in a mutable
-||| record (`Types.Struct`), by an index below its count of raw words, and
-||| its values by an index below its count of values, of the type its type
-||| has there (`valueType`),
-||| a record made value by value in order and given only once each is
-||| stored (`beginStruct`, `putValue`, `endStruct`). A handle, a
+||| record (`Types.Struct`), a raw word or a value by its field's name, of
+||| a carrier it need not see or of the type of the value
+||| (`Field.Named`), a record made value by value in order and given only
+||| once each is stored (`beginStruct`, `putValue`, `endStruct`). A handle, a
 ||| number the system tier gives for a value of its own, is read and made
 ||| here too (`valueHandle`, `handleValue`). The core's conversions, which
 ||| take a value of any type, are used outside the core only here, which the
 ||| linter checks.
 module Native.Support.Obj
 
+import Native.Carrier
+import Native.Field
 import Native.Flat.Uniform as Flat
 import Native.HeapObj.Shape as HeapObj
 import Native.Runtime.ByteAddr as Runtime
@@ -248,17 +249,17 @@ con2 c x y = do
 ||| A mutable record being made, its first `k` values stored: as it is held,
 ||| the record itself.
 export
-record Building (0 r : Nat) (0 vs : List Type) (0 k : Nat) where
+record Building (0 fs : List (String, Carrier)) (0 k : Bits64) where
   constructor MkBuilding
-  made : Flat.Uniform (Types.Struct r vs)
+  made : Flat.Uniform (Types.Struct fs)
 
-||| A new mutable record of the counts its type says, its raw words zero,
-||| none of its values stored yet: each word 0, which the collector takes
-||| for no pointer.
+||| A new mutable record of the counts of raw words and of values its fields
+||| have, its raw words zero, none of its values stored yet: each word 0,
+||| which the collector takes for no pointer.
 export %inline covering
-beginStruct : (raws, values : Bits64) -> (0 rs : Types.Struct.Sized raws r) ->
-              (0 sv : Types.Struct.Sized values (length vs)) ->
-              Runtime.Ordo.Op Runtime.Ordo (Building r vs 0)
+beginStruct : (raws, values : Bits64) -> (0 rs : raws = Field.rawCount fs) ->
+              (0 vs : values = Field.valueCount fs) ->
+              Runtime.Ordo.Op Runtime.Ordo (Building fs 0)
 beginStruct raws values _ _ = do
   h <- checked Types.Kind.STRUCT
          (Types.Header.withPart Types.Header.StructRaws raws
@@ -271,71 +272,69 @@ beginStruct raws values _ _ = do
   v <- Runtime.Memory.objectValue o
   Runtime.Ordo.pure (MkBuilding v)
 
-||| The byte offset of value `i` of a mutable record: after its header and
+||| The byte offset of value `j` of a mutable record: after its header and
 ||| its raw words, which the header counts.
-valueOffset : Runtime.Memory.Addr HeapObj.Shape.MIXED -> (i : Bits64) ->
+valueOffset : Runtime.Memory.Addr HeapObj.Shape.MIXED -> (j : Bits64) ->
               Runtime.Ordo.Op Runtime.Ordo Bits64
-valueOffset o i = do
+valueOffset o j = do
   h <- Runtime.Memory.load64 o 0
-  Runtime.Ordo.pure (8 + 8 * (HeapObj.Shape.field HeapObj.Shape.Raws h + i))
+  Runtime.Ordo.pure (8 + 8 * (HeapObj.Shape.field HeapObj.Shape.Raws h + j))
 
-||| The record being made with its value `i` stored, the next to store, of
-||| the type the record has there.
+||| The record being made with its value of the name stored, the next to
+||| store.
 export %inline
-putValue : (i : Bits64) -> {auto 0 next : cast i = k} ->
-           {auto 0 inside : Types.Struct.Below k (length vs)} ->
-           Building r vs k -> Flat.Uniform (Types.Struct.valueType vs inside) ->
-           Runtime.Ordo.Op Runtime.Ordo (Building r vs (S k))
-putValue i (MkBuilding v) x = do
+putValue : (0 n : String) -> {j : Bits64} ->
+           {auto 0 at : Field.Named n fs i j (Carrier.ValueOf t)} ->
+           {auto 0 next : (j == k) = True} ->
+           Building fs k -> Flat.Uniform t -> Runtime.Ordo.Op Runtime.Ordo (Building fs (k + 1))
+putValue _ (MkBuilding v) x = do
   o <- Runtime.Memory.valueObject {s = HeapObj.Shape.MIXED} v
-  off <- valueOffset o i
+  off <- valueOffset o j
   w <- Runtime.Memory.valueWord x
   Runtime.Memory.store64 o off w
   Runtime.Ordo.pure (MkBuilding v)
 
 ||| The mutable record made, once each of its values is stored.
 export %inline
-endStruct : {auto 0 all : k = length vs} -> Building r vs k ->
-            Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform (Types.Struct r vs))
+endStruct : {auto 0 all : k = Field.valueCount fs} -> Building fs k ->
+            Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform (Types.Struct fs))
 endStruct (MkBuilding v) = Runtime.Ordo.pure v
 
-||| Raw word `i` of a mutable record, and storing one: a word the
-||| collector never reads.
+||| The raw word of the name of a mutable record, and storing one: a word
+||| the collector never reads, of a carrier it need not see.
 export %inline
-structWord : (i : Bits64) -> {auto 0 inside : Types.Struct.Below (cast i) r} ->
-             Flat.Uniform (Types.Struct r vs) ->
+structWord : (0 n : String) -> {i : Bits64} -> {auto 0 at : Field.Named n fs i j c} ->
+             {auto 0 raw : Carrier.scanned c = False} -> Flat.Uniform (Types.Struct fs) ->
              Runtime.Ordo.Op Runtime.Ordo Bits64
-structWord i v = do
+structWord _ v = do
   o <- Runtime.Memory.valueObject {s = HeapObj.Shape.MIXED} v
   Runtime.Memory.load64 o (8 + 8 * i)
 
 export %inline
-setStructWord : (i : Bits64) -> {auto 0 inside : Types.Struct.Below (cast i) r} ->
-                Flat.Uniform (Types.Struct r vs) -> (value : Bits64) ->
-                Runtime.Ordo.Op Runtime.Ordo ()
-setStructWord i v x = do
+setStructWord : (0 n : String) -> {i : Bits64} -> {auto 0 at : Field.Named n fs i j c} ->
+                {auto 0 raw : Carrier.scanned c = False} -> Flat.Uniform (Types.Struct fs) ->
+                (value : Bits64) -> Runtime.Ordo.Op Runtime.Ordo ()
+setStructWord _ v x = do
   o <- Runtime.Memory.valueObject {s = HeapObj.Shape.MIXED} v
   Runtime.Memory.store64 o (8 + 8 * i) x
 
-||| Value `i` of a mutable record, of the type the record has there, and
-||| storing one.
+||| The value of the name of a mutable record, and storing one.
 export %inline
-structValue : (i : Bits64) -> {auto 0 inside : Types.Struct.Below (cast i) (length vs)} ->
-              Flat.Uniform (Types.Struct r vs) ->
-              Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform (Types.Struct.valueType vs inside))
-structValue i v = do
+structValue : (0 n : String) -> {j : Bits64} ->
+              {auto 0 at : Field.Named n fs i j (Carrier.ValueOf t)} ->
+              Flat.Uniform (Types.Struct fs) -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform t)
+structValue _ v = do
   o <- Runtime.Memory.valueObject {s = HeapObj.Shape.MIXED} v
-  off <- valueOffset o i
+  off <- valueOffset o j
   w <- Runtime.Memory.load64 o off
   Runtime.Memory.fieldValue w
 
 export %inline
-setStructValue : (i : Bits64) -> {auto 0 inside : Types.Struct.Below (cast i) (length vs)} ->
-                 Flat.Uniform (Types.Struct r vs) ->
-                 Flat.Uniform (Types.Struct.valueType vs inside) ->
-                 Runtime.Ordo.Op Runtime.Ordo ()
-setStructValue i v x = do
+setStructValue : (0 n : String) -> {j : Bits64} ->
+                 {auto 0 at : Field.Named n fs i j (Carrier.ValueOf t)} ->
+                 Flat.Uniform (Types.Struct fs) -> Flat.Uniform t -> Runtime.Ordo.Op Runtime.Ordo ()
+setStructValue _ v x = do
   o <- Runtime.Memory.valueObject {s = HeapObj.Shape.MIXED} v
-  off <- valueOffset o i
+  off <- valueOffset o j
   w <- Runtime.Memory.valueWord x
   Runtime.Memory.store64 o off w

@@ -15,6 +15,7 @@ import Native.Runtime.Alloc.Pages
 import Native.Runtime.Alloc.SizeClasses
 
 import Native.Runtime.ByteAddr
+import Native.Runtime.Cell
 import Native.Runtime.Memory
 import Native.Runtime.Ordo
 import Native.Runtime.OS

@@ -17,6 +17,7 @@ module Probe
 
 import Native.Flat.Uniform
 import Native.Runtime.ByteAddr
+import Native.Runtime.Cell
 import Native.Runtime.Memory
 import Native.Runtime.Ordo
 import Native.Runtime.State

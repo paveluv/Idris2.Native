@@ -26,9 +26,14 @@ import Native.System.Call
 import Data.Buffer
 import Data.IOArray
 import Data.IORef
+import Native.Carrier
 import Native.Failure
+import Native.Field
 import Native.Flat.Uniform as Flat
+import Native.Mach
+import Native.Rep
 import Native.Runtime.OS
+import Native.Runtime.PortTy
 import Native.Support.StructObj
 import Native.Types.Struct as Types
 
@@ -41,7 +46,10 @@ import Native.Types.Struct as Types
 ||| by its operations.
 export
 File : Type
-File = Types.Struct 4 [Buffer]
+File =
+  Types.Struct
+    [ "handle" ~: Mach.U64, "flags" ~: Mach.U64, "start" ~: Mach.IWord, "end" ~: Mach.IWord
+    , "input" ~& Buffer ]
 
 ||| The flags of a file: a read found its end; a read or a write failed.
 atEnd, failed : Bits64
@@ -51,18 +59,18 @@ failed = 2
 ||| The file's handle.
 export
 handle : File -> IO Bits64
-handle f = Support.StructObj.readWord 0 (Flat.MkUniform f)
+handle f = Support.StructObj.get "handle" (Flat.MkUniform f)
 
 ||| Whether the file has the flag, and the flag set.
 hasFlag : File -> (flag : Bits64) -> IO Bool
 hasFlag f flag = do
-  w <- Support.StructObj.readWord 1 (Flat.MkUniform f)
+  w <- Support.StructObj.get "flags" (Flat.MkUniform f)
   pure (prim__and_Bits64 w flag /= 0)
 
 setFlag : File -> (flag : Bits64) -> IO ()
 setFlag f flag = do
-  w <- Support.StructObj.readWord 1 (Flat.MkUniform f)
-  Support.StructObj.writeWord 1 (Flat.MkUniform f) (prim__or_Bits64 w flag)
+  w <- Support.StructObj.get "flags" (Flat.MkUniform f)
+  Support.StructObj.set "flags" (Flat.MkUniform f) (prim__or_Bits64 w flag)
 
 ||| Whether a read found the file's end, and whether a read or a write
 ||| failed: the C library's `feof` and `ferror`; and the file marked as
@@ -79,16 +87,16 @@ markFailed f = setFlag f failed
 ||| The offsets of the first unread byte and after the last byte read in,
 ||| and setting them.
 start, end : File -> IO Int
-start f = cast <$> Support.StructObj.readWord 2 (Flat.MkUniform f)
-end f = cast <$> Support.StructObj.readWord 3 (Flat.MkUniform f)
+start f = Support.StructObj.get "start" (Flat.MkUniform f)
+end f = Support.StructObj.get "end" (Flat.MkUniform f)
 
 setStart, setEnd : File -> Int -> IO ()
-setStart f n = Support.StructObj.writeWord 2 (Flat.MkUniform f) (cast n)
-setEnd f n = Support.StructObj.writeWord 3 (Flat.MkUniform f) (cast n)
+setStart f n = Support.StructObj.set "start" (Flat.MkUniform f) n
+setEnd f n = Support.StructObj.set "end" (Flat.MkUniform f) n
 
 ||| The file's input buffer.
 input : File -> IO Buffer
-input f = (.value) <$> Support.StructObj.readValue 0 (Flat.MkUniform f)
+input f = (.value) <$> Support.StructObj.get "input" (Flat.MkUniform f)
 
 ||| A slot of the table: the times it has been taken, and its file while
 ||| it is open.
@@ -108,9 +116,9 @@ newFile : (handle : Bits64) -> IO File
 newFile h = do
   b <- emptyBuffer
   s <- Support.StructObj.new 4 1
-  s <- Support.StructObj.put 0 s (Flat.MkUniform b)
+  s <- Support.StructObj.put "input" s (Flat.MkUniform b)
   f <- Support.StructObj.done s
-  Support.StructObj.writeWord 0 f h
+  Support.StructObj.set "handle" f h
   pure f.value
 
 ||| The table of open files, made on its first use with the standard files
@@ -224,7 +232,7 @@ more f = if !(foundEnd f) then pure False else do
 
         -- the file's input buffer replaced by another
         setInput : File -> Buffer -> IO ()
-        setInput f b = Support.StructObj.writeValue 0 (Flat.MkUniform f) (Flat.MkUniform b)
+        setInput f b = Support.StructObj.set "input" (Flat.MkUniform f) (Flat.MkUniform b)
 
         -- a new buffer of `n` bytes, the unread bytes of the old one at its start
         covering

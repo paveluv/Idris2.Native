@@ -254,7 +254,8 @@ resolvedRules fms programNames r =
 
     ||| `byte-addr-maker`: a byte address made from a word (`ByteAddr.fromWord`)
     ||| outside the modules that keep addresses as words or are given them so: the
-    ||| memory module, the state, the spaces (the collector's interface holds
+    ||| memory module, the cells (`Cell`), as the state and the records keep
+    ||| them, the spaces (the collector's interface holds
     ||| addresses as words), the allocator's page source (`Pages` holds them so
     ||| too) and the platforms (the system gives its results as words). Elsewhere
     ||| a byte address comes from an operation that gives one, so a count is not
@@ -274,7 +275,7 @@ resolvedRules fms programNames r =
       where
         makers : List String
         makers =
-          ["Native.Runtime.ByteAddr", "Native.Runtime.Memory", "Native.Runtime.State",
+          ["Native.Runtime.ByteAddr", "Native.Runtime.Memory", "Native.Runtime.Cell",
            "Native.Runtime.Space", "Native.Runtime.Alloc.System"]
 
     ||| `public-unneeded`: a `public export` that only its module

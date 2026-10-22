@@ -30,6 +30,7 @@ modules =
     Native.Runtime.Space,
     Native.Runtime.Start,
     Native.Runtime.State,
+    Native.Runtime.Cell,
     Native.Runtime.System,
     Native.Support,
     Native.Support.BufferObj,

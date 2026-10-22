@@ -20,6 +20,7 @@ import Native.Runtime.Alloc.Block
 import Native.Runtime.Alloc.System
 
 import Native.Runtime.ByteAddr
+import Native.Runtime.Cell
 import Native.Runtime.Memory
 import Native.Runtime.Ordo
 import Native.Runtime.State

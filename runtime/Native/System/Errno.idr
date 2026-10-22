@@ -9,6 +9,7 @@
 module Native.System.Errno
 
 import Native.Failure
+import Native.Runtime.Cell
 import Native.Runtime.Ordo as Runtime
 import Native.Runtime.State
 

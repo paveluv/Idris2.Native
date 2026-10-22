@@ -81,6 +81,7 @@ modules =
     Native.Data.Distinct,
     Native.Data.WriteBuilder,
     Native.Failure,
+    Native.Field,
     Native.Flat.Check,
     Native.Flat.ConstType,
     Native.Flat.Exp,

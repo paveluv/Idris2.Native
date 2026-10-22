@@ -73,7 +73,7 @@ allowed ours importer imported = case moduleLayer importer of
     contract : List String
     contract =
       ["HeapObj", "Area", "Port", "Routine", "Intrinsic", "Service", "Failure", "OpenFlag",
-       "Primitive", "Table", "Rep", "Mach", "Width", "Carrier"]
+       "Primitive", "Table", "Rep", "Mach", "Width", "Carrier", "Field"]
 
     ||| A module's layer: the group under the product's root its name is in
     ||| (`Codegen` for `Native.Codegen.TermIR.Instr`), or the linter's.

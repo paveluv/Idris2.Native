@@ -22,6 +22,7 @@ module Native.Runtime.Space
 
 import Native.Runtime.Bits
 import Native.Runtime.ByteAddr
+import Native.Runtime.Cell
 import Native.Runtime.Collect
 import Native.Runtime.Memory
 import Native.Runtime.Ordo

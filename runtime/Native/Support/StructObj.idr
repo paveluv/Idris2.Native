@@ -3,74 +3,136 @@
 ||| ordinary code calls as any other.
 |||
 ||| A record is made value by value: `new` of its counts, then `put` of
-||| each value in order, each of the type the record has there, then
-||| `done`, which gives the record once every value is stored. Its raw
-||| words start zero; they are read and written by `readWord` and
-||| `writeWord`, its values by `readValue` and `writeValue`, each by an
-||| index its type allows.
+||| each value field in the order of its values, by its name, then `done`,
+||| which gives the record once every value is stored. Its raw words start
+||| zero. A field is read by `get` and written by `set`, by its name, as the
+||| type its carrier says (`Carried`): a raw word converted to its machine
+||| type or its address (`Runtime.Cell`), a value as ordinary code holds it.
+||| Which of the two an access is, the field's carrier says where the
+||| program is compiled (`Access`): an access is one load or one store.
 module Native.Support.StructObj
 
 import Native.Support.Obj
 
+import Native.Carrier
+import Native.Field
 import Native.Flat.Uniform as Flat
+import Native.Mach
+import Native.Rep
+import Native.Runtime.ByteAddr
+import Native.Runtime.Cell as Runtime
 import Native.Runtime.Ordo as Runtime
+import Native.Runtime.PortTy
 import Native.Types.Struct as Types
 
 %default total
 
 %cg native flat Support.StructObj.new
-||| A new record of the counts of raw words and of values its type has,
-||| which the witnesses tie to it, its raw words zero, none of its values
-||| stored yet: `new 2 1` of a `Struct 2 [a]`.
+||| A new record of the counts of raw words and of values its fields have,
+||| which the witnesses tie to them, its names distinct, its raw words zero,
+||| none of its values stored yet: `new 4 1` of a record of four raw words
+||| and a value.
 export covering
-new : (raws, values : Bits64) -> {auto 0 rs : Types.Struct.Sized raws r} ->
-      {auto 0 sv : Types.Struct.Sized values (length vs)} -> IO (Obj.Building r vs 0)
+new : (raws, values : Bits64) -> {auto 0 rs : raws = Field.rawCount fs} ->
+      {auto 0 vs : values = Field.valueCount fs} -> {auto 0 names : Field.distinct fs = True} ->
+      IO (Obj.Building fs 0)
 new raws values = primIO $ \w =>
-  let (Runtime.MkOrdo # b) = Obj.beginStruct raws values rs sv Runtime.MkOrdo in MkIORes b w
+  let (Runtime.MkOrdo # b) = Obj.beginStruct raws values rs vs Runtime.MkOrdo in MkIORes b w
 
 %cg native flat Support.StructObj.put
-||| The record being made with its value `i` stored, the next to store.
+||| The record being made with its value of the name stored, the next to
+||| store: the search on the name gives its index, which must be the next.
 export
-put : (i : Bits64) -> {auto 0 next : cast i = k} ->
-      {auto 0 inside : Types.Struct.Below k (length vs)} ->
-      Obj.Building r vs k -> Flat.Uniform (Types.Struct.valueType vs inside) ->
-      IO (Obj.Building r vs (S k))
-put i b x = primIO $ \w =>
-  let (Runtime.MkOrdo # b') = Obj.putValue i b x Runtime.MkOrdo in MkIORes b' w
+put : (0 n : String) -> {j : Bits64} ->
+      {auto 0 at : Field.Named n fs i j (Carrier.ValueOf t)} -> {auto 0 next : (j == k) = True} ->
+      Obj.Building fs k -> Flat.Uniform t -> IO (Obj.Building fs (k + 1))
+put n b x = primIO $ \w =>
+  let (Runtime.MkOrdo # b') = Obj.putValue n b x Runtime.MkOrdo in MkIORes b' w
 
 %cg native flat Support.StructObj.done
 ||| The record, once each of its values is stored.
 export
-done : {auto 0 all : k = length vs} -> Obj.Building r vs k -> IO (Flat.Uniform (Types.Struct r vs))
+done : {auto 0 all : k = Field.valueCount fs} -> Obj.Building fs k ->
+       IO (Flat.Uniform (Types.Struct fs))
 done b = primIO $ \w => let (Runtime.MkOrdo # v) = Obj.endStruct b Runtime.MkOrdo in MkIORes v w
 
-%cg native flat Support.StructObj.readWord
-||| Raw word `i` of the record, and storing one.
+%cg native flat Support.StructObj.word
+||| The raw word of the name, and storing one: the accesses `get` and `set`
+||| are of a raw field, by the index its name gives.
 export
-readWord : (i : Bits64) -> {auto 0 inside : Types.Struct.Below (cast i) r} ->
-           Flat.Uniform (Types.Struct r vs) -> IO Bits64
-readWord i v = primIO $ \w => let (Runtime.MkOrdo # x) =
-                                    Obj.structWord i v Runtime.MkOrdo in MkIORes x w
+word : (0 n : String) -> {i : Bits64} -> {auto 0 at : Field.Named n fs i j c} ->
+       {auto 0 raw : Carrier.scanned c = False} -> Flat.Uniform (Types.Struct fs) -> IO Bits64
+word n v = primIO $ \w => let (Runtime.MkOrdo # x) =
+                                Obj.structWord n v Runtime.MkOrdo in MkIORes x w
 
-%cg native flat Support.StructObj.writeWord
+%cg native flat Support.StructObj.setWord
 export
-writeWord : (i : Bits64) -> {auto 0 inside : Types.Struct.Below (cast i) r} ->
-            Flat.Uniform (Types.Struct r vs) -> (value : Bits64) -> IO ()
-writeWord i v x = primIO $ \w =>
-  let (Runtime.MkOrdo # ()) = Obj.setStructWord i v x Runtime.MkOrdo in MkIORes () w
+setWord : (0 n : String) -> {i : Bits64} -> {auto 0 at : Field.Named n fs i j c} ->
+          {auto 0 raw : Carrier.scanned c = False} -> Flat.Uniform (Types.Struct fs) ->
+          Bits64 -> IO ()
+setWord n v x = primIO $ \w =>
+  let (Runtime.MkOrdo # ()) = Obj.setStructWord n v x Runtime.MkOrdo in MkIORes () w
 
-%cg native flat Support.StructObj.readValue
-||| Value `i` of the record, and storing one.
+%cg native flat Support.StructObj.value
+||| The value of the name, and storing one: the accesses of a value field.
 export
-readValue : (i : Bits64) -> {auto 0 inside : Types.Struct.Below (cast i) (length vs)} ->
-            Flat.Uniform (Types.Struct r vs) -> IO (Flat.Uniform (Types.Struct.valueType vs inside))
-readValue i v = primIO $ \w => let (Runtime.MkOrdo # x) =
-                                     Obj.structValue i v Runtime.MkOrdo in MkIORes x w
+value : (0 n : String) -> {j : Bits64} ->
+        {auto 0 at : Field.Named n fs i j (Carrier.ValueOf t)} ->
+        Flat.Uniform (Types.Struct fs) -> IO (Flat.Uniform t)
+value n v = primIO $ \w => let (Runtime.MkOrdo # x) =
+                                 Obj.structValue n v Runtime.MkOrdo in MkIORes x w
 
-%cg native flat Support.StructObj.writeValue
+%cg native flat Support.StructObj.setValue
 export
-writeValue : (i : Bits64) -> {auto 0 inside : Types.Struct.Below (cast i) (length vs)} ->
-             Flat.Uniform (Types.Struct r vs) -> Flat.Uniform (Types.Struct.valueType vs inside) ->
-             IO ()
-writeValue i v x = primIO $ \w =>
-  let (Runtime.MkOrdo # ()) = Obj.setStructValue i v x Runtime.MkOrdo in MkIORes () w
+setValue : (0 n : String) -> {j : Bits64} ->
+           {auto 0 at : Field.Named n fs i j (Carrier.ValueOf t)} ->
+           Flat.Uniform (Types.Struct fs) -> Flat.Uniform t -> IO ()
+setValue n v x = primIO $ \w =>
+  let (Runtime.MkOrdo # ()) = Obj.setStructValue n v x Runtime.MkOrdo in MkIORes () w
+
+||| How a field of the carrier is read and written: a raw word by its index
+||| among the raw words, converted (`Cell`), a value by its index among the
+||| values. One implementation for each carrier a raw word converts to
+||| (`Cell`), with no constraint: a constant, which an access expanded where
+||| it is used reads through, so that it is the one call.
+public export
+interface Access (0 c : Carrier) where
+  readField : (0 n : String) -> (i, j : Bits64) -> (0 at : Field.Named n fs i j c) ->
+              Flat.Uniform (Types.Struct fs) -> IO (Runtime.PortTy.Carried () c)
+  writeField : (0 n : String) -> (i, j : Bits64) -> (0 at : Field.Named n fs i j c) ->
+               Flat.Uniform (Types.Struct fs) -> Runtime.PortTy.Carried () c -> IO ()
+
+public export
+Access (Carrier.M Mach.U64) where
+  readField n i _ at v = Runtime.Cell.fromCell <$> word n {i} {at} v
+  writeField n i _ at v x = setWord n {i} {at} v (Runtime.Cell.toCell x)
+
+public export
+Access (Carrier.M Mach.IWord) where
+  readField n i _ at v = Runtime.Cell.fromCell <$> word n {i} {at} v
+  writeField n i _ at v x = setWord n {i} {at} v (Runtime.Cell.toCell x)
+
+public export
+Access Carrier.ByteAddr where
+  readField n i _ at v = Runtime.Cell.fromCell <$> word n {i} {at} v
+  writeField n i _ at v x = setWord n {i} {at} v (Runtime.Cell.toCell x)
+
+public export
+Access (Carrier.ValueOf t) where
+  readField n _ j at v = value n {j} {at} v
+  writeField n _ j at v x = setValue n {j} {at} v x
+
+||| The field of the name, as the type its carrier says, and storing one:
+||| expanded where it is used, where its carrier says which access it is.
+export %inline
+get : (0 n : String) -> {i, j : Bits64} -> {0 c : Carrier} ->
+      {auto 0 at : Field.Named n fs i j c} -> Access c => Flat.Uniform (Types.Struct fs) ->
+      IO (Runtime.PortTy.Carried () c)
+get n v = readField n i j at v
+
+export %inline
+set : (0 n : String) -> {i, j : Bits64} -> {0 c : Carrier} ->
+      {auto 0 at : Field.Named n fs i j c} -> Access c => Flat.Uniform (Types.Struct fs) ->
+      Runtime.PortTy.Carried () c -> IO ()
+set n v x = writeField n i j at v x
+

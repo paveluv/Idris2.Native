@@ -17,6 +17,7 @@ import Native.OpenFlag
 import Native.Runtime.Alloc.Block as Alloc
 import Native.Runtime.Bits
 import Native.Runtime.ByteAddr
+import Native.Runtime.Cell
 import Native.Runtime.Memory
 import Native.Runtime.Ordo
 import Native.Runtime.PortTy
