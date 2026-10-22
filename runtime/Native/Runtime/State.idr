@@ -87,7 +87,7 @@ record State (0 c : Carrier) where
   index : Bits64
 
 ||| The word of the name.
-export
+export %inline
 word : (0 n : String) -> {i : Bits64} -> {0 j : Bits64} ->
        {auto 0 at : Field.Named n Fields i j c} -> State c
 word _ = MkState i
@@ -107,13 +107,13 @@ store s v = do
   Memory.storeAt rt (8 * s.index) (Cell.toCell v)
 
 ||| The word of the name, as the type its carrier says, and storing one.
-export
+export %inline
 get : (0 n : String) -> {i : Bits64} -> {0 j : Bits64} -> {0 c : Carrier} ->
       {auto 0 at : Field.Named n Fields i j c} -> Cell (PortTy.Carried () c) =>
       Ordo.Op Ordo (PortTy.Carried () c)
 get n = load (word n)
 
-export
+export %inline
 set : (0 n : String) -> {i : Bits64} -> {0 j : Bits64} -> {0 c : Carrier} ->
       {auto 0 at : Field.Named n Fields i j c} -> Cell (PortTy.Carried () c) =>
       PortTy.Carried () c -> Ordo.Op Ordo ()

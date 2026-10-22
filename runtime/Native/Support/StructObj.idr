@@ -92,8 +92,9 @@ setValue n v x = primIO $ \w =>
 ||| How a field of the carrier is read and written: a raw word by its index
 ||| among the raw words, converted (`Cell`), a value by its index among the
 ||| values. One implementation for each carrier a raw word converts to
-||| (`Cell`), with no constraint: a constant, which an access expanded where
-||| it is used reads through, so that it is the one call.
+||| (`Cell`), with no constraint, and expanded where it is used, so that an
+||| access is the one call; a word of `U64` is the word, with no
+||| conversion to map over its reading.
 public export
 interface Access (0 c : Carrier) where
   readField : (0 n : String) -> (i, j : Bits64) -> (0 at : Field.Named n fs i j c) ->
@@ -101,22 +102,22 @@ interface Access (0 c : Carrier) where
   writeField : (0 n : String) -> (i, j : Bits64) -> (0 at : Field.Named n fs i j c) ->
                Flat.Uniform (Types.Struct fs) -> Runtime.PortTy.Carried () c -> IO ()
 
-public export
+public export %inline
 Access (Carrier.M Mach.U64) where
-  readField n i _ at v = Runtime.Cell.fromCell <$> word n {i} {at} v
-  writeField n i _ at v x = setWord n {i} {at} v (Runtime.Cell.toCell x)
+  readField n i _ at v = word n {i} {at} v
+  writeField n i _ at v x = setWord n {i} {at} v x
 
-public export
+public export %inline
 Access (Carrier.M Mach.IWord) where
   readField n i _ at v = Runtime.Cell.fromCell <$> word n {i} {at} v
   writeField n i _ at v x = setWord n {i} {at} v (Runtime.Cell.toCell x)
 
-public export
+public export %inline
 Access Carrier.ByteAddr where
   readField n i _ at v = Runtime.Cell.fromCell <$> word n {i} {at} v
   writeField n i _ at v x = setWord n {i} {at} v (Runtime.Cell.toCell x)
 
-public export
+public export %inline
 Access (Carrier.ValueOf t) where
   readField n _ j at v = value n {j} {at} v
   writeField n _ j at v x = setValue n {j} {at} v x
