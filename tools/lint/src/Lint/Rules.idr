@@ -410,10 +410,14 @@ adjacency ds =
       _ => False
 
     -- the names of the type's family: those its definition and all its
-    -- implementations mention, and in turn those the declarations they
-    -- name, or implementations for them, mention, to a fixed point
+    -- implementations mention, with the interfaces they implement, which
+    -- Idris puts above them, and in turn those the declarations they name,
+    -- or implementations for them, mention, to a fixed point
     used : Declared -> List Declared -> List Declared -> List String
-    used ty impls others = go (foldr (\d, rest => d.mentions ++ rest) ty.mentions impls) others
+    used ty impls others =
+      go (foldr (\d, rest => d.mentions ++ maybe [] (\ip => [fst ip]) d.implementing ++ rest)
+           ty.mentions impls)
+        others
       where
         named : List String -> Declared -> Bool
         named names d = any (`elem` names) d.defines

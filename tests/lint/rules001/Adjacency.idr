@@ -3,6 +3,9 @@
 ||| function that has nothing to do with it: reported. `Whole`'s `Show` uses
 ||| `parts`, which names `Part`, whose `Show` it uses in turn: all three
 ||| stand between `Whole` and its `Show` as its family, not reported.
+||| `Stack`'s `Sized` comes after the interface it implements, which is
+||| declared after `Stack` and must come before its implementation: not
+||| reported.
 module Adjacency
 
 %default total
@@ -44,3 +47,12 @@ parts (MkWhole n) = [(Size, n)]
 
 Show Whole where
   show w = fastConcat (map (\pn => show (fst pn) ++ "=" ++ show (snd pn)) (parts w))
+
+data Stack = Empty
+
+||| What a value counts: declared after `Stack`, which it is implemented for.
+interface Sized a where
+  size : a -> Nat
+
+Sized Stack where
+  size Empty = 0

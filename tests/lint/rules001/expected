@@ -1,4 +1,4 @@
-./Adjacency.idr:30:1 implementation-adjacent: `Show Shade` stands apart from `Shade`: `double` is between them, neither one of its implementations nor something they use
+./Adjacency.idr:33:1 implementation-adjacent: `Show Shade` stands apart from `Shade`: `double` is between them, neither one of its implementations nor something they use
 ./Aliased.idr:8:1 import-alias: `Shared.One.Item` imported as `Wrong`: an alias is the qualifier of its key type, `Shared.One`
 ./Aliased.idr:16:8 import-alias: `Wrong.item` is written otherwise than its module's path from here: `Shared.One.Item.item`
 ./Aliased.idr:16:21 import-alias: `One.Piece.piece` is written otherwise than its module's path from here: `Spare.One.Piece.piece`
