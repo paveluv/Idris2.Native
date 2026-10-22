@@ -1,9 +1,10 @@
 . ../../testutils.sh
 
-# The runtime's state fits its area: each word of `RUNTIME` the runtime
-# names (`Native.Runtime.State.word`) carries an erased proof that the area,
-# `Native.Area.runtimeWords` words, holds it. The last word checks; the
-# first past the area does not.
+# The runtime's state is the words of `RUNTIME`, by name: each a named field
+# (`Native.Runtime.State.Fields`), read and written as the type its carrier
+# says. A name the state has checks; one it lacks does not. That the fields
+# fit the area is the state's own proof (`fit`), so a state past its area
+# does not build.
 idris2 -p idris2-native -p idris2-native-runtime --check Last.idr > /dev/null && echo "Last.idr checks"
-idris2 -p idris2-native -p idris2-native-runtime --check Past.idr 2>&1 | grep -o "Can't find an implementation for [^.]*" | head -1
+idris2 -p idris2-native -p idris2-native-runtime --check Past.idr 2>&1 | grep -o "Can't find an implementation for Named \"[a-zA-Z]*\"" | head -1
 rm -rf build

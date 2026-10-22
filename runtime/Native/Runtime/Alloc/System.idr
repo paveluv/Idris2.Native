@@ -14,11 +14,15 @@ import Native.Runtime.Alloc.Config
 import Native.Runtime.Alloc.Pages
 import Native.Runtime.Alloc.SizeClasses
 
+import Native.Carrier
+import Native.Field
+import Native.Mach
 import Native.Runtime.ByteAddr
 import Native.Runtime.Cell
 import Native.Runtime.Memory
 import Native.Runtime.Ordo
 import Native.Runtime.OS
+import Native.Runtime.PortTy
 import Native.Runtime.State
 
 %hide Prelude.Interfaces.(>>=)
@@ -45,11 +49,11 @@ Pages Ordo where
 export
 processAllocator : Ordo.Op Ordo (SizeClasses Chunks.Buddy)
 processAllocator = do
-  r <- State.getState State.foreignArena
+  r <- State.get "foreignArena"
   a <- if not (ByteAddr.isNull r) then Ordo.pure (ByteAddr.toWord r) else do
     n <- Arena.newArena {h = Ordo} Config.defaultConfig
     if n == 0 then Ordo.crashOp "idris: no address space for the allocator" else do
-      State.setState State.foreignArena (ByteAddr.fromWord n)
+      State.set "foreignArena" (ByteAddr.fromWord n)
       Ordo.pure n
   Ordo.pure (MkSizeClasses Config.defaultConfig a (Chunks.MkBuddy Config.defaultConfig a))
 

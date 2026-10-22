@@ -31,7 +31,6 @@ import Native.Failure
 import Native.Field
 import Native.Flat.Uniform as Flat
 import Native.Mach
-import Native.Rep
 import Native.Runtime.OS
 import Native.Runtime.PortTy
 import Native.Support.StructObj

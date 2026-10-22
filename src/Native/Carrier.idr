@@ -43,23 +43,39 @@ rep Value = Rep.Uniform
 rep ByteAddr = Rep.ByteAddr
 
 ||| Whether the collector must find, and may move, what a register of the
-||| carrier holds: a value's, of either kind.
+||| carrier holds: a value's, of either kind. Stated on the carrier's own
+||| cases, so that a type that asks it reduces with the carrier alone, and
+||| the same as its rep says (`scannedRep`).
 public export
 scanned : Carrier -> Bool
-scanned c = Rep.scanned (rep c)
+scanned (M _) = False
+scanned (ValueOf _) = True
+scanned Value = True
+scanned ByteAddr = False
+
+||| A carrier is scanned exactly when its rep is.
+export
+0 scannedRep : (c : Carrier) -> scanned c = Rep.scanned (rep c)
+scannedRep (M m) = machRep m
+  where
+    machRep : (0 m : Mach) -> False = Rep.scanned (Mach.rep m)
+    machRep Mach.I8 = Refl
+    machRep Mach.I16 = Refl
+    machRep Mach.I32 = Refl
+    machRep Mach.I64 = Refl
+    machRep Mach.IWord = Refl
+    machRep Mach.U8 = Refl
+    machRep Mach.U16 = Refl
+    machRep Mach.U32 = Refl
+    machRep Mach.U64 = Refl
+    machRep Mach.Rune = Refl
+    machRep Mach.F64 = Refl
+scannedRep (ValueOf _) = Refl
+scannedRep Value = Refl
+scannedRep ByteAddr = Refl
 
 ||| A machine type's carrier is one a raw word holds: the collector never
 ||| needs to see a machine value.
 export
 0 machUnscanned : (0 m : Mach) -> scanned (M m) = False
-machUnscanned Mach.I8 = Refl
-machUnscanned Mach.I16 = Refl
-machUnscanned Mach.I32 = Refl
-machUnscanned Mach.I64 = Refl
-machUnscanned Mach.IWord = Refl
-machUnscanned Mach.U8 = Refl
-machUnscanned Mach.U16 = Refl
-machUnscanned Mach.U32 = Refl
-machUnscanned Mach.U64 = Refl
-machUnscanned Mach.Rune = Refl
-machUnscanned Mach.F64 = Refl
+machUnscanned _ = Refl

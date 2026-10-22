@@ -8,9 +8,13 @@
 ||| failure yet is 0.
 module Native.System.Errno
 
+import Native.Carrier
 import Native.Failure
+import Native.Field
+import Native.Mach
 import Native.Runtime.Cell
 import Native.Runtime.Ordo as Runtime
+import Native.Runtime.PortTy
 import Native.Runtime.State
 
 %hide Prelude.Interfaces.(>>=)
@@ -50,5 +54,5 @@ failureErrno c =
 export
 lastErrno : Runtime.Ordo.Op Runtime.Ordo Bits64
 lastErrno = do
-  c <- Runtime.State.getState Runtime.State.lastFailure
+  c <- Runtime.State.get "lastFailure"
   Runtime.Ordo.pure (failureErrno c)

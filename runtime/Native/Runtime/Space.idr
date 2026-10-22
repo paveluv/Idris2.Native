@@ -30,10 +30,14 @@ import Native.Runtime.PortTy
 import Native.Runtime.State
 
 import Native.Area
+import Native.Carrier
+import Native.Field
 import Native.HeapObj.LayoutWord
 import Native.HeapObj.Shape as HeapObj
+import Native.Mach
 import Native.Port
 import Native.Routine
+
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
 %hide Prelude.Interfaces.pure
@@ -42,16 +46,16 @@ import Native.Routine
 
 ||| Memory committed to a space up to `need` and a window beyond, in whole
 ||| pages: `committed` and `end` are the state words of the space.
-commitSpace : (committed, end : State ByteAddr) -> (need : ByteAddr) -> Ordo.Op Ordo ()
+commitSpace : (committed, end : State Carrier.ByteAddr) -> (need : ByteAddr) -> Ordo.Op Ordo ()
 commitSpace committed end need = do
-  have <- State.getState committed
-  limit <- State.getState end
-  win <- State.getState State.windowBytes
+  have <- State.load committed
+  limit <- State.load end
+  win <- State.get "windowBytes"
   if need <= have then Ordo.pure () else do
     upto <- Memory.alignToPage (ByteAddr.offset need win)
     if upto > limit then Ordo.crashOp "idris: the heap's reserved space is exhausted" else do
       Memory.commitMemory have (ByteAddr.distance upto have)
-      State.setState committed upto
+      State.store committed upto
 
 ||| The first word of an object with a header, or of a continuation, at an
 ||| address the collector holds as a word.
@@ -77,7 +81,7 @@ export
 Memory Ordo where
   collectable v = do
     tag <- Memory.pointerTag
-    base <- State.getState State.fromBase
+    base <- State.get "fromBase"
     hp <- Memory.allocationPointer
     let a = v - tag
     Ordo.pure (v .&. 1 == tag && ByteAddr.toWord base <= a && a < ByteAddr.toWord hp)
@@ -105,17 +109,17 @@ Memory Ordo where
   readWord a i = Memory.loadAt (ByteAddr.fromWord a) (8 * i)
   writeWord a i v = Memory.storeAt (ByteAddr.fromWord a) (8 * i) v
   reserve n = do
-    top <- State.getState State.toTop
+    top <- State.get "toTop"
     let need = ByteAddr.offset top (8 * n)
-    commitSpace State.toCommitted State.toEnd need
-    State.setState State.toTop need
+    commitSpace (State.word "toCommitted") (State.word "toEnd") need
+    State.set "toTop" need
     Ordo.pure (ByteAddr.toWord top)
   nextToScan = do
-    scan <- State.getState State.scanCursor
-    top <- State.getState State.toTop
+    scan <- State.get "scanCursor"
+    top <- State.get "toTop"
     if scan >= top then Ordo.pure Nothing else do
       n <- sizeAt (ByteAddr.toWord scan)
-      State.setState State.scanCursor (ByteAddr.offset scan (8 * n))
+      State.set "scanCursor" (ByteAddr.offset scan (8 * n))
       Ordo.pure (Just (ByteAddr.toWord scan))
   rootCount = do
     nr <- Memory.nrootsArea
@@ -136,26 +140,26 @@ Memory Ordo where
   rootContinuation = Memory.continuation
   setRootContinuation = Memory.setContinuation
   flipSpaces = do
-    fb <- State.getState State.fromBase
-    fe <- State.getState State.fromEnd
-    fc <- State.getState State.fromCommitted
-    tb <- State.getState State.toBase
-    te <- State.getState State.toEnd
-    tc <- State.getState State.toCommitted
-    tt <- State.getState State.toTop
+    fb <- State.get "fromBase"
+    fe <- State.get "fromEnd"
+    fc <- State.get "fromCommitted"
+    tb <- State.get "toBase"
+    te <- State.get "toEnd"
+    tc <- State.get "toCommitted"
+    tt <- State.get "toTop"
     -- the old from-space is given back whole, and becomes the empty to-space
     Memory.releaseMemory fb (ByteAddr.distance fc fb)
-    State.setState State.fromBase tb
-    State.setState State.fromEnd te
-    State.setState State.fromCommitted tc
-    State.setState State.toBase fb
-    State.setState State.toEnd fe
-    State.setState State.toCommitted fb
-    State.setState State.toTop fb
-    State.setState State.scanCursor fb
-    State.setState State.liveBytes (ByteAddr.distance tt tb)
-    count <- State.getState State.collections
-    State.setState State.collections (count + 1)
+    State.set "fromBase" tb
+    State.set "fromEnd" te
+    State.set "fromCommitted" tc
+    State.set "toBase" fb
+    State.set "toEnd" fe
+    State.set "toCommitted" fb
+    State.set "toTop" fb
+    State.set "scanCursor" fb
+    State.set "liveBytes" (ByteAddr.distance tt tb)
+    count <- State.get "collections"
+    State.set "collections" (count + 1)
     -- the program allocates after the copies
     Memory.setAllocation tt tc
 
@@ -164,9 +168,9 @@ Memory Ordo where
 collectionDue : (bytes : Bits64) -> Ordo.Op Ordo Bool
 collectionDue bytes = do
   hp <- Memory.allocationPointer
-  base <- State.getState State.fromBase
-  live <- State.getState State.liveBytes
-  win <- State.getState State.windowBytes
+  base <- State.get "fromBase"
+  live <- State.get "liveBytes"
+  win <- State.get "windowBytes"
   let threshold = if 2 * live > 4 * win then 2 * live else 4 * win
   Ordo.pure (ByteAddr.distance hp base + bytes > threshold)
 
@@ -176,14 +180,14 @@ collectionDue bytes = do
 grow : (bytes : Bits64) -> Ordo.Op Ordo ByteAddr
 grow bytes = do
   hp <- Memory.allocationPointer
-  base <- State.getState State.fromBase
-  limit <- State.getState State.heapLimit
-  win <- State.getState State.windowBytes
+  base <- State.get "fromBase"
+  limit <- State.get "heapLimit"
+  win <- State.get "windowBytes"
   let next = ByteAddr.offset hp bytes
   if limit /= 0 && ByteAddr.distance next base > Bits.shiftR limit 1
      then Ordo.crashOp "idris: heap limit exceeded"
      else do
-       commitSpace State.fromCommitted State.fromEnd (ByteAddr.offset next win)
+       commitSpace (State.word "fromCommitted") (State.word "fromEnd") (ByteAddr.offset next win)
        Memory.setAllocation next (ByteAddr.offset next win)
        Ordo.pure hp
 
@@ -245,17 +249,17 @@ allocMutable bytes = do
 export
 setHeapLimit : Bits64 -> IO ()
 setHeapLimit bytes = primIO $ \w =>
-  let (MkOrdo # ()) = State.setState State.heapLimit bytes MkOrdo in MkIORes () w
+  let (MkOrdo # ()) = State.set "heapLimit" bytes MkOrdo in MkIORes () w
 
 %cg native flat Runtime.Space.getHeapLimit
 export
 getHeapLimit : IO Bits64
 getHeapLimit = primIO $ \w =>
-  let (MkOrdo # n) = State.getState State.heapLimit MkOrdo in MkIORes n w
+  let (MkOrdo # n) = State.get "heapLimit" MkOrdo in MkIORes n w
 
 %cg native flat Runtime.Space.collectionCount
 ||| The collections so far.
 export
 collectionCount : IO Bits64
 collectionCount = primIO $ \w =>
-  let (MkOrdo # n) = State.getState State.collections MkOrdo in MkIORes n w
+  let (MkOrdo # n) = State.get "collections" MkOrdo in MkIORes n w

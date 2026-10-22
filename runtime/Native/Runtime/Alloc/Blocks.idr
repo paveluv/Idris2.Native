@@ -19,10 +19,16 @@ module Native.Runtime.Alloc.Blocks
 import Native.Runtime.Alloc.Block
 import Native.Runtime.Alloc.System
 
+import Native.Carrier
+import Native.Field
+import Native.Mach
 import Native.Runtime.ByteAddr
 import Native.Runtime.Cell
 import Native.Runtime.Memory
 import Native.Runtime.Ordo
+-- lint: allow import-unused: a word of the state's type, loaded and stored
+-- here, reduces through the carrier's type
+import Native.Runtime.PortTy
 import Native.Runtime.State
 
 %hide Prelude.Interfaces.(>>=)
@@ -35,17 +41,17 @@ import Native.Runtime.State
 ||| address, null until it is made.
 export
 data Blocks : Type where
-  MkBlocks : State ByteAddr -> Blocks
+  MkBlocks : State Carrier.ByteAddr -> Blocks
 
 ||| The environment's entries (`System.Environment`), once the program
 ||| changes it.
 export
 environment : Blocks
-environment = MkBlocks State.environArray
+environment = MkBlocks (State.word "environArray")
 
 ||| The array's address, null if it is not made.
 array : Blocks -> Ordo.Op Ordo ByteAddr
-array (MkBlocks s) = State.getState s
+array (MkBlocks s) = State.load s
 
 ||| Where block `i`'s address is in the array.
 slot : (i : Bits64) -> Bits64
@@ -70,7 +76,7 @@ make xs@(MkBlocks s) capacity = do
       let r = Memory.foreignBytes w
       Memory.storeAt r 0 0
       Memory.storeAt r 8 capacity
-      State.setState s r
+      State.store s r
       Ordo.pure True
 
 ||| How many blocks the array holds, 0 if it is not made.
@@ -127,7 +133,7 @@ push xs b none done = do
             Memory.copyBytes a r (slot n)
             Memory.storeAt r 8 (2 * c)
             System.freeBlock (ByteAddr.toWord a)
-            State.setState s r
+            State.store s r
             Ordo.pure True
 
 ||| Block `i` replaced by `b`, and given to `k`; the program ends for an `i`
@@ -167,7 +173,7 @@ dispose xs@(MkBlocks s) = do
     n <- Memory.loadAt a 0
     freeAll a 0 n
     System.freeBlock (ByteAddr.toWord a)
-    State.setState s (Memory.foreignBytes 0)
+    State.store s (Memory.foreignBytes 0)
   where
     covering
     freeAll : ByteAddr -> (i, n : Bits64) -> Ordo.Op Ordo ()

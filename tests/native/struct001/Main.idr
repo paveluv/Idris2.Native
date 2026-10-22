@@ -28,7 +28,6 @@ import Native.Carrier
 import Native.Field
 import Native.Flat.Uniform
 import Native.Mach
-import Native.Rep
 import Native.Runtime.Cell
 import Native.Runtime.PortTy
 import Native.Runtime.Space
@@ -56,7 +55,7 @@ failing "Can't find an implementation for FromString (List Integer)"
   wrong : Uniform Rec -> IO ()
   wrong r = set "items" r (MkUniform "no")
 
-failing "Can't find an implementation for intToBool ((0 + 1) == 0) = True"
+failing "Can't find an implementation for intToBool 0 = True"
   -- the second value stored first: it is not the value due next
   disorder : IO (Uniform Rec)
   disorder = do

@@ -1,16 +1,19 @@
-||| The runtime's state is the words of the area `RUNTIME`, `runtimeWords` of
-||| them (32), and each word it names carries a proof that the area holds
-||| it. Its last word, 31, is in the area, so naming it checks.
+||| The runtime's state is the words of the area `RUNTIME`, each a named
+||| field of the carrier it holds. Its last word, why the last OS service
+||| failed, is a count: `get "lastFailure"` reads it as a `Bits64`, which
+||| Idris finds from its name where this is compiled.
 module Last
 
+import Native.Carrier
+import Native.Field
+import Native.Mach
+import Native.Runtime.Cell
+import Native.Runtime.Ordo
+import Native.Runtime.PortTy
 import Native.Runtime.State
 
 %default total
 
--- `count 31` asks for `31 < 32 = True`, which Idris proves by computing it
-lastWord : State Bits64
-lastWord = count 31
-
--- two words from the 30th end at the area's end: `30 + 2 <= 32 = True`
-lastTwo : Bits64
-lastTwo = words 30 2
+-- a count, so a `Bits64`
+lastFailure : Op Ordo Bits64
+lastFailure = State.get "lastFailure"

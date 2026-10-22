@@ -12,14 +12,18 @@
 ||| over these, for every encoding.
 module Native.Support.Text
 
+import Native.Carrier
 import Native.Failure
+import Native.Field
 import Native.Flat.Uniform as Flat
+import Native.Mach
 import Native.Runtime.Alloc.Block as Runtime.Alloc
 import Native.Runtime.ByteAddr as Runtime
 import Native.Runtime.Cell
 import Native.Runtime.Memory
 import Native.Runtime.Ordo as Runtime
 import Native.Runtime.PortTy as Runtime
+import Native.Runtime.PortTy
 import Native.Runtime.State
 import Native.Types.StringRoutine
 
@@ -83,7 +87,7 @@ withText s none use = do
   own <- string__textAddress s
   if not (Runtime.ByteAddr.isNull own) then use own n else
     Runtime.Alloc.Block.allocate n
-      (do Runtime.State.setState Runtime.State.lastFailure (Failure.code Failure.NoMemory)
+      (do Runtime.State.set "lastFailure" (Failure.code Failure.NoMemory)
           none)
       (\b => do
         let Runtime.Alloc.Block.MkAddressed p b' = Runtime.Alloc.Block.address b
@@ -105,7 +109,7 @@ withPath : Flat.Uniform String -> (none : Runtime.Ordo.Op Runtime.Ordo a) ->
 withPath s none use = do
   n <- string__textBytes s
   Runtime.Alloc.Block.allocate (n + 1)
-    (do Runtime.State.setState Runtime.State.lastFailure (Failure.code Failure.NoMemory)
+    (do Runtime.State.set "lastFailure" (Failure.code Failure.NoMemory)
         none)
     (\b => do
       let Runtime.Alloc.Block.MkAddressed p b' = Runtime.Alloc.Block.address b

@@ -1,11 +1,17 @@
-||| A word past the area: `count 32` asks for `32 < 32 = True`, which is
-||| false, so it does not typecheck, and a state that grew past its area is
-||| refused where the runtime is built, not found writing past the image.
+||| A name the state does not have: no word is found for it, so it does not
+||| typecheck, and no code reads a word of the area the state has not named.
 module Past
 
+import Native.Carrier
+import Native.Field
+import Native.Mach
+import Native.Runtime.Cell
+import Native.Runtime.Ordo
+import Native.Runtime.PortTy
 import Native.Runtime.State
 
 %default total
 
-pastWord : State Bits64
-pastWord = count 32
+-- the state has no word of this name
+pastWord : Op Ordo Bits64
+pastWord = State.get "pastTheEnd"

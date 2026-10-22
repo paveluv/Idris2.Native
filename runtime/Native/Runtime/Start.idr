@@ -14,6 +14,8 @@ import Native.Runtime.PortTy
 import Native.Runtime.State
 
 import Native.Carrier
+import Native.Field
+import Native.Mach
 import Native.Routine
 
 %hide Prelude.Interfaces.(>>=)
@@ -35,21 +37,21 @@ start : PortTy (Routine.port Routine.Start)
 start entry window = do
   (fb, fs) <- reserveSpace 35184372088832
   (tb, ts) <- reserveSpace 35184372088832
-  State.setState State.fromBase fb
-  State.setState State.fromEnd (ByteAddr.offset fb fs)
-  State.setState State.fromCommitted fb
-  State.setState State.toBase tb
-  State.setState State.toEnd (ByteAddr.offset tb ts)
-  State.setState State.toCommitted tb
-  State.setState State.toTop tb
-  State.setState State.scanCursor tb
-  State.setState State.liveBytes 0
-  State.setState State.heapLimit 0
-  State.setState State.windowBytes window
-  State.setState State.collections 0
+  State.set "fromBase" fb
+  State.set "fromEnd" (ByteAddr.offset fb fs)
+  State.set "fromCommitted" fb
+  State.set "toBase" tb
+  State.set "toEnd" (ByteAddr.offset tb ts)
+  State.set "toCommitted" tb
+  State.set "toTop" tb
+  State.set "scanCursor" tb
+  State.set "liveBytes" 0
+  State.set "heapLimit" 0
+  State.set "windowBytes" window
+  State.set "collections" 0
   firstEnd <- Memory.alignToPage (ByteAddr.offset fb window)
   Memory.commitMemory fb (ByteAddr.distance firstEnd fb)
-  State.setState State.fromCommitted firstEnd
+  State.set "fromCommitted" firstEnd
   Memory.setAllocation fb (ByteAddr.offset fb window)
   given <- OS.osStackLimit
   let soft = if given == 0 then defaultStack else given

@@ -7,14 +7,27 @@
 ||| collection copies what is live into it, and the two swap. What the last
 ||| collection left live decides when the next one runs, and the limit the
 ||| program sets decides how far the heap may grow.
+|||
+||| The state's words are named fields (`Native.Field`), as a mutable
+||| record's raw words are, each of the carrier it holds, and read and
+||| written by its name, as that carrier's type (`get`, `set`): an address
+||| as a byte address, a count as a word, never one taken for the other.
+||| Code that is handed a word of the state, not the name, takes it as a
+||| reference made by the name (`word`), which nothing else makes. The
+||| fields fit the area, its scratch bytes after them, as `fit` proves, so a
+||| state that grew past its area is refused where the runtime is built.
 module Native.Runtime.State
 
 import Native.Runtime.ByteAddr
 import Native.Runtime.Cell
 import Native.Runtime.Memory
 import Native.Runtime.Ordo
+import Native.Runtime.PortTy
 
 import Native.Area
+import Native.Carrier
+import Native.Field
+import Native.Mach
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
@@ -22,90 +35,89 @@ import Native.Area
 
 %default total
 
-||| A word of the state, by its index in the area; what it holds is its
-||| type's (`Cell`).
+-- lint: allow public-unneeded: the search on a name, where a word is read or
+-- written, unfolds the list
+||| The state's words, in the area's order:
+|||
+||| - the from-space's first address, the end of its reservation, and the
+|||   end of the memory committed to it;
+||| - the to-space's, and during a collection the end of what has been
+|||   copied into it and the address of the next copy to scan;
+||| - the bytes the last collection left live, the most bytes the heap may
+|||   commit, 0 for no limit, the window's size and the collections so far;
+||| - the arena of the process's allocator of memory outside the heap
+|||   (`Alloc.System`), null until the first allocation makes it;
+||| - the array of the environment's blocks (`Alloc.Blocks.environment`),
+|||   null while the environment is the one the system gave, which only the
+|||   allocator's sealed modules read or write;
+||| - why the last OS service that failed did, by the reason's code
+|||   (`Native.Failure`), 0 until one fails: each service that fails sets
+|||   it, and none that succeeds clears it, as the C library's `errno`.
 public export
-record State (t : Type) where
+Fields : List (String, Carrier)
+Fields =
+  [ "fromBase" ~: Carrier.ByteAddr, "fromEnd" ~: Carrier.ByteAddr
+  , "fromCommitted" ~: Carrier.ByteAddr
+  , "toBase" ~: Carrier.ByteAddr, "toEnd" ~: Carrier.ByteAddr, "toCommitted" ~: Carrier.ByteAddr
+  , "toTop" ~: Carrier.ByteAddr, "scanCursor" ~: Carrier.ByteAddr
+  , "liveBytes" ~: Mach.U64, "heapLimit" ~: Mach.U64, "windowBytes" ~: Mach.U64
+  , "collections" ~: Mach.U64
+  , "foreignArena" ~: Carrier.ByteAddr
+  , "environArray" ~: Carrier.ByteAddr
+  , "lastFailure" ~: Mach.U64 ]
+
+||| The words of scratch bytes, sixteen bytes, that a system call writes
+||| into, getrlimit's answer: the first, after the fields, and how many.
+scratch, scratchWords : Bits64
+scratch = 15
+scratchWords = 2
+
+||| The state's names are each one word's, all raw, the scratch bytes after
+||| them, and all of it fits the area.
+0 fit : (Field.distinct Fields, Field.valueCount Fields, Field.rawCount Fields,
+         State.scratch + State.scratchWords <= Area.runtimeWords) =
+        (True, 0, State.scratch, True)
+fit = Refl
+
+||| A word of the state, of the carrier it holds: made by its name alone
+||| (`word`), for code that is handed the word rather than its name.
+export
+record State (0 c : Carrier) where
   constructor MkState
   index : Bits64
 
-||| The state's word `i`, which the area holds, an address or a count: a
-||| word past the area's (`Area.runtimeWords`) does not typecheck.
-public export
-address : (i : Bits64) -> {auto 0 fits : i < Area.runtimeWords = True} -> State ByteAddr
-address i = MkState i
-
-public export
-count : (i : Bits64) -> {auto 0 fits : i < Area.runtimeWords = True} -> State Bits64
-count i = MkState i
-
-||| The from-space: its first address, the end of its reservation, and the
-||| end of the memory committed to it.
-public export
-fromBase, fromEnd, fromCommitted : State ByteAddr
-fromBase = address 0
-fromEnd = address 1
-fromCommitted = address 2
-
-||| The to-space: the same, and during a collection the end of what has
-||| been copied into it and the address of the next copy to scan.
-public export
-toBase, toEnd, toCommitted, toTop, scanCursor : State ByteAddr
-toBase = address 3
-toEnd = address 4
-toCommitted = address 5
-toTop = address 6
-scanCursor = address 7
-
-||| The bytes the last collection left live; the most bytes the heap may
-||| commit, 0 for no limit; the window's size; the collections so far.
+||| The word of the name.
 export
-liveBytes, heapLimit, windowBytes, collections : State Bits64
-liveBytes = count 8
-heapLimit = count 9
-windowBytes = count 10
-collections = count 11
+word : (0 n : String) -> {i : Bits64} -> {0 j : Bits64} ->
+       {auto 0 at : Field.Named n Fields i j c} -> State c
+word _ = MkState i
 
-||| The arena of the process's allocator of memory outside the heap
-||| (`Alloc.System`), null until the first allocation makes it.
+||| The word, as the type its carrier says, and storing one.
 export
-foreignArena : State ByteAddr
-foreignArena = address 12
-
-||| The array of the environment's blocks (`Alloc.Blocks.environment`),
-||| null while the environment is the one the system gave. Only the
-||| allocator's sealed modules read or write it. Words 14 and 15 are free.
-export
-environArray : State ByteAddr
-environArray = address 13
-
-||| Why the last OS service that failed did, by the reason's code
-||| (`Native.Failure`); 0 until one fails. Each service that fails sets it,
-||| and none that succeeds clears it, as the C library's `errno`.
-export
-lastFailure : State Bits64
-lastFailure = count 18
-
-||| The first of the `n` words of the state from its word `i`, all of which
-||| the area holds: a run of raw words.
-public export
-words : (i, n : Bits64) -> {auto 0 fits : i + n <= Area.runtimeWords = True} -> Bits64
-words i _ = i
-
-||| The word of the state, as what it holds: the state keeps an address as
-||| its word.
-export
-getState : Cell t => State t -> Ordo.Op Ordo t
-getState s = do
+load : Cell (PortTy.Carried () c) => State c -> Ordo.Op Ordo (PortTy.Carried () c)
+load s = do
   rt <- Memory.runtimeArea
   w <- Memory.loadAt rt (8 * s.index)
   Ordo.pure (Cell.fromCell w)
 
 export
-setState : Cell t => State t -> t -> Ordo.Op Ordo ()
-setState s v = do
+store : Cell (PortTy.Carried () c) => State c -> PortTy.Carried () c -> Ordo.Op Ordo ()
+store s v = do
   rt <- Memory.runtimeArea
   Memory.storeAt rt (8 * s.index) (Cell.toCell v)
+
+||| The word of the name, as the type its carrier says, and storing one.
+export
+get : (0 n : String) -> {i : Bits64} -> {0 j : Bits64} -> {0 c : Carrier} ->
+      {auto 0 at : Field.Named n Fields i j c} -> Cell (PortTy.Carried () c) =>
+      Ordo.Op Ordo (PortTy.Carried () c)
+get n = load (word n)
+
+export
+set : (0 n : String) -> {i : Bits64} -> {0 j : Bits64} -> {0 c : Carrier} ->
+      {auto 0 at : Field.Named n Fields i j c} -> Cell (PortTy.Carried () c) =>
+      PortTy.Carried () c -> Ordo.Op Ordo ()
+set n v = store (word n) v
 
 ||| The byte address of the scratch bytes, since they hold no object.
 export
@@ -113,8 +125,3 @@ scratchArea : Ordo.Op Ordo ByteAddr
 scratchArea = do
   rt <- Memory.runtimeArea
   Ordo.pure (ByteAddr.offset rt (8 * scratch))
-  where
-    ||| The first of the two words, sixteen bytes, that a system call writes
-    ||| into: getrlimit's answer.
-    scratch : Bits64
-    scratch = words 16 2

@@ -7,7 +7,8 @@
 ||| each extern, for the platform a program is compiled for, to that
 ||| platform's function. A service that can fail reports it, 1 for success
 ||| and 0 for failure, and records why as the runtime's last failure
-||| (`State.lastFailure`); the caller decides what a failure means.
+||| (`lastFailure`, a word of `State`); the caller decides what a failure
+||| means.
 module Native.Runtime.OS
 
 import Native.Runtime.ByteAddr

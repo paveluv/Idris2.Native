@@ -13,14 +13,18 @@
 module Native.System.Call
 
 import Data.Buffer
+import Native.Carrier
 import Native.Failure
+import Native.Field
 import Native.Flat.Uniform as Flat
+import Native.Mach
 import Native.Runtime.Alloc.Block as Runtime.Alloc
 import Native.Runtime.ByteAddr as Runtime
 import Native.Runtime.Cell
 import Native.Runtime.Memory
 import Native.Runtime.Ordo as Runtime
 import Native.Runtime.OS
+import Native.Runtime.PortTy
 import Native.Runtime.State
 import Native.Support.BufferObj
 import Native.Support.Obj
@@ -119,7 +123,7 @@ removePath path = primIO $ \w => let (Runtime.MkOrdo # ok) = op Runtime.MkOrdo i
     op = Support.Text.withPath path (Runtime.Ordo.pure False) (\p => do
       ok <- Runtime.OS.osRemoveFile p
       if ok == 1 then Runtime.Ordo.pure True else do
-        why <- Runtime.State.getState Runtime.State.lastFailure
+        why <- Runtime.State.get "lastFailure"
         if why /= Failure.code Failure.IsADirectory then Runtime.Ordo.pure False else do
           ok' <- Runtime.OS.osRemoveDirectory p
           Runtime.Ordo.pure (ok' == 1))
@@ -153,7 +157,7 @@ readEntry h = primIO $ \w => let (Runtime.MkOrdo # s) = op Runtime.MkOrdo in MkI
 export
 clearFailure : IO ()
 clearFailure = primIO $ \w =>
-  let (Runtime.MkOrdo # ()) = Runtime.State.setState Runtime.State.lastFailure 0 Runtime.MkOrdo in
+  let (Runtime.MkOrdo # ()) = Runtime.State.set "lastFailure" 0 Runtime.MkOrdo in
     MkIORes () w
 
 %cg native flat System.Call.recordFailure
@@ -162,7 +166,7 @@ clearFailure = primIO $ \w =>
 export
 recordFailure : (code : Bits64) -> IO ()
 recordFailure c = primIO $ \w =>
-  let (Runtime.MkOrdo # ()) = Runtime.State.setState Runtime.State.lastFailure c Runtime.MkOrdo in
+  let (Runtime.MkOrdo # ()) = Runtime.State.set "lastFailure" c Runtime.MkOrdo in
     MkIORes () w
 
 %cg native flat System.Call.newlineFrom

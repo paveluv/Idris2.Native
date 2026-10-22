@@ -52,15 +52,17 @@ n ~& t = (n, Carrier.ValueOf t)
 ||| The field of the name in the list: its index among the raw fields and
 ||| among the values before it, the one of its kind its index, and its
 ||| carrier. Found by the search on the name and the list alone: a name
-||| the list does not have finds none.
+||| the list does not have finds none. The indices are sums of the
+||| primitive addition, which a flat form's static arguments fold, not of
+||| `Num`'s, whose method they could not.
 public export
 data Named : (name : String) -> (fs : List (String, Carrier)) -> (raw, value : Bits64) ->
              (c : Carrier) -> Type where
   [search name fs]
   Here : Named n ((n, c) :: fs) 0 0 c
   ThereRaw : {auto 0 raw : Carrier.scanned c' = False} -> Named n fs i j c ->
-             Named n ((m, c') :: fs) (i + 1) j c
-  ThereValue : Named n fs i j c -> Named n ((m, Carrier.ValueOf t) :: fs) i (j + 1) c
+             Named n ((m, c') :: fs) (prim__add_Bits64 i 1) j c
+  ThereValue : Named n fs i j c -> Named n ((m, Carrier.ValueOf t) :: fs) i (prim__add_Bits64 j 1) c
 
 ||| The number of raw fields, and of values.
 public export

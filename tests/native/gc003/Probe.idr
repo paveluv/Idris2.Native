@@ -15,11 +15,15 @@
 -- be the one that collects, before the second look.
 module Probe
 
+import Native.Carrier
+import Native.Field
 import Native.Flat.Uniform
+import Native.Mach
 import Native.Runtime.ByteAddr
 import Native.Runtime.Cell
 import Native.Runtime.Memory
 import Native.Runtime.Ordo
+import Native.Runtime.PortTy
 import Native.Runtime.State
 import Native.Support.Obj
 import Native.Support.String.Utf8
@@ -38,10 +42,10 @@ import Native.Types.Kind
 ||| header with the length in bytes.
 look : Uniform (List String) -> Op Ordo (Bits64, Bits64, Bool)
 look xs = do
-  before <- getState collections
+  before <- get "collections"
   big <- stringObject (fastConcat xs)
   bytes <- Obj.header big
-  during <- getState collections
+  during <- get "collections"
   hp <- allocationPointer
   lim <- allocationLimit
   pure (before, during, hp == lim && readPart StringBytes bytes == 262144)

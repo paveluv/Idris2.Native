@@ -18,7 +18,6 @@ import Native.Carrier
 import Native.Field
 import Native.Flat.Uniform as Flat
 import Native.Mach
-import Native.Rep
 import Native.Runtime.ByteAddr
 import Native.Runtime.Cell as Runtime
 import Native.Runtime.Ordo as Runtime

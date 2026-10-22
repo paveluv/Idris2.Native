@@ -13,6 +13,8 @@ import Native.Runtime.OS.Syscall
 
 import Native.Carrier
 import Native.Failure
+import Native.Field
+import Native.Mach
 import Native.OpenFlag
 import Native.Runtime.Alloc.Block as Alloc
 import Native.Runtime.Bits
@@ -40,7 +42,7 @@ succeeded : Bits64 -> Ordo.Op Ordo Bool
 succeeded r =
   if failed r
      then do
-       State.setState State.lastFailure (errnoFailure (0 - r))
+       State.set "lastFailure" (errnoFailure (0 - r))
        Ordo.pure False
      else Ordo.pure True
   where
@@ -248,7 +250,7 @@ fileSize : PortTy (Service.port Service.FileSize)
 fileSize handle =
   -- fstat(handle, buffer): struct stat, 144 bytes, its st_size the word at 48
   Alloc.Block.allocate 144
-    (do State.setState State.lastFailure (Failure.code Failure.NoMemory)
+    (do State.set "lastFailure" (Failure.code Failure.NoMemory)
         Ordo.pure 0xFFFFFFFFFFFFFFFF)
     (\b => do
       let Alloc.Block.MkAddressed buffer b' = Alloc.Block.address b
@@ -286,7 +288,7 @@ readEntry handle address bytes =
   -- first one taken: its d_off, the position after it, at 8, its name from
   -- 19; then lseek(handle, d_off, SEEK_SET), so the next read begins after it
   Alloc.Block.allocate 280
-    (do State.setState State.lastFailure (Failure.code Failure.NoMemory)
+    (do State.set "lastFailure" (Failure.code Failure.NoMemory)
         Ordo.pure 0xFFFFFFFFFFFFFFFF)
     (\b => do
       let Alloc.Block.MkAddressed buffer b' = Alloc.Block.address b
