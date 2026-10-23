@@ -24,6 +24,7 @@ module Native.Types.StringRoutine
 
 import Data.List.Elem
 import Native.Carrier
+import Native.Field
 import Native.Mach
 import Native.Port
 
@@ -90,24 +91,24 @@ Eq StringRoutine where
 ||| Each string routine's arrow: what its arguments and its result carry.
 public export
 port : StringRoutine -> Port
-port Length = Carrier.ValueOf String ~> Mach.U64
-port Head = Carrier.ValueOf String ~> Mach.U64
-port Tail = Carrier.ValueOf String ~> Carrier.ValueOf String
-port Index = Carrier.ValueOf String ~> Mach.U64 ~> Mach.U64
-port Cons = Mach.U64 ~> Carrier.ValueOf String ~> Carrier.ValueOf String
-port Append = Carrier.ValueOf String ~> Carrier.ValueOf String ~> Carrier.ValueOf String
-port Reverse = Carrier.ValueOf String ~> Carrier.ValueOf String
-port Substr = Mach.IWord ~> Mach.IWord ~> Carrier.ValueOf String ~> Carrier.ValueOf String
-port Compare = Carrier.ValueOf String ~> Carrier.ValueOf String ~> Mach.IWord
-port ShowSigned = Mach.IWord ~> Carrier.ValueOf String
-port ShowUnsigned = Mach.U64 ~> Carrier.ValueOf String
-port ShowDouble = Mach.F64 ~> Carrier.ValueOf String
-port ReadDouble = Carrier.ValueOf String ~> Mach.F64
-port ReadWord = Carrier.ValueOf String ~> Mach.U64
-port TextBytes = Carrier.ValueOf String ~> Mach.U64
-port TextAddress = Carrier.ValueOf String ~> Carrier.ByteAddr
-port CopyText = Carrier.ValueOf String ~> Carrier.ByteAddr ~> ()
-port OfText = Carrier.ByteAddr ~> Mach.U64 ~> Carrier.ValueOf String
+port Length = "s" ~& String ~> "characters" ~: Mach.U64
+port Head = "s" ~& String ~> "character" ~: Mach.U64
+port Tail = "s" ~& String ~> "rest" ~& String
+port Index = "s" ~& String ~> "i" ~: Mach.U64 ~> "character" ~: Mach.U64
+port Cons = "c" ~: Mach.U64 ~> "s" ~& String ~> "cs" ~& String
+port Append = "s" ~& String ~> "t" ~& String ~> "st" ~& String
+port Reverse = "s" ~& String ~> "reversed" ~& String
+port Substr = "start" ~: Mach.IWord ~> "len" ~: Mach.IWord ~> "s" ~& String ~> "part" ~& String
+port Compare = "s" ~& String ~> "t" ~& String ~> "order" ~: Mach.IWord
+port ShowSigned = "n" ~: Mach.IWord ~> "decimal" ~& String
+port ShowUnsigned = "n" ~: Mach.U64 ~> "decimal" ~& String
+port ShowDouble = "x" ~: Mach.F64 ~> "decimal" ~& String
+port ReadDouble = "decimal" ~& String ~> "x" ~: Mach.F64
+port ReadWord = "decimal" ~& String ~> "n" ~: Mach.U64
+port TextBytes = "s" ~& String ~> "bytes" ~: Mach.U64
+port TextAddress = "s" ~& String ~> "bytes" ~: Carrier.ByteAddr
+port CopyText = "s" ~& String ~> "into" ~: Carrier.ByteAddr ~> ()
+port OfText = "bytes" ~: Carrier.ByteAddr ~> "count" ~: Mach.U64 ~> "s" ~& String
 
 ||| Every string routine, once, which the code generator pairs with its own
 ||| copy, element by element.

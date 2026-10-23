@@ -249,7 +249,7 @@ con2 c x y = do
 ||| A mutable record being made, its first `k` values stored: as it is held,
 ||| the record itself.
 export
-record Building (0 fs : List (String, Carrier)) (0 k : Bits64) where
+record Building (0 fs : List Field) (0 k : Bits64) where
   constructor MkBuilding
   made : Flat.Uniform (Types.Struct fs)
 

@@ -12,8 +12,8 @@ import Native.Area
 import Native.Carrier
 import Native.Codegen.IRCommon.Pinned as IRCommon
 import Native.Codegen.IRCommon.Ty as IRCommon
+import Native.Field
 import Native.Intrinsic
-import Native.Mach
 import Native.Port
 import Native.Rep
 import Native.Types.Enc as Types
@@ -42,32 +42,31 @@ pinnedAgrees IRCommon.Pinned.HpLim = Refl
 pinnedAgrees IRCommon.Pinned.K = Refl
 
 ||| The instructions an inline extern expands to, by the port they
-||| implement: what they take and give is the port's.
+||| implement: what they take and give is the port's, each one the port of
+||| an intrinsic it stands for, so that the port is stated once, there.
 public export
 data Expansion : Port -> Type where
   ||| Load the width at a base address plus an offset, extended with zeros.
-  Load : Width -> Expansion (Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64)
+  Load : Width -> Expansion (Intrinsic.port Intrinsic.Load64)
   ||| Store the width of a word at a base address plus an offset.
-  Store : Width -> Expansion (Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64 ~> ())
+  Store : Width -> Expansion (Intrinsic.port Intrinsic.Store64)
   ||| Read a pinned register, as what it carries.
-  Get : (r : IRCommon.Pinned) -> Expansion (() ~> pinnedCarrier r)
+  Get : (r : IRCommon.Pinned) -> Expansion (() ~> MkField "register" (pinnedCarrier r))
   ||| Set a pinned register.
-  Set : (r : IRCommon.Pinned) -> Expansion (pinnedCarrier r ~> ())
+  Set : (r : IRCommon.Pinned) -> Expansion (MkField "register" (pinnedCarrier r) ~> ())
   ||| The pointer tag of the program's encoding: what a pointer word is
   ||| beyond the object's address.
-  PointerTag : Expansion (() ~> Mach.U64)
+  PointerTag : Expansion (Intrinsic.port Intrinsic.PointerTag)
   ||| The address of an area.
-  AreaAddress : Area -> Expansion (() ~> Carrier.ByteAddr)
+  AreaAddress : Area -> Expansion (Intrinsic.port Intrinsic.RuntimeArea)
   ||| The number of the program's top-level constants.
-  ConstantCount : Expansion (() ~> Mach.U64)
+  ConstantCount : Expansion (Intrinsic.port Intrinsic.ConstantCount)
   ||| The word a uniform value is.
-  ValueWord : Expansion (Carrier.Value ~> Mach.U64)
+  ValueWord : Expansion (Intrinsic.port Intrinsic.ValueWord)
   ||| The uniform value a word is.
-  WordValue : Expansion (Mach.U64 ~> Carrier.Value)
+  WordValue : Expansion (Intrinsic.port Intrinsic.WordValue)
   ||| The machine's system call, of six arguments.
-  Syscall : Expansion
-              (Mach.U64 ~> Mach.U64 ~> Mach.U64 ~> Mach.U64 ~> Mach.U64 ~> Mach.U64 ~> Mach.U64 ~>
-               Mach.U64)
+  Syscall : Expansion (Intrinsic.port Intrinsic.Syscall6)
 
 ||| Each intrinsic's expansion, of its port.
 export

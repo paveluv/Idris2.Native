@@ -79,7 +79,7 @@ failing "Can't find an implementation for distinct"
 
 failing "Can't find an implementation for scanned"
   -- a value where the collector would not see it
-  hidden : List (String, Carrier)
+  hidden : List Field
   hidden = ["greeting" ~: Carrier.ValueOf String]
 
 -- a new record, its type stated where it is made

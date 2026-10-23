@@ -13,6 +13,7 @@
 module Native.Routine
 
 import Native.Carrier
+import Native.Field
 import Native.Mach
 import Native.Port
 
@@ -41,10 +42,10 @@ data Routine
 ||| Each routine's arrow: what its arguments and its result carry.
 public export
 port : Routine -> Port
-port Start = Carrier.ByteAddr ~> Mach.U64 ~> ()
-port AllocSlow = Mach.U64 ~> Carrier.ByteAddr
-port AllocMutable = Mach.U64 ~> Carrier.ByteAddr
-port Crash = Carrier.ByteAddr ~> Mach.U64 ~> ()
+port Start = "stack" ~: Carrier.ByteAddr ~> "window" ~: Mach.U64 ~> ()
+port AllocSlow = "bytes" ~: Mach.U64 ~> "room" ~: Carrier.ByteAddr
+port AllocMutable = "bytes" ~: Mach.U64 ~> "room" ~: Carrier.ByteAddr
+port Crash = "message" ~: Carrier.ByteAddr ~> "bytes" ~: Mach.U64 ~> ()
 
 ||| Every routine, once. The code generator pairs this list's term, as the
 ||| loaded runtime's context holds it, with its own copy, element by element.

@@ -101,6 +101,7 @@ import Native.Area
 import Native.Carrier
 import Native.Data.Builder as Data
 import Native.Data.Distinct
+import Native.Field
 import Native.Flat.ConstType
 import Native.Flat.Exp
 import Native.HeapObj.Shape as HeapObj

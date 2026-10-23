@@ -16,7 +16,7 @@
 ||| it is).
 module Native.Types.Struct
 
-import Native.Carrier
+import Native.Field
 
 %default total
 
@@ -24,4 +24,4 @@ import Native.Carrier
 ||| raw words, at most 15, which its header counts in four bits, then its
 ||| values.
 export
-data Struct : (fields : List (String, Carrier)) -> Type where [external]
+data Struct : (fields : List Field) -> Type where [external]

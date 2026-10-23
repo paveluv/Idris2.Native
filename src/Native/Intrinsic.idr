@@ -20,6 +20,7 @@
 module Native.Intrinsic
 
 import Native.Carrier
+import Native.Field
 import Native.Mach
 import Native.Port
 
@@ -56,33 +57,33 @@ data Intrinsic
 ||| Each intrinsic's arrow: what its arguments and its result carry.
 public export
 port : Intrinsic -> Port
-port Load64 = Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64
-port Load32 = Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64
-port Load16 = Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64
-port Load8 = Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64
-port Store64 = Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64 ~> ()
-port Store32 = Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64 ~> ()
-port Store16 = Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64 ~> ()
-port Store8 = Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64 ~> ()
-port GetHp = () ~> Carrier.ByteAddr
-port SetHp = Carrier.ByteAddr ~> ()
-port GetHpLim = () ~> Carrier.ByteAddr
-port SetHpLim = Carrier.ByteAddr ~> ()
-port GetK = () ~> Carrier.Value
-port SetK = Carrier.Value ~> ()
-port PointerTag = () ~> Mach.U64
-port StackLimitArea = () ~> Carrier.ByteAddr
-port ArgvArea = () ~> Carrier.ByteAddr
-port RootsArea = () ~> Carrier.ByteAddr
-port NrootsArea = () ~> Carrier.ByteAddr
-port RuntimeArea = () ~> Carrier.ByteAddr
-port ConstantsArea = () ~> Carrier.ByteAddr
-port ConstantCount = () ~> Mach.U64
-port ValueWord = Carrier.Value ~> Mach.U64
-port WordValue = Mach.U64 ~> Carrier.Value
+port Load64 = "base" ~: Carrier.ByteAddr ~> "offset" ~: Mach.U64 ~> "word" ~: Mach.U64
+port Load32 = "base" ~: Carrier.ByteAddr ~> "offset" ~: Mach.U64 ~> "word" ~: Mach.U64
+port Load16 = "base" ~: Carrier.ByteAddr ~> "offset" ~: Mach.U64 ~> "word" ~: Mach.U64
+port Load8 = "base" ~: Carrier.ByteAddr ~> "offset" ~: Mach.U64 ~> "word" ~: Mach.U64
+port Store64 = "base" ~: Carrier.ByteAddr ~> "offset" ~: Mach.U64 ~> "word" ~: Mach.U64 ~> ()
+port Store32 = "base" ~: Carrier.ByteAddr ~> "offset" ~: Mach.U64 ~> "word" ~: Mach.U64 ~> ()
+port Store16 = "base" ~: Carrier.ByteAddr ~> "offset" ~: Mach.U64 ~> "word" ~: Mach.U64 ~> ()
+port Store8 = "base" ~: Carrier.ByteAddr ~> "offset" ~: Mach.U64 ~> "word" ~: Mach.U64 ~> ()
+port GetHp = () ~> "hp" ~: Carrier.ByteAddr
+port SetHp = "hp" ~: Carrier.ByteAddr ~> ()
+port GetHpLim = () ~> "hpLim" ~: Carrier.ByteAddr
+port SetHpLim = "hpLim" ~: Carrier.ByteAddr ~> ()
+port GetK = () ~> "k" ~* ()
+port SetK = "k" ~* () ~> ()
+port PointerTag = () ~> "tag" ~: Mach.U64
+port StackLimitArea = () ~> "area" ~: Carrier.ByteAddr
+port ArgvArea = () ~> "area" ~: Carrier.ByteAddr
+port RootsArea = () ~> "area" ~: Carrier.ByteAddr
+port NrootsArea = () ~> "area" ~: Carrier.ByteAddr
+port RuntimeArea = () ~> "area" ~: Carrier.ByteAddr
+port ConstantsArea = () ~> "area" ~: Carrier.ByteAddr
+port ConstantCount = () ~> "count" ~: Mach.U64
+port ValueWord = "value" ~* () ~> "word" ~: Mach.U64
+port WordValue = "word" ~: Mach.U64 ~> "value" ~* ()
 port Syscall6 =
-  Mach.U64 ~> Mach.U64 ~> Mach.U64 ~> Mach.U64 ~> Mach.U64 ~> Mach.U64 ~> Mach.U64 ~>
-    Mach.U64
+  "number" ~: Mach.U64 ~> "a1" ~: Mach.U64 ~> "a2" ~: Mach.U64 ~> "a3" ~: Mach.U64
+    ~> "a4" ~: Mach.U64 ~> "a5" ~: Mach.U64 ~> "a6" ~: Mach.U64 ~> "result" ~: Mach.U64
 
 ||| Every intrinsic, once. The code generator pairs this list's term, as the
 ||| loaded runtime's context holds it, with its own copy, element by element:

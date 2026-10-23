@@ -15,7 +15,7 @@
 module Native.Types.IntegerRoutine
 
 import Data.List.Elem
-import Native.Carrier
+import Native.Field
 import Native.Mach
 import Native.Port
 
@@ -61,21 +61,21 @@ Eq IntegerRoutine where
 ||| Each `Integer` routine's arrow: what its arguments and its result carry.
 public export
 port : IntegerRoutine -> Port
-port Add = Carrier.ValueOf Integer ~> Carrier.ValueOf Integer ~> Carrier.ValueOf Integer
-port Sub = Carrier.ValueOf Integer ~> Carrier.ValueOf Integer ~> Carrier.ValueOf Integer
-port Mul = Carrier.ValueOf Integer ~> Carrier.ValueOf Integer ~> Carrier.ValueOf Integer
-port And = Carrier.ValueOf Integer ~> Carrier.ValueOf Integer ~> Carrier.ValueOf Integer
-port Or = Carrier.ValueOf Integer ~> Carrier.ValueOf Integer ~> Carrier.ValueOf Integer
-port Xor = Carrier.ValueOf Integer ~> Carrier.ValueOf Integer ~> Carrier.ValueOf Integer
-port Div = Carrier.ValueOf Integer ~> Carrier.ValueOf Integer ~> Carrier.ValueOf Integer
-port Mod = Carrier.ValueOf Integer ~> Carrier.ValueOf Integer ~> Carrier.ValueOf Integer
-port Shl = Carrier.ValueOf Integer ~> Carrier.ValueOf Integer ~> Carrier.ValueOf Integer
-port Shr = Carrier.ValueOf Integer ~> Carrier.ValueOf Integer ~> Carrier.ValueOf Integer
-port Neg = Carrier.ValueOf Integer ~> Carrier.ValueOf Integer
-port Compare = Carrier.ValueOf Integer ~> Carrier.ValueOf Integer ~> Mach.IWord
-port ToBits64 = Carrier.ValueOf Integer ~> Mach.U64
-port FromInt64 = Mach.IWord ~> Carrier.ValueOf Integer
-port FromBits64 = Mach.U64 ~> Carrier.ValueOf Integer
+port Add = "x" ~& Integer ~> "y" ~& Integer ~> "result" ~& Integer
+port Sub = "x" ~& Integer ~> "y" ~& Integer ~> "result" ~& Integer
+port Mul = "x" ~& Integer ~> "y" ~& Integer ~> "result" ~& Integer
+port And = "x" ~& Integer ~> "y" ~& Integer ~> "result" ~& Integer
+port Or = "x" ~& Integer ~> "y" ~& Integer ~> "result" ~& Integer
+port Xor = "x" ~& Integer ~> "y" ~& Integer ~> "result" ~& Integer
+port Div = "x" ~& Integer ~> "y" ~& Integer ~> "result" ~& Integer
+port Mod = "x" ~& Integer ~> "y" ~& Integer ~> "result" ~& Integer
+port Shl = "x" ~& Integer ~> "count" ~& Integer ~> "result" ~& Integer
+port Shr = "x" ~& Integer ~> "count" ~& Integer ~> "result" ~& Integer
+port Neg = "x" ~& Integer ~> "result" ~& Integer
+port Compare = "x" ~& Integer ~> "y" ~& Integer ~> "order" ~: Mach.IWord
+port ToBits64 = "x" ~& Integer ~> "word" ~: Mach.U64
+port FromInt64 = "word" ~: Mach.IWord ~> "x" ~& Integer
+port FromBits64 = "word" ~: Mach.U64 ~> "x" ~& Integer
 
 ||| Every `Integer` routine, once, which the code generator pairs with its
 ||| own copy, element by element.

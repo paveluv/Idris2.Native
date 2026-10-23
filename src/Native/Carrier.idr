@@ -22,8 +22,9 @@ import Native.Rep
 public export
 data Carrier : Type where
   ||| A value of a machine type, in the register its rep says:
-  ||| `Mach.type m`. `M` for machine; a port writes the machine type
-  ||| itself (`Mach.U64 ~> ...`), which its arrow takes for its carrier.
+  ||| `Mach.type m`. `M` for machine; a port or a field writes the
+  ||| machine type itself (`"n" ~: Mach.U64`), which `~:` takes for its
+  ||| carrier.
   M : Mach -> Carrier
   ||| A value of the type, as ordinary code holds it: `Uniform t`. The type
   ||| is erased: what a register of it is, its rep says alone.

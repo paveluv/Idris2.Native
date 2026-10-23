@@ -20,6 +20,7 @@
 module Native.Service
 
 import Native.Carrier
+import Native.Field
 import Native.Mach
 import Native.Port
 
@@ -102,28 +103,34 @@ data Service
 ||| Each service's arrow: what its arguments and its result carry.
 public export
 port : Service -> Port
-port Exit = Mach.U64 ~> ()
-port Write = Mach.U64 ~> Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64
-port Reserve = Mach.U64 ~> Carrier.ByteAddr
-port Commit = Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64
-port Release = Carrier.ByteAddr ~> Mach.U64 ~> ()
-port StackLimit = () ~> Mach.U64
-port PageBytes = () ~> Mach.U64
+port Exit = "status" ~: Mach.U64 ~> ()
+port Write =
+  "handle" ~: Mach.U64 ~> "bytes" ~: Carrier.ByteAddr ~> "count" ~: Mach.U64
+    ~> "written" ~: Mach.U64
+port Reserve = "bytes" ~: Mach.U64 ~> "space" ~: Carrier.ByteAddr
+port Commit = "pages" ~: Carrier.ByteAddr ~> "bytes" ~: Mach.U64 ~> "ok" ~: Mach.U64
+port Release = "pages" ~: Carrier.ByteAddr ~> "bytes" ~: Mach.U64 ~> ()
+port StackLimit = () ~> "bytes" ~: Mach.U64
+port PageBytes = () ~> "bytes" ~: Mach.U64
 port PrepareTerminal = () ~> ()
-port TerminalColumns = () ~> Mach.U64
-port TerminalLines = () ~> Mach.U64
-port ChangeDirectory = Carrier.ByteAddr ~> Mach.U64
-port CurrentDirectory = Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64
-port CreateDirectory = Carrier.ByteAddr ~> Mach.U64
-port RemoveDirectory = Carrier.ByteAddr ~> Mach.U64
-port Open = Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64
-port Close = Mach.U64 ~> Mach.U64
-port Read = Mach.U64 ~> Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64
-port FileSize = Mach.U64 ~> Mach.U64
-port FileTimes = Mach.U64 ~> Carrier.ByteAddr ~> Mach.U64
-port IsTerminal = Mach.U64 ~> Mach.U64
-port RemoveFile = Carrier.ByteAddr ~> Mach.U64
-port ReadEntry = Mach.U64 ~> Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64
+port TerminalColumns = () ~> "columns" ~: Mach.U64
+port TerminalLines = () ~> "lines" ~: Mach.U64
+port ChangeDirectory = "path" ~: Carrier.ByteAddr ~> "ok" ~: Mach.U64
+port CurrentDirectory = "into" ~: Carrier.ByteAddr ~> "most" ~: Mach.U64 ~> "ok" ~: Mach.U64
+port CreateDirectory = "path" ~: Carrier.ByteAddr ~> "ok" ~: Mach.U64
+port RemoveDirectory = "path" ~: Carrier.ByteAddr ~> "ok" ~: Mach.U64
+port Open = "path" ~: Carrier.ByteAddr ~> "flags" ~: Mach.U64 ~> "handle" ~: Mach.U64
+port Close = "handle" ~: Mach.U64 ~> "ok" ~: Mach.U64
+port Read =
+  "handle" ~: Mach.U64 ~> "into" ~: Carrier.ByteAddr ~> "most" ~: Mach.U64
+    ~> "read" ~: Mach.U64
+port FileSize = "handle" ~: Mach.U64 ~> "bytes" ~: Mach.U64
+port FileTimes = "handle" ~: Mach.U64 ~> "into" ~: Carrier.ByteAddr ~> "ok" ~: Mach.U64
+port IsTerminal = "handle" ~: Mach.U64 ~> "terminal" ~: Mach.U64
+port RemoveFile = "path" ~: Carrier.ByteAddr ~> "ok" ~: Mach.U64
+port ReadEntry =
+  "handle" ~: Mach.U64 ~> "into" ~: Carrier.ByteAddr ~> "most" ~: Mach.U64
+    ~> "bytes" ~: Mach.U64
 
 ||| Every service, once. The code generator pairs this list's term, as the
 ||| loaded runtime's context holds it, with its own copy, element by element.

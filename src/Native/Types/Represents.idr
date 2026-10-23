@@ -20,7 +20,7 @@ import Native.Types.Kind
 import Native.Types.Struct
 
 import Data.Buffer
-import Native.Carrier
+import Native.Field
 
 %default total
 

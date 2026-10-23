@@ -20,8 +20,12 @@
 ||| heap-object model (`HeapObj.Shape` says what it is).
 module Native.Port
 
+-- lint: allow public-import: a port is written with the named carriers'
+-- operators (`~:`, `~&`, `~*`), and reduces through their fields, which every
+-- module that writes or reads one needs
+import public Native.Field
+
 import Native.Carrier
-import Native.Mach
 
 %default total
 
@@ -34,8 +38,8 @@ record Port where
   takes : List Carrier
   gives : Maybe Carrier
 
-||| What may stand right of a port's arrow: the rest of the port, or what
-||| the entry gives, a carrier or a machine type's, or `()`, for an entry
+||| What may stand right of a port's arrow: the rest of the port, what the
+||| entry gives, a named carrier (`Native.Field`), or `()`, for an entry
 ||| that gives nothing, as its Idris type then returns `()`.
 public export
 interface Rest a where
@@ -46,31 +50,22 @@ Rest Port where
   rest p = p
 
 public export
-Rest Carrier where
-  rest c = MkPort [] (Just c)
-
-public export
-Rest Mach where
-  rest m = MkPort [] (Just (Carrier.M m))
+Rest Field where
+  rest f = MkPort [] (Just f.carrier)
 
 public export
 Rest () where
   rest () = MkPort [] Nothing
 
-||| What may stand left of a port's arrow: a carrier the entry takes, a
-||| machine type, whose carrier it takes, or `()`, for an entry that takes
-||| nothing.
+||| What may stand left of a port's arrow: a named carrier the entry takes,
+||| or `()`, for an entry that takes nothing.
 public export
 interface Takes a where
   carriers : a -> List Carrier
 
 public export
-Takes Carrier where
-  carriers c = [c]
-
-public export
-Takes Mach where
-  carriers m = [Carrier.M m]
+Takes Field where
+  carriers f = [f.carrier]
 
 public export
 Takes () where
@@ -79,9 +74,11 @@ Takes () where
 export infixr 1 ~>
 
 ||| A port, written as the arrow of its entry's Idris type is, one argument
-||| at a time: `Mach.U64 ~> Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64` takes a
-||| word, a byte address and a word and gives a word; `() ~> ()` takes and
-||| gives nothing.
+||| at a time, each register named as a record's field is (`Native.Field`):
+||| `"handle" ~: Mach.U64 ~> "bytes" ~: Carrier.ByteAddr ~> "count" ~: Mach.U64
+||| ~> "written" ~: Mach.U64` takes a word, a byte address and a word and
+||| gives a word; `() ~> ()` takes and gives nothing. The names are erased,
+||| the port's structured comments: a port is its carriers alone.
 public export
 (~>) : Takes a => Rest b => a -> b -> Port
 x ~> y = MkPort (carriers x ++ (rest y).takes) (rest y).gives

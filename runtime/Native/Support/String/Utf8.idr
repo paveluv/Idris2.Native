@@ -25,6 +25,7 @@
 module Native.Support.String.Utf8
 
 import Native.Carrier
+import Native.Field
 import Native.Flat.Uniform as Flat
 import Native.HeapObj.Shape as HeapObj
 import Native.Port
