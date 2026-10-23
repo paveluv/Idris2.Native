@@ -9,12 +9,12 @@
 -- The raw words come first, whatever the order the fields are written in:
 -- here `count`, `mark` and `delta` are raw words 0, 1 and 2, `greeting` and
 -- `items` values 0 and 1. A field is read and written by its name, as its
--- type: `get "delta" s` is an `Int`, `get "items" s` a `Uniform (List
--- Integer)`, and the index is found where the program is compiled:
+-- type: `get "delta" s` is an `Int`, `get "items" s` a `List Integer`,
+-- and the index is found where the program is compiled:
 --
 --     b <- new                            -- its counts found from its fields
---     b <- put "greeting" b (MkUniform "hello")
---     b <- put "items" b (MkUniform [1, 2, 3])
+--     b <- put "greeting" b "hello"
+--     b <- put "items" b [1, 2, 3]
 --     s <- done b
 --     set "delta" s (-3)
 --
@@ -26,7 +26,6 @@ module Main
 
 import Native.Carrier
 import Native.Field
-import Native.Flat.Uniform
 import Native.Mach
 import Native.Runtime.Cell
 import Native.Runtime.PortTy
@@ -47,33 +46,33 @@ churn (S k) acc = churn k (acc + length [1 .. the Integer 200])
 
 failing "Can't find an implementation for Named"
   -- a field the record does not have
-  missing : Uniform Rec -> IO Bits64
+  missing : Rec -> IO Bits64
   missing r = get "size" r
 
 failing "Can't find an implementation for FromString (List Integer)"
   -- a string where the record holds a list
-  wrong : Uniform Rec -> IO ()
-  wrong r = set "items" r (MkUniform "no")
+  wrong : Rec -> IO ()
+  wrong r = set "items" r "no"
 
 failing "Can't find an implementation for intToBool 0 = True"
   -- the second value stored first: it is not the value due next
-  disorder : IO (Uniform Rec)
+  disorder : IO Rec
   disorder = do
     b <- new
-    b <- put "items" b (MkUniform [1])
+    b <- put "items" b [1]
     done b
 
 failing "Can't find an implementation for intToBool (2 == (0 + 1))"
   -- a record given before its second value is stored
-  early : IO (Uniform Rec)
+  early : IO Rec
   early = do
     b <- new
-    b <- put "greeting" b (MkUniform "hello")
+    b <- put "greeting" b "hello"
     done b
 
 failing "Can't find an implementation for distinct"
   -- a name twice
-  twice : IO (Uniform (Struct ["count" ~: Mach.U64, "count" ~: Mach.IWord]))
+  twice : IO (Struct ["count" ~: Mach.U64, "count" ~: Mach.IWord])
   twice = do
     b <- new
     done b
@@ -84,11 +83,11 @@ failing "Can't find an implementation for scanned"
   hidden = ["greeting" ~: Carrier.ValueOf String]
 
 -- a new record, its type stated where it is made
-made : IO (Uniform Rec)
+made : IO Rec
 made = do
   b <- new
-  b <- put "greeting" b (MkUniform "hello")
-  b <- put "items" b (MkUniform [1, 2, 3])
+  b <- put "greeting" b "hello"
+  b <- put "items" b [1, 2, 3]
   done b
 
 main : IO ()
@@ -98,13 +97,13 @@ main = do
   set "mark" s 0x1000          -- looks like an address; the collector never reads it
   set "delta" s (-3)
   printLn (churn 2000 0)
-  set "items" s (MkUniform [4, 5])
+  set "items" s [4, 5]
   printLn (churn 2000 0)
   n <- get "count" s
   m <- get "mark" s
   d <- get "delta" s
   t <- get "greeting" s
   l <- get "items" s
-  printLn (n, m, d, t.value, l.value)
+  printLn (n, m, d, t, l)
   c <- collectionCount
   putStrLn ("collected: " ++ show (c > 100))
