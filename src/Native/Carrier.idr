@@ -20,19 +20,20 @@ import Native.Rep
 
 ||| What a register carries across the boundary, as the Idris type it is.
 public export
-data Carrier
-  = ||| A value of a machine type, in the register its rep says:
-    ||| `Mach.type m`. `M` for machine; a port writes the machine type
-    ||| itself (`Mach.U64 ~> ...`), which its arrow takes for its carrier.
-    M Mach
-  | ||| A value of the type, as ordinary code holds it: `Uniform t`.
-    ValueOf Type
-  | ||| Any value, as ordinary code holds it: `Uniform a`, for the call's `a`.
-    Value
-  | ||| The address of memory that holds no object: a run of bytes, a range
-    ||| of address space, an area, room for an object not yet made. An
-    ||| address, with an address's arithmetic only (`Native.Runtime.ByteAddr`).
-    ByteAddr
+data Carrier : Type where
+  ||| A value of a machine type, in the register its rep says:
+  ||| `Mach.type m`. `M` for machine; a port writes the machine type
+  ||| itself (`Mach.U64 ~> ...`), which its arrow takes for its carrier.
+  M : Mach -> Carrier
+  ||| A value of the type, as ordinary code holds it: `Uniform t`. The type
+  ||| is erased: what a register of it is, its rep says alone.
+  ValueOf : (0 t : Type) -> Carrier
+  ||| Any value, as ordinary code holds it: `Uniform a`, for the call's `a`.
+  Value : Carrier
+  ||| The address of memory that holds no object: a run of bytes, a range
+  ||| of address space, an area, room for an object not yet made. An
+  ||| address, with an address's arithmetic only (`Native.Runtime.ByteAddr`).
+  ByteAddr : Carrier
 
 ||| How a register of the carrier holds what it carries.
 public export

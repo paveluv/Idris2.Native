@@ -111,7 +111,7 @@ setValue n v x = primIO $ \w =>
 ||| What a field of the carrier holds, as ordinary code holds it: a value
 ||| as itself, a raw word as the type its carrier says.
 public export
-Held : Carrier -> Type
+0 Held : Carrier -> Type
 Held (Carrier.ValueOf t) = t
 Held c = Runtime.PortTy.Carried () c
 
