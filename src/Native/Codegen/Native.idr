@@ -53,6 +53,7 @@ import Core.FC
 import Core.Name
 import Core.Name.Namespace
 import Core.Name.Scoped
+import Core.Normalise
 import Core.Normalise.Convert
 import Core.Options
 import Core.TT
@@ -227,7 +228,10 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
                       Nothing => reach defs seen' flat ordinary ns
                   _ => reach defs seen' flat ordinary (refs ++ ns)
 
-            -- an implementation of its foreign function's type, or the reason
+            -- an implementation of its foreign function's type, or the reason:
+            -- both normalised with every name visible, so that an alias
+            -- `base` keeps private (`System.File.Meta.FileTimePtr`, an
+            -- `AnyPtr`) is the type it names
             agree : Defs -> (Name, Name) -> Core ()
             agree defs (f, impl) = do
               Just fdef <- lookupCtxtExact f (gamma defs)
@@ -237,7 +241,9 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
                     throw (GenericMsg EmptyFC
                       ("native: the runtime has no " ++ show impl ++ ", which implements "
                        ++ show f))
-              True <- convert defs Env.empty fdef.type idef.type
+              fty <- normaliseAll defs Env.empty fdef.type
+              ity <- normaliseAll defs Env.empty idef.type
+              True <- convert defs Env.empty fty ity
                 | False =>
                     throw (GenericMsg EmptyFC
                       ("native: " ++ show impl ++ " is not of the type of " ++ show f

@@ -104,6 +104,47 @@ fileSize : (handle : Bits64) -> IO Bits64
 fileSize h = primIO $ \w => let (Runtime.MkOrdo # n) = Runtime.OS.osFileSize h Runtime.MkOrdo in
                               MkIORes n w
 
+%cg native flat System.Call.fileTimes
+||| The times of the handle's file written into a block of six words
+||| `malloc` gave: its last access, modification and change of status,
+||| each seconds then nanoseconds (`timesWord`). If the system does not
+||| say, the first word is -1, and why is the last failure; the null
+||| pointer, which `malloc` gives when there is no memory, is left as it is.
+export covering
+fileTimes : (handle : Bits64) -> Flat.Uniform AnyPtr -> IO ()
+fileTimes h p = primIO $ \w => let (Runtime.MkOrdo # ()) = op Runtime.MkOrdo in MkIORes () w
+  where
+    covering
+    op : Runtime.Ordo.Op Runtime.Ordo ()
+    op = do
+      target <- Support.Ptr.pointee p
+      case target of
+        Support.Ptr.Address a =>
+          if Runtime.ByteAddr.isNull a then Runtime.Ordo.pure () else do
+            ok <- Runtime.OS.osFileTimes h a
+            if ok == 1 then Runtime.Ordo.pure ()
+              else Runtime.Memory.storeAt a 0 0xFFFFFFFFFFFFFFFF
+        _ => Runtime.Ordo.pure ()
+
+%cg native flat System.Call.timesWord
+||| Word `i` of a block of times `fileTimes` wrote, as an `Int`; -1 for the
+||| null pointer, which `malloc` gives when there is no memory, or for a
+||| pointer that is no block.
+export covering
+timesWord : Flat.Uniform AnyPtr -> (i : Bits64) -> IO Int
+timesWord p i = primIO $ \w => let (Runtime.MkOrdo # t) = op Runtime.MkOrdo in MkIORes t w
+  where
+    covering
+    op : Runtime.Ordo.Op Runtime.Ordo Int
+    op = do
+      target <- Support.Ptr.pointee p
+      case target of
+        Support.Ptr.Address a =>
+          if Runtime.ByteAddr.isNull a then Runtime.Ordo.pure (-1) else do
+            t <- Runtime.Memory.loadAt a (8 * i)
+            Runtime.Ordo.pure (cast t)
+        _ => Runtime.Ordo.pure (-1)
+
 %cg native flat System.Call.isTerminal
 ||| Whether the handle is a terminal's.
 export

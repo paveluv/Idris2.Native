@@ -41,6 +41,7 @@ import Native.Service
 %extern service__close : PortTy (Service.port Service.Close)
 %extern service__read : PortTy (Service.port Service.Read)
 %extern service__fileSize : PortTy (Service.port Service.FileSize)
+%extern service__fileTimes : PortTy (Service.port Service.FileTimes)
 %extern service__isTerminal : PortTy (Service.port Service.IsTerminal)
 %extern service__removeFile : PortTy (Service.port Service.RemoveFile)
 %extern service__readEntry : PortTy (Service.port Service.ReadEntry)
@@ -151,6 +152,13 @@ osRead = service__read
 export %inline
 osFileSize : (handle : Bits64) -> Ordo.Op Ordo Bits64
 osFileSize = service__fileSize
+
+||| The times of the handle's file written into six words at the address:
+||| its last access, modification and change of status, each seconds then
+||| nanoseconds; 1 on success.
+export %inline
+osFileTimes : (handle : Bits64) -> (address : ByteAddr) -> Ordo.Op Ordo Bits64
+osFileTimes = service__fileTimes
 
 ||| Whether the handle is a terminal's: 1 if it is.
 export %inline

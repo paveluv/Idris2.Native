@@ -82,6 +82,11 @@ data Service
     Read
   | ||| The bytes of the file of a handle; the word of all ones if it fails.
     FileSize
+  | ||| The times of the file of a handle, written into six words at an
+    ||| address: its last access, its last modification and its last change
+    ||| of status, each its seconds since the epoch, then the nanoseconds
+    ||| past them; success.
+    FileTimes
   | ||| Whether a handle is a terminal's, 1 if it is.
     IsTerminal
   | ||| Remove the file at a path, zero-ended bytes at an address, which is
@@ -115,6 +120,7 @@ port Open = Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64
 port Close = Mach.U64 ~> Mach.U64
 port Read = Mach.U64 ~> Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64
 port FileSize = Mach.U64 ~> Mach.U64
+port FileTimes = Mach.U64 ~> Carrier.ByteAddr ~> Mach.U64
 port IsTerminal = Mach.U64 ~> Mach.U64
 port RemoveFile = Carrier.ByteAddr ~> Mach.U64
 port ReadEntry = Mach.U64 ~> Carrier.ByteAddr ~> Mach.U64 ~> Mach.U64
@@ -126,7 +132,7 @@ allServices : List Service
 allServices =
   [ Exit, Write, Reserve, Commit, Release, StackLimit, PageBytes, PrepareTerminal, TerminalColumns
   , TerminalLines, ChangeDirectory, CurrentDirectory, CreateDirectory, RemoveDirectory, Open, Close
-  , Read, FileSize, IsTerminal, RemoveFile, ReadEntry ]
+  , Read, FileSize, FileTimes, IsTerminal, RemoveFile, ReadEntry ]
 
 ||| The list holds every service.
 complete : (c : Service) -> Elem c Service.allServices
@@ -148,6 +154,7 @@ complete Open = %search
 complete Close = %search
 complete Read = %search
 complete FileSize = %search
+complete FileTimes = %search
 complete IsTerminal = %search
 complete RemoveFile = %search
 complete ReadEntry = %search

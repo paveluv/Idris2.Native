@@ -260,6 +260,35 @@ fileSize handle =
       Alloc.Block.free b'
       Ordo.pure (if ok then size else 0xFFFFFFFFFFFFFFFF))
 
+%cg native flat Runtime.OS.LinuxX86_64.fileTimes
+export covering
+fileTimes : PortTy (Service.port Service.FileTimes)
+fileTimes handle out =
+  -- fstat(handle, buffer): struct stat, 144 bytes, its st_atim, st_mtim and
+  -- st_ctim the six words from 72, each seconds then nanoseconds
+  Alloc.Block.allocate 144
+    (do State.set "lastFailure" (Failure.code Failure.NoMemory)
+        Ordo.pure 0)
+    (\b => do
+      let Alloc.Block.MkAddressed buffer b' = Alloc.Block.address b
+      r <- Syscall.syscall 5 handle (ByteAddr.toWord buffer) 0 0 0 0
+      ok <- succeeded r
+      if not ok then Ordo.pure () else do
+        time buffer 0
+        time buffer 1
+        time buffer 2
+        time buffer 3
+        time buffer 4
+        time buffer 5
+      Alloc.Block.free b'
+      Ordo.pure (if ok then 1 else 0))
+  where
+    -- the stat's time word `i`, the access's seconds 0, into the six
+    time : ByteAddr -> Bits64 -> Ordo.Op Ordo ()
+    time buffer i = do
+      w <- Memory.loadAt buffer (72 + 8 * i)
+      Memory.storeAt out (8 * i) w
+
 %cg native flat Runtime.OS.LinuxX86_64.isTerminal
 export
 isTerminal : PortTy (Service.port Service.IsTerminal)
