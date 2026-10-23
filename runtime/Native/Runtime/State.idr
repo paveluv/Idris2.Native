@@ -54,7 +54,7 @@ import Native.Mach
 |||   (`Native.Failure`), 0 until one fails: each service that fails sets
 |||   it, and none that succeeds clears it, as the C library's `errno`.
 public export
-Fields : List (String, Carrier)
+0 Fields : List (String, Carrier)
 Fields =
   [ "fromBase" ~: Carrier.ByteAddr, "fromEnd" ~: Carrier.ByteAddr
   , "fromCommitted" ~: Carrier.ByteAddr
