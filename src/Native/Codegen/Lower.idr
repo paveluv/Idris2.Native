@@ -54,7 +54,7 @@
 ||| same static object.
 module Native.Codegen.Lower
 
-import Native.Codegen.IRCommon.ConIds
+import Native.Codegen.IRCommon.ConIds as IRCommon
 import Native.Codegen.IRCommon.Conv
 import Native.Codegen.IRCommon.Op
 import Native.Codegen.IRCommon.Ty as IRCommon
@@ -246,12 +246,14 @@ data StaticPlan
     Text String
 
 ||| Each function and static of the declarations by name, with its variable,
-||| and the contract as the loaded runtime realises it.
+||| the contract as the loaded runtime realises it, and the type
+||| constructors' ids (`IRCommon.ConIds`).
 record Refs (enc : Types.Enc) (d : TermIR.Decls enc) where
   constructor MkRefs
   funs : SortedMap Name (s ** TermIR.Var d.sigs s)
   stats : SortedMap Name (s ** TermIR.Var d.statics s)
   realised : Linkage.Realised
+  typeCons : SortedMap Name Int
 
 ------------------------------------------------------------------------------
 -- Locals
@@ -628,8 +630,14 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
       (MKCON r (Left conId) args, _) :: is => do
         x <- constructor conId (map (get env) args)
         lower (set env r x) t is k
-      (MKCON r (Right n) _, _) :: is =>
-        TermIR.Build.unsupported ("the type constructor " ++ show n ++ " as a value")
+      (MKCON r (Right n) args, _) :: is => case lookup n refs.typeCons of
+        Nothing =>
+          TermIR.Build.unsupported ("the type constructor " ++ show n ++ ", which has no id")
+        Just tid => do
+          x <- case args of
+                 [] => staticVal (nullaryCon tid)
+                 _ => constructor tid (map (get env) args)
+          lower (set env r x) t is k
       (MKCLOSURE r f missing args, _) :: is =>
         case lookup f refs.funs of
           Just (TermIR.MkSig _ IRCommon.Conv.CPS _ _ ** code) => do
@@ -662,8 +670,8 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
         env' <- extPrim env r p args
         lower env' t is k
       (CASE s alts dflt, after) :: is =>
-        case traverse (either Just (const Nothing) . fst) alts of
-          Nothing => TermIR.Build.unsupported "a case on type constructors"
+        case traverse (either Just (\n => lookup n refs.typeCons) . fst) alts of
+          Nothing => TermIR.Build.unsupported "a case on a type constructor that has no id"
           Just ids => do
             q <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr Types.Kind.CON (get env s))
             i <- TermIR.Build.emit1 (TermIR.Instr.LoadPart Types.Header.ConId q)
@@ -1657,11 +1665,11 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
 program : {enc : Types.Enc} -> {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} ->
           List Flat.Exp.FlatDef ->
           Flat.Exp.Shapes -> Linkage.Realised -> (tables : SortedMap Name (Int, Nat)) ->
-          (constants : Nat) -> Plan ->
+          (typeCons : SortedMap Name Int) -> (constants : Nat) -> Plan ->
           (es : List (TermIR.Sig enc, Plan)) ->
           (rs : List (s ** ({0 d : TermIR.Decls enc} -> TermIR.StaticDef d s))) ->
           TermIR.Program.TermProgram enc
-program forms shapes realised tables constants entry es rs =
+program forms shapes realised tables typeCons constants entry es rs =
   case choose
     (Data.Distinct.distinct (map (.name) (mainSig :: map Builtin.fst es))
      && Data.Distinct.distinct (map (.sym) (map DPair.fst rs))) of
@@ -1673,7 +1681,8 @@ program forms shapes realised tables constants entry es rs =
                          realised.externs realised.primitives tables constants)
                            ((mainSig, entry) :: es))
                      (staticDefs (programDecls es rs) rs) (TermIR.Program.MkEntry TermIR.Var.here)
-                       IRCommon.ConIds.noConIds)
+                       (IRCommon.MkConIds
+                         [(n, cast i) | (n, i) <- Data.SortedMap.toList typeCons]))
     Right _ =>
       (TermIR.MkDecls [mainSig] [] ** TermIR.MkProgram
                      [TermIR.Def.Defined
@@ -1684,7 +1693,7 @@ program forms shapes realised tables constants entry es rs =
     declsRefs : (d : TermIR.Decls enc) -> Refs enc d
     declsRefs d = MkRefs (fromList [(s.name, (s ** v)) | (s ** v) <- TermIR.Var.enumerate d.sigs])
                       (fromList [(s.sym, (s ** v)) | (s ** v) <- TermIR.Var.enumerate d.statics])
-                        realised
+                        realised typeCons
 
     staticDefs : (d : TermIR.Decls enc) ->
                  (rs : List (s ** ({0 d' : TermIR.Decls enc} -> TermIR.StaticDef d' s))) ->
@@ -1779,7 +1788,7 @@ lowerProgram enc platform realised forms shapes tables constants flat implemente
       boxing = fromList [(nullaryCon c, Nullary c) | c <- toList (concatMap (boxed . snd) planned)]
       statics = Data.SortedMap.toList (foldl mergeLeft boxing (mapMaybe bodyStatics vmdefs))
   pure
-    (program forms shapes realised tables (length constants) entryPlan others
+    (program forms shapes realised tables typeCons (length constants) entryPlan others
        (mapMaybe ready statics))
   where
     -- `System.Info`'s externs, which every program of the platform answers
@@ -1801,6 +1810,34 @@ lowerProgram enc platform realised forms shapes tables constants flat implemente
           CONSTCASE r (map (\(c, is) => (c, map inst is)) alts) (map (map inst) dflt)
         inst i = i
     answered d = d
+
+    -- The type constructors the program builds or matches as values, each
+    -- numbered by its place in the order of their names.
+    typeCons : SortedMap Name Int
+    typeCons = let ns = Prelude.toList (foldl defNames empty vmdefs0)
+               in fromList (zip ns (map cast [0 .. length ns]))
+      where
+        mutual
+          names : SortedSet Name -> List VMInst -> SortedSet Name
+          names = foldl inst
+
+          inst : SortedSet Name -> VMInst -> SortedSet Name
+          inst s (MKCON _ (Right n) _) = Data.SortedSet.insert n s
+          -- lint: allow trust-escape: VMCode nests its instruction lists in tuples, which
+          -- totality checking does not see through
+          inst s (CASE _ alts d) =
+            assert_total
+              (maybe id (flip names) d
+                (foldl (\a, (t, is) => names (either (const a) (flip Data.SortedSet.insert a) t) is)
+                   s alts))
+          -- lint: allow trust-escape: as a case's
+          inst s (CONSTCASE _ alts d) =
+            assert_total (maybe id (flip names) d (foldl (\a, alt => names a (snd alt)) s alts))
+          inst s _ = s
+
+        defNames : SortedSet Name -> (Name, VMDef) -> SortedSet Name
+        defNames s (_, MkVMFun _ body) = names s body
+        defNames s _ = s
 
     -- A routine the runtime has: its form, of its port's registers.
     provided : Linkage.Routine.RoutineCall enc -> Either String ()
@@ -1947,6 +1984,9 @@ lowerProgram enc platform realised forms shapes tables constants flat implemente
             Just i => add i k acc
             Nothing => (known, note k ss)
           one (MKCON _ (Left c) []) (known, ss) = (known, insert (nullaryCon c) (Nullary c) ss)
+          one (MKCON _ (Right n) []) (known, ss) = case lookup n typeCons of
+            Just c => (known, insert (nullaryCon c) (Nullary c) ss)
+            Nothing => (known, ss)
           one (OP r (Cast _ to) [x]) acc@(known, ss) =
             let folded = mapMaybe (\k => intConst k >>= (castConstant to . snd))
                                   (fromMaybe [] (key x >>= \i => lookup i known))

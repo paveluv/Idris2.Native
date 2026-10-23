@@ -27,7 +27,8 @@ StatusStrings: agree
 StatusWide: agree
 Strings: agree
 TailCall: agree
-29 programs: 29 agree, 0 unsupported, 0 mismatch, 0 error, 0 timeout
+TypeValues: agree
+30 programs: 30 agree, 0 unsupported, 0 mismatch, 0 error, 0 timeout
 Codegen: MISMATCH
     1c1
     < running under chez
