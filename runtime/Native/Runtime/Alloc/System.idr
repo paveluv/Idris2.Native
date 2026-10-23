@@ -37,8 +37,7 @@ Pages Ordo where
     r <- OS.osReserve bytes
     Ordo.pure (ByteAddr.toWord r)
   commit addr bytes = do
-    ok <- OS.osCommit (ByteAddr.fromWord addr) bytes
-    Ordo.pure (ok == 1)
+    OS.osCommit (ByteAddr.fromWord addr) bytes
   release addr bytes = OS.osRelease (ByteAddr.fromWord addr) bytes
   pageBytes = OS.osPageBytes
   load addr off = Memory.loadAt (ByteAddr.fromWord addr) off

@@ -122,7 +122,7 @@ fileTimes h p = primIO $ \w => let (Runtime.MkOrdo # ()) = op Runtime.MkOrdo in 
         Support.Ptr.Address a =>
           if Runtime.ByteAddr.isNull a then Runtime.Ordo.pure () else do
             ok <- Runtime.OS.osFileTimes h a
-            if ok == 1 then Runtime.Ordo.pure ()
+            if ok then Runtime.Ordo.pure ()
               else Runtime.Memory.storeAt a 0 0xFFFFFFFFFFFFFFFF
         _ => Runtime.Ordo.pure ()
 
@@ -150,7 +150,7 @@ timesWord p i = primIO $ \w => let (Runtime.MkOrdo # t) = op Runtime.MkOrdo in M
 export
 isTerminal : (handle : Bits64) -> IO Bool
 isTerminal h = primIO $ \w => let (Runtime.MkOrdo # t) = Runtime.OS.osIsTerminal h Runtime.MkOrdo in
-                                MkIORes (t == 1) w
+                                MkIORes t w
 
 %cg native flat System.Call.removePath
 ||| The file at the path removed, or the empty directory, as the C
@@ -163,11 +163,10 @@ removePath path = primIO $ \w => let (Runtime.MkOrdo # ok) = op Runtime.MkOrdo i
     op : Runtime.Ordo.Op Runtime.Ordo Bool
     op = Support.Text.withPath path (Runtime.Ordo.pure False) (\p => do
       ok <- Runtime.OS.osRemoveFile p
-      if ok == 1 then Runtime.Ordo.pure True else do
+      if ok then Runtime.Ordo.pure True else do
         why <- Runtime.State.get "lastFailure"
         if why /= Failure.code Failure.IsADirectory then Runtime.Ordo.pure False else do
-          ok' <- Runtime.OS.osRemoveDirectory p
-          Runtime.Ordo.pure (ok' == 1))
+          Runtime.OS.osRemoveDirectory p)
 
 %cg native flat System.Call.readEntry
 ||| The next entry's name of the directory of the handle, `.` and `..`

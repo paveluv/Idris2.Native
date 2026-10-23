@@ -11,7 +11,7 @@
 ||| `Native.Runtime.OS.LinuxX86_64`). Idris checks both against the port;
 ||| for the platform a program is compiled for, the code generator finds
 ||| both by their types, and binds the extern to the function. A service
-||| that can fail reports it, 1 for success and 0 for failure, and records
+||| that can fail reports whether it succeeded (a `Mach.Bool`), and records
 ||| why as the runtime's last failure (`Native.Failure`); the caller
 ||| decides what a failure means.
 |||
@@ -88,7 +88,7 @@ data Service
     ||| of status, each its seconds since the epoch, then the nanoseconds
     ||| past them; success.
     FileTimes
-  | ||| Whether a handle is a terminal's, 1 if it is.
+  | ||| Whether a handle is a terminal's.
     IsTerminal
   | ||| Remove the file at a path, zero-ended bytes at an address, which is
     ||| not a directory; success.
@@ -108,26 +108,26 @@ port Write =
   "handle" ~: Mach.U64 ~> "bytes" ~: Carrier.ByteAddr ~> "count" ~: Mach.U64
     ~> "written" ~: Mach.U64
 port Reserve = "bytes" ~: Mach.U64 ~> "space" ~: Carrier.ByteAddr
-port Commit = "pages" ~: Carrier.ByteAddr ~> "bytes" ~: Mach.U64 ~> "ok" ~: Mach.U64
+port Commit = "pages" ~: Carrier.ByteAddr ~> "bytes" ~: Mach.U64 ~> "ok" ~: Mach.Bool
 port Release = "pages" ~: Carrier.ByteAddr ~> "bytes" ~: Mach.U64 ~> ()
 port StackLimit = () ~> "bytes" ~: Mach.U64
 port PageBytes = () ~> "bytes" ~: Mach.U64
 port PrepareTerminal = () ~> ()
 port TerminalColumns = () ~> "columns" ~: Mach.U64
 port TerminalLines = () ~> "lines" ~: Mach.U64
-port ChangeDirectory = "path" ~: Carrier.ByteAddr ~> "ok" ~: Mach.U64
-port CurrentDirectory = "into" ~: Carrier.ByteAddr ~> "most" ~: Mach.U64 ~> "ok" ~: Mach.U64
-port CreateDirectory = "path" ~: Carrier.ByteAddr ~> "ok" ~: Mach.U64
-port RemoveDirectory = "path" ~: Carrier.ByteAddr ~> "ok" ~: Mach.U64
+port ChangeDirectory = "path" ~: Carrier.ByteAddr ~> "ok" ~: Mach.Bool
+port CurrentDirectory = "into" ~: Carrier.ByteAddr ~> "most" ~: Mach.U64 ~> "ok" ~: Mach.Bool
+port CreateDirectory = "path" ~: Carrier.ByteAddr ~> "ok" ~: Mach.Bool
+port RemoveDirectory = "path" ~: Carrier.ByteAddr ~> "ok" ~: Mach.Bool
 port Open = "path" ~: Carrier.ByteAddr ~> "flags" ~: Mach.U64 ~> "handle" ~: Mach.U64
-port Close = "handle" ~: Mach.U64 ~> "ok" ~: Mach.U64
+port Close = "handle" ~: Mach.U64 ~> "ok" ~: Mach.Bool
 port Read =
   "handle" ~: Mach.U64 ~> "into" ~: Carrier.ByteAddr ~> "most" ~: Mach.U64
     ~> "read" ~: Mach.U64
 port FileSize = "handle" ~: Mach.U64 ~> "bytes" ~: Mach.U64
-port FileTimes = "handle" ~: Mach.U64 ~> "into" ~: Carrier.ByteAddr ~> "ok" ~: Mach.U64
-port IsTerminal = "handle" ~: Mach.U64 ~> "terminal" ~: Mach.U64
-port RemoveFile = "path" ~: Carrier.ByteAddr ~> "ok" ~: Mach.U64
+port FileTimes = "handle" ~: Mach.U64 ~> "into" ~: Carrier.ByteAddr ~> "ok" ~: Mach.Bool
+port IsTerminal = "handle" ~: Mach.U64 ~> "terminal" ~: Mach.Bool
+port RemoveFile = "path" ~: Carrier.ByteAddr ~> "ok" ~: Mach.Bool
 port ReadEntry =
   "handle" ~: Mach.U64 ~> "into" ~: Carrier.ByteAddr ~> "most" ~: Mach.U64
     ~> "bytes" ~: Mach.U64

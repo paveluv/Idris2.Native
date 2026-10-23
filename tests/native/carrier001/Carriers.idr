@@ -8,6 +8,7 @@
 -- take the one register of the carrier's rep (`Carrier.rep`):
 --
 --     Carried () (M U64)          = Bits64            judged [Word]
+--     Carried () (M Bool)         = Bool              judged [Word], its tag
 --     Carried () (M F64)          = Double            judged [Dbl]
 --     Carried () (ValueOf Bits64) = Uniform Bits64    judged [Uniform]
 --     Carried () Value            = Uniform ()        judged [Uniform]
@@ -33,6 +34,8 @@ import Data.String
 import Language.Reflection
 import Language.Reflection.TT as R
 import Language.Reflection.TTImp as R
+import Libraries.Data.NatSet as NatSet
+import Libraries.Data.WithDefault
 import Native.Carrier
 import Native.Flat.Exp
 import Native.Flat.Judgement
@@ -44,7 +47,7 @@ import Native.Runtime.PortTy
 %default covering
 
 machs : List Mach
-machs = [I8, I16, I32, I64, IWord, U8, U16, U32, U64, Rune, F64]
+machs = [I8, I16, I32, I64, IWord, U8, U16, U32, U64, Rune, Mach.Bool, F64]
 
 -- Every machine code is in the list: a new one, missing, fails here.
 listed : (m : Mach) -> Elem m Main.machs
@@ -58,6 +61,7 @@ listed U16 = %search
 listed U32 = %search
 listed U64 = %search
 listed Rune = %search
+listed Mach.Bool = %search
 listed F64 = %search
 
 carriers : List Carrier
@@ -98,13 +102,36 @@ asNF t = (\n => NTCon EmptyFC n 0 []) <$> head t
     head (R.IApp _ f _) = head f
     head _ = Nothing
 
--- The judgement of a type, in a context of nothing: the judgement of a
--- primitive and of these type constructors looks nothing up.
+-- `Bool`, declared as the Prelude declares it: a type of two constructors,
+-- `False` and `True`, neither with a field, which the judgement lays out
+-- as their tag, one word.
+declareBool : {auto c : Ref Ctxt Defs} -> Core ()
+declareBool = do
+  ignore (addDef bool (newDef EmptyFC bool top Scope.empty (TType EmptyFC (UN (Basic "u")))
+                         defaulted
+                         (TCon 0 NatSet.empty NatSet.empty defaultFlags [] (Just [no, yes])
+                           Nothing)))
+  traverse_ con [(no, 0), (yes, 1)]
+  where
+    bool, no, yes : Core.Name.Name
+    bool = Core.Name.NS (mkNamespace "Prelude.Basics") (Core.Name.UN (Core.Name.Basic "Bool"))
+    no = Core.Name.NS (mkNamespace "Prelude.Basics") (Core.Name.UN (Core.Name.Basic "False"))
+    yes = Core.Name.NS (mkNamespace "Prelude.Basics") (Core.Name.UN (Core.Name.Basic "True"))
+
+    con : (Core.Name.Name, Int) -> Core ()
+    con (n, tag) = do
+      let def = newDef EmptyFC n top Scope.empty (Ref EmptyFC (TyCon 0) bool) defaulted
+                  (DCon tag 0 Nothing)
+      ignore (addDef n def)
+
+-- The judgement of a type, in a context of `Bool` alone: the judgement of
+-- a primitive and of these type constructors looks nothing else up.
 judged : ClosedNF -> IO (Maybe Layout)
 judged nf =
   coreRun
     (do defs <- initDefs
         c <- newRef Ctxt defs
+        declareBool
         Judgement.layout [] nf)
     (\_ => pure Nothing)
     (\j => pure (case j of

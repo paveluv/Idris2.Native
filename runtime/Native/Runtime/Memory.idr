@@ -393,7 +393,7 @@ commitMemory : (addr : ByteAddr) -> (bytes : Bits64) -> Ordo.Op Ordo ()
 commitMemory addr bytes = do
   ok <- OS.osCommit addr bytes
   -- lint: allow trust-escape: memory the system refuses ends the program, which returns nothing
-  if ok == 1 then Ordo.pure () else assert_total (idris_crash "idris: cannot map memory")
+  if ok then Ordo.pure () else assert_total (idris_crash "idris: cannot map memory")
 
 ||| Memory given back from `bytes` of a committed range from `addr`, both
 ||| whole pages, and the range reserved again.
@@ -408,8 +408,8 @@ mapMemory : (bytes : Bits64) -> Ordo.Op Ordo (Addr s)
 mapMemory bytes = do
   whole <- roundToPage bytes
   a <- OS.osReserve whole
-  ok <- if ByteAddr.isNull a then Ordo.pure 0 else OS.osCommit a whole
+  ok <- if ByteAddr.isNull a then Ordo.pure False else OS.osCommit a whole
   -- lint: allow trust-escape: memory the system refuses ends the program, which returns nothing
-  if ok == 0
-     then assert_total (idris_crash "idris: cannot map memory")
-     else Ordo.pure (objectAt a)
+  if ok
+     then Ordo.pure (objectAt a)
+     else assert_total (idris_crash "idris: cannot map memory")

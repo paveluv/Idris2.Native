@@ -106,8 +106,7 @@ commit : PortTy (Service.port Service.Commit)
 commit address bytes = do
   -- mprotect(address, bytes, PROT_READ | PROT_WRITE): the pages are zero when first touched
   r <- Syscall.syscall 10 (ByteAddr.toWord address) bytes 3 0 0 0
-  ok <- succeeded r
-  Ordo.pure (if ok then 1 else 0)
+  succeeded r
 
 %cg native flat Runtime.OS.LinuxX86_64.release
 export
@@ -173,8 +172,7 @@ changeDirectory : PortTy (Service.port Service.ChangeDirectory)
 changeDirectory path = do
   -- chdir(path)
   r <- Syscall.syscall 80 (ByteAddr.toWord path) 0 0 0 0 0
-  ok <- succeeded r
-  Ordo.pure (if ok then 1 else 0)
+  succeeded r
 
 %cg native flat Runtime.OS.LinuxX86_64.currentDirectory
 export
@@ -182,8 +180,7 @@ currentDirectory : PortTy (Service.port Service.CurrentDirectory)
 currentDirectory address bytes = do
   -- getcwd(address, bytes): the path's length with its zero byte
   r <- Syscall.syscall 79 (ByteAddr.toWord address) bytes 0 0 0 0
-  ok <- succeeded r
-  Ordo.pure (if ok then 1 else 0)
+  succeeded r
 
 %cg native flat Runtime.OS.LinuxX86_64.createDirectory
 export
@@ -191,8 +188,7 @@ createDirectory : PortTy (Service.port Service.CreateDirectory)
 createDirectory path = do
   -- mkdir(path, 0777), which the process's umask narrows
   r <- Syscall.syscall 83 (ByteAddr.toWord path) 0x1FF 0 0 0 0
-  ok <- succeeded r
-  Ordo.pure (if ok then 1 else 0)
+  succeeded r
 
 %cg native flat Runtime.OS.LinuxX86_64.removeDirectory
 export
@@ -200,8 +196,7 @@ removeDirectory : PortTy (Service.port Service.RemoveDirectory)
 removeDirectory path = do
   -- rmdir(path)
   r <- Syscall.syscall 84 (ByteAddr.toWord path) 0 0 0 0 0
-  ok <- succeeded r
-  Ordo.pure (if ok then 1 else 0)
+  succeeded r
 
 %cg native flat Runtime.OS.LinuxX86_64.openFile
 export
@@ -232,8 +227,7 @@ close : PortTy (Service.port Service.Close)
 close handle = do
   -- close(handle)
   r <- Syscall.syscall 3 handle 0 0 0 0 0
-  ok <- succeeded r
-  Ordo.pure (if ok then 1 else 0)
+  succeeded r
 
 %cg native flat Runtime.OS.LinuxX86_64.read
 export
@@ -268,7 +262,7 @@ fileTimes handle out =
   -- st_ctim the six words from 72, each seconds then nanoseconds
   Alloc.Block.allocate 144
     (do State.set "lastFailure" (Failure.code Failure.NoMemory)
-        Ordo.pure 0)
+        Ordo.pure False)
     (\b => do
       let Alloc.Block.MkAddressed buffer b' = Alloc.Block.address b
       r <- Syscall.syscall 5 handle (ByteAddr.toWord buffer) 0 0 0 0
@@ -281,7 +275,7 @@ fileTimes handle out =
         time buffer 4
         time buffer 5
       Alloc.Block.free b'
-      Ordo.pure (if ok then 1 else 0))
+      Ordo.pure ok)
   where
     -- the stat's time word `i`, the access's seconds 0, into the six
     time : ByteAddr -> Bits64 -> Ordo.Op Ordo ()
@@ -297,7 +291,7 @@ isTerminal handle = do
   -- struct winsize fits the state's scratch bytes
   buffer <- State.scratchArea
   r <- Syscall.syscall 16 handle 0x5413 (ByteAddr.toWord buffer) 0 0 0
-  Ordo.pure (if failed r then 0 else 1)
+  Ordo.pure (not (failed r))
 
 %cg native flat Runtime.OS.LinuxX86_64.removeFile
 export
@@ -305,8 +299,7 @@ removeFile : PortTy (Service.port Service.RemoveFile)
 removeFile path = do
   -- unlink(path)
   r <- Syscall.syscall 87 (ByteAddr.toWord path) 0 0 0 0 0
-  ok <- succeeded r
-  Ordo.pure (if ok then 1 else 0)
+  succeeded r
 
 %cg native flat Runtime.OS.LinuxX86_64.readEntry
 export covering

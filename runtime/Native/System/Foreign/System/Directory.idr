@@ -62,11 +62,11 @@ prim__closeDir p = toPrim $ File.withFile p () (\slot, d => do
 ||| path (`Text.withPath`): 0 when it succeeds, -1 when it fails or there is
 ||| no memory for the path, as the C library's calls answer.
 %inline covering
-ofPath : (Runtime.ByteAddr -> Runtime.Ordo.Op Runtime.Ordo Bits64) -> Flat.Uniform String ->
+ofPath : (Runtime.ByteAddr -> Runtime.Ordo.Op Runtime.Ordo Bool) -> Flat.Uniform String ->
          Runtime.Ordo.Op Runtime.Ordo Int
 ofPath service path = Support.Text.withPath path (Runtime.Ordo.pure (-1)) (\p => do
   ok <- service p
-  Runtime.Ordo.pure (if ok == 1 then 0 else -1))
+  Runtime.Ordo.pure (if ok then 0 else -1))
 
 %cg native flat System.Foreign.System.Directory.prim__changeDir
 ||| `changeDir`: the directory of the path made the current one; 0 when it
@@ -114,7 +114,7 @@ prim__currentDir w = let (Runtime.MkOrdo # r) = currentOp Runtime.MkOrdo in MkIO
     currentOp = Runtime.Alloc.Block.allocate pathBytes Support.Ptr.nullPtr (\b => do
       let Runtime.Alloc.Block.MkAddressed p b' = Runtime.Alloc.Block.address b
       ok <- Runtime.OS.osCurrentDirectory p pathBytes
-      case ok == 1 of
+      case ok of
         True => do
           s <- Support.Text.zeroEndedText p
           Runtime.Alloc.Block.free b'

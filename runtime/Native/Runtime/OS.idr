@@ -77,9 +77,9 @@ osReserve : (bytes : Bits64) -> Ordo.Op Ordo ByteAddr
 osReserve = service__reserve
 
 ||| Make `bytes` of reserved whole pages from the address readable,
-||| writable and zero; 1 on success.
+||| writable and zero; whether it was done.
 export %inline
-osCommit : (address : ByteAddr) -> (bytes : Bits64) -> Ordo.Op Ordo Bits64
+osCommit : (address : ByteAddr) -> (bytes : Bits64) -> Ordo.Op Ordo Bool
 osCommit = service__commit
 
 ||| Give `bytes` of committed whole pages from the address back to the
@@ -113,21 +113,21 @@ osTerminalColumns = service__terminalColumns
 osTerminalLines = service__terminalLines
 
 ||| Make the directory of the path, zero-ended bytes at the address, the
-||| current one; 1 on success.
+||| current one; whether it was done.
 export %inline
-osChangeDirectory : (path : ByteAddr) -> Ordo.Op Ordo Bits64
+osChangeDirectory : (path : ByteAddr) -> Ordo.Op Ordo Bool
 osChangeDirectory = service__changeDirectory
 
 ||| Write the current directory's path, zero-ended, into the `bytes` at the
-||| address; 1 on success, which it is not for a path longer.
+||| address; whether it did, which it does not for a path longer.
 export %inline
-osCurrentDirectory : (address : ByteAddr) -> (bytes : Bits64) -> Ordo.Op Ordo Bits64
+osCurrentDirectory : (address : ByteAddr) -> (bytes : Bits64) -> Ordo.Op Ordo Bool
 osCurrentDirectory = service__currentDirectory
 
 ||| Make a directory at the path, zero-ended bytes at the address, and remove
-||| the empty one at it; 1 on success.
+||| the empty one at it; whether it was done.
 export %inline
-osCreateDirectory, osRemoveDirectory : (path : ByteAddr) -> Ordo.Op Ordo Bits64
+osCreateDirectory, osRemoveDirectory : (path : ByteAddr) -> Ordo.Op Ordo Bool
 osCreateDirectory = service__createDirectory
 osRemoveDirectory = service__removeDirectory
 
@@ -137,9 +137,9 @@ export %inline
 osOpen : (path : ByteAddr) -> (flags : Bits64) -> Ordo.Op Ordo Bits64
 osOpen = service__open
 
-||| Close a handle `osOpen` gave; 1 on success.
+||| Close a handle `osOpen` gave; whether it was done.
 export %inline
-osClose : (handle : Bits64) -> Ordo.Op Ordo Bits64
+osClose : (handle : Bits64) -> Ordo.Op Ordo Bool
 osClose = service__close
 
 ||| Read at most `bytes` from the handle into the bytes at the address;
@@ -155,20 +155,20 @@ osFileSize = service__fileSize
 
 ||| The times of the handle's file written into six words at the address:
 ||| its last access, modification and change of status, each seconds then
-||| nanoseconds; 1 on success.
+||| nanoseconds; whether they were.
 export %inline
-osFileTimes : (handle : Bits64) -> (address : ByteAddr) -> Ordo.Op Ordo Bits64
+osFileTimes : (handle : Bits64) -> (address : ByteAddr) -> Ordo.Op Ordo Bool
 osFileTimes = service__fileTimes
 
-||| Whether the handle is a terminal's: 1 if it is.
+||| Whether the handle is a terminal's.
 export %inline
-osIsTerminal : (handle : Bits64) -> Ordo.Op Ordo Bits64
+osIsTerminal : (handle : Bits64) -> Ordo.Op Ordo Bool
 osIsTerminal = service__isTerminal
 
 ||| Remove the file at the path, zero-ended bytes at the address, which is
-||| not a directory; 1 on success.
+||| not a directory; whether it was done.
 export %inline
-osRemoveFile : (path : ByteAddr) -> Ordo.Op Ordo Bits64
+osRemoveFile : (path : ByteAddr) -> Ordo.Op Ordo Bool
 osRemoveFile = service__removeFile
 
 ||| The next entry of a directory `osOpen` gave with `ADirectory`: its

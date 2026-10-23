@@ -71,6 +71,7 @@ scannedRep (M m) = machRep m
     machRep Mach.U32 = Refl
     machRep Mach.U64 = Refl
     machRep Mach.Rune = Refl
+    machRep Mach.Bool = Refl
     machRep Mach.F64 = Refl
 scannedRep (ValueOf _) = Refl
 scannedRep Value = Refl
