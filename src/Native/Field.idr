@@ -64,11 +64,25 @@ data Named : (name : String) -> (fs : List (String, Carrier)) -> (raw, value : B
              Named n ((m, c') :: fs) (prim__add_Bits64 i 1) j c
   ThereValue : Named n fs i j c -> Named n ((m, Carrier.ValueOf t) :: fs) i (prim__add_Bits64 j 1) c
 
-||| The number of raw fields, and of values.
+||| The numbers of the list's raw fields and of its values. Found by the
+||| search on the list alone, so that where they are left to it, the
+||| numbers are its indices, sums of literals that fold to literals, as
+||| `Named`'s are, never a count of the list made where the program runs.
 public export
-rawCount, valueCount : List (String, Carrier) -> Bits64
-rawCount fs = cast (length (filter (not . Carrier.scanned . snd) fs))
-valueCount fs = cast (length (filter (Carrier.scanned . snd) fs))
+data Counted : (fs : List (String, Carrier)) -> (raws, values : Bits64) -> Type where
+  [search fs]
+  NoFields : Counted [] 0 0
+  RawField : {auto 0 raw : Carrier.scanned c = False} -> Counted fs i j ->
+             Counted ((n, c) :: fs) (prim__add_Bits64 i 1) j
+  ValueField : Counted fs i j -> Counted ((n, Carrier.ValueOf t) :: fs) i (prim__add_Bits64 j 1)
+
+||| The list's numbers of raw fields and of values, as the search finds
+||| them: where a number is known beforehand, it is compared with these,
+||| since the search cannot work back from a sum to its terms.
+public export
+counts : (0 fs : List (String, Carrier)) -> {raws, values : Bits64} ->
+         {auto 0 counted : Counted fs raws values} -> (Bits64, Bits64)
+counts _ = (raws, values)
 
 ||| Whether the fields' names are each one field's.
 public export

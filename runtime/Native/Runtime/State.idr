@@ -74,9 +74,9 @@ scratchWords = 2
 
 ||| The state's names are each one word's, all raw, the scratch bytes after
 ||| them, and all of it fits the area.
-0 fit : (Field.distinct Fields, Field.valueCount Fields, Field.rawCount Fields,
+0 fit : (Field.distinct Fields, Field.counts Fields,
          State.scratch + State.scratchWords <= Area.runtimeWords) =
-        (True, 0, State.scratch, True)
+        (True, (State.scratch, 0), True)
 fit = Refl
 
 ||| A word of the state, of the carrier it holds: made by its name alone

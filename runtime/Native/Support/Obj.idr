@@ -257,10 +257,9 @@ record Building (0 fs : List (String, Carrier)) (0 k : Bits64) where
 ||| have, its raw words zero, none of its values stored yet: each word 0,
 ||| which the collector takes for no pointer.
 export %inline covering
-beginStruct : (raws, values : Bits64) -> (0 rs : raws = Field.rawCount fs) ->
-              (0 vs : values = Field.valueCount fs) ->
+beginStruct : (raws, values : Bits64) -> (0 counts : Field.Counted fs raws values) ->
               Runtime.Ordo.Op Runtime.Ordo (Building fs 0)
-beginStruct raws values _ _ = do
+beginStruct raws values _ = do
   h <- checked Types.Kind.STRUCT
          (Types.Header.withPart Types.Header.StructRaws raws
            (Types.Header.withPart Types.Header.StructValues values Types.Header.noParts))
@@ -296,7 +295,8 @@ putValue _ (MkBuilding v) x = do
 
 ||| The mutable record made, once each of its values is stored.
 export %inline
-endStruct : {auto 0 all : k = Field.valueCount fs} -> Building fs k ->
+endStruct : {auto 0 counts : Field.Counted fs raws values} -> {auto 0 all : (values == k) = True} ->
+            Building fs k ->
             Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform (Types.Struct fs))
 endStruct (MkBuilding v) = Runtime.Ordo.pure v
 

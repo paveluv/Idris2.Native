@@ -114,7 +114,7 @@ export covering
 newFile : (handle : Bits64) -> IO File
 newFile h = do
   b <- emptyBuffer
-  s <- Support.StructObj.new 4 1
+  s <- Support.StructObj.new
   s <- Support.StructObj.put "input" s (Flat.MkUniform b)
   f <- Support.StructObj.done s
   Support.StructObj.set "handle" f h

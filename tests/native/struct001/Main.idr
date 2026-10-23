@@ -12,7 +12,7 @@
 -- type: `get "delta" s` is an `Int`, `get "items" s` a `Uniform (List
 -- Integer)`, and the index is found where the program is compiled:
 --
---     b <- new 3 2                        -- three raw words, two values
+--     b <- new                            -- its counts found from its fields
 --     b <- put "greeting" b (MkUniform "hello")
 --     b <- put "items" b (MkUniform [1, 2, 3])
 --     s <- done b
@@ -59,15 +59,15 @@ failing "Can't find an implementation for intToBool 0 = True"
   -- the second value stored first: it is not the value due next
   disorder : IO (Uniform Rec)
   disorder = do
-    b <- new 3 2
+    b <- new
     b <- put "items" b (MkUniform [1])
     done b
 
-failing "Can't find an implementation for 0 + 1 ="
+failing "Can't find an implementation for intToBool (2 == (0 + 1))"
   -- a record given before its second value is stored
   early : IO (Uniform Rec)
   early = do
-    b <- new 3 2
+    b <- new
     b <- put "greeting" b (MkUniform "hello")
     done b
 
@@ -75,7 +75,7 @@ failing "Can't find an implementation for distinct"
   -- a name twice
   twice : IO (Uniform (Struct ["count" ~: Mach.U64, "count" ~: Mach.IWord]))
   twice = do
-    b <- new 2 0
+    b <- new
     done b
 
 failing "Can't find an implementation for scanned"
@@ -86,7 +86,7 @@ failing "Can't find an implementation for scanned"
 -- a new record, its type stated where it is made
 made : IO (Uniform Rec)
 made = do
-  b <- new 3 2
+  b <- new
   b <- put "greeting" b (MkUniform "hello")
   b <- put "items" b (MkUniform [1, 2, 3])
   done b

@@ -27,16 +27,14 @@ import Native.Types.Struct as Types
 %default total
 
 %cg native flat Support.StructObj.new
-||| A new record of the counts of raw words and of values its fields have,
-||| which the witnesses tie to them, its names distinct, its raw words zero,
-||| none of its values stored yet: `new 4 1` of a record of four raw words
-||| and a value.
+||| A new record, its names distinct, its raw words zero, none of its
+||| values stored yet: the record's type says its fields, and the search on
+||| them its counts of raw words and of values, which its header holds.
 export covering
-new : (raws, values : Bits64) -> {auto 0 rs : raws = Field.rawCount fs} ->
-      {auto 0 vs : values = Field.valueCount fs} -> {auto 0 names : Field.distinct fs = True} ->
-      IO (Obj.Building fs 0)
-new raws values = primIO $ \w =>
-  let (Runtime.MkOrdo # b) = Obj.beginStruct raws values rs vs Runtime.MkOrdo in MkIORes b w
+new : {raws, values : Bits64} -> {auto 0 counts : Field.Counted fs raws values} ->
+      {auto 0 names : Field.distinct fs = True} -> IO (Obj.Building fs 0)
+new = primIO $ \w =>
+  let (Runtime.MkOrdo # b) = Obj.beginStruct raws values counts Runtime.MkOrdo in MkIORes b w
 
 %cg native flat Support.StructObj.put
 ||| The record being made with its value of the name stored, the next to
@@ -51,7 +49,8 @@ put n b x = primIO $ \w =>
 %cg native flat Support.StructObj.done
 ||| The record, once each of its values is stored.
 export
-done : {auto 0 all : k = Field.valueCount fs} -> Obj.Building fs k ->
+done : {auto 0 counts : Field.Counted fs raws values} -> {auto 0 all : (values == k) = True} ->
+       Obj.Building fs k ->
        IO (Flat.Uniform (Types.Struct fs))
 done b = primIO $ \w => let (Runtime.MkOrdo # v) = Obj.endStruct b Runtime.MkOrdo in MkIORes v w
 
