@@ -33,6 +33,7 @@ modules =
     Native.Runtime.Cell,
     Native.Runtime.System,
     Native.Support,
+    Native.Support.Bignum.Run,
     Native.Support.BufferObj,
     Native.Support.CodePoint,
     Native.Support.Double.Between,
