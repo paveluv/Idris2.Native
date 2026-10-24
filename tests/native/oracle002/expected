@@ -1,5 +1,5 @@
 Strings: agree
-Bignum: unsupported
+Bignum: agree
 StatusCount: agree
 StatusClosure: agree
 StatusCase: agree
@@ -13,4 +13,4 @@ StatusFlatData: agree
 StatusStrings: agree
 IORefs: agree
 TypeValues: agree
-15 programs: 14 agree, 1 unsupported, 0 mismatch, 0 error, 0 timeout
+15 programs: 15 agree, 0 unsupported, 0 mismatch, 0 error, 0 timeout

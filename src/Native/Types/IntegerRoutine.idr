@@ -36,6 +36,11 @@ data IntegerRoutine
     ToBits64
   | ||| The `Integer` of a signed word, and of an unsigned one.
     FromInt64 | FromBits64
+  | ||| An `Integer` in decimal, `-` before a negative one's digits, and the
+    ||| `Integer` a string is, as the integer types read one, unwrapped: a
+    ||| sign, digits with at most one point, truncated toward zero; 0 where it
+    ||| is none.
+    ToDecimal | FromDecimal
 
 ||| Whether two `Integer` routines are the same one: how the code generator
 ||| finds the function that is one.
@@ -56,6 +61,8 @@ Eq IntegerRoutine where
   ToBits64 == ToBits64 = True
   FromInt64 == FromInt64 = True
   FromBits64 == FromBits64 = True
+  ToDecimal == ToDecimal = True
+  FromDecimal == FromDecimal = True
   _ == _ = False
 
 ||| Each `Integer` routine's arrow: what its arguments and its result carry.
@@ -76,13 +83,16 @@ port Compare = "x" ~& Integer ~> "y" ~& Integer ~> "order" ~: Mach.IWord
 port ToBits64 = "x" ~& Integer ~> "word" ~: Mach.U64
 port FromInt64 = "word" ~: Mach.IWord ~> "x" ~& Integer
 port FromBits64 = "word" ~: Mach.U64 ~> "x" ~& Integer
+port ToDecimal = "x" ~& Integer ~> "decimal" ~& String
+port FromDecimal = "decimal" ~& String ~> "x" ~& Integer
 
 ||| Every `Integer` routine, once, which the code generator pairs with its
 ||| own copy, element by element.
 public export
 allIntegerRoutines : List IntegerRoutine
 allIntegerRoutines =
-  [Add, Sub, Mul, And, Or, Xor, Div, Mod, Shl, Shr, Neg, Compare, ToBits64, FromInt64, FromBits64]
+  [ Add, Sub, Mul, And, Or, Xor, Div, Mod, Shl, Shr, Neg, Compare, ToBits64, FromInt64, FromBits64
+  , ToDecimal, FromDecimal ]
 
 ||| The list holds every `Integer` routine.
 complete : (r : IntegerRoutine) -> Elem r IntegerRoutine.allIntegerRoutines
@@ -101,3 +111,5 @@ complete Compare = %search
 complete ToBits64 = %search
 complete FromInt64 = %search
 complete FromBits64 = %search
+complete ToDecimal = %search
+complete FromDecimal = %search

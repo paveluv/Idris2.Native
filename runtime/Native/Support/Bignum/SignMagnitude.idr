@@ -28,9 +28,12 @@ import Native.Port
 import Native.Primitive.Div128
 import Native.Primitive.Mul128
 import Native.Runtime.Bits
+import Native.Runtime.ByteAddr as Runtime
+import Native.Runtime.Memory as Runtime
 import Native.Runtime.Ordo as Runtime
 import Native.Runtime.PortTy as Runtime
 import Native.Support.Obj
+import Native.Support.Text
 import Native.Types.Header
 import Native.Types.IntegerRoutine
 import Native.Types.Kind
@@ -607,3 +610,140 @@ fromBits64 w = if w < 0x4000000000000000 then Obj.fixnumValue (cast w) else do
   Run.setLimb (limbs r) 0 w
   Obj.objectValue r
 
+------------------------------------------------------------------------------
+-- Decimal text
+
+||| Ten to the 19th, the largest power of ten in a word: a decimal is
+||| written and read 19 digits at a time.
+chunk : Bits64
+chunk = 10000000000000000000
+
+||| `n` limbs of the run divided in place by the word, from the top: the
+||| remainder.
+covering
+divideBy : Run Types.Kind.BIGNUM -> (n, d : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
+divideBy r n d = go n 0
+  where
+    covering
+    go : (i, rem : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
+    go i rem = if i == 0 then Runtime.Ordo.pure rem else do
+      x <- Run.limb r (i - 1)
+      (q, r') <- digit rem x d
+      Run.setLimb r (i - 1) q
+      go (i - 1) r'
+
+||| How many decimal digits a word has, one for zero.
+covering
+digitsIn : Bits64 -> Bits64
+digitsIn w = if w < 10 then 1 else 1 + digitsIn (Prelude.div w 10)
+
+||| A word's `width` last decimal digits, zeros before them, as bytes of the
+||| buffer ending before `end`.
+covering
+writeDigits : Obj Types.Kind.BUFFER -> (end, width, w : Bits64) -> Runtime.Ordo.Op Runtime.Ordo ()
+writeDigits b end width w = if width == 0 then Runtime.Ordo.pure () else do
+  Obj.store8 b (end - 1) (48 + Prelude.mod w 10)
+  writeDigits b (end - 1) (width - 1) (Prelude.div w 10)
+
+%cg native flat Support.Bignum.SignMagnitude.toDecimal
+||| The integer in decimal, `-` before a negative one's digits: its
+||| magnitude divided by 10^19 until nothing is left, each remainder 19
+||| digits but the last, the highest, written as many as it has.
+export covering
+toDecimal : Runtime.PortTy (Types.IntegerRoutine.port Types.IntegerRoutine.ToDecimal)
+toDecimal x = do
+  a <- magnitude x
+  t <- newBig False (if a.count == 0 then 1 else a.count)
+  _ <- Run.shiftLeft (limbs t) a.run a.count 0 0
+  -- a word holds 19.3 decimal digits, so a limb gives at most two chunks
+  cs <- newBig False (2 * a.count + 1)
+  k <- chunks (limbs t) (limbs cs) a.count 0
+  top <- Run.limb (limbs cs) (k - 1)
+  let sign : Bits64 = if a.negative then 1 else 0
+      n = sign + digitsIn top + 19 * (k - 1)
+  b <- Obj.allocate Types.Kind.BUFFER
+         (Types.Header.withPart Types.Header.BufferBytes n Types.Header.noParts)
+  if a.negative then Obj.store8 b 0 45 else Runtime.Ordo.pure ()
+  write b (limbs cs) k n
+  writeDigits b (sign + digitsIn top) (digitsIn top) top
+  Text.ofText (Obj.objectBytes b 0) n
+  where
+    -- the chunks of `n` limbs of `t`, from the lowest, into `cs` from `k`:
+    -- their count, one at least
+    covering
+    chunks : (t, cs : Run Types.Kind.BIGNUM) -> (n, k : Bits64) ->
+             Runtime.Ordo.Op Runtime.Ordo Bits64
+    chunks t cs n k = do
+      rem <- divideBy t n chunk
+      Run.setLimb cs k rem
+      n' <- significant t n
+      if n' == 0 then Runtime.Ordo.pure (k + 1) else chunks t cs n' (k + 1)
+
+    -- the chunks below the highest, 19 digits each, from the end
+    covering
+    write : Obj Types.Kind.BUFFER -> Run Types.Kind.BIGNUM -> (k, end : Bits64) ->
+            Runtime.Ordo.Op Runtime.Ordo ()
+    write b cs k end = go 0 end
+      where
+        covering
+        go : (i, e : Bits64) -> Runtime.Ordo.Op Runtime.Ordo ()
+        go i e = if i + 1 >= k then Runtime.Ordo.pure () else do
+          c <- Run.limb cs i
+          writeDigits b e 19 c
+          go (i + 1) (e - 19)
+
+%cg native flat Support.Bignum.SignMagnitude.fromDecimal
+||| The integer a string is: a sign, `+` or `-`, digits with at most one
+||| point among them and at least one digit, its value the decimal's,
+||| truncated toward zero, as `readWord` reads one, but whole; 0 for any
+||| other text. The digits before the point are taken 19 at a time, each
+||| run of them the number so far times a power of ten plus their word.
+export covering
+fromDecimal : Runtime.PortTy (Types.IntegerRoutine.port Types.IntegerRoutine.FromDecimal)
+fromDecimal s = Text.withText s (Obj.fixnumValue 0) (\p, n => do
+  if n == 0 then Obj.fixnumValue 0 else do
+    c0 <- Runtime.Memory.loadByteAt p 0
+    let negative = c0 == 45
+        start : Bits64 = if negative || c0 == 43 then 1 else 0
+    -- the whole part's end, if the text is a decimal
+    whole <- scan p n start start False False
+    case whole of
+      Nothing => Obj.fixnumValue 0
+      Just e => do
+        r <- newBig False (Prelude.div (e - start) 19 + 2)
+        count <- accumulate p (limbs r) start e 0
+        result negative (limbs r) count)
+  where
+    -- the end of the digits before the point, where the text from `i` is
+    -- digits with at most one point and one digit at least
+    covering
+    scan : Runtime.ByteAddr -> (n, i, end : Bits64) -> (any, point : Bool) ->
+           Runtime.Ordo.Op Runtime.Ordo (Maybe Bits64)
+    scan p n i end any point =
+      if i >= n then Runtime.Ordo.pure (if any then Just (if point then end else i) else Nothing)
+        else do
+        b <- Runtime.Memory.loadByteAt p i
+        if b == 46 && not point then scan p n (i + 1) i any True
+          else if b >= 48 && b <= 57 then scan p n (i + 1) end True point
+          else Runtime.Ordo.pure Nothing
+
+    -- the digits from `i` to `e` taken into the `count` limbs of `r`, up to
+    -- 19 at a time: the new count
+    covering
+    accumulate : Runtime.ByteAddr -> Run Types.Kind.BIGNUM -> (i, e, count : Bits64) ->
+                 Runtime.Ordo.Op Runtime.Ordo Bits64
+    accumulate p r i e count = if i >= e then Runtime.Ordo.pure count else do
+      let k = if e - i < 19 then e - i else 19
+      (w, scale) <- word p i (i + k) 0 1
+      carry <- Run.mulAdd r r count scale w
+      if carry == 0 then accumulate p r (i + k) e count else do
+        Run.setLimb r count carry
+        accumulate p r (i + k) e (count + 1)
+      where
+        -- the digits from `j` to `f` as a word, and ten to their number
+        covering
+        word : Runtime.ByteAddr -> (j, f, v, t : Bits64) ->
+               Runtime.Ordo.Op Runtime.Ordo (Bits64, Bits64)
+        word p j f v t = if j >= f then Runtime.Ordo.pure (v, t) else do
+          b <- Runtime.Memory.loadByteAt p j
+          word p (j + 1) f (v * 10 + (b - 48)) (t * 10)

@@ -1023,14 +1023,16 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
               if from /= StringType || to == CharType
                  then TermIR.Build.unsupported ("the cast from " ++ show from ++ " to " ++ show to)
                  else do
-                   [w] <- strings Types.StringRoutine.ReadWord [get env x]
                    c <- case wt of
-                     Bounded (Width.Narrow n) s => narrowVal n s w
-                     Bounded Width.Whole _ => wideVal w
-                     Unbounded =>
-                       TermIR.Build.unsupported
-                         ("an Integer read from a string, beyond what the runtime's Integer " ++
-                          "holds yet")
+                     Bounded (Width.Narrow n) s => do
+                       [w] <- strings Types.StringRoutine.ReadWord [get env x]
+                       narrowVal n s w
+                     Bounded Width.Whole _ => do
+                       [w] <- strings Types.StringRoutine.ReadWord [get env x]
+                       wideVal w
+                     Unbounded => do
+                       [i] <- integers Types.IntegerRoutine.FromDecimal [get env x]
+                       pure i
                    pure (set env r c)
             -- a double as its shortest decimal text, and a string as a double
             (Nothing, Nothing) =>
@@ -1150,7 +1152,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
             decimalWord False w = do [t] <- strings Types.StringRoutine.ShowUnsigned [w]; pure t
 
             ||| A number of the width in decimal, by its word; an `Integer` outside
-            ||| the fixnums is not yet.
+            ||| the fixnums by the bignum encoding's routine.
             decimal : IntWidth -> TermIR.Opnd v IRCommon.Ty.Val -> B (TermIR.Opnd v IRCommon.Ty.Val)
             decimal (Bounded (Width.Narrow _) signed) x = do
               w <- fixValue x
@@ -1163,7 +1165,8 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                 TermIR.Build.ifFixnums [x] (\[f] => do w <- untag f
                                                        t <- decimalWord True w
                                                        done [t])
-                  (TermIR.Build.unsupported "an Integer outside the fixnum range as text")
+                  (do [t] <- integers Types.IntegerRoutine.ToDecimal [x]
+                      done [t])
               pure t
 
             ||| A comparison of strings: the runtime's order, -1, 0 or 1, against 0.
