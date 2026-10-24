@@ -497,6 +497,8 @@ parameters (d : TermIR.Decls enc)
             pure [LocatedIR.Instr.Arith o r (operand env x) (operand env y)]
           ([h, l], TermIR.Instr.Mul128 x y) =>
             pure [LocatedIR.Instr.Mul128 h l (operand env x) (operand env y)]
+          ([q, r], TermIR.Instr.Div128 h l x) =>
+            pure [LocatedIR.Instr.Div128 q r (operand env h) (operand env l) (operand env x)]
           ([r], TermIR.Instr.Unary o x) => unary env x (LocatedIR.Instr.Unary o r)
           ([r], TermIR.Instr.Ext w s x) => unary env x (LocatedIR.Instr.Ext w s r)
           ([r], TermIR.Instr.FArith o x y) => binary env x y (LocatedIR.Instr.FArith o r)

@@ -72,6 +72,11 @@ data Instr : Decls enc -> Bool -> (var : IRCommon.Ty enc -> Type) -> List (IRCom
   ||| The 128-bit product of two words: its high word, then its low word.
   Mul128 : Opnd var IRCommon.Ty.W64 -> Opnd var IRCommon.Ty.W64 ->
            Instr d m var [IRCommon.Ty.W64, IRCommon.Ty.W64]
+  ||| A 128-bit number, its high word then its low word, divided by a word:
+  ||| the quotient, then the remainder. The high word is below the divisor,
+  ||| as the primitive's call proves, so that the quotient is a word.
+  Div128 : Opnd var IRCommon.Ty.W64 -> Opnd var IRCommon.Ty.W64 -> Opnd var IRCommon.Ty.W64 ->
+           Instr d m var [IRCommon.Ty.W64, IRCommon.Ty.W64]
   Unary : IRCommon.Op.UnOp -> Opnd var IRCommon.Ty.W64 -> Instr d m var [IRCommon.Ty.W64]
   ||| Narrow a word to the width, then extend it back, signed or not.
   Ext : Width.SubWord -> (signed : Bool) -> Opnd var IRCommon.Ty.W64 ->
@@ -164,6 +169,7 @@ traverseInstr g (TableAddr n) = pure (TableAddr n)
 traverseInstr g (Offset a n) = [| Offset (g a) (g n) |]
 traverseInstr g (Arith {int} o x y) = [| (\x', y' => Arith {int} o x' y') (g x) (g y) |]
 traverseInstr g (Mul128 x y) = [| Mul128 (g x) (g y) |]
+traverseInstr g (Div128 h l x) = [| Div128 (g h) (g l) (g x) |]
 traverseInstr g (Unary o x) = Unary o <$> g x
 traverseInstr g (Ext w s x) = Ext w s <$> g x
 traverseInstr g (FArith o x y) = [| FArith (pure o) (g x) (g y) |]

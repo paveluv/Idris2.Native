@@ -58,6 +58,7 @@ data Instr : Types.Enc -> Type where
   ||| Negation or complement of a `W64`.
   ||| The 128-bit product of two words, into its high word and its low word.
   Mul128     : (high, low : Reg enc) -> Opnd enc -> Opnd enc -> Instr enc
+  Div128     : (quotient, remainder : Reg enc) -> (high, low, divisor : Opnd enc) -> Instr enc
   Unary      : IRCommon.Op.UnOp -> Reg enc -> Reg enc -> Instr enc
   ||| `Add`, `Sub` or `Mul`, with the operand types of `Arith`, then a branch
   ||| to the label if the result does not fit: in 64 signed bits for `W64`s,
@@ -204,6 +205,7 @@ instrName (Ext _ _ _ _) = "Ext"
 instrName (FArith op _ _ _) = show op
 instrName (FNeg _ _) = "FNeg"
 instrName (Mul128 _ _ _ _) = "Mul128"
+instrName (Div128 _ _ _ _ _) = "Div128"
 instrName (FCmp _ _ _ _) = "FCmp"
 instrName (Convert _ _ _) = "Convert"
 instrName (Cmp _ _ _ _) = "Cmp"

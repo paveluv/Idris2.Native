@@ -487,6 +487,9 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
         primitive n Primitive.Mul128 (MkValue [Rep.Word, Rep.Word] [x, y]) = do
           [h, l] <- TermIR.Build.emit (TermIR.Instr.Mul128 x y)
           pure (MkValue [Rep.Word, Rep.Word] [TermIR.Opnd.V h, TermIR.Opnd.V l])
+        primitive n Primitive.Div128 (MkValue [Rep.Word, Rep.Word, Rep.Word] [h, l, x]) = do
+          [q, r] <- TermIR.Build.emit (TermIR.Instr.Div128 h l x)
+          pure (MkValue [Rep.Word, Rep.Word] [TermIR.Opnd.V q, TermIR.Opnd.V r])
         primitive n Primitive.DoubleBits (MkValue [Rep.Dbl] [f]) = do
           w <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.FBits f)
           pure (MkValue [Rep.Word] [w])

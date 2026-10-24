@@ -73,6 +73,7 @@ functionPieces f =
           Instr.TableAddr d n => show d ++ " := TableAddr " ++ show n
           Instr.Arith o d x y => show d ++ " := " ++ show o ++ " " ++ ops [x, y]
           Instr.Mul128 h l x y => show h ++ ", " ++ show l ++ " := Mul128 " ++ ops [x, y]
+          Instr.Div128 q r h l x => show q ++ ", " ++ show r ++ " := Div128 " ++ ops [h, l, x]
           i@(Instr.Unary _ d x) => show d ++ " := " ++ Instr.instrName i ++ " " ++ show x
           Instr.ArithOv o d x y l => show d ++ " := " ++ show o ++ "Ov " ++ ops [x, y]
             ++ " overflow " ++ show l

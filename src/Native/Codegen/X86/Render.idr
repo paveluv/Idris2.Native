@@ -716,6 +716,16 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                   emit (Asm.Mul Asm.RCX)
                                   store h Asm.RDX
                                   store l Asm.RAX
+                -- `div` divides rdx:rax by its operand, the quotient into rax and
+                -- the remainder into rdx; a high word below the divisor, which
+                -- the primitive's call proves, keeps it from faulting
+                LocatedIR.Instr.Div128 q r h l x => do
+                                  load Asm.RDX h
+                                  load Asm.RAX l
+                                  load Asm.RCX x
+                                  emit (Asm.DivU Asm.RCX)
+                                  store q Asm.RAX
+                                  store r Asm.RDX
                 LocatedIR.Instr.Unary o d x => do
                                   loadReg Asm.RAX x
                                   emit (case o of IRCommon.Op.Negate => Asm.Neg Asm.RAX

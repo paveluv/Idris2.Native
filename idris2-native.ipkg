@@ -100,6 +100,7 @@ modules =
     Native.OpenFlag,
     Native.Port,
     Native.Primitive,
+    Native.Primitive.Div128,
     Native.Primitive.DoubleBits,
     Native.Primitive.Mul128,
     Native.Rep,

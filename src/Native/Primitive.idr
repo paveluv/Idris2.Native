@@ -37,49 +37,69 @@ public export
 data Primitive
   = ||| The 128-bit product of two words: its high word and its low word.
     Mul128
+  | ||| The 128-bit number of a high and a low word divided by a word: its
+    ||| quotient and its remainder, of a high word below the divisor, so that
+    ||| the quotient is a word.
+    Div128
   | ||| A double's 64 bits, as IEEE 754 lays them out, and the double of 64
     ||| bits.
     DoubleBits | BitsDouble
 
+||| A proposition about arguments of the machine types: a type, of each
+||| argument in turn.
+public export
+Requires : List Mach -> Type
+Requires [] = Type
+Requires (m :: ms) = Mach.type m -> Requires ms
+
 ||| A primitive's arrow: the machine types of its arguments, and of its
-||| results, in order.
+||| results, in order, and what its arguments must be for the machine to
+||| compute it, if anything: a proposition about them, of which a call
+||| gives an erased proof.
 public export
 record Signature where
   constructor MkSignature
   takes : List Mach
   gives : List Mach
+  requires : Maybe (Requires takes)
 
 ||| Each primitive's signature.
 public export
 signature : Primitive -> Signature
-signature Mul128 = MkSignature [Mach.U64, Mach.U64] [Mach.U64, Mach.U64]
-signature DoubleBits = MkSignature [Mach.F64] [Mach.U64]
-signature BitsDouble = MkSignature [Mach.U64] [Mach.F64]
+signature Mul128 = MkSignature [Mach.U64, Mach.U64] [Mach.U64, Mach.U64] Nothing
+signature Div128 =
+  MkSignature [Mach.U64, Mach.U64, Mach.U64] [Mach.U64, Mach.U64]
+    (Just (\high, _, divisor => (high < divisor) = True))
+signature DoubleBits = MkSignature [Mach.F64] [Mach.U64] Nothing
+signature BitsDouble = MkSignature [Mach.U64] [Mach.F64] Nothing
 
 ||| The Idris type of a primitive of the signature: a function of its
-||| arguments, of its results as a tuple, or of its one result, each the
+||| arguments, then of an erased proof of what it requires of them, if
+||| anything, of its results as a tuple, or of its one result, each the
 ||| Idris type of its machine type.
 public export
 FunctionTy : Signature -> Type
-FunctionTy sig = arrows sig.takes
+FunctionTy sig = arrows sig.takes sig.requires
   where
     results : List Mach -> Type
     results [] = ()
     results [m] = Mach.type m
     results (m :: ms) = (Mach.type m, results ms)
 
-    arrows : List Mach -> Type
-    arrows [] = results sig.gives
-    arrows (m :: ms) = Mach.type m -> arrows ms
+    arrows : (ms : List Mach) -> Maybe (Requires ms) -> Type
+    arrows [] Nothing = results sig.gives
+    arrows [] (Just p) = (0 _ : p) -> results sig.gives
+    arrows (m :: ms) r = (x : Mach.type m) -> arrows ms (map (\f => f x) r)
 
 ||| Every primitive, once, which the code generator pairs with its own copy,
 ||| element by element.
 public export
 allPrimitives : List Primitive
-allPrimitives = [Mul128, DoubleBits, BitsDouble]
+allPrimitives = [Mul128, Div128, DoubleBits, BitsDouble]
 
 ||| The list holds every primitive.
 complete : (p : Primitive) -> Elem p Primitive.allPrimitives
 complete Mul128 = %search
+complete Div128 = %search
 complete DoubleBits = %search
 complete BitsDouble = %search

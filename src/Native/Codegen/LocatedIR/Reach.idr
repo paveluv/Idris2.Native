@@ -65,6 +65,7 @@ reach roots p =
         instr (Instr.TableAddr _ t) = MkRefs [] [] [t]
         instr (Instr.Arith _ _ x y) = opnds [x, y]
         instr (Instr.Mul128 _ _ x y) = opnds [x, y]
+        instr (Instr.Div128 _ _ h l x) = opnds [h, l, x]
         instr (Instr.ArithOv _ _ x y _) = opnds [x, y]
         instr (Instr.Cmp _ _ x y) = opnds [x, y]
         instr (Instr.AllocObj _ _ fields _) = opnds fields
