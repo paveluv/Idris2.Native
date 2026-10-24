@@ -63,6 +63,12 @@ data StringRoutine
     CopyText
   | ||| A new string of the system's bytes at an address, so many.
     OfText
+  | ||| A string walked character by character, by the encoding's own
+    ||| positions in it, 0 the first character's: the position after the
+    ||| character at a position, the position itself at the end; the
+    ||| character at a position before the end; and the string from a
+    ||| position on.
+    After | CharAt | From
 
 ||| Whether two string routines are the same one: how the code generator
 ||| finds the function that is one.
@@ -86,6 +92,9 @@ Eq StringRoutine where
   TextAddress == TextAddress = True
   CopyText == CopyText = True
   OfText == OfText = True
+  After == After = True
+  CharAt == CharAt = True
+  From == From = True
   _ == _ = False
 
 ||| Each string routine's arrow: what its arguments and its result carry.
@@ -109,6 +118,9 @@ port TextBytes = "s" ~& String ~> "bytes" ~: Mach.U64
 port TextAddress = "s" ~& String ~> "bytes" ~: Carrier.ByteAddr
 port CopyText = "s" ~& String ~> "into" ~: Carrier.ByteAddr ~> ()
 port OfText = "bytes" ~: Carrier.ByteAddr ~> "count" ~: Mach.U64 ~> "s" ~& String
+port After = "s" ~& String ~> "at" ~: Mach.U64 ~> "next" ~: Mach.U64
+port CharAt = "s" ~& String ~> "at" ~: Mach.U64 ~> "character" ~: Mach.U64
+port From = "s" ~& String ~> "at" ~: Mach.U64 ~> "rest" ~& String
 
 ||| Every string routine, once, which the code generator pairs with its own
 ||| copy, element by element.
@@ -117,7 +129,7 @@ allStringRoutines : List StringRoutine
 allStringRoutines =
   [ Length, Head, Tail, Index, Cons, Append, Reverse, Substr, Compare, ShowSigned, ShowUnsigned,
     ShowDouble, ReadDouble
-  , ReadWord, TextBytes, TextAddress, CopyText, OfText ]
+  , ReadWord, TextBytes, TextAddress, CopyText, OfText, After, CharAt, From ]
 
 ||| The list holds every string routine.
 complete : (r : StringRoutine) -> Elem r StringRoutine.allStringRoutines
@@ -139,3 +151,6 @@ complete TextBytes = %search
 complete TextAddress = %search
 complete CopyText = %search
 complete OfText = %search
+complete After = %search
+complete CharAt = %search
+complete From = %search

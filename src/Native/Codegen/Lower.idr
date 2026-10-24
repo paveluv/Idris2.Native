@@ -358,6 +358,48 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
     Nothing =>
       TermIR.Build.unsupported ("the static object " ++ show name ++ ", which no declaration makes")
 
+  ||| A runtime routine's variable, with its results and parameters.
+  routine : Name -> (rs, ps : List (IRCommon.Ty enc)) ->
+            Maybe
+            (n' ** TermIR.Var d.sigs
+             (TermIR.MkSig n' (IRCommon.Conv.Direct rs False) ps False))
+  routine name rs ps = case lookup name refs.funs of
+    Just (TermIR.MkSig n (IRCommon.Conv.Direct rs' False) ps' False ** var) =>
+      case (decEq rs' rs, decEq ps' ps) of
+      (Yes Refl, Yes Refl) => Just (n ** var)
+      _ => Nothing
+    _ => Nothing
+
+  ||| A call of a runtime routine, binding its results.
+  callRoutine : Name -> {rs : List (IRCommon.Ty enc)} -> {ps : List (IRCommon.Ty enc)} ->
+                All (TermIR.Opnd v) ps -> B (All (TermIR.Opnd v) rs)
+  callRoutine name xs = case routine name rs ps of
+    Just (_ ** r) => TermIR.Build.directCall r xs
+    Nothing => TermIR.Build.crash ("no runtime routine " ++ show name)
+
+  ||| A call of a string routine of the program's encoding, of its port's
+  ||| registers.
+  strings : (c : Types.StringRoutine) ->
+            All (TermIR.Opnd v) (Linkage.Routine.portParams (Types.StringRoutine.port c)) ->
+            B (All (TermIR.Opnd v) (Linkage.Routine.portResults (Types.StringRoutine.port c)))
+  strings c xs = case Linkage.Routine.stringRoutine refs.realised c of
+    Just n => callRoutine n xs
+    Nothing =>
+      TermIR.Build.unsupported
+        "a string operation, which the runtime has no module for under the encoding"
+
+  ||| A call of an `Integer` routine of the program's encoding, of its port's
+  ||| registers.
+  integers : (c : Types.IntegerRoutine) ->
+             All (TermIR.Opnd v) (Linkage.Routine.portParams (Types.IntegerRoutine.port c)) ->
+             B (All (TermIR.Opnd v)
+                (Linkage.Routine.portResults (Types.IntegerRoutine.port c)))
+  integers c xs = case Linkage.Routine.integerRoutine refs.realised c of
+    Just n => callRoutine n xs
+    Nothing =>
+      TermIR.Build.unsupported
+        "an Integer operation beyond the fixnums, which the runtime has none of yet"
+
   ||| A double's value, from its box, a `DOUBLE` of one double, and the box of
   ||| one, which the program allocates: how ordinary code holds a double.
   valDouble : TermIR.Opnd v IRCommon.Ty.Val -> B (TermIR.Opnd v IRCommon.Ty.F64)
@@ -467,6 +509,47 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
   -- apart into the form's registers, calls the form, and builds its result
   -- from the form's, as ordinary code represents each type
   -- (`Flat.Exp.Ordinary`).
+
+  ||| The foreign functions of the compiler's own library that walk a string
+  ||| (`Libraries.Data.String.Iterator`), lowered here, as Idris's JavaScript
+  ||| code generator lowers them, since their types (`StringIterator`,
+  ||| `UnconsResult`) are the compiler's library's, which the runtime does not
+  ||| import. A stopgap: library knowledge in the code generator, until an
+  ||| implementation can come from a package that names those types. An iterator is a
+  ||| fixnum, the string encoding's position in the string (under UTF-8 a byte
+  ||| offset, a step a character's bytes): `fromString` the first, 0;
+  ||| `uncons` the character there and the position after it, `Character`
+  ||| (tag 1, of the two), or `EOF` (tag 0) at the end; `withIteratorString`
+  ||| the function, of its type's argument first, applied to the string from
+  ||| the position on. Nothing for any other function.
+  stringIterator : Name -> List (TermIR.Opnd v IRCommon.Ty.Val) -> Maybe E
+  stringIterator n args =
+    if n == iterator "fromString" then case args of
+      [_] => map TermIR.Build.return (fixnum 0)
+      _ => Nothing
+    else if n == iterator "uncons" then case args of
+      [str, it] => Just $ do
+        at <- fixValue it
+        [next] <- strings Types.StringRoutine.After [str, at]
+        TermIR.Build.branch IRCommon.Op.EqR next at
+          (do eof <- staticVal (nullaryCon 0)
+              TermIR.Build.return eof) $ do
+          [c] <- strings Types.StringRoutine.CharAt [str, at]
+          cv <- TermIR.Build.emit1 (TermIR.Instr.Tag c) >>= widen
+          nv <- TermIR.Build.emit1 (TermIR.Instr.Tag next) >>= widen
+          r <- constructor 1 [cv, nv]
+          TermIR.Build.return r
+      _ => Nothing
+    else if n == iterator "withIteratorString" then case args of
+      [_, str, it, f] => Just $ do
+        at <- fixValue it
+        [rest] <- strings Types.StringRoutine.From [str, at]
+        TermIR.Build.tailApply f rest
+      _ => Nothing
+    else Nothing
+    where
+      iterator : String -> Name
+      iterator s = NS (mkNamespace "Libraries.Data.String.Iterator") (UN (Basic s))
 
   ||| A function that has a flat form: its arguments taken apart, the form
   ||| called, its result built.
@@ -892,48 +975,6 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
               && TermIR.Body.keysFit (IRCommon.Ty.W64 {enc}) (map fst cs)) of
           Left ok => TermIR.Build.switch x cs other
           Right _ => TermIR.Build.unsupported "a case with repeated constructor ids"
-
-        ||| A runtime routine's variable, with its results and parameters.
-        routine : Name -> (rs, ps : List (IRCommon.Ty enc)) ->
-                  Maybe
-                  (n' ** TermIR.Var d.sigs
-                   (TermIR.MkSig n' (IRCommon.Conv.Direct rs False) ps False))
-        routine name rs ps = case lookup name refs.funs of
-          Just (TermIR.MkSig n (IRCommon.Conv.Direct rs' False) ps' False ** var) =>
-            case (decEq rs' rs, decEq ps' ps) of
-            (Yes Refl, Yes Refl) => Just (n ** var)
-            _ => Nothing
-          _ => Nothing
-
-        ||| A call of a runtime routine, binding its results.
-        callRoutine : Name -> {rs : List (IRCommon.Ty enc)} -> {ps : List (IRCommon.Ty enc)} ->
-                      All (TermIR.Opnd v) ps -> B (All (TermIR.Opnd v) rs)
-        callRoutine name xs = case routine name rs ps of
-          Just (_ ** r) => TermIR.Build.directCall r xs
-          Nothing => TermIR.Build.crash ("no runtime routine " ++ show name)
-
-        ||| A call of a string routine of the program's encoding, of its port's
-        ||| registers.
-        strings : (c : Types.StringRoutine) ->
-                  All (TermIR.Opnd v) (Linkage.Routine.portParams (Types.StringRoutine.port c)) ->
-                  B (All (TermIR.Opnd v) (Linkage.Routine.portResults (Types.StringRoutine.port c)))
-        strings c xs = case Linkage.Routine.stringRoutine refs.realised c of
-          Just n => callRoutine n xs
-          Nothing =>
-            TermIR.Build.unsupported
-              "a string operation, which the runtime has no module for under the encoding"
-
-        ||| A call of an `Integer` routine of the program's encoding, of its port's
-        ||| registers.
-        integers : (c : Types.IntegerRoutine) ->
-                   All (TermIR.Opnd v) (Linkage.Routine.portParams (Types.IntegerRoutine.port c)) ->
-                   B (All (TermIR.Opnd v)
-                      (Linkage.Routine.portResults (Types.IntegerRoutine.port c)))
-        integers c xs = case Linkage.Routine.integerRoutine refs.realised c of
-          Just n => callRoutine n xs
-          Nothing =>
-            TermIR.Build.unsupported
-              "an Integer operation beyond the fixnums, which the runtime has none of yet"
 
         ||| A case on integer or character constants. A 64-bit scrutinee is
         ||| matched as a fixnum against the cases in the fixnum range and as a box
@@ -1662,7 +1703,8 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
       lowerForeign : (d : TermIR.Decls enc) -> Refs enc d -> Name -> (arity : Nat) ->
                      TermIR.Build.Closed d IRCommon.Conv.CPS False (replicate arity IRCommon.Ty.Val)
       lowerForeign d refs n arity = TermIR.Build.build $ \ps =>
-        TermIR.Build.unsupported ("the foreign function " ++ show n)
+        fromMaybe (TermIR.Build.unsupported ("the foreign function " ++ show n))
+          (stringIterator d refs n (allVals ps))
   planDef d refs fs (TermIR.MkSig n IRCommon.Conv.CPS ps False) (Implemented arity impl m) =
     case (decEq ps (replicate arity IRCommon.Ty.Val), lookup impl refs.funs) of
       (Yes Refl, Just (TermIR.MkSig _ IRCommon.Conv.CPS ps' _ ** var)) =>
@@ -1881,7 +1923,10 @@ lowerProgram enc platform realised forms shapes tables constants flat implemente
       planned = concatMap kept (mapMaybe plan (filter ((/= mainExpression) . fst) vmdefs))
       others = planned
                  ++ [(LowerFlat.formSig fd, Form fd) | fd <- forms]
-      boxing = fromList [(nullaryCon c, Nullary c) | c <- toList (concatMap (boxed . snd) planned)]
+      -- with constructor 0's, which a string iterator's end is
+      boxing = fromList
+        ((nullaryCon 0, Nullary 0)
+           :: [(nullaryCon c, Nullary c) | c <- toList (concatMap (boxed . snd) planned)])
       statics = Data.SortedMap.toList (foldl mergeLeft boxing (mapMaybe bodyStatics vmdefs))
   pure
     (program forms shapes realised tables typeCons (length constants) entryPlan others

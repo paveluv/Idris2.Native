@@ -1,0 +1,8 @@
+. ../../testutils.sh
+
+# The compiler's string iterator on both code generators: the same program,
+# compiled by the native one and by Chez, prints the same.
+idris2 --cg native -p idris2 -o walk-native Walk.idr > /dev/null
+./build/exec/walk-native
+idris2 --cg chez -p idris2 -o walk-chez Walk.idr > /dev/null
+./build/exec/walk-chez

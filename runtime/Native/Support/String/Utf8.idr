@@ -1001,3 +1001,42 @@ readDouble u = do
                           Double.Between.between d sticky
                             (e + cast sc.whole - cast sc.lead - cast kept) b
              Runtime.Ordo.pure (Primitive.DoubleBits.bitsDouble (bits .|. sign))
+
+------------------------------------------------------------------------------
+-- Positions
+
+%cg native flat Support.String.Utf8.after
+||| The position after the character at a position, which under UTF-8 is a
+||| byte offset: the offset plus the character's bytes, which its lead byte
+||| says; the position itself at the end. A string walked so takes a step
+||| of a character's bytes, where an index of characters would count them
+||| from the start each time.
+export covering
+after : Runtime.PortTy (Types.StringRoutine.port Types.StringRoutine.After)
+after str at = do
+  s <- stringObject str
+  h <- stringHeader s
+  if at >= headerBytes h then Runtime.Ordo.pure at else do
+    lead <- byteAt s at
+    Runtime.Ordo.pure (at + seqLength lead)
+
+%cg native flat Support.String.Utf8.charAt
+||| The character at a position before the end.
+export covering
+charAt : Runtime.PortTy (Types.StringRoutine.port Types.StringRoutine.CharAt)
+charAt str at = do
+  s <- stringObject str
+  h <- stringHeader s
+  if at >= headerBytes h then Runtime.Ordo.crashOp "idris: a position outside a string"
+    else decodeAt s at
+
+%cg native flat Support.String.Utf8.from
+||| The string from a position on: its bytes from the offset, the empty
+||| string from the end.
+export covering
+from : Runtime.PortTy (Types.StringRoutine.port Types.StringRoutine.From)
+from str at = do
+  s <- stringObject str
+  h <- stringHeader s
+  let n = headerBytes h
+  slice s h (if at > n then n else at) n
