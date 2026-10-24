@@ -14,9 +14,12 @@
 #    becomes a stub, so the program always links, and fails only if it gets
 #    there.
 # 3. The ladder: the natively compiled compiler run on a sequence of tasks,
-#    each harder than the last, until one fails. A failure prints the first
-#    lines of its standard error, which for a stub names the construct and
-#    the function it is in.
+#    each harder than the last, until one fails: its version; checking a
+#    module without the Prelude, with it, and importing base; compiling a
+#    program natively and running it, its output checked, and its image
+#    compared, byte for byte, with the one the hosted compiler (the one
+#    given) makes of it. A failure prints the first lines of its standard
+#    error, which for a stub names the construct and the function it is in.
 #
 # On demand, as `make scaling` is, not part of the gate: it takes a minute.
 
@@ -71,4 +74,14 @@ step "--check a module with the Prelude" "$image" --check WithPrelude.idr
 step "--check a module importing base" "$image" --check WithBase.idr
 step "compile a program with the Prelude, natively" "$image" --cg native -o withprelude WithPrelude.idr
 step "run it" "$work/build/exec/withprelude"
+cp "$work/step.out" "$work/run.out"
+step "its output is right" sh -c '[ "$(cat run.out)" = "(55, [2, 4, 6])" ]'
+# the same program compiled by the compiler that compiled this one, Chez's
+# build of idris2-native: the natively compiled compiler is to make the same
+# image, byte for byte
+mkdir -p "$work/hosted"
+cp "$work/WithPrelude.idr" "$work/hosted/"
+step "the hosted compiler makes the same image" sh -c \
+  "cd hosted && '$native' --cg native -o withprelude WithPrelude.idr > /dev/null && \
+   cmp build/exec/withprelude ../build/exec/withprelude"
 echo "  (next: idris2-native building itself)"
