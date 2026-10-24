@@ -27,6 +27,7 @@ import Native.HeapObj.Shape as HeapObj
 import Native.Port
 import Native.Primitive
 import Native.Primitive.Div128
+import Native.Primitive.DoubleBits
 import Native.Primitive.Mul128
 import Native.Runtime.Bits
 import Native.Runtime.ByteAddr as Runtime
@@ -749,3 +750,65 @@ fromDecimal s = Text.withText s (Obj.fixnumValue 0) (\p, n => do
         word p j f v t = if j >= f then Runtime.Ordo.pure (v, t) else do
           b <- Runtime.Memory.loadByteAt p j
           word p (j + 1) f (v * 10 + (b - 48)) (t * 10)
+
+------------------------------------------------------------------------------
+-- Doubles
+
+%cg native flat Support.Bignum.SignMagnitude.toDouble
+||| The double nearest the integer, ties to even, as IEEE 754 rounds: a
+||| fixnum's by the machine's conversion; a `BIGNUM`'s from its top 64
+||| significant bits and whether any bit below them is set, rounded to 53
+||| bits, its exponent the place of its top bit; an infinity of its sign
+||| from 2^1024 on.
+export covering
+toDouble : Runtime.PortTy (Types.IntegerRoutine.port Types.IntegerRoutine.ToDouble)
+toDouble x = do
+  t <- take x
+  case t of
+    Small n => Runtime.Ordo.pure (cast n)
+    Large m => do
+      top <- Run.limb m.run (m.count - 1)
+      next <- if m.count >= 2 then Run.limb m.run (m.count - 2) else Runtime.Ordo.pure 0
+      below <- anyLimb m.run (if m.count >= 2 then m.count - 2 else 0)
+      let z = leadingZeros top
+          -- the top 64 significant bits, and those of `next` left out of them
+          high = if z == 0 then top else (top `shiftL` z) .|. (next `shiftR` (64 - z))
+          left = if z == 0 then next else next `shiftL` z
+          sticky = left /= 0 || below
+          q = high `shiftR` 11
+          rest = high .&. 0x7FF
+          up = rest > 0x400 || (rest == 0x400 && (sticky || q .&. 1 == 1))
+          q' = if up then q + 1 else q
+          -- the place of the top bit, one more where the rounding carried out
+          place = 64 * m.count - z - 1 + (if q' == 0x20000000000000 then 1 else 0)
+          sign : Bits64 = if m.negative then 0x8000000000000000 else 0
+      Runtime.Ordo.pure (Primitive.DoubleBits.bitsDouble
+        (if place > 1023 then sign .|. 0x7FF0000000000000
+          else sign .|. ((place + 1023) `shiftL` 52) .|. (q' .&. 0xFFFFFFFFFFFFF)))
+
+%cg native flat Support.Bignum.SignMagnitude.fromDouble
+||| The integer of a double, its exact truncation toward zero, read from
+||| its bits: 0 for NaN and the infinities, whose exponent field is all
+||| ones, and for any double below 1; a fixnum below 2^62; else its
+||| significand shifted up as its exponent says, in a `BIGNUM`.
+export covering
+fromDouble : Runtime.PortTy (Types.IntegerRoutine.port Types.IntegerRoutine.FromDouble)
+fromDouble f = do
+  let b = Primitive.DoubleBits.doubleBits f
+      e = (b `shiftR` 52) .&. 0x7FF
+      negative = b `shiftR` 63 == 1
+      m = (b .&. 0xFFFFFFFFFFFFF) .|. 0x10000000000000
+  if e == 0x7FF || e < 1023 then Obj.fixnumValue 0
+    else if e < 1085 then do
+      -- below 2^62: the significand shifted down past the point, or up
+      let v = if e >= 1075 then m `shiftL` (e - 1075) else m `shiftR` (1075 - e)
+      Obj.fixnumValue (if negative then 0 - cast v else cast v)
+    else do
+      let s = e - 1075
+          words = s `shiftR` 6
+          bits = s .&. 63
+      r <- newBig negative (words + 2)
+      Run.zero (limbs r) words
+      Run.setLimb (limbs r) words (m `shiftL` bits)
+      Run.setLimb (limbs r) (words + 1) (if bits == 0 then 0 else m `shiftR` (64 - bits))
+      result negative (limbs r) (words + 2)

@@ -10,6 +10,8 @@
 --     cast {to = Int} (0.0 / 0.0)    = 0
 --     cast {to = Bits8} (1.0 / 0.0)  = 0
 --     cast {to = Int64} (-1.0 / 0.0) = 0
+--
+-- and as an Integer, by the bignum's routine, 0 as well.
 module Main
 
 import Data.List
@@ -23,7 +25,8 @@ ordinary : Double -> List String
 ordinary x =
   [ show (cast {to = Int} x), show (cast {to = Int8} x), show (cast {to = Int16} x)
   , show (cast {to = Int32} x), show (cast {to = Int64} x), show (cast {to = Bits8} x)
-  , show (cast {to = Bits16} x), show (cast {to = Bits32} x), show (cast {to = Bits64} x) ]
+  , show (cast {to = Bits16} x), show (cast {to = Bits32} x), show (cast {to = Bits64} x)
+  , show (cast {to = Integer} x) ]
 
 -- the same casts in a flat function, as if written
 --

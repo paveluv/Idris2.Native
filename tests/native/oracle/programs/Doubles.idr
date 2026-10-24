@@ -75,6 +75,28 @@ ints =
   [ 0, 1, -1, 9007199254740993, 9007199254740995, -9007199254740993, 9223372036854775807
   , -9223372036854775808, 4611686018427387903, 123456 ]
 
+-- Integers as doubles, the nearest, ties to even, from fixnums and from
+-- bignums: around the fixnum boundary, 2^53 + 1 and its neighbours, 2^64 - 1
+-- (which rounds up to 2^64), a tie far above 2^53 broken to even, and past
+-- the largest double, which is an infinity
+integers : List Integer
+integers =
+  [ 0, -1, 4611686018427387903, 4611686018427387904, -4611686018427387905, 9007199254740993
+  , 9007199254740995, 18446744073709551615, -18446744073709551617
+  , (9007199254740993 * 1267650600228229401496703205376) + 1267650600228229401496703205376
+  , 9007199254740993 * 1267650600228229401496703205376
+  , 340282366920938463463374607431768211457, pow2 1024, negate (pow2 1024), pow2 1024 - 1 ]
+  where
+    pow2 : Nat -> Integer
+    pow2 Z = 1
+    pow2 (S k) = 2 * pow2 k
+
+-- doubles as Integers, truncated toward zero, exactly
+truncations : List Double
+truncations =
+  [ 0.0, -0.0, 0.99, -0.99, 1.5, -2.5, 4.611686018427388e18, -4.611686018427388e18, 1.0e19
+  , -1.0e30, 1.2345678901234567e100, 1.7976931348623157e308, 9007199254740993.0 ]
+
 main : IO ()
 main = do
   traverse_ (putStrLn . show) constants
@@ -83,6 +105,8 @@ main = do
   traverse_ (putStrLn . pairLine) [(x, y) | x <- constants, y <- constants]
   traverse_ (putStrLn . castLine) (finite ++ map negate finite)
   traverse_ (putStrLn . intLine) ints
+  traverse_ (\n => printLn (cast {to = Double} n)) integers
+  traverse_ (\x => printLn (cast {to = Integer} x)) truncations
   printLn
     ( cast {to = Double} (the Bits64 18446744073709551615)
     , cast {to = Double} (the Bits64 9223372036854777856) )

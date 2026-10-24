@@ -1115,7 +1115,15 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
             toDouble (Bounded Width.Whole s) x = do
               w <- wideWord x
               Doubles.fromWord (Width.Whole, s) w >>= doubleVal
-            toDouble Unbounded _ = TermIR.Build.unsupported "the cast from Integer to Double"
+            toDouble Unbounded x = do
+              [f] <- TermIR.Build.joinPoint [IRCommon.Ty.F64] $ \done =>
+                TermIR.Build.ifFixnums [x]
+                  (\[a] => do w <- untag a
+                              f <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.I2F w)
+                              done [f])
+                  (do [f] <- integers Types.IntegerRoutine.ToDouble [x]
+                      done [f])
+              doubleVal f
 
             ||| A double as the integer type of the width: truncated, wrapped
             ||| (`Native.Codegen.Doubles`).
@@ -1129,7 +1137,10 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
               f <- valDouble x
               w <- Doubles.toWord (Width.Whole, s) f
               wideVal w
-            fromDouble Unbounded _ = TermIR.Build.unsupported "the cast from Double to Integer"
+            fromDouble Unbounded x = do
+              f <- valDouble x
+              [i] <- integers Types.IntegerRoutine.FromDouble [f]
+              pure i
 
             ||| A uniform integer of one width as one of another, wrapping as Idris's
             ||| casts do.

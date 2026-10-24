@@ -41,6 +41,10 @@ data IntegerRoutine
     ||| sign, digits with at most one point, truncated toward zero; 0 where it
     ||| is none.
     ToDecimal | FromDecimal
+  | ||| The double nearest an `Integer`, ties to even, an infinity beyond the
+    ||| largest; and a double's `Integer`, its exact truncation, 0 for NaN and
+    ||| the infinities.
+    ToDouble | FromDouble
 
 ||| Whether two `Integer` routines are the same one: how the code generator
 ||| finds the function that is one.
@@ -63,6 +67,8 @@ Eq IntegerRoutine where
   FromBits64 == FromBits64 = True
   ToDecimal == ToDecimal = True
   FromDecimal == FromDecimal = True
+  ToDouble == ToDouble = True
+  FromDouble == FromDouble = True
   _ == _ = False
 
 ||| Each `Integer` routine's arrow: what its arguments and its result carry.
@@ -85,6 +91,8 @@ port FromInt64 = "word" ~: Mach.IWord ~> "x" ~& Integer
 port FromBits64 = "word" ~: Mach.U64 ~> "x" ~& Integer
 port ToDecimal = "x" ~& Integer ~> "decimal" ~& String
 port FromDecimal = "decimal" ~& String ~> "x" ~& Integer
+port ToDouble = "x" ~& Integer ~> "nearest" ~: Mach.F64
+port FromDouble = "x" ~: Mach.F64 ~> "truncated" ~& Integer
 
 ||| Every `Integer` routine, once, which the code generator pairs with its
 ||| own copy, element by element.
@@ -92,7 +100,7 @@ public export
 allIntegerRoutines : List IntegerRoutine
 allIntegerRoutines =
   [ Add, Sub, Mul, And, Or, Xor, Div, Mod, Shl, Shr, Neg, Compare, ToBits64, FromInt64, FromBits64
-  , ToDecimal, FromDecimal ]
+  , ToDecimal, FromDecimal, ToDouble, FromDouble ]
 
 ||| The list holds every `Integer` routine.
 complete : (r : IntegerRoutine) -> Elem r IntegerRoutine.allIntegerRoutines
@@ -113,3 +121,5 @@ complete FromInt64 = %search
 complete FromBits64 = %search
 complete ToDecimal = %search
 complete FromDecimal = %search
+complete ToDouble = %search
+complete FromDouble = %search
