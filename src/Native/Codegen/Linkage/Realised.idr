@@ -213,7 +213,7 @@ realise platform enc = do
     Nothing => pure (Right Nothing)
   let Right ss' = ss
     | Left e => pure (Left ("the string encoding's routines: " ++ e))
-  is <- case RuntimeModule.bignumModule enc.bignum of
+  is <- case RuntimeModule.bignumModule enc of
     Just ns => map (map Just) (entries True "Native.Types.IntegerRoutine" "allIntegerRoutines"
                                  Types.IntegerRoutine.allIntegerRoutines [portTy] (inModule ns))
     Nothing => pure (Right Nothing)

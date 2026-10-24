@@ -189,6 +189,25 @@ ofImmediate n = do
   w <- Runtime.Memory.fixnumWord n
   Runtime.Memory.fieldValue w
 
+||| The signed integer a value of a type of `Fixnums` stands for, if it is
+||| a fixnum, and the value of one in the fixnum range, from -2^62 to
+||| 2^62 - 1, which the caller keeps it in: the word's bits above its tag,
+||| shifted down with its sign.
+export %inline
+valueFixnum : {auto 0 fx : Types.Represents.Fixnums t} -> Flat.Uniform t ->
+              Runtime.Ordo.Op Runtime.Ordo (Maybe Int64)
+valueFixnum v = do
+  w <- Runtime.Memory.valueWord v
+  pointer <- Runtime.Memory.isPointer w
+  Runtime.Ordo.pure (if pointer then Nothing else Just (prim__shr_Int64 (cast w) 1))
+
+export %inline
+fixnumValue : {auto 0 fx : Types.Represents.Fixnums t} -> Int64 ->
+              Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform t)
+fixnumValue n = do
+  w <- Runtime.Memory.fixnumWord (cast n)
+  Runtime.Memory.fieldValue w
+
 ||| A value of the data type `t` that is its constructor `c`.
 export
 data Con : (0 t : Type) -> (0 c : Types.ConstructorId) -> Type where

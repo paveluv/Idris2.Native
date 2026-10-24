@@ -1,10 +1,10 @@
 ||| Runs of 64-bit limbs (`Run`): a natural number's digits in base 2^64,
 ||| least significant first, a word each, from a byte offset into an
 ||| object's payload, and the operations on them every number of limbs is
-||| made of: a limb read and written, a run times a word plus a word, two
-||| runs added or subtracted with a carry, a word carried or borrowed
-||| through a run, a run shifted by fewer bits than a limb, two runs
-||| compared, and a run set to zero.
+||| made of: a limb read and written, a run times a word plus a word, or
+||| added to another or subtracted from it, two runs added or subtracted
+||| with a carry, a word carried or borrowed through a run, a run shifted by
+||| fewer bits than a limb, two runs compared, and a run set to zero.
 |||
 ||| A run knows where its limbs are, not how many: each operation is given
 ||| the count, so that it works on a whole number, a part of one, or a
@@ -72,6 +72,50 @@ mulAdd dst src n m carry = go 0 carry
           let l' = l + c
           setLimb dst i l'
           go (i + 1) (if l' < l then h + 1 else h)
+
+||| `n` limbs of `src` times `m` added to `n` limbs of `dst`: each limb's
+||| product, with the carry below and the limb it adds to, its high word
+||| and the additions' carries the carry above; the carry out of the top,
+||| which a product and two words below 2^64 keep in a word.
+export covering
+addMul : {auto 0 rd : Types.Kind.shape k = Just HeapObj.Shape.RAW} ->
+         {auto 0 rs : Types.Kind.shape k' = Just HeapObj.Shape.RAW} ->
+         (dst : Run k) -> (src : Run k') -> (n, m : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
+addMul dst src n m = go 0 0
+  where
+    covering
+    go : (i, c : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
+    go i c = if i >= n then Runtime.Ordo.pure c else do
+      v <- limb src i
+      d <- limb dst i
+      case Primitive.Mul128.mul128 v m of
+        (h, l) => do
+          let l' = l + c
+              h' = if l' < l then h + 1 else h
+              t = d + l'
+          setLimb dst i t
+          go (i + 1) (if t < d then h' + 1 else h')
+
+||| `n` limbs of `src` times `m` subtracted from `n` limbs of `dst`, as
+||| `addMul` adds them; the borrow out of the top, the word the next limb up
+||| is to lose.
+export covering
+subMul : {auto 0 rd : Types.Kind.shape k = Just HeapObj.Shape.RAW} ->
+         {auto 0 rs : Types.Kind.shape k' = Just HeapObj.Shape.RAW} ->
+         (dst : Run k) -> (src : Run k') -> (n, m : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
+subMul dst src n m = go 0 0
+  where
+    covering
+    go : (i, c : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
+    go i c = if i >= n then Runtime.Ordo.pure c else do
+      v <- limb src i
+      d <- limb dst i
+      case Primitive.Mul128.mul128 v m of
+        (h, l) => do
+          let l' = l + c
+              h' = if l' < l then h + 1 else h
+          setLimb dst i (d - l')
+          go (i + 1) (if d < l' then h' + 1 else h')
 
 ||| `n` limbs of `a` plus `n` of `b`, plus `carry`, 0 or 1, written to
 ||| `dst`; the carry out of the top. `dst` may be `a` or `b`.

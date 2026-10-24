@@ -318,7 +318,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
         ||| Load the runtime's modules into the context: the roots of its core, of
         ||| its support tier and of the system library's, which import the
         ||| generic ones, the platform's module, which implements the OS
-        ||| services, and the string encoding's,
+        ||| services, and the string encoding's and the bignum encoding's,
         ||| which nothing generic imports either, from the installed package,
         ||| with the backend's own package, whose heap-object model and type
         ||| layer (the modules of `HeapObj` and `Types`) the runtime shares.
@@ -332,7 +332,8 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
                       :: Linkage.RuntimeModule.supportModule ""
                       :: Linkage.RuntimeModule.systemModule lib ""
                       :: toList (Linkage.OSService.platformModule platform)
-                      ++ toList (Linkage.RuntimeModule.stringModule enc.string))
+                      ++ toList (Linkage.RuntimeModule.stringModule enc.string)
+                      ++ toList (Linkage.RuntimeModule.bignumModule enc))
 
         ||| The foreign functions and externs of the libraries in the context, each
         ||| with how this backend implements it: by the runtime (`runtime`), by the

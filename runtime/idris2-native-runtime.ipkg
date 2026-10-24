@@ -34,6 +34,7 @@ modules =
     Native.Runtime.System,
     Native.Support,
     Native.Support.Bignum.Run,
+    Native.Support.Bignum.SignMagnitude,
     Native.Support.BufferObj,
     Native.Support.CodePoint,
     Native.Support.Double.Between,

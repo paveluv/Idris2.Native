@@ -53,6 +53,9 @@ data Represents : Kind -> Type -> Type where
   ||| (`Support.Ptr`), as an `AnyPtr` too, which `free` takes.
   AHeapString : Represents Kind.STRING (Ptr String)
   AnyHeapString : Represents Kind.STRING AnyPtr
+  ||| An `Integer` outside the fixnum range is a `BIGNUM`, under an encoding
+  ||| with fixnums (`Fixnums`).
+  ABignum : Represents Kind.BIGNUM Integer
 
 ||| Every value of `a` is an object whose header says its kind, or for a
 ||| type of `Handles` a handle: what a value of a type of several kinds is
@@ -64,6 +67,8 @@ data Objects : Type -> Type where
   ||| A foreign pointer, of either kind.
   Pointers : Objects (Ptr a)
   AnyPointers : Objects AnyPtr
+  ||| An `Integer`, a `BIGNUM` where it is no fixnum (`Fixnums`).
+  Integers : Objects Integer
 
 ||| A value of `a` may be a fixnum: a number the system tier gives for a
 ||| value of its own (`Native.System`), a handle, which the libraries hold
@@ -102,6 +107,14 @@ public export
 data FieldOf : (t : Type) -> (c : ConstructorId) -> (i : Bits64) -> (f : Type) -> Type where
   ConsHead : FieldOf (List a) Represents.listCons 0 a
   ConsTail : FieldOf (List a) Represents.listCons 1 (List a)
+
+||| A value of `t` may be a fixnum, the signed integer it stands for: an
+||| `Integer` is one exactly where it is in the fixnum range, under an
+||| encoding with fixnums, and a `BIGNUM` otherwise (`ABignum`), never the
+||| other way round, so that one integer has one word.
+public export
+data Fixnums : Type -> Type where
+  SmallInteger : Fixnums Integer
 
 ||| Ordinary code holds every value of `t` as a fixnum, the integer it
 ||| stands for: never an object.

@@ -11,7 +11,9 @@ import Native.Codegen.Linkage.SystemLibrary
 
 import Core.Name.Namespace
 import Data.String
+import Native.HeapObj.ValEnc as HeapObj
 import Native.Types.BignumEnc as Types
+import Native.Types.Enc as Types
 import Native.Types.StringEnc as Types
 
 %default total
@@ -70,7 +72,15 @@ stringModule Types.StringEnc.Utf8 = Just (supportModule "String.Utf8")
 stringModule Types.StringEnc.Utf32 = Nothing
 
 ||| The support tier's module that lays `Integer`s outside the fixnums out
-||| under the bignum encoding: none yet, for any encoding.
+||| under the program's encodings: the one module of the runtime that reads
+||| a `BIGNUM`'s limbs. One for 64-bit limbs in sign-magnitude, under a
+||| value encoding with fixnums, where an integer in their range is one;
+||| none yet for another limb width or sign, nor where every integer is an
+||| object.
 export
-bignumModule : Types.BignumEnc -> Maybe Namespace
+bignumModule : Types.Enc -> Maybe Namespace
+bignumModule (Types.MkEnc HeapObj.ValEnc.NoFixnums _ _) = Nothing
+bignumModule
+  (Types.MkEnc _ (Types.MkBignumEnc Types.BignumEnc.Limb64 Types.BignumEnc.SignMagnitude) _) =
+    Just (supportModule "Bignum.SignMagnitude")
 bignumModule _ = Nothing
