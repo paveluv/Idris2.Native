@@ -12,6 +12,11 @@
 --     cast {to = Int64} (-1.0 / 0.0) = 0
 --
 -- and as an Integer, by the bignum's routine, 0 as well.
+--
+-- The square root of a negative double is NaN, as IEEE 754 says, where
+-- Chez gives a complex number:
+--
+--     sqrt (-1.0) = +nan.0
 module Main
 
 import Data.List
@@ -37,7 +42,13 @@ ordinary x =
 flatCasts : Double -> (Int, (Int8, (Bits64, Bits32)))
 flatCasts x = (cast x, (cast x, (cast x, cast x)))
 
+-- a square root in a flat function
+%cg native flat Main.flatRoot
+flatRoot : Double -> Double
+flatRoot x = sqrt x
+
 main : IO ()
 main = do
   traverse_ (\x => putStrLn (concat (intersperse " " (ordinary x)))) special
   traverse_ (\x => printLn (flatCasts x)) special
+  printLn (sqrt (-1.0), sqrt (-1.0 / 0.0), flatRoot (-4.0), flatRoot 16.0)

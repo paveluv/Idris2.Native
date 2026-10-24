@@ -648,6 +648,12 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
             wordVal t <$> Words.wrap h w
           (Neg DoubleType, [x]) => do a <- double x
                                       doubleVal <$> TermIR.Build.emit1 (TermIR.Instr.FNeg a)
+          (DoubleSqrt, [x]) => do a <- double x
+                                  doubleVal <$> TermIR.Build.emit1 (TermIR.Instr.FSqrt a)
+          (DoubleFloor, [x]) => do a <- double x
+                                   doubleVal <$> Doubles.roundWhole False a
+          (DoubleCeiling, [x]) => do a <- double x
+                                     doubleVal <$> Doubles.roundWhole True a
           (Neg t, [x]) => withHeld t "negation" $ \h => do
             a <- word x
             w <- TermIR.Build.emit1 (TermIR.Instr.Unary IRCommon.Op.Negate a)

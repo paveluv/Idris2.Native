@@ -1,4 +1,5 @@
-||| Idris's casts between doubles and the integer types' words, as every
+||| Idris's casts between doubles and the integer types' words, and its
+||| roundings of a double to a whole one (`floor`, `ceiling`), as every
 ||| producer of the term IR (`Native.Codegen.TermIR.Program`) writes them,
 ||| so that ordinary code and flat code compute the same. Each is `Build`
 ||| code, in a function of either convention.
@@ -92,3 +93,54 @@ parameters {0 enc : Types.Enc} {0 d : TermIR.Decls enc} {0 c : IRCommon.Conv enc
         done [f2]
     pure f
   fromWord _ w = TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.I2F w)
+
+  ||| A double rounded to a whole double, down (`floor`) or up (`ceiling`),
+  ||| exactly, its sign kept: a double of 2^52 or more, NaN and the
+  ||| infinities are whole already; one below 1 is 0 of its sign, or -1 or
+  ||| 1 the way it rounds (ceiling of -0.5 is -0.0, as IEEE 754 says); any
+  ||| other is truncated by clearing the bits of its fraction, and moved by
+  ||| one the way it rounds where any was set, both exact below 2^52.
+  export
+  roundWhole : (up : Bool) -> TermIR.Opnd v IRCommon.Ty.F64 ->
+               TermIR.Build d c m v l (TermIR.Opnd v IRCommon.Ty.F64)
+  roundWhole up f = do
+    b <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.FBits f)
+    e0 <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.Shr b (TermIR.Opnd.W 52))
+    e <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.And e0 (TermIR.Opnd.W 0x7FF))
+    [r] <- TermIR.Build.joinPoint [IRCommon.Ty.F64] $ \done =>
+      TermIR.Build.branch IRCommon.Op.GeS e (TermIR.Opnd.W 1075) (done [f]) $
+        TermIR.Build.branch IRCommon.Op.LtS e (TermIR.Opnd.W 1023) (belowOne done b) $ do
+          -- the bits of the fraction: those below the point, 1075 - e of them
+          s <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.Sub (TermIR.Opnd.W 1075) e)
+          one <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.Shl (TermIR.Opnd.W 1) s)
+          mask <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.Sub one (TermIR.Opnd.W 1))
+          frac <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.And b mask)
+          TermIR.Build.branch IRCommon.Op.EqR frac (TermIR.Opnd.W 0) (done [f]) $ do
+            keep <- TermIR.Build.emit1 (TermIR.Instr.Unary IRCommon.Op.Complement mask)
+            tb <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.And b keep)
+            t <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.BitsF tb)
+            -- truncation rounded the way asked where the sign is the way's own
+            TermIR.Build.branch (if up then IRCommon.Op.LtS else IRCommon.Op.GeS) b
+              (TermIR.Opnd.W 0) (done [t]) $ do
+              k <- TermIR.Build.emit1 (TermIR.Instr.FConst 1.0)
+              r <- TermIR.Build.emit1
+                (TermIR.Instr.FArith (if up then IRCommon.Op.FAdd else IRCommon.Op.FSub) t k)
+              done [r]
+    pure r
+    where
+      -- a double below 1 in magnitude: a zero is itself; else 0 of its
+      -- sign where it rounds toward zero, and 1 or -1 where away
+      belowOne : (All (TermIR.Opnd v) [IRCommon.Ty.F64] -> TermIR.Build.End d c m v l) ->
+                 TermIR.Opnd v IRCommon.Ty.W64 -> TermIR.Build.End d c m v l
+      belowOne done b = do
+        mag <- TermIR.Build.emit1
+          (TermIR.Instr.Arith IRCommon.Op.And b (TermIR.Opnd.W 0x7FFFFFFFFFFFFFFF))
+        TermIR.Build.branch IRCommon.Op.EqR mag (TermIR.Opnd.W 0)
+          (do z <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.BitsF b)
+              done [z]) $
+          TermIR.Build.branch (if up then IRCommon.Op.LtS else IRCommon.Op.GeS) b (TermIR.Opnd.W 0)
+            (do z <- TermIR.Build.emit1
+                  (TermIR.Instr.FConst (if up then (-0.0) else 0.0))
+                done [z])
+            (do z <- TermIR.Build.emit1 (TermIR.Instr.FConst (if up then 1.0 else (-1.0)))
+                done [z])

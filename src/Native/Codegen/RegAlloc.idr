@@ -503,6 +503,7 @@ parameters (d : TermIR.Decls enc)
           ([r], TermIR.Instr.Ext w s x) => unary env x (LocatedIR.Instr.Ext w s r)
           ([r], TermIR.Instr.FArith o x y) => binary env x y (LocatedIR.Instr.FArith o r)
           ([r], TermIR.Instr.FNeg x) => unary env x (LocatedIR.Instr.FNeg r)
+          ([r], TermIR.Instr.FSqrt x) => unary env x (LocatedIR.Instr.FSqrt r)
           ([r], TermIR.Instr.FCmp rel x y) => binary env x y (LocatedIR.Instr.FCmp rel r)
           ([r], TermIR.Instr.Convert op x) => unary env x (LocatedIR.Instr.Convert op r)
           ([r], TermIR.Instr.Cmp rel x y) =>

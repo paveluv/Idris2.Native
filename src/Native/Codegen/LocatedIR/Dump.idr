@@ -81,6 +81,7 @@ functionPieces f =
           i@(Instr.FArith _ d x y) => show d ++ " := " ++ Instr.instrName i ++ " " ++ show x ++ ", "
             ++ show y
           Instr.FNeg d x => show d ++ " := FNeg " ++ show x
+          Instr.FSqrt d x => show d ++ " := FSqrt " ++ show x
           Instr.FCmp r d x y => show d ++ " := FCmp " ++ show x ++ " " ++ rel r ++ " " ++ show y
           Instr.Convert _ d x => show d ++ " := Convert " ++ show x
           Instr.Cmp r d x y => show d ++ " := Cmp " ++ show x ++ " " ++ rel r ++ " " ++ show y

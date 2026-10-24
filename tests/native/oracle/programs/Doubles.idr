@@ -97,6 +97,19 @@ truncations =
   [ 0.0, -0.0, 0.99, -0.99, 1.5, -2.5, 4.611686018427388e18, -4.611686018427388e18, 1.0e19
   , -1.0e30, 1.2345678901234567e100, 1.7976931348623157e308, 9007199254740993.0 ]
 
+-- whole doubles, down and up, and square roots: the halves either side of
+-- a whole number, the last fractions below 2^52, from where every double
+-- is whole, tiny and huge ones, and the infinities; the zeros keep their
+-- signs, and the ceiling of a negative fraction is -0.0
+roundings : List Double
+roundings =
+  [ 0.0, -0.0, 0.5, -0.5, 0.3, -0.3, 1.0, 1.5, -1.5, 2.5, -2.5, 4503599627370495.5
+  , -4503599627370495.5, 4503599627370496.0, 9007199254740993.0, 1.0e300, -1.0e-100, 1.0e-100
+  , 1.0 / 0.0, -1.0 / 0.0, 123456789.875 ]
+
+roundingLine : Double -> String
+roundingLine x = show (floor x) ++ " " ++ show (ceiling x) ++ " " ++ show (sqrt (abs x))
+
 main : IO ()
 main = do
   traverse_ (putStrLn . show) constants
@@ -107,6 +120,8 @@ main = do
   traverse_ (putStrLn . intLine) ints
   traverse_ (\n => printLn (cast {to = Double} n)) integers
   traverse_ (\x => printLn (cast {to = Integer} x)) truncations
+  traverse_ (putStrLn . roundingLine) roundings
+  printLn (sqrt 2.0, sqrt (-0.0), sqrt 1.0e-300, floor nan == floor nan)
   printLn
     ( cast {to = Double} (the Bits64 18446744073709551615)
     , cast {to = Double} (the Bits64 9223372036854777856) )

@@ -84,6 +84,9 @@ data Instr : Decls enc -> Bool -> (var : IRCommon.Ty enc -> Type) -> List (IRCom
   FArith : IRCommon.Op.FOp -> Opnd var IRCommon.Ty.F64 -> Opnd var IRCommon.Ty.F64 ->
            Instr d m var [IRCommon.Ty.F64]
   FNeg : Opnd var IRCommon.Ty.F64 -> Instr d m var [IRCommon.Ty.F64]
+  ||| The square root, correctly rounded as IEEE 754 requires: NaN for a
+  ||| negative, -0.0 for -0.0.
+  FSqrt : Opnd var IRCommon.Ty.F64 -> Instr d m var [IRCommon.Ty.F64]
   ||| Compare two doubles: 1 or 0.
   FCmp : IRCommon.Op.Rel -> Opnd var IRCommon.Ty.F64 -> Opnd var IRCommon.Ty.F64 ->
          Instr d m var [IRCommon.Ty.W64]
@@ -174,6 +177,7 @@ traverseInstr g (Unary o x) = Unary o <$> g x
 traverseInstr g (Ext w s x) = Ext w s <$> g x
 traverseInstr g (FArith o x y) = [| FArith (pure o) (g x) (g y) |]
 traverseInstr g (FNeg x) = FNeg <$> g x
+traverseInstr g (FSqrt x) = FSqrt <$> g x
 traverseInstr g (FCmp r x y) = [| FCmp (pure r) (g x) (g y) |]
 traverseInstr g (Convert op x) = Convert op <$> g x
 traverseInstr g (Cmp {int} r x y) = [| (\x', y' => Cmp {int} r x' y') (g x) (g y) |]

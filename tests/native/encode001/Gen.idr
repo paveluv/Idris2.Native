@@ -40,7 +40,7 @@ shifts : List ShiftOp
 shifts = [SHL, SHR, SAR]
 
 sses : List SseOp
-sses = [ADDSD, SUBSD, MULSD, DIVSD]
+sses = [ADDSD, SUBSD, MULSD, DIVSD, SQRTSD]
 
 ||| Displacements at every encoding boundary.
 disps : List Int

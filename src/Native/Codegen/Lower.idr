@@ -1492,6 +1492,13 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
               a <- valDouble (get env x)
               f <- TermIR.Build.emit1 (TermIR.Instr.FNeg a)
               doubleVal f
+            value DoubleSqrt [x] = do
+              a <- valDouble (get env x)
+              f <- TermIR.Build.emit1 (TermIR.Instr.FSqrt a)
+              doubleVal f
+            value DoubleFloor [x] = valDouble (get env x) >>= Doubles.roundWhole False >>= doubleVal
+            value DoubleCeiling [x] =
+              valDouble (get env x) >>= Doubles.roundWhole True >>= doubleVal
             value (LT DoubleType) [x, y] = doubleOrder IRCommon.Op.LtS x y
             value (LTE DoubleType) [x, y] = doubleOrder IRCommon.Op.LeS x y
             value (EQ DoubleType) [x, y] = doubleOrder IRCommon.Op.EqR x y

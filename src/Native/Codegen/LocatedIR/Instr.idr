@@ -73,6 +73,7 @@ data Instr : Types.Enc -> Type where
   FArith     : IRCommon.Op.FOp -> Reg enc -> Reg enc -> Reg enc -> Instr enc
   ||| Double negation.
   FNeg       : Reg enc -> Reg enc -> Instr enc
+  FSqrt      : Reg enc -> Reg enc -> Instr enc
   ||| Compare two `F64`s; the destination, a `W64`, is 1 or 0.
   FCmp       : IRCommon.Op.Rel -> Reg enc -> Reg enc -> Reg enc -> Instr enc
   ||| Convert between a `W64` and an `F64`.
@@ -204,6 +205,7 @@ instrName (ArithOv op _ _ _ _) = show op ++ "Ov"
 instrName (Ext _ _ _ _) = "Ext"
 instrName (FArith op _ _ _) = show op
 instrName (FNeg _ _) = "FNeg"
+instrName (FSqrt _ _) = "FSqrt"
 instrName (Mul128 _ _ _ _) = "Mul128"
 instrName (Div128 _ _ _ _ _) = "Div128"
 instrName (FCmp _ _ _ _) = "FCmp"

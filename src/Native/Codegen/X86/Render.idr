@@ -893,6 +893,11 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                   emits [Asm.MovRI Asm.RCX 0x8000000000000000,
                                          Asm.Alu Asm.XOR Asm.RAX Asm.RCX]
                                   store d Asm.RAX
+                LocatedIR.Instr.FSqrt d x => do
+                                  loadFloat Asm.XMM0 (LocatedIR.Opnd.R x)
+                                  emit (Asm.Sse Asm.SQRTSD Asm.XMM0 Asm.XMM0)
+                                  n <- useSlot d
+                                  emit (Asm.MovsdMR (slotMem n) Asm.XMM0)
                 LocatedIR.Instr.FArith o d x y => do
                                   loadFloat Asm.XMM0 (LocatedIR.Opnd.R x)
                                   loadFloat Asm.XMM1 (LocatedIR.Opnd.R y)

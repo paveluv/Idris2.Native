@@ -263,8 +263,11 @@ shiftDigit SHL = 4
 shiftDigit SHR = 5
 shiftDigit SAR = 7
 
+||| The scalar double operations of SSE2: four of two doubles, and the
+||| square root of one, written as the others with the destination and the
+||| source.
 public export
-data SseOp = ADDSD | SUBSD | MULSD | DIVSD
+data SseOp = ADDSD | SUBSD | MULSD | DIVSD | SQRTSD
 
 public export
 Show SseOp where
@@ -272,6 +275,7 @@ Show SseOp where
   show SUBSD = "subsd"
   show MULSD = "mulsd"
   show DIVSD = "divsd"
+  show SQRTSD = "sqrtsd"
 
 public export
 sseOpcode : SseOp -> Bits8
@@ -279,6 +283,7 @@ sseOpcode ADDSD = 0x58
 sseOpcode SUBSD = 0x5C
 sseOpcode MULSD = 0x59
 sseOpcode DIVSD = 0x5E
+sseOpcode SQRTSD = 0x51
 
 ||| Memory access width for the narrow loads and stores (64-bit is `Mov*`).
 public export
