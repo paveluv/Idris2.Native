@@ -1,5 +1,6 @@
 Arith: agree
 Bignum: agree
+BignumProperties: agree
 Case: agree
 Closure: agree
 Count: agree
@@ -29,7 +30,7 @@ StatusWide: agree
 Strings: agree
 TailCall: agree
 TypeValues: agree
-31 programs: 31 agree, 0 unsupported, 0 mismatch, 0 error, 0 timeout
+32 programs: 32 agree, 0 unsupported, 0 mismatch, 0 error, 0 timeout
 Codegen: MISMATCH
     1c1
     < running under chez

@@ -13,4 +13,5 @@ StatusFlatData: agree
 StatusStrings: agree
 IORefs: agree
 TypeValues: agree
-15 programs: 15 agree, 0 unsupported, 0 mismatch, 0 error, 0 timeout
+BignumProperties: agree
+16 programs: 16 agree, 0 unsupported, 0 mismatch, 0 error, 0 timeout
