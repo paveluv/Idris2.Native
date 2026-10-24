@@ -8,14 +8,19 @@
 --
 -- The machine's division faults where the quotient does not fit a word,
 -- which is where the high word is not below the divisor; so a call of
--- `div128` takes, after the three words, a proof that it is:
+-- `div128` takes, after the three words, a proof that it is, and the
+-- machine's remainder is below the divisor, which its result carries a
+-- proof of:
 --
 --   div128 : (high, low, divisor : Bits64) -> (0 _ : (high < divisor) = True) ->
---            (Bits64, Bits64)
+--            Proven (Bits64, Bits64) (\qr => (snd qr < divisor) = True)
 --
--- The proof is erased: the compiled call has the three words alone. Where
--- the program does not know it, it asks, as `divide` does here: `with`
--- the comparison, `proof` names the equality the case found.
+-- Both proofs are erased: the compiled call has the three words alone, and
+-- its result is the pair. Where the program does not know the first, it
+-- asks, as `divide` does here: `with` the comparison, `proof` names the
+-- equality the case found. Where a division's high word is the remainder
+-- of the one before, as in `digits`, the result's proof is the next call's:
+-- no division but the first asks.
 module Main
 
 import Native.Primitive.Div128
@@ -29,7 +34,7 @@ import Native.Primitive.Div128
 %cg native flat Main.divide
 divide : Bits64 -> Bits64 -> Bits64 -> (Bits64, Bits64)
 divide high low divisor with (high < divisor) proof below
-  _ | True = div128 high low divisor below
+  _ | True = (div128 high low divisor below).value
   _ | False = (high, low)
 
 -- A flat function that puts the division together again: the quotient
@@ -51,7 +56,24 @@ cases =
   , (18446744073709551614, 18446744073709551615, 18446744073709551615)
   , (1234567, 0x123456789ABCDEF0, 10000000000000000000), (5, 5, 5), (0, 3, 0) ]
 
+-- The sum of the decimal digits of the number of two words: the number
+-- divided by 10 a word at a time from the top, each division's high word
+-- the remainder of the one before, below 10 as that division ensures, the
+-- first's zero, below 10 by `Refl`: no division asks. A number of two
+-- words has at most 39 digits, the steps' bound.
+%cg native flat Main.digitSum
+digitSum : Bits64 -> Bits64 -> Bits64
+digitSum high low = go 39 high low 0
+  where
+    go : (steps, h, l, acc : Bits64) -> Bits64
+    go steps h l acc =
+      if steps == 0 || (h == 0 && l == 0) then acc else
+        case div128 0 h 10 Refl of
+          MkProven (qh, rh) okh => case div128 rh l 10 okh of
+            MkProven (ql, rl) _ => go (steps - 1) qh ql (acc + rl)
+
 main : IO ()
 main = do
   traverse_ (\(h, l, d) => printLn (divide h l d)) cases
   traverse_ (\(h, l, d) => printLn (recombined h l d)) cases
+  traverse_ (\(h, l, _) => printLn (digitSum h l)) cases

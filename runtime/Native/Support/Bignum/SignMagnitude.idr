@@ -25,6 +25,7 @@ import Native.Field
 import Native.Flat.Uniform as Flat
 import Native.HeapObj.Shape as HeapObj
 import Native.Port
+import Native.Primitive
 import Native.Primitive.Div128
 import Native.Primitive.Mul128
 import Native.Runtime.Bits
@@ -204,14 +205,35 @@ leadingZeros w =
     step : (k, zeros, v : Bits64) -> (Bits64, Bits64)
     step k zeros v = if v `shiftR` (64 - k) == 0 then (zeros + k, v `shiftL` k) else (zeros, v)
 
-||| One digit of a long division: the high word and the low word divided by
-||| the divisor, the high word below it, which a long division keeps; the
-||| program ends where it is not, which would be a wrong division.
-digit : (high, low, divisor : Bits64) -> Runtime.Ordo.Op Runtime.Ordo (Bits64, Bits64)
-digit high low divisor with (high < divisor) proof below
-  _ | True = Runtime.Ordo.pure (Primitive.Div128.div128 high low divisor below)
-  _ | False =
-    Runtime.Ordo.crashOp "idris: a long division's digit of a high word not below its divisor"
+||| `n` limbs of `src` divided by a word that is not zero, from the top, the
+||| quotient's limbs written to `dst`, which may be `src`: the remainder.
+||| Each digit's high word is the remainder of the digit above, below the
+||| divisor as the division ensures, and the first's is zero, below the
+||| divisor as it is not zero: no digit asks.
+covering
+divideInto : (dst, src : Run Types.Kind.BIGNUM) -> (n, d : Bits64) ->
+             (0 nonzero : (0 < d) = True) -> Runtime.Ordo.Op Runtime.Ordo Bits64
+divideInto dst src n d nonzero = go n 0 nonzero
+  where
+    covering
+    go : (i, rem : Bits64) -> (0 below : (rem < d) = True) -> Runtime.Ordo.Op Runtime.Ordo Bits64
+    go i rem below = if i == 0 then Runtime.Ordo.pure rem else do
+      x <- Run.limb src (i - 1)
+      case Primitive.Div128.div128 rem x d below of
+        Primitive.MkProven (q, r') next => do
+          Run.setLimb dst (i - 1) q
+          go (i - 1) r' next
+
+||| A long division's estimate of a quotient digit, from the top two limbs
+||| of what is left and the divisor's top limb: their quotient and remainder
+||| where the high word is below the divisor's limb, which the comparison
+||| proves; else the largest digit, and the remainder it leaves, which may
+||| carry past a word, as the third says.
+estimate : (high, low, top : Bits64) -> (Bits64, Bits64, Bool)
+estimate high low top with (high < top) proof below
+  _ | True = case Primitive.Div128.div128 high low top below of
+               Primitive.MkProven (q, r) _ => (q, r, False)
+  _ | False = let r = low + top in (0xFFFFFFFFFFFFFFFF, r, r < low)
 
 ||| A division of magnitudes, truncated: the quotient's limbs, `qcount` of
 ||| them, in an object with a word more, which a quotient made one larger
@@ -235,24 +257,23 @@ divide a b = if b.count == 0 then Runtime.Ordo.crashOp "idris: an Integer divide
     _ <- Run.shiftLeft (limbs r) a.run a.count 0 0
     Runtime.Ordo.pure (MkDivision (limbs q) 0 (limbs r) a.count)
   where
-    -- by one limb: each digit from the top, the remainder below the divisor
+    -- by one limb, a magnitude's top limb, which is not zero: the program
+    -- ends for a BIGNUM that breaks that, which no routine makes
     covering
     byLimb : Runtime.Ordo.Op Runtime.Ordo Division
     byLimb = do
       d <- Run.limb b.run 0
       q <- newBig False (a.count + 1)
-      rem <- go (limbs q) d a.count 0
+      rem <- byWord (limbs q) d
       r <- newBig False 1
       Run.setLimb (limbs r) 0 rem
       Runtime.Ordo.pure (MkDivision (limbs q) a.count (limbs r) 1)
       where
         covering
-        go : Run Types.Kind.BIGNUM -> (d, i, rem : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
-        go q d i rem = if i == 0 then Runtime.Ordo.pure rem else do
-          x <- Run.limb a.run (i - 1)
-          (qi, r') <- digit rem x d
-          Run.setLimb q (i - 1) qi
-          go q d (i - 1) r'
+        byWord : Run Types.Kind.BIGNUM -> (d : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
+        byWord q d with (0 < d) proof nonzero
+          _ | True = divideInto q a.run a.count d nonzero
+          _ | False = Runtime.Ordo.crashOp "idris: a BIGNUM whose top limb is zero"
 
     -- Knuth's algorithm D: the divisor shifted so that its top limb's top
     -- bit is set, the dividend shifted as far, a limb more on top; each
@@ -302,12 +323,7 @@ divide a b = if b.count == 0 then Runtime.Ordo.crashOp "idris: an Integer divide
           hi <- Run.limb an (i + n)
           lo <- Run.limb an (i + n - 1)
           next <- Run.limb an (i + n - 2)
-          (qhat, rhat, carried) <-
-            if hi >= d1
-              then let rhat = lo + d1 in Runtime.Ordo.pure (0xFFFFFFFFFFFFFFFF, rhat, rhat < lo)
-              else do
-                (qh, rh) <- digit hi lo d1
-                Runtime.Ordo.pure (qh, rh, False)
+          let (qhat, rhat, carried) = estimate hi lo d1
           let qhat' = correct d1 d2 qhat rhat next carried
           borrow <- Run.subMul (Run.from an i) bn n qhat'
           t <- Run.limb an (i + n)
@@ -618,20 +634,6 @@ fromBits64 w = if w < 0x4000000000000000 then Obj.fixnumValue (cast w) else do
 chunk : Bits64
 chunk = 10000000000000000000
 
-||| `n` limbs of the run divided in place by the word, from the top: the
-||| remainder.
-covering
-divideBy : Run Types.Kind.BIGNUM -> (n, d : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
-divideBy r n d = go n 0
-  where
-    covering
-    go : (i, rem : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
-    go i rem = if i == 0 then Runtime.Ordo.pure rem else do
-      x <- Run.limb r (i - 1)
-      (q, r') <- digit rem x d
-      Run.setLimb r (i - 1) q
-      go (i - 1) r'
-
 ||| How many decimal digits a word has, one for zero.
 covering
 digitsIn : Bits64 -> Bits64
@@ -674,7 +676,7 @@ toDecimal x = do
     chunks : (t, cs : Run Types.Kind.BIGNUM) -> (n, k : Bits64) ->
              Runtime.Ordo.Op Runtime.Ordo Bits64
     chunks t cs n k = do
-      rem <- divideBy t n chunk
+      rem <- divideInto t t n chunk Refl
       Run.setLimb cs k rem
       n' <- significant t n
       if n' == 0 then Runtime.Ordo.pure (k + 1) else chunks t cs n' (k + 1)

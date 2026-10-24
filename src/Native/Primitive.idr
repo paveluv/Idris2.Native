@@ -18,6 +18,14 @@
 ||| a primitive takes no token, since it reads and changes nothing, may
 ||| give several words, and is the program's as much as the runtime's.
 |||
+||| A signature may state what the machine requires of a primitive's
+||| arguments and what it ensures of its results: propositions, of which a
+||| call gives an erased proof and a result carries one (`Proven`). They
+||| are axioms of the machine, stated here once: the native code generator
+||| computes a primitive as its instructions, which keep them, and a body
+||| that means it must prove what it ensures, by asking where Idris cannot
+||| see it, which only another code generator's code then does.
+|||
 ||| Part of the contract between compiled code and the runtime, with the
 ||| heap-object model (`HeapObj.Shape` says what it is). It imports nothing
 ||| from the compiler, so that the runtime and any program may import it.
@@ -52,44 +60,70 @@ Requires : List Mach -> Type
 Requires [] = Type
 Requires (m :: ms) = Mach.type m -> Requires ms
 
+||| The results of the machine types, as a primitive gives them: none, the
+||| one, or a tuple of them.
+public export
+Results : List Mach -> Type
+Results [] = ()
+Results [m] = Mach.type m
+Results (m :: ms) = (Mach.type m, Results ms)
+
+||| A proposition about arguments of the machine types and the results: a
+||| type, of each argument in turn, then of the results.
+public export
+Ensures : (takes, gives : List Mach) -> Type
+Ensures [] gs = Results gs -> Type
+Ensures (m :: ms) gs = Mach.type m -> Ensures ms gs
+
+||| A value and an erased proof of a proposition about it: what a primitive
+||| that ensures something gives, compiled as the value alone.
+public export
+record Proven (a : Type) (0 p : a -> Type) where
+  constructor MkProven
+  value : a
+  0 holds : p value
+
 ||| A primitive's arrow: the machine types of its arguments, and of its
-||| results, in order, and what its arguments must be for the machine to
-||| compute it, if anything: a proposition about them, of which a call
-||| gives an erased proof.
+||| results, in order; what its arguments must be for the machine to
+||| compute it, if anything, a proposition about them, of which a call gives
+||| an erased proof; and what the machine ensures of its results, if
+||| anything, of which the results carry one.
 public export
 record Signature where
   constructor MkSignature
   takes : List Mach
   gives : List Mach
   requires : Maybe (Requires takes)
+  ensures : Maybe (Ensures takes gives)
 
 ||| Each primitive's signature.
 public export
 signature : Primitive -> Signature
-signature Mul128 = MkSignature [Mach.U64, Mach.U64] [Mach.U64, Mach.U64] Nothing
+signature Mul128 = MkSignature [Mach.U64, Mach.U64] [Mach.U64, Mach.U64] Nothing Nothing
 signature Div128 =
   MkSignature [Mach.U64, Mach.U64, Mach.U64] [Mach.U64, Mach.U64]
     (Just (\high, _, divisor => (high < divisor) = True))
-signature DoubleBits = MkSignature [Mach.F64] [Mach.U64] Nothing
-signature BitsDouble = MkSignature [Mach.U64] [Mach.F64] Nothing
+    (Just (\_, _, divisor, qr => (snd qr < divisor) = True))
+signature DoubleBits = MkSignature [Mach.F64] [Mach.U64] Nothing Nothing
+signature BitsDouble = MkSignature [Mach.U64] [Mach.F64] Nothing Nothing
 
 ||| The Idris type of a primitive of the signature: a function of its
 ||| arguments, then of an erased proof of what it requires of them, if
 ||| anything, of its results as a tuple, or of its one result, each the
-||| Idris type of its machine type.
+||| Idris type of its machine type, with an erased proof of what it ensures
+||| of them, if anything.
 public export
 FunctionTy : Signature -> Type
-FunctionTy sig = arrows sig.takes sig.requires
+FunctionTy sig = arrows sig.takes sig.requires sig.ensures
   where
-    results : List Mach -> Type
-    results [] = ()
-    results [m] = Mach.type m
-    results (m :: ms) = (Mach.type m, results ms)
+    given : Maybe (Results sig.gives -> Type) -> Type
+    given Nothing = Results sig.gives
+    given (Just q) = Proven (Results sig.gives) q
 
-    arrows : (ms : List Mach) -> Maybe (Requires ms) -> Type
-    arrows [] Nothing = results sig.gives
-    arrows [] (Just p) = (0 _ : p) -> results sig.gives
-    arrows (m :: ms) r = (x : Mach.type m) -> arrows ms (map (\f => f x) r)
+    arrows : (ms : List Mach) -> Maybe (Requires ms) -> Maybe (Ensures ms sig.gives) -> Type
+    arrows [] Nothing q = given q
+    arrows [] (Just p) q = (0 _ : p) -> given q
+    arrows (m :: ms) r q = (x : Mach.type m) -> arrows ms (map (\f => f x) r) (map (\f => f x) q)
 
 ||| Every primitive, once, which the code generator pairs with its own copy,
 ||| element by element.
