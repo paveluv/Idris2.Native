@@ -1,0 +1,6 @@
+. ../../testutils.sh
+
+# NaN and the infinities cast to the integer types, natively: 0 each, in
+# ordinary code and in flat code.
+idris2 --cg native -o casts Casts.idr > /dev/null
+./build/exec/casts

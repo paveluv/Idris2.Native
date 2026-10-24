@@ -35,6 +35,7 @@
 ||| library lower to `Unsupported`.
 module Native.Codegen.LowerFlat
 
+import Native.Codegen.Doubles
 import Native.Codegen.IRCommon.Conv as IRCommon
 import Native.Codegen.IRCommon.Op
 import Native.Codegen.IRCommon.Pinned as IRCommon
@@ -638,19 +639,19 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
             b <- word y
             Words.nonZero b
             w <- Words.divide (signed h) False a b
-            wordVal t <$> wrap h w
+            wordVal t <$> Words.wrap h w
           (Mod t, [x, y]) => withHeld t "remainder" $ \h => do
             a <- word x
             b <- word y
             Words.nonZero b
             w <- Words.divide (signed h) True a b
-            wordVal t <$> wrap h w
+            wordVal t <$> Words.wrap h w
           (Neg DoubleType, [x]) => do a <- double x
                                       doubleVal <$> TermIR.Build.emit1 (TermIR.Instr.FNeg a)
           (Neg t, [x]) => withHeld t "negation" $ \h => do
             a <- word x
             w <- TermIR.Build.emit1 (TermIR.Instr.Unary IRCommon.Op.Negate a)
-            wordVal t <$> wrap h w
+            wordVal t <$> Words.wrap h w
           (ShiftL t, [x, y]) => shifting t True x y
           (ShiftR t, [x, y]) => shifting t False x y
           (BAnd t, [x, y]) => bitwise t IRCommon.Op.And x y
@@ -664,12 +665,6 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
           (Cast from to, [x]) => castTo from to x
           (op, _) => TermIR.Build.unsupported ("the primitive " ++ show op ++ " in a flat form")
           where
-            ||| A word wrapped to the type's width, extended again.
-            wrap : (Width, Bool) -> TermIR.Opnd v IRCommon.Ty.W64 ->
-                   B (TermIR.Opnd v IRCommon.Ty.W64)
-            wrap (Width.Narrow sw, s) w = TermIR.Build.emit1 (TermIR.Instr.Ext sw s w)
-            wrap (Width.Whole, _) w = pure w
-
             double : Value enc v -> B (TermIR.Opnd v IRCommon.Ty.F64)
             double x =
               maybe (TermIR.Build.unsupported "a double of another layout") pure (valueDouble x)
@@ -688,17 +683,18 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
               if from == to then pure (prim to x) else
               case (from, to) of
                 (DoubleType, CharType) => do f <- double x
-                                             w <- doubleToWord (Width.Whole, True) f
+                                             w <- Doubles.toWord (Width.Whole, True) f
                                              wordVal to <$> toChar w
                 (DoubleType, _) => withHeld to "a cast" $ \h => do f <- double x
-                                                                   wordVal to <$> doubleToWord h f
+                                                                   wordVal to <$> Doubles.toWord h f
                 (_, DoubleType) => withHeld from "a cast" $ \h => do w <- word x
-                                                                     doubleVal <$> wordToDouble h w
+                                                                     doubleVal <$> Doubles.fromWord
+                                                                       h w
                 (_, CharType) => withHeld from "a cast" $ \_ => do w <- word x
                                                                    wordVal to <$> toChar w
                 _ => withHeld from "a cast" $ \_ => withHeld to "a cast" $ \h => do
                        w <- word x
-                       wordVal to <$> wrap h w
+                       wordVal to <$> Words.wrap h w
               where
                 ||| A word as a `Char`: itself if it is a Unicode scalar value, 0 if not.
                 toChar : TermIR.Opnd v IRCommon.Ty.W64 -> B (TermIR.Opnd v IRCommon.Ty.W64)
@@ -713,47 +709,6 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
                             (zero [])
                   pure r
 
-                ||| A word of the integer type as a double. A `Bits64` at or above 2^63
-                ||| is halved, its low bit kept for the rounding, converted and doubled.
-                wordToDouble : (Width, Bool) -> TermIR.Opnd v IRCommon.Ty.W64 ->
-                               B (TermIR.Opnd v IRCommon.Ty.F64)
-                wordToDouble (Width.Whole, False) w = do
-                  [f] <- TermIR.Build.joinPoint [IRCommon.Ty.F64] $ \done =>
-                    TermIR.Build.branch IRCommon.Op.GeS w (TermIR.Opnd.W 0)
-                      (do f <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.I2F w)
-                          done [f]) $ do
-                      h <- TermIR.Build.emit1
-                        (TermIR.Instr.Arith IRCommon.Op.Shr w (TermIR.Opnd.W 1))
-                      b <- TermIR.Build.emit1
-                        (TermIR.Instr.Arith IRCommon.Op.And w (TermIR.Opnd.W 1))
-                      hb <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.Or h b)
-                      f <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.I2F hb)
-                      f2 <- TermIR.Build.emit1 (TermIR.Instr.FArith IRCommon.Op.FAdd f f)
-                      done [f2]
-                  pure f
-                wordToDouble _ w = TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.I2F w)
-
-                ||| A double truncated to the integer type. A `Bits64` at or above 2^63 is
-                ||| converted less 2^63, which is added back to the word.
-                doubleToWord : (Width, Bool) -> TermIR.Opnd v IRCommon.Ty.F64 ->
-                               B (TermIR.Opnd v IRCommon.Ty.W64)
-                doubleToWord (Width.Whole, False) f = do
-                  big <- TermIR.Build.emit1 (TermIR.Instr.FConst 9223372036854775808.0)
-                  above <- TermIR.Build.emit1 (TermIR.Instr.FCmp IRCommon.Op.GeS f big)
-                  [w] <- TermIR.Build.joinPoint [IRCommon.Ty.W64] $ \done =>
-                    TermIR.Build.branch IRCommon.Op.EqR above (TermIR.Opnd.W 0)
-                      (do w <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.F2I f)
-                          done [w]) $ do
-                      g <- TermIR.Build.emit1 (TermIR.Instr.FArith IRCommon.Op.FSub f big)
-                      w <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.F2I g)
-                      w' <- TermIR.Build.emit1
-                        (TermIR.Instr.Arith Add w (TermIR.Opnd.W (-9223372036854775808)))
-                      done [w']
-                  pure w
-                doubleToWord h f = do
-                  w <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.F2I f)
-                  wrap h w
-
             arith : PrimType -> IRCommon.Op.ArithOp -> IRCommon.Op.FOp -> (x, y : Value enc v) ->
                     B (Flat.Exp.Skeleton, Value enc v)
             arith DoubleType _ o x y = do a <- double x
@@ -764,7 +719,7 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
               a <- word x
               b <- word y
               w <- TermIR.Build.emit1 (TermIR.Instr.Arith o a b)
-              wordVal t <$> wrap h w
+              wordVal t <$> Words.wrap h w
 
             bitwise : PrimType -> IRCommon.Op.ArithOp -> (x, y : Value enc v) ->
                       B (Flat.Exp.Skeleton, Value enc v)
@@ -772,7 +727,7 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
               a <- word x
               b <- word y
               w <- TermIR.Build.emit1 (TermIR.Instr.Arith o a b)
-              wordVal t <$> wrap h w
+              wordVal t <$> Words.wrap h w
 
             signed : (Width, Bool) -> Bool
             signed = snd
@@ -786,7 +741,7 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
                 (if left then IRCommon.Op.Shl else if signed h then IRCommon.Op.Sar
                   else IRCommon.Op.Shr)
                   a k
-              wordVal t <$> wrap h w
+              wordVal t <$> Words.wrap h w
 
             comparison : PrimType -> IRCommon.Op.Rel -> (x, y : Value enc v) ->
                          B (Flat.Exp.Skeleton, Value enc v)

@@ -54,6 +54,7 @@
 ||| same static object.
 module Native.Codegen.Lower
 
+import Native.Codegen.Doubles
 import Native.Codegen.IRCommon.ConIds as IRCommon
 import Native.Codegen.IRCommon.Conv
 import Native.Codegen.IRCommon.Op
@@ -108,6 +109,7 @@ import Native.HeapObj.Shape as HeapObj
 import Native.HeapObj.ValEnc
 import Native.Mach
 import Native.Port
+import Native.Primitive.DoubleBits
 import Native.Rep
 import Native.Types.BignumEnc as Types
 import Native.Types.Enc as Types
@@ -188,6 +190,12 @@ patternValue v = if v >= 9223372036854775808 then v - 18446744073709551616 else 
 int64Static : Integer -> Name
 int64Static p = NS (mkNamespace "_native") (UN (Basic ("int64_" ++ show p)))
 
+||| The static object of a double constant, by its bits: one per distinct
+||| double, -0.0 apart from 0.0.
+doubleStatic : Double -> Name
+doubleStatic x =
+  NS (mkNamespace "_native") (UN (Basic ("double_" ++ show (Primitive.DoubleBits.doubleBits x))))
+
 ||| The static object of an `Integer` constant outside the fixnum range.
 bignumStatic : Integer -> Name
 bignumStatic v = NS (mkNamespace "_native") (UN (Basic ("integer_" ++ show v)))
@@ -241,6 +249,8 @@ data StaticPlan
     Nullary Int
   | ||| A 64-bit pattern outside the fixnum range, by its signed value.
     Boxed Integer
+  | ||| A double, by its bits.
+    BoxedDouble Bits64
   | ||| An `Integer` outside the fixnum range, and its magnitude's words.
     Big Integer
   | ||| A string literal.
@@ -347,6 +357,19 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                                                TermIR.Build.emit1 (TermIR.Instr.WidenPtr p)
     Nothing =>
       TermIR.Build.unsupported ("the static object " ++ show name ++ ", which no declaration makes")
+
+  ||| A double's value, from its box, a `DOUBLE` of one double, and the box of
+  ||| one, which the program allocates: how ordinary code holds a double.
+  valDouble : TermIR.Opnd v IRCommon.Ty.Val -> B (TermIR.Opnd v IRCommon.Ty.F64)
+  valDouble x = do
+    p <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr Types.Kind.DOUBLE x)
+    TermIR.Build.emit1
+      (TermIR.Instr.Load IRCommon.Ty.F64 (TermIR.MkMem (TermIR.Mem.AtPtr p) Nothing 8))
+
+  doubleVal : TermIR.Opnd v IRCommon.Ty.F64 -> B (TermIR.Opnd v IRCommon.Ty.Val)
+  doubleVal f = do
+    p <- TermIR.Build.emit1 (TermIR.Instr.AllocObj Types.Header.DoubleH [f])
+    TermIR.Build.emit1 (TermIR.Instr.WidenPtr p)
 
   ------------------------------------------------------------------------------
   -- Integer values
@@ -469,10 +492,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
       unbox : Flat.Exp.Shape -> TermIR.Opnd v IRCommon.Ty.Val -> B (LowerFlat.Value enc v)
       unbox shape x = case shape of
         Flat.Exp.PrimShape DoubleType => do
-                   p <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr Types.Kind.DOUBLE x)
-                   f <- TermIR.Build.emit1
-                     (TermIR.Instr.Load IRCommon.Ty.F64
-                       (TermIR.MkMem (TermIR.Mem.AtPtr p) Nothing 8))
+                   f <- valDouble x
                    pure (LowerFlat.MkValue [Rep.Dbl] [f])
         Flat.Exp.PrimShape WorldType => pure LowerFlat.noRegs
         Flat.Exp.PrimShape t => case intWidth t of
@@ -549,9 +569,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
       box : Flat.Exp.Shape -> LowerFlat.Value enc v -> B (TermIR.Opnd v IRCommon.Ty.Val)
       box shape x = case shape of
         Flat.Exp.PrimShape DoubleType => case LowerFlat.valueDouble x of
-                   Just f => do p <- TermIR.Build.emit1
-                                  (TermIR.Instr.AllocObj Types.Header.DoubleH [f])
-                                TermIR.Build.emit1 (TermIR.Instr.WidenPtr p)
+                   Just f => doubleVal f
                    Nothing => TermIR.Build.unsupported "a double of another layout from flat code"
         Flat.Exp.PrimShape WorldType => pure TermIR.Opnd.Erased
         Flat.Exp.PrimShape t => case (intWidth t, LowerFlat.valueWord x) of
@@ -968,7 +986,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
         constant WorldVal = pure TermIR.Opnd.Erased
         constant (PrT _) = pure TermIR.Opnd.Erased
         constant (Str s) = staticVal (stringStatic s)
-        constant (Db _) = TermIR.Build.unsupported "a double constant"
+        constant (Db x) = staticVal (doubleStatic x)
         constant k = case intConst k of
           Just (Bounded Width.Whole _, n) =>
             let p = patternValue n in maybe (staticVal (int64Static p)) pure (fixnum p)
@@ -1007,9 +1025,11 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
               Nothing => do
                 c <- if to == CharType then toChar wf (get env x) else retype wf wt (get env x)
                 pure (set env r c)
-            -- a character as a string of it, a number as its decimal text
+            -- a character as a string of it, a number as its decimal text, an
+            -- integer as the nearest double
             (Just wf, Nothing) =>
-              if to /= StringType
+              if to == DoubleType && from /= CharType then set env r <$> toDouble wf (get env x)
+              else if to /= StringType
                 then TermIR.Build.unsupported ("the cast from " ++ show from ++ " to " ++ show to)
               else if from == CharType then do
                 w <- fixValue (get env x)
@@ -1019,8 +1039,11 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
               else set env r <$> decimal wf (get env x)
             -- a string as the integer it reads as, wrapped to the width as a cast
             -- from Integer is
+            -- a double as the integer type, and a string as the integer it reads
+            -- as, wrapped to the width as a cast from Integer is
             (Nothing, Just wt) =>
-              if from /= StringType || to == CharType
+              if from == DoubleType && to /= CharType then set env r <$> fromDouble wt (get env x)
+              else if from /= StringType || to == CharType
                  then TermIR.Build.unsupported ("the cast from " ++ show from ++ " to " ++ show to)
                  else do
                    c <- case wt of
@@ -1037,16 +1060,13 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
             -- a double as its shortest decimal text, and a string as a double
             (Nothing, Nothing) =>
               if from == DoubleType && to == StringType then do
-                p <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr Types.Kind.DOUBLE (get env x))
-                f <- TermIR.Build.emit1
-                  (TermIR.Instr.Load IRCommon.Ty.F64 (TermIR.MkMem (TermIR.Mem.AtPtr p) Nothing 8))
+                f <- valDouble (get env x)
                 [t] <- strings Types.StringRoutine.ShowDouble [f]
                 pure (set env r t)
               -- a string as the double it reads as
               else if from == StringType && to == DoubleType then do
                 [f] <- strings Types.StringRoutine.ReadDouble [get env x]
-                p <- TermIR.Build.emit1 (TermIR.Instr.AllocObj Types.Header.DoubleH [f])
-                d <- TermIR.Build.emit1 (TermIR.Instr.WidenPtr p)
+                d <- doubleVal f
                 pure (set env r d)
               else TermIR.Build.unsupported ("the cast from " ++ show from ++ " to " ++ show to)
             _ => TermIR.Build.unsupported ("the cast from " ++ show from ++ " to " ++ show to)
@@ -1085,6 +1105,31 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
               e <- TermIR.Build.emit1 (TermIR.Instr.Ext n s w)
               f <- TermIR.Build.emit1 (TermIR.Instr.Tag e)
               widen f
+
+            ||| An integer of the width as the nearest double, ties to even.
+            toDouble : IntWidth -> TermIR.Opnd v IRCommon.Ty.Val ->
+                       B (TermIR.Opnd v IRCommon.Ty.Val)
+            toDouble (Bounded (Width.Narrow n) s) x = do
+              w <- fixValue x
+              Doubles.fromWord (Width.Narrow n, s) w >>= doubleVal
+            toDouble (Bounded Width.Whole s) x = do
+              w <- wideWord x
+              Doubles.fromWord (Width.Whole, s) w >>= doubleVal
+            toDouble Unbounded _ = TermIR.Build.unsupported "the cast from Integer to Double"
+
+            ||| A double as the integer type of the width: truncated, wrapped
+            ||| (`Native.Codegen.Doubles`).
+            fromDouble : IntWidth -> TermIR.Opnd v IRCommon.Ty.Val ->
+                         B (TermIR.Opnd v IRCommon.Ty.Val)
+            fromDouble (Bounded (Width.Narrow n) s) x = do
+              f <- valDouble x
+              w <- Doubles.toWord (Width.Narrow n, s) f
+              narrowVal n s w
+            fromDouble (Bounded Width.Whole s) x = do
+              f <- valDouble x
+              w <- Doubles.toWord (Width.Whole, s) f
+              wideVal w
+            fromDouble Unbounded _ = TermIR.Build.unsupported "the cast from Double to Integer"
 
             ||| A uniform integer of one width as one of another, wrapping as Idris's
             ||| casts do.
@@ -1411,7 +1456,36 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                 boolVal : TermIR.Opnd v IRCommon.Ty.W64 -> B (TermIR.Opnd v IRCommon.Ty.Val)
                 boolVal c = TermIR.Build.emit1 (TermIR.Instr.Tag c) >>= widen
 
+            ||| An arithmetic operation of two doubles, IEEE 754's, and a
+            ||| comparison of two, false where either is NaN but `/=`.
+            doubleArith : IRCommon.Op.FOp -> (x, y : Reg) -> B (TermIR.Opnd v IRCommon.Ty.Val)
+            doubleArith o x y = do
+              a <- valDouble (get env x)
+              b <- valDouble (get env y)
+              f <- TermIR.Build.emit1 (TermIR.Instr.FArith o a b)
+              doubleVal f
+
+            doubleOrder : IRCommon.Op.Rel -> (x, y : Reg) -> B (TermIR.Opnd v IRCommon.Ty.Val)
+            doubleOrder rel x y = do
+              a <- valDouble (get env x)
+              b <- valDouble (get env y)
+              c <- TermIR.Build.emit1 (TermIR.Instr.FCmp rel a b)
+              TermIR.Build.emit1 (TermIR.Instr.Tag c) >>= widen
+
             value : PrimFn m -> Vect m Reg -> B (TermIR.Opnd v IRCommon.Ty.Val)
+            value (Add DoubleType) [x, y] = doubleArith IRCommon.Op.FAdd x y
+            value (Sub DoubleType) [x, y] = doubleArith IRCommon.Op.FSub x y
+            value (Mul DoubleType) [x, y] = doubleArith IRCommon.Op.FMul x y
+            value (Div DoubleType) [x, y] = doubleArith IRCommon.Op.FDiv x y
+            value (Neg DoubleType) [x] = do
+              a <- valDouble (get env x)
+              f <- TermIR.Build.emit1 (TermIR.Instr.FNeg a)
+              doubleVal f
+            value (LT DoubleType) [x, y] = doubleOrder IRCommon.Op.LtS x y
+            value (LTE DoubleType) [x, y] = doubleOrder IRCommon.Op.LeS x y
+            value (EQ DoubleType) [x, y] = doubleOrder IRCommon.Op.EqR x y
+            value (GTE DoubleType) [x, y] = doubleOrder IRCommon.Op.GeS x y
+            value (GT DoubleType) [x, y] = doubleOrder IRCommon.Op.GtS x y
             value (Add ty) [x, y] =
               withWidth ty "addition"
                 (\w => arithmetic w Add Types.IntegerRoutine.Add (get env x) (get env y))
@@ -1965,6 +2039,7 @@ lowerProgram enc platform realised forms shapes tables constants flat implemente
             else Just (bignumStatic v, Big v)
           _ => case k of
             Str s => Just (stringStatic s, Text s)
+            Db x => Just (doubleStatic x, BoxedDouble (Primitive.DoubleBits.doubleBits x))
             _ => Nothing
 
         note : Constant -> SortedMap Name StaticPlan -> SortedMap Name StaticPlan
@@ -2025,6 +2100,10 @@ lowerProgram enc platform realised forms shapes tables constants flat implemente
       Just
         (TermIR.MkStaticSig n Types.Kind.INT64 ** TermIR.MkStaticDef Types.Header.Int64H
          [TermIR.StaticDef.SWord (cast p)])
+    ready (n, BoxedDouble b) =
+      Just
+        (TermIR.MkStaticSig n Types.Kind.DOUBLE ** TermIR.MkStaticDef Types.Header.DoubleH
+         [TermIR.StaticDef.SWord (cast b)])
     ready (n, Big v) = bigStatic enc (Types.BignumEnc.magnitudeWords (abs v))
       where
         ||| A big constant's static, a header of its sign and words, if the

@@ -15,6 +15,7 @@ modules =
     Native.Area,
     Native.Carrier,
     Native.Codegen.Bytes,
+    Native.Codegen.Doubles,
     Native.Codegen.ELF,
     Native.Codegen.Evaluate,
     Native.Codegen.IRCommon.ConIds,

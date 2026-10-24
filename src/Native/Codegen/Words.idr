@@ -15,10 +15,19 @@ import Native.Codegen.TermIR.Opnd as TermIR
 
 import Data.List.Quantifiers
 import Native.Types.Enc as Types
+import Native.Width
 %default total
 
 parameters {0 enc : Types.Enc} {0 d : TermIR.Decls enc} {0 c : IRCommon.Conv enc} {0 m : Bool}
            {0 v : IRCommon.Ty enc -> Type} {0 l : List (IRCommon.Ty enc) -> Type}
+
+  ||| A word wrapped to the integer type's width, extended again as the type
+  ||| is signed or not; a whole word as it is.
+  export
+  wrap : (Width, Bool) -> TermIR.Opnd v IRCommon.Ty.W64 ->
+         TermIR.Build d c m v l (TermIR.Opnd v IRCommon.Ty.W64)
+  wrap (Width.Narrow sw, s) w = TermIR.Build.emit1 (TermIR.Instr.Ext sw s w)
+  wrap (Width.Whole, _) w = pure w
 
   ||| The quotient or the remainder of the word `a` by the word `b`, which is
   ||| not 0: Euclidean when signed, so that the remainder is never negative,
