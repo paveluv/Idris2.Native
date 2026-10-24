@@ -93,6 +93,11 @@ data Service
   | ||| Remove the file at a path, zero-ended bytes at an address, which is
     ||| not a directory; success.
     RemoveFile
+  | ||| Give the file at a path, zero-ended bytes at an address, the
+    ||| permissions of a mode, its low twelve bits as the system reads them
+    ||| (the owner's, the group's and the others', and the set-user-id,
+    ||| set-group-id and sticky bits); success.
+    ChangeMode
   | ||| The next entry of a directory `Open` gave with `ADirectory`: its name
     ||| written, zero-ended, into the bytes at an address, at most so many,
     ||| 256 enough on every platform; the name's bytes, 0 when there are no
@@ -128,6 +133,7 @@ port FileSize = "handle" ~: Mach.U64 ~> "bytes" ~: Mach.U64
 port FileTimes = "handle" ~: Mach.U64 ~> "into" ~: Carrier.ByteAddr ~> "ok" ~: Mach.Bool
 port IsTerminal = "handle" ~: Mach.U64 ~> "terminal" ~: Mach.Bool
 port RemoveFile = "path" ~: Carrier.ByteAddr ~> "ok" ~: Mach.Bool
+port ChangeMode = "path" ~: Carrier.ByteAddr ~> "mode" ~: Mach.U64 ~> "ok" ~: Mach.Bool
 port ReadEntry =
   "handle" ~: Mach.U64 ~> "into" ~: Carrier.ByteAddr ~> "most" ~: Mach.U64
     ~> "bytes" ~: Mach.U64
@@ -139,7 +145,7 @@ allServices : List Service
 allServices =
   [ Exit, Write, Reserve, Commit, Release, StackLimit, PageBytes, PrepareTerminal, TerminalColumns
   , TerminalLines, ChangeDirectory, CurrentDirectory, CreateDirectory, RemoveDirectory, Open, Close
-  , Read, FileSize, FileTimes, IsTerminal, RemoveFile, ReadEntry ]
+  , Read, FileSize, FileTimes, IsTerminal, RemoveFile, ChangeMode, ReadEntry ]
 
 ||| The list holds every service.
 complete : (c : Service) -> Elem c Service.allServices
@@ -164,4 +170,5 @@ complete FileSize = %search
 complete FileTimes = %search
 complete IsTerminal = %search
 complete RemoveFile = %search
+complete ChangeMode = %search
 complete ReadEntry = %search

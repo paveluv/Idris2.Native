@@ -46,7 +46,6 @@ missing  System.Concurrency.prim__setThreadData
 missing  System.FFI.prim__getField
 missing  System.FFI.prim__setField
 missing  System.File.Meta.prim__fPoll
-missing  System.File.Permissions.prim__chmod
 missing  System.File.Process.prim__pclose
 missing  System.File.Process.prim__popen
 missing  System.File.Process.prim__popen2
@@ -141,6 +140,7 @@ runtime  System.File.Meta.prim__filetimeModifiedTimeNsec
 runtime  System.File.Meta.prim__filetimeModifiedTimeSec
 runtime  System.File.Meta.prim__filetimeStatusTimeNsec
 runtime  System.File.Meta.prim__filetimeStatusTimeSec
+runtime  System.File.Permissions.prim__chmod
 runtime  System.File.Process.prim__flush
 runtime  System.File.ReadWrite.prim__eof
 runtime  System.File.ReadWrite.prim__readChar
@@ -162,4 +162,4 @@ runtime  System.prim__getEnv
 runtime  System.prim__getEnvPair
 runtime  System.prim__setEnv
 runtime  System.prim__unsetEnv
-82 by the runtime, 8 lowered inline, 74 missing
+83 by the runtime, 8 lowered inline, 73 missing

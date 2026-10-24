@@ -30,6 +30,7 @@ import public Native.System.Foreign.System.File.Buffer
 import public Native.System.Foreign.System.File.Error
 import public Native.System.Foreign.System.File.Handle
 import public Native.System.Foreign.System.File.Meta
+import public Native.System.Foreign.System.File.Permissions
 import public Native.System.Foreign.System.File.Process
 import public Native.System.Foreign.System.File.ReadWrite
 import public Native.System.Foreign.System.File.Virtual

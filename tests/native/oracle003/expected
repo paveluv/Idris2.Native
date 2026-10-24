@@ -11,6 +11,7 @@ Hello: agree
 IORefs: agree
 Interface: agree
 NumbersText: agree
+Permissions: agree
 Show: agree
 StatusArray: agree
 StatusCase: agree
@@ -31,7 +32,7 @@ StatusWide: agree
 Strings: agree
 TailCall: agree
 TypeValues: agree
-33 programs: 33 agree, 0 unsupported, 0 mismatch, 0 error, 0 timeout
+34 programs: 34 agree, 0 unsupported, 0 mismatch, 0 error, 0 timeout
 Codegen: MISMATCH
     1c1
     < running under chez

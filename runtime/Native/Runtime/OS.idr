@@ -44,6 +44,7 @@ import Native.Service
 %extern service__fileTimes : PortTy (Service.port Service.FileTimes)
 %extern service__isTerminal : PortTy (Service.port Service.IsTerminal)
 %extern service__removeFile : PortTy (Service.port Service.RemoveFile)
+%extern service__changeMode : PortTy (Service.port Service.ChangeMode)
 %extern service__readEntry : PortTy (Service.port Service.ReadEntry)
 
 ||| End the process with the status.
@@ -170,6 +171,12 @@ osIsTerminal = service__isTerminal
 export %inline
 osRemoveFile : (path : ByteAddr) -> Ordo.Op Ordo Bool
 osRemoveFile = service__removeFile
+
+||| Give the file at the path, zero-ended bytes at the address, the
+||| permissions of the mode's low twelve bits; whether it was done.
+export %inline
+osChangeMode : (path : ByteAddr) -> (mode : Bits64) -> Ordo.Op Ordo Bool
+osChangeMode = service__changeMode
 
 ||| The next entry of a directory `osOpen` gave with `ADirectory`: its
 ||| name written, zero-ended, into the `bytes` at the address, 256 enough;

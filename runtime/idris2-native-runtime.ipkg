@@ -65,6 +65,7 @@ modules =
     Native.System.Foreign.System.File.Error,
     Native.System.Foreign.System.File.Handle,
     Native.System.Foreign.System.File.Meta,
+    Native.System.Foreign.System.File.Permissions,
     Native.System.Foreign.System.File.Process,
     Native.System.Foreign.System.File.ReadWrite,
     Native.System.Foreign.System.File.Virtual,

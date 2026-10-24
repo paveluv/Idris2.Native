@@ -198,6 +198,14 @@ removeDirectory path = do
   r <- Syscall.syscall 84 (ByteAddr.toWord path) 0 0 0 0 0
   succeeded r
 
+%cg native flat Runtime.OS.LinuxX86_64.changeMode
+export
+changeMode : PortTy (Service.port Service.ChangeMode)
+changeMode path mode = do
+  -- chmod(path, mode)
+  r <- Syscall.syscall 90 (ByteAddr.toWord path) mode 0 0 0 0
+  succeeded r
+
 %cg native flat Runtime.OS.LinuxX86_64.openFile
 export
 openFile : PortTy (Service.port Service.Open)
