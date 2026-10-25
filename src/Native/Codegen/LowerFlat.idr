@@ -277,20 +277,22 @@ record Callee (d : TermIR.Decls enc) where
 ||| names.
 export
 callees : (d : TermIR.Decls enc) -> List Flat.Exp.FlatDef -> SortedMap Name (Callee d)
-callees d fds = fromList (mapMaybe one (TermIR.Var.enumerate d.sigs))
+callees d fds =
+  -- made once: a constant of the `where` block would be made again for each
+  -- declaration
+  let byName = the (SortedMap Name Flat.Exp.FlatDef)
+                 (fromList [(Linkage.Routine.flatName fd.name, fd) | fd <- fds])
+  in fromList (mapMaybe (one byName) (TermIR.Var.enumerate d.sigs))
   where
-    byName : SortedMap Name Flat.Exp.FlatDef
-    byName = fromList [(Linkage.Routine.flatName fd.name, fd) | fd <- fds]
-
-    one : (s ** TermIR.Var d.sigs s) -> Maybe (Name, Callee d)
-    one (TermIR.MkSig n (IRCommon.Conv.Direct rs False) ps cv ** var) = do
+    one : SortedMap Name Flat.Exp.FlatDef -> (s ** TermIR.Var d.sigs s) -> Maybe (Name, Callee d)
+    one byName (TermIR.MkSig n (IRCommon.Conv.Direct rs False) ps cv ** var) = do
       fd <- lookup n byName
       case (decEq rs (tys fd.result),
             decEq ps (tys (paramsLayout fd.params)),
               decEq cv (Linkage.ConvertsIn.convertsIn fd.name)) of
         (Yes Refl, Yes Refl, Yes Refl) => Just (fd.name, MkCallee fd (n ** var))
         _ => Nothing
-    one _ = Nothing
+    one _ _ = Nothing
 
 ------------------------------------------------------------------------------
 -- Primitive types and operations

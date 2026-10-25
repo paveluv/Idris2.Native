@@ -30,6 +30,7 @@ import Native.Codegen.Linkage.Sym
 import Core.Name
 import Core.Name.Namespace
 import Data.List
+import Data.SortedMap
 import Native.Carrier
 import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.Port
@@ -135,9 +136,9 @@ routines r =
     integers : List (RoutineCall enc)
     integers = maybe [] (map integer) r.integers
 
-||| The symbol the routine whose function has the name is reached by.
+||| The symbol each routine reached by one is reached by, by the name of the
+||| routine's function: a map to make once and look up.
 export
-routineSymbol : {enc : Types.Enc} -> Realised -> Name -> Maybe Sym
-routineSymbol r n = do
-  x <- find (\x => flatName x.name == n) (routines {enc} r)
-  x.symbol
+routineSymbols : {enc : Types.Enc} -> Realised -> SortedMap Name Sym
+routineSymbols r =
+  fromList [ (flatName x.name, sym) | x <- routines {enc} r, sym <- toList x.symbol ]

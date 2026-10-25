@@ -565,8 +565,8 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
             (later (RegAlloc.allocRegs X86.Target.x86_64 term))
           -- the image holds what the entry and the routines the seed reaches
           -- by symbol reach
-          let ir = LocatedIR.Reach.reach
-                     (\n => isJust (Linkage.Routine.routineSymbol {enc} realised n)) allocated
+          let symbols = Linkage.Routine.routineSymbols {enc} realised
+              ir = LocatedIR.Reach.reach (\n => isJust (lookup n symbols)) allocated
           case settings.dumpIr of
             Just path => do
               Right () <- coreLift

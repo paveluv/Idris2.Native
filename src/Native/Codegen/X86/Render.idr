@@ -161,6 +161,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
         next1 = start + length p.functions
         statics = fromList (zip (map (.sym) p.statics) [next1 .. next1 + length p.statics])
         next2 = next1 + length p.statics
+        symbols = Linkage.Routine.routineSymbols {enc} realised
     let params = fromList (map (\f => (f.name, map LocatedIR.Reg.ty f.params)) p.functions)
         -- `idris_apply` stages a saturated closure's arguments in SCRATCH,
         -- and passes them as a call does, all `Val`s; a closure's arity is
@@ -172,7 +173,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
       (MkRS next2 funs params statics [<] [<] [<] applyAreas) $ do
       entry <- funLabel p.entry
       emits [Asm.Lbl (sym Linkage.Sym.SymMain), Asm.Jmp entry]
-      traverse_ function p.functions
+      traverse_ (function symbols) p.functions
       traverse_ (\st => do l <- staticLabel st.sym
                            pieces <- staticData st
                            modify { rodata $= (:< (l, pieces)) })
@@ -237,8 +238,9 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
           field (LocatedIR.Static.SCode f) = do l <- funLabel f
                                                 pure (Datum.AddressOf l 0)
 
-      function : LocatedIR.Function enc -> Render enc ()
-      function f = do
+      function : (symbols : SortedMap Name Linkage.Sym) -> LocatedIR.Function enc ->
+                 Render enc ()
+      function symbols f = do
         fl <- funLabel f.name
         labels <- traverse (\b => map (\l => (b.label, l)) fresh) f.blocks
         let table = fromList labels
@@ -246,7 +248,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
             blk n = fromMaybe 0 (lookup n table)
         emits [Asm.Comment (show f.name), Asm.Lbl fl]
         -- a routine reached by symbol: the symbol is its entry too
-        whenJust (Linkage.Routine.routineSymbol {enc} realised f.name) $ \s =>
+        whenJust (lookup f.name symbols) $ \s =>
           emit (Asm.Lbl (sym s))
         -- a machine call pushed a word: keep the stack 16-aligned inside; and
         -- below the stack limit, end the program

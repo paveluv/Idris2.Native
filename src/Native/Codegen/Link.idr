@@ -43,17 +43,17 @@ linkProgram : (enc : Types.Enc) -> {auto 0 _ : HeapObj.ValEnc.HasFixnums enc.val
               Either (List X86.Encode.AsmProblem) ELF.Image
 linkProgram enc window areas program items =
   let text = Seed.seedText enc window ++ program
-      ts = X86.Encode.codeSize ELF.textBase text
+      measured = X86.Encode.measure ELF.textBase text
       (seedData, rsyms) = Seed.seedRodata
       offsets = offsetsFrom (itemSize seedData) items
       as = Linkage.Areas.maxAreas Seed.seedAreas areas
       rodataSize = foldl (\n, (_, item) => n + itemSize item) (itemSize seedData) items
-      lay = ELF.planLayout ts rodataSize (Seed.seedBssSize as)
+      lay = ELF.planLayout measured.size rodataSize (Seed.seedBssSize as)
       env = fromList (map (\(s, off) => (Linkage.Sym.label s, rodataBase lay + off)) rsyms
                    ++ map (\(s, off) => (Linkage.Sym.label s, bssBase lay + off))
                      (Seed.seedBss as)
                    ++ map (\(l, off) => (l, rodataBase lay + off)) offsets)
-      (bytes, labels, problems) = X86.Encode.assembleWith env ELF.textBase text
+      (bytes, labels, problems) = X86.Encode.assembleWith env measured ELF.textBase text
       (rodata, missing) =
         foldl (\acc, (_, item) => place labels acc item) (place labels ([<], [<]) seedData) items
       unwritten = map X86.Encode.MissingLabel (missing <>> [])

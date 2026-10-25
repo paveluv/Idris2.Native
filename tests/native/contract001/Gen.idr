@@ -189,7 +189,8 @@ compile runtime program objects flat vmdefs =
 rendered : (runtime, program : List FlatDef) -> List (Name, VMDef) -> String
 rendered runtime program vmdefs = either id (const "rendered") $ do
   (_ ** term) <- lowered runtime program empty [] vmdefs
-  let ir = reach (\n => isJust (routineSymbol {enc = TestEnc} realised n)) (allocRegs x86_64 term)
+  let symbols = routineSymbols {enc = TestEnc} realised
+      ir = reach (\n => isJust (lookup n symbols)) (allocRegs x86_64 term)
   ignore (render TestEnc realised ir)
 
 ||| The program compiled with these forms as the runtime's, every one of

@@ -2131,11 +2131,17 @@ lowerProgram : (enc : Types.Enc) -> {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.v
 lowerProgram enc platform realised _ forms shapes staticReads staticObjects constants flat
              implemented vmdefs0 = do
   let vmdefs = map (\(n, d) => (n, answered d)) vmdefs0
-  traverse_ agrees (mapMaybe boundForeign vmdefs)
+      -- the maps the helpers look in, made here once: a constant of the
+      -- `where` block would be made again at each use
+      byName = the (SortedMap Name Flat.Exp.FlatDef) (fromList [(fd.name, fd) | fd <- forms])
+      cells = the (SortedMap Name Nat) (fromList (zip constants [0 .. length constants]))
+  traverse_ (agrees byName) (mapMaybe boundForeign vmdefs)
   let entryPlan = case Data.List.lookup mainExpression vmdefs of
                     Just (MkVMFun [] body) => FromVM [] body
                     _ => NoEntry
-      planned = concatMap kept (mapMaybe plan (filter ((/= mainExpression) . fst) vmdefs))
+      planned =
+        concatMap (kept cells)
+          (mapMaybe (plan byName) (filter ((/= mainExpression) . fst) vmdefs))
       others = planned
                  ++ [(LowerFlat.formSig fd, Form fd) | fd <- forms]
                  ++ outside (Data.SortedSet.fromList [fd.name | fd <- forms])
@@ -2251,9 +2257,6 @@ lowerProgram enc platform realised _ forms shapes staticReads staticObjects cons
       | r <- Linkage.Routine.routines {enc} realised, isNothing r.symbol
       , not (contains r.name given) ]
 
-    byName : SortedMap Name Flat.Exp.FlatDef
-    byName = fromList [(fd.name, fd) | fd <- forms]
-
     boundForeign : (Name, VMDef) -> Maybe (Name, List CFType, CFType)
     boundForeign (n, MkVMForeign _ fargs ret) =
       if elem n (map fst flat)
@@ -2261,8 +2264,9 @@ lowerProgram enc platform realised _ forms shapes staticReads staticObjects cons
     boundForeign _ = Nothing
 
     -- A foreign function and its implementation, position by position.
-    agrees : (Name, List CFType, CFType) -> Either String ()
-    agrees (n, fargs, ret) = case Data.List.lookup n flat
+    agrees : (byName : SortedMap Name Flat.Exp.FlatDef) -> (Name, List CFType, CFType) ->
+             Either String ()
+    agrees byName (n, fargs, ret) = case Data.List.lookup n flat
       >>= \f =>
       lookup f byName of
       Nothing => Left ("the runtime has no function that implements " ++ show n)
@@ -2278,8 +2282,8 @@ lowerProgram enc platform realised _ forms shapes staticReads staticObjects cons
     -- The boundary of a function that has a form of its arity, whose
     -- parameters' and result's shapes are known and lay out as the form's.
     -- A foreign function's is its implementation's.
-    boundaryPlan : Name -> Nat -> Maybe Plan
-    boundaryPlan n arity = do
+    boundaryPlan : (byName : SortedMap Name Flat.Exp.FlatDef) -> Name -> Nat -> Maybe Plan
+    boundaryPlan byName n arity = do
       fd <- lookup n byName
         <|>
           (Data.List.lookup n flat >>= \f =>
@@ -2315,28 +2319,26 @@ lowerProgram enc platform realised _ forms shapes staticReads staticObjects cons
       Just (MkVMFun args _) => length args
       _ => 0
 
-    plan : (Name, VMDef) -> Maybe (TermIR.Sig enc, Plan)
-    plan (n, MkVMFun args body) =
+    plan : (byName : SortedMap Name Flat.Exp.FlatDef) -> (Name, VMDef) ->
+           Maybe (TermIR.Sig enc, Plan)
+    plan byName (n, MkVMFun args body) =
       Just (TermIR.MkSig n IRCommon.Conv.CPS (replicate (length args) IRCommon.Ty.Val) False,
-            fromMaybe (FromVM args body) (boundaryPlan n (length args)))
-    plan (n, MkVMForeign _ fargs _) =
+            fromMaybe (FromVM args body) (boundaryPlan byName n (length args)))
+    plan byName (n, MkVMForeign _ fargs _) =
       Just (TermIR.MkSig n IRCommon.Conv.CPS (replicate (length fargs) IRCommon.Ty.Val) False,
-            maybe (fromMaybe (Foreign (length fargs)) (boundaryPlan n (length fargs)))
+            maybe (fromMaybe (Foreign (length fargs)) (boundaryPlan byName n (length fargs)))
               (\impl => Implemented (length fargs) impl (functionArity impl))
               (Data.List.lookup n implemented))
-    plan (n, MkVMError _) = Nothing
-
-    cells : SortedMap Name Nat
-    cells = fromList (zip constants [0 .. length constants])
+    plan _ (n, MkVMError _) = Nothing
 
     -- a constant's plan as its cell's, and the function of its value
-    kept : (TermIR.Sig enc, Plan) -> List (TermIR.Sig enc, Plan)
-    kept (s, p@(FromVM [] body)) = case lookup s.name cells of
+    kept : (cells : SortedMap Name Nat) -> (TermIR.Sig enc, Plan) -> List (TermIR.Sig enc, Plan)
+    kept cells (s, p@(FromVM [] body)) = case lookup s.name cells of
       Just i =>
         [ (s, Constant i (constantValue s.name))
         , ({ name := constantValue s.name } s, p) ]
       Nothing => [(s, p)]
-    kept sp = [sp]
+    kept _ sp = [sp]
 
     ||| The constants a function's locals may hold, and the static objects its
     ||| constants need, the empty string's among them whether the body names

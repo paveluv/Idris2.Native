@@ -13,6 +13,7 @@ import Native.Codegen.X86.Asm
 import Data.Bits
 import Data.List
 import Data.SortedMap
+import Data.Zippable
 import Native.Codegen.LittleEndian
 %default total
 
@@ -242,33 +243,39 @@ instrSize pc i = cast (length (encodeRaw pc 0 i))
 ------------------------------------------------------------------------------
 -- Two-pass assembly
 
-||| Pass one: addresses of labels, given the address of the first instruction.
+||| Pass one, of a sequence placed at `base`: the labels' addresses, each
+||| instruction's size, in order, and the sequence's: one encoding of each
+||| instruction, since no size depends on a label.
+public export
+record Measured where
+  constructor MkMeasured
+  labels : SortedMap Asm.Label Int
+  sizes : List Int
+  size : Int
+
+||| Pass one (`Measured`).
 export
-layout : (base : Int) -> List Asm.Instr -> SortedMap Asm.Label Int
-layout base = go base empty
+measure : (base : Int) -> List Asm.Instr -> Measured
+measure base = go base empty [<]
   where
-    go : Int -> SortedMap Asm.Label Int -> List Asm.Instr -> SortedMap Asm.Label Int
-    go _ m [] = m
-    go pc m (Asm.Lbl l :: is) = go pc (insert l pc m) is
-    go pc m (i :: is) = go (pc + instrSize pc i) m is
+    go : Int -> SortedMap Asm.Label Int -> SnocList Int -> List Asm.Instr -> Measured
+    go pc m ss [] = MkMeasured m (ss <>> []) (pc - base)
+    go pc m ss (Asm.Lbl l :: is) = go pc (insert l pc m) (ss :< 0) is
+    go pc m ss (i :: is) = let n = instrSize pc i in go (pc + n) m (ss :< n) is
 
-||| Total size of a sequence placed at `base` (label-independent, like `layout`).
+||| Pass two, of the sequence pass one measured, with an environment of
+||| labels defined outside this text: the image's rodata and bss symbols at
+||| their final addresses (`planLayout` can run first because sizes do not
+||| depend on labels). Text labels take precedence. Each instruction is
+||| encoded once, at the size pass one found. A reference to an unknown
+||| label, and an instruction with a field that does not fit, are encoded
+||| anyway and reported, so the caller can fail loudly.
 export
-codeSize : (base : Int) -> List Asm.Instr -> Int
-codeSize base is = foldl (\pc, i => pc + instrSize pc i) base is - base
-
-||| Pass two, with an environment of labels defined outside this text: the
-||| image's rodata and bss symbols at their final addresses (`planLayout` can
-||| run first because sizes do not depend on labels). Text labels take
-||| precedence. A reference to an unknown label, and an instruction with a
-||| field that does not fit, are encoded anyway and reported, so the caller
-||| can fail loudly.
-export
-assembleWith : (env : SortedMap Asm.Label Int) -> (base : Int) -> List Asm.Instr
+assembleWith : (env : SortedMap Asm.Label Int) -> Measured -> (base : Int) -> List Asm.Instr
                -> (SnocList Bits8, SortedMap Asm.Label Int, List AsmProblem)
-assembleWith env base is =
-  let labels = foldl (\m, (l, a) => insert l a m) env (SortedMap.toList (layout base is))
-  in go labels base [<] [<] is
+assembleWith env measured base is =
+  let labels = foldl (\m, (l, a) => insert l a m) env (SortedMap.toList measured.labels)
+  in go labels base [<] [<] (zip is measured.sizes)
   where
     ||| The label an instruction refers to, if any, and the constant added to it.
     instrLabel : Asm.Instr -> Maybe (Asm.Label, Int)
@@ -291,12 +298,11 @@ assembleWith env base is =
 
     -- the bytes and the problems accumulate at their ends, instruction by
     -- instruction
-    go : SortedMap Asm.Label Int -> Int -> SnocList Bits8 -> SnocList AsmProblem -> List Asm.Instr
-         -> (SnocList Bits8, SortedMap Asm.Label Int, List AsmProblem)
+    go : SortedMap Asm.Label Int -> Int -> SnocList Bits8 -> SnocList AsmProblem ->
+         List (Asm.Instr, Int) -> (SnocList Bits8, SortedMap Asm.Label Int, List AsmProblem)
     go labels _ acc problems [] = (acc, labels, problems <>> [])
-    go labels pc acc problems (i :: rest) =
-      let size = instrSize pc i
-          (rel, missing) = case instrLabel i of
+    go labels pc acc problems ((i, size) :: rest) =
+      let (rel, missing) = case instrLabel i of
             Nothing => (the Int 0, [])
             Just (l, d) => case lookup l labels of
               Just target => (target + d - (pc + size), [])
@@ -308,4 +314,4 @@ assembleWith env base is =
 export
 assemble : (base : Int) -> List Asm.Instr ->
            (SnocList Bits8, SortedMap Asm.Label Int, List AsmProblem)
-assemble = assembleWith empty
+assemble base is = assembleWith empty (measure base is) base is
