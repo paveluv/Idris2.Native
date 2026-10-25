@@ -57,8 +57,8 @@ limbs o = MkRun o 0
 ||| A header's parts: the sign and the words of the limbs.
 partsFor : (negative : Bool) -> (words : Bits64) -> Types.Header.Parts Types.Kind.BIGNUM
 partsFor neg n =
-  Types.Header.withPart Types.Header.BignumNegative (if neg then 1 else 0)
-    (Types.Header.withPart Types.Header.BignumWords n Types.Header.noParts)
+  Types.Header.withPart Types.Header.BignumNegativeP (if neg then 1 else 0)
+    (Types.Header.withPart Types.Header.BignumWordsP n Types.Header.noParts)
 
 ||| A new `BIGNUM` of the sign and `n` words, its limbs still to be written
 ||| but the last, which is zero.
@@ -89,8 +89,8 @@ take v = do
         Just b => do
           h <- Obj.header b
           Runtime.Ordo.pure
-            (Large (MkMagnitude (Types.Header.readPart Types.Header.BignumNegative h == 1)
-                     (Types.Header.readPart Types.Header.BignumWords h) (limbs b)))
+            (Large (MkMagnitude (Types.Header.readPart Types.Header.BignumNegativeP h == 1)
+                     (Types.Header.readPart Types.Header.BignumWordsP h) (limbs b)))
         Nothing => Runtime.Ordo.crashOp "idris: an Integer that is neither a fixnum nor a BIGNUM"
 
 ||| A fixnum's sign and magnitude, its limb in an object of its own.
@@ -132,7 +132,7 @@ result neg r n = do
       then Obj.fixnumValue (if neg then 0 - cast l else cast l)
       else do
         h <- Obj.header r.obj
-        if r.offset == 0 && Types.Header.readPart Types.Header.BignumWords h == m
+        if r.offset == 0 && Types.Header.readPart Types.Header.BignumWordsP h == m
           then do
             Obj.setHeader r.obj (partsFor neg m)
             Obj.objectValue r.obj
@@ -665,7 +665,7 @@ toDecimal x = do
   let sign : Bits64 = if a.negative then 1 else 0
       n = sign + digitsIn top + 19 * (k - 1)
   b <- Obj.allocate Types.Kind.BUFFER
-         (Types.Header.withPart Types.Header.BufferBytes n Types.Header.noParts)
+         (Types.Header.withPart Types.Header.BufferBytesP n Types.Header.noParts)
   if a.negative then Obj.store8 b 0 45 else Runtime.Ordo.pure ()
   write b (limbs cs) k n
   writeDigits b (sign + digitsIn top) (digitsIn top) top

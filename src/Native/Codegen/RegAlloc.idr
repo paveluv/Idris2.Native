@@ -564,11 +564,11 @@ parameters (d : TermIR.Decls enc)
           where
             fillOperand : {0 kind : Types.Kind} -> (q : Types.Header.HeaderPart kind) ->
                           TermIR.Sizes.Fill (TermIR.Var ctx''') q -> Maybe (LocatedIR.Opnd enc)
-            fillOperand Types.Header.ArrayElems x = Just (operand env x)
+            fillOperand Types.Header.ArrayElemsP x = Just (operand env x)
             fillOperand _ _ = Nothing
             fillUses : {0 kind : Types.Kind} -> (q : Types.Header.HeaderPart kind) ->
                        TermIR.Sizes.Fill (TermIR.Var ctx''') q -> () -> RegMap enc
-            fillUses Types.Header.ArrayElems x _ = uses env x
+            fillUses Types.Header.ArrayElemsP x _ = uses env x
             fillUses _ _ _ = empty
 
             isCollecting : TermIR.Var d.sigs s -> Bool

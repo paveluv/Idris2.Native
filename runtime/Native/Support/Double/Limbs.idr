@@ -50,7 +50,7 @@ export
 newLimbs : Runtime.Ordo.Op Runtime.Ordo Limbs
 newLimbs = do
   x <- Obj.allocate Types.Kind.BUFFER
-    (Types.Header.withPart Types.Header.BufferBytes (8 * (1 + capacity)) Types.Header.noParts)
+    (Types.Header.withPart Types.Header.BufferBytesP (8 * (1 + capacity)) Types.Header.noParts)
   setCount x 0
   Runtime.Ordo.pure x
 

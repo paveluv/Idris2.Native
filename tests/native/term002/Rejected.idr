@@ -231,21 +231,21 @@ failing "Can't find an implementation for So False"
 failing "Mismatch between: Type and Opnd ?v Val"
   noFill : Closed D CPS False [Val]
   noFill = build $ \[x] => do
-    p <- emit1 (AllocSized ArrayElems (W 2) ())
+    p <- emit1 (AllocSized ArrayElemsP (W 2) ())
     return x
 
 -- A string with a fill.
 failing "Mismatch between: Opnd v Val and ()"
   stringFill : Closed D CPS False [Val]
   stringFill = build $ \[x] => do
-    p <- emit1 (AllocSized StringBytes (W 2) x)
+    p <- emit1 (AllocSized StringBytesP (W 2) x)
     return x
 
 -- An object sized by a part that does not decide its size.
-failing "Can't find an implementation for Sizes ConIdPart"
+failing "Can't find an implementation for Sizes ConIdP"
   sizedById : Closed D CPS False [Val]
   sizedById = build $ \[x] => do
-    p <- emit1 (AllocSized ConIdPart (W 2) ())
+    p <- emit1 (AllocSized ConIdP (W 2) ())
     return x
 
 -- A static used as an object of another kind.
@@ -253,7 +253,7 @@ failing "Mismatch between: CON and STRING"
   wrongKind : Closed D CPS False [Val]
   wrongKind = build $ \[x] => do
     p <- emit1 (StaticAddr nil)
-    n <- emit1 (LoadPart StringBytes p)
+    n <- emit1 (LoadPart StringBytesP p)
     return x
 
 ------------------------------------------------------------------------------

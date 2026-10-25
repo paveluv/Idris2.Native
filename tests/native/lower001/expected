@@ -1,6 +1,6 @@
 function Main.wrap CPS [slot0:Val] entry 0
   0:
-    slot1:Ptr CON := AllocObj CON ConIdPart=1 ConArity=2 (slot0:Val, @_native.con0) live [slot0:Val]
+    slot1:Ptr CON := AllocObj CON ConIdP=1 ConArityP=2 (slot0:Val, @_native.con0) live [slot0:Val]
     slot2:Val := Widen slot1:Ptr CON
     Call Main.count (slot0:Val, #1) resume 1 live [slot2:Val]
   1 [slot2:Val, slot3:Val]:
@@ -11,7 +11,7 @@ function Main.wrap CPS [slot0:Val] entry 0
 function Main.first CPS [slot0:Val] entry 0
   0:
     slot1:Ptr CON := Narrow Ptr CON slot0:Val
-    slot2:W64 := LoadPart ConIdPart slot1:Ptr CON
+    slot2:W64 := LoadPart ConIdP slot1:Ptr CON
     Switch slot2:W64 [1 -> 1, 0 -> 2] else 3
   1:
     slot3:Ptr CON := Narrow Ptr CON slot0:Val

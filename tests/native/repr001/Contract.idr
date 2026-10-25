@@ -13,8 +13,8 @@
 --     FieldOf (List a) listCons 0 a    -- its field 0, the head, is an a
 --     FieldOf (List a) listCons 1 (List a)  -- its field 1, the tail, a list
 --     Immediate Char                   -- a Char is held as its code point
---     Represents PTR (Ptr a)           -- a pointer may be an address,
---     Represents STRING (Ptr String)   -- or, to zero-ended bytes, a string
+--     Repr PTR (Ptr a)                 -- a pointer may be an address,
+--     Repr STRING (Ptr String)         -- or, to zero-ended bytes, a string
 --     Objects (Ptr a)                  -- either way an object, its header
 --                                      -- saying which
 --
@@ -66,7 +66,7 @@ failing "Can't find an implementation for Only STRING Int"
   intAsString : Flat.Uniform Int -> Op Ordo (Obj STRING)
   intAsString v = Obj.valueObject v
 
-failing "Can't find an implementation for Represents STRING Int"
+failing "Can't find an implementation for Repr STRING Int"
   -- nor is a string's object an Int
   stringAsInt : Obj STRING -> Op Ordo (Flat.Uniform Int)
   stringAsInt o = Obj.objectValue o
@@ -76,12 +76,12 @@ failing "Can't find an implementation for FieldOf (List Char) listCons 0 (List C
   tailForHead : Con (List Char) listCons -> Op Ordo (Flat.Uniform (List Char))
   tailForHead c = field 0 c
 
-failing "Can't find an implementation for FieldOf (List Char) listCons 0 (List Char)"
+failing "Mismatch between: Char and List Char"
   -- a cell made with its fields the wrong way round
   swapped : Flat.Uniform Char -> Flat.Uniform (List Char) -> Op Ordo (Flat.Uniform (List Char))
   swapped ch rest = con2 {t = List Char} listCons rest ch
 
-failing "Can't find an implementation for IsCon (List Char) (declared 2)"
+failing "Can't find an implementation for ConOf (List Char) (declared 2) ?n"
   -- a list has no third constructor
   noSuchCon : Flat.Uniform (List Char) -> Op Ordo (Maybe (Con (List Char) (declared 2)))
   noSuchCon xs = asCon (declared 2) xs
@@ -118,7 +118,7 @@ failing "Can't find an implementation for Only PTR (Ptr String)"
   unread : Flat.Uniform (Ptr String) -> Op Ordo (Obj PTR)
   unread p = Obj.valueObject p
 
-failing "Can't find an implementation for Represents STRING (Ptr Int)"
+failing "Can't find an implementation for Repr STRING (Ptr Int)"
   -- only a pointer to bytes may be a string
   intPointer : Flat.Uniform (Ptr Int) -> Op Ordo (Maybe (Obj STRING))
   intPointer p = asKind STRING p

@@ -56,55 +56,55 @@ data Header : Enc -> Kind -> Type where
 ||| A part of a header, by kind: what `LoadPart` reads.
 public export
 data HeaderPart : Kind -> Type where
-  ConIdPart          : HeaderPart Kind.CON
-  ConArity       : HeaderPart Kind.CON
-  ClosureArity   : HeaderPart Kind.CLOSURE
-  ClosureFilled  : HeaderPart Kind.CLOSURE
-  StringAscii    : HeaderPart Kind.STRING
-  StringBytes    : HeaderPart Kind.STRING
-  StringChars    : HeaderPart Kind.STRING
-  BignumNegative : HeaderPart Kind.BIGNUM
-  BignumWords    : HeaderPart Kind.BIGNUM
-  ArrayElems     : HeaderPart Kind.ARRAY
-  StructRaws     : HeaderPart Kind.STRUCT
-  StructValues   : HeaderPart Kind.STRUCT
-  BufferBytes    : HeaderPart Kind.BUFFER
+  ConIdP          : HeaderPart Kind.CON
+  ConArityP       : HeaderPart Kind.CON
+  ClosureArityP   : HeaderPart Kind.CLOSURE
+  ClosureFilledP  : HeaderPart Kind.CLOSURE
+  StringAsciiP    : HeaderPart Kind.STRING
+  StringBytesP    : HeaderPart Kind.STRING
+  StringCharsP    : HeaderPart Kind.STRING
+  BignumNegativeP : HeaderPart Kind.BIGNUM
+  BignumWordsP    : HeaderPart Kind.BIGNUM
+  ArrayElemsP     : HeaderPart Kind.ARRAY
+  StructRawsP     : HeaderPart Kind.STRUCT
+  StructValuesP   : HeaderPart Kind.STRUCT
+  BufferBytesP    : HeaderPart Kind.BUFFER
 
 public export
 Show (HeaderPart kn) where
-  show ConIdPart = "ConIdPart"
-  show ConArity = "ConArity"
-  show ClosureArity = "ClosureArity"
-  show ClosureFilled = "ClosureFilled"
-  show StringAscii = "StringAscii"
-  show StringBytes = "StringBytes"
-  show StringChars = "StringChars"
-  show BignumNegative = "BignumNegative"
-  show BignumWords = "BignumWords"
-  show ArrayElems = "ArrayElems"
-  show StructRaws = "StructRaws"
-  show StructValues = "StructValues"
-  show BufferBytes = "BufferBytes"
+  show ConIdP = "ConIdP"
+  show ConArityP = "ConArityP"
+  show ClosureArityP = "ClosureArityP"
+  show ClosureFilledP = "ClosureFilledP"
+  show StringAsciiP = "StringAsciiP"
+  show StringBytesP = "StringBytesP"
+  show StringCharsP = "StringCharsP"
+  show BignumNegativeP = "BignumNegativeP"
+  show BignumWordsP = "BignumWordsP"
+  show ArrayElemsP = "ArrayElemsP"
+  show StructRawsP = "StructRawsP"
+  show StructValuesP = "StructValuesP"
+  show BufferBytesP = "BufferBytesP"
 
 ||| A header's parts with their values, in order.
 public export
 parts : {enc : Enc} -> {0 k : Kind} -> Header enc k -> List (HeaderPart k, Nat)
-parts (ConH c a) = [(ConIdPart, c), (ConArity, a)]
-parts (ClosureH a f) = [(ClosureArity, a), (ClosureFilled, f)]
+parts (ConH c a) = [(ConIdP, c), (ConArityP, a)]
+parts (ClosureH a f) = [(ClosureArityP, a), (ClosureFilledP, f)]
 parts (StringH p) = strings enc.string p
   where
     strings : (s : StringEnc) -> StringEnc.StringParts s -> List (HeaderPart Kind.STRING, Nat)
-    strings StringEnc.Utf8 q = [(StringAscii, if q.ascii then 1 else 0), (StringBytes, q.bytes)]
-    strings StringEnc.Utf32 q = [(StringChars, q.chars)]
+    strings StringEnc.Utf8 q = [(StringAsciiP, if q.ascii then 1 else 0), (StringBytesP, q.bytes)]
+    strings StringEnc.Utf32 q = [(StringCharsP, q.chars)]
 parts (BignumH p) = bignums enc.bignum p
   where
     bignums : (b : BignumEnc) -> BignumEnc.BignumParts b -> List (HeaderPart Kind.BIGNUM, Nat)
     bignums (MkBignumEnc _ BignumEnc.SignMagnitude) q =
-      [(BignumNegative, if q.negative then 1 else 0), (BignumWords, q.words)]
+      [(BignumNegativeP, if q.negative then 1 else 0), (BignumWordsP, q.words)]
     bignums (MkBignumEnc _ BignumEnc.TwosComplement) q = absurd q
-parts (ArrayH n) = [(ArrayElems, n)]
-parts (StructH r v) = [(StructRaws, r), (StructValues, v)]
-parts (BufferH n) = [(BufferBytes, n)]
+parts (ArrayH n) = [(ArrayElemsP, n)]
+parts (StructH r v) = [(StructRawsP, r), (StructValuesP, v)]
+parts (BufferH n) = [(BufferBytesP, n)]
 parts Int64H = []
 parts DoubleH = []
 parts IORefH = []
@@ -137,25 +137,25 @@ headed PtrH = ItIsJust
 ||| `idris_apply` all read it here. A kind's parts do not overlap.
 public export
 place : {0 k : Kind} -> HeaderPart k -> (Bits64, Bits64)
-place ConIdPart = HeapObj.Shape.place {s = HeapObj.Shape.VALUES} HeapObj.Shape.Part
-place ConArity = HeapObj.Shape.place HeapObj.Shape.Values
-place ClosureArity = HeapObj.Shape.place {s = HeapObj.Shape.MIXED} HeapObj.Shape.Part
-place ClosureFilled = HeapObj.Shape.place HeapObj.Shape.MixedValues
-place StringAscii = HeapObj.Shape.place {s = HeapObj.Shape.RAW} HeapObj.Shape.Part
-place StringBytes = HeapObj.Shape.place HeapObj.Shape.Bytes
+place ConIdP = HeapObj.Shape.place {s = HeapObj.Shape.VALUES} HeapObj.Shape.Part
+place ConArityP = HeapObj.Shape.place HeapObj.Shape.Values
+place ClosureArityP = HeapObj.Shape.place {s = HeapObj.Shape.MIXED} HeapObj.Shape.Part
+place ClosureFilledP = HeapObj.Shape.place HeapObj.Shape.MixedValues
+place StringAsciiP = HeapObj.Shape.place {s = HeapObj.Shape.RAW} HeapObj.Shape.Part
+place StringBytesP = HeapObj.Shape.place HeapObj.Shape.Bytes
 -- four bytes a character: the bytes' bits but for the low two
-place StringChars =
+place StringCharsP =
   (fst (HeapObj.Shape.place HeapObj.Shape.Bytes) + 2,
    snd (HeapObj.Shape.place HeapObj.Shape.Bytes) - 2)
-place BignumNegative = HeapObj.Shape.place {s = HeapObj.Shape.RAW} HeapObj.Shape.Part
+place BignumNegativeP = HeapObj.Shape.place {s = HeapObj.Shape.RAW} HeapObj.Shape.Part
 -- eight bytes a limb: the bytes' bits but for the low three
-place BignumWords =
+place BignumWordsP =
   (fst (HeapObj.Shape.place HeapObj.Shape.Bytes) + 3,
    snd (HeapObj.Shape.place HeapObj.Shape.Bytes) - 3)
-place ArrayElems = HeapObj.Shape.place HeapObj.Shape.Values
-place StructRaws = HeapObj.Shape.place HeapObj.Shape.Raws
-place StructValues = HeapObj.Shape.place HeapObj.Shape.MixedValues
-place BufferBytes = HeapObj.Shape.place HeapObj.Shape.Bytes
+place ArrayElemsP = HeapObj.Shape.place HeapObj.Shape.Values
+place StructRawsP = HeapObj.Shape.place HeapObj.Shape.Raws
+place StructValuesP = HeapObj.Shape.place HeapObj.Shape.MixedValues
+place BufferBytesP = HeapObj.Shape.place HeapObj.Shape.Bytes
 
 ||| The bits every header of the kind has: its code, and the counts of its
 ||| shape that the kind fixes. A header is this word plus its parts, each
@@ -219,7 +219,7 @@ allFit : Parts k -> Bool
 allFit ps = ps.fit
 
 ||| What adding one to a part adds to the header word: a closure with one
-||| more argument filled is its header plus `partUnit ClosureFilled`.
+||| more argument filled is its header plus `partUnit ClosureFilledP`.
 public export
 partUnit : {0 k : Kind} -> HeaderPart k -> Integer
 partUnit p = prim__shl_Integer 1 (cast (fst (place p)))
@@ -278,29 +278,29 @@ decodeHeader enc w = do
     bignum (MkEnc _ (MkBignumEnc _ BignumEnc.SignMagnitude) _) =
       Just
         (Kind.BIGNUM **
-         BignumH (BignumEnc.MkSignMagnitudeParts (get BignumNegative == 1) (get BignumWords)))
+         BignumH (BignumEnc.MkSignMagnitudeParts (get BignumNegativeP == 1) (get BignumWordsP)))
     bignum _ = Nothing
 
     -- A string's header, matched on the record so that the match gives the
     -- parts' type.
     string : (enc' : Enc) -> Maybe (k : Kind ** Header enc' k)
     string (MkEnc _ _ StringEnc.Utf8) =
-      Just (Kind.STRING ** StringH (StringEnc.MkUtf8Parts (get StringAscii == 1) (get StringBytes)))
+      Just (Kind.STRING ** StringH (StringEnc.MkUtf8Parts (get StringAsciiP == 1) (get StringBytesP)))
     string (MkEnc _ _ StringEnc.Utf32) =
-      Just (Kind.STRING ** StringH (StringEnc.MkUtf32Parts (get StringChars)))
+      Just (Kind.STRING ** StringH (StringEnc.MkUtf32Parts (get StringCharsP)))
 
     parse : Maybe Kind -> Maybe (k : Kind ** Header enc k)
-    parse (Just Kind.CON) = Just (Kind.CON ** ConH (get ConIdPart) (get ConArity))
+    parse (Just Kind.CON) = Just (Kind.CON ** ConH (get ConIdP) (get ConArityP))
     parse (Just Kind.CLOSURE) =
-      Just (Kind.CLOSURE ** ClosureH (get ClosureArity) (get ClosureFilled))
+      Just (Kind.CLOSURE ** ClosureH (get ClosureArityP) (get ClosureFilledP))
     parse (Just Kind.INT64) = Just (Kind.INT64 ** Int64H)
     parse (Just Kind.DOUBLE) = Just (Kind.DOUBLE ** DoubleH)
     parse (Just Kind.STRING) = string enc
     parse (Just Kind.BIGNUM) = bignum enc
     parse (Just Kind.IOREF) = Just (Kind.IOREF ** IORefH)
-    parse (Just Kind.ARRAY) = Just (Kind.ARRAY ** ArrayH (get ArrayElems))
-    parse (Just Kind.STRUCT) = Just (Kind.STRUCT ** StructH (get StructRaws) (get StructValues))
-    parse (Just Kind.BUFFER) = Just (Kind.BUFFER ** BufferH (get BufferBytes))
+    parse (Just Kind.ARRAY) = Just (Kind.ARRAY ** ArrayH (get ArrayElemsP))
+    parse (Just Kind.STRUCT) = Just (Kind.STRUCT ** StructH (get StructRawsP) (get StructValuesP))
+    parse (Just Kind.BUFFER) = Just (Kind.BUFFER ** BufferH (get BufferBytesP))
     parse (Just Kind.PTR) = Just (Kind.PTR ** PtrH)
     parse (Just Kind.CONT) = Nothing
     parse Nothing = Nothing

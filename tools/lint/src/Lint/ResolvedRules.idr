@@ -116,7 +116,7 @@ export
 resolvedRuleNames : List String
 resolvedRuleNames =
   ["import-unused", "import-indirect", "generic-export", "public-unneeded", "byte-addr-maker",
-   "sealed-allocator", "sealed-boundary", "sealed-values", "unqualified"]
+   "sealed-allocator", "sealed-boundary", "sealed-values", "unqualified", "repr-orphan"]
 
 ||| The rules whose suppression covers one use, the first after it: each
 ||| use is to say why it is sound by itself.
@@ -134,9 +134,59 @@ resolvedRules fms programNames r =
     [ importUnused m ++ importIndirect r m ++ genericExport m | m <- lintedModules fms r ]
   ++ Finding.joined
     [ publicUnneeded f ds ++ byteAddrMaker f ++ sealedAllocator f ds ms ++ sealedValues f ms
-      ++ unqualifiedNames f ds ms
+      ++ unqualifiedNames f ds ms ++ reprOrphan f ds
      | (f, ds, ms) <- fms ]
   where
+    ||| `repr-orphan`: a statement of the representation contract, an
+    ||| implementation of one of `Native.Types.Repr`'s relations, is made in
+    ||| the module that defines the type whose layout it states, which
+    ||| answers for it, or in `Repr` for a type no module of ours defines.
+    ||| The type is the one of ours the implementation's head names; the
+    ||| relations' other arguments, kinds and constructor ids, are of the
+    ||| contract's vocabulary (`Types.Kind`, `Types.ConId`, `Repr` itself).
+    ||| No suppression lifts it.
+    reprOrphan : Source.SourceFile -> List Rules.Declared -> List Finding
+    reprOrphan f ds = case find (\rm => rm.path == f.path) r.modules of
+      Nothing => []
+      Just rm => mapMaybe (orphan rm) ds
+      where
+        repr : String
+        repr = "Native.Types.Repr"
+
+        vocabulary : List String
+        vocabulary = [repr, "Native.Types.Kind", "Native.Types.ConId"]
+
+        here : String
+        here = show f.mod.moduleNS
+
+        -- the modules that define a name the module uses, by its root: the
+        -- module itself for one of its own, which its uses leave out
+        definers : Resolution.ResolvedModule -> String -> List String
+        definers rm n =
+          if any (\d => n `elem` d.defines) ds then [here]
+          else nub [ u.definer | u <- rm.uses, u.name == n ]
+
+        said : (iface, home : String) -> String
+        said iface home =
+          if home == repr
+            then "`" ++ iface ++ "` is stated for a type no module of ours defines, outside `"
+                 ++ repr ++ "`: state it there"
+            else "`" ++ iface ++ "` is stated for a type of `" ++ home
+                 ++ "` outside it: state it where the type is defined"
+
+        orphan : Resolution.ResolvedModule -> Rules.Declared -> Maybe Finding
+        orphan rm d = case d.implementing of
+          Nothing => Nothing
+          Just (iface, params) =>
+            if not (repr `elem` definers rm iface) then Nothing else
+              let owners = nub [ m | p <- params, m <- definers rm p, isPrefixOf "Native." m
+                                   , not (m `elem` vocabulary) ]
+                  home = case owners of
+                           (m :: _) => m
+                           [] => repr
+              in if home == here then Nothing
+                 else Just (Rules.finding f "repr-orphan" d.decl.fc iface (said iface home))
+
     ||| What each of our modules exports.
     ourExports : SortedMap String (List String)
     ourExports =

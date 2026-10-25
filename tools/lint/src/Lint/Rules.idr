@@ -840,7 +840,7 @@ fileRules f ms ds =
 ||| The rules no suppression lifts: what they report is to be changed.
 export
 unsuppressibleRules : List String
-unsuppressibleRules = ["cast", "sealed-boundary", "sealed-values", "of-name"]
+unsuppressibleRules = ["cast", "sealed-boundary", "sealed-values", "of-name", "repr-orphan"]
 
 ||| The names of the rules over the text, those over the graph included;
 ||| `ResolvedRules.resolvedRuleNames` are the others.

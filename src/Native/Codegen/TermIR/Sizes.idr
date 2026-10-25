@@ -16,10 +16,10 @@ import Native.Types.Kind as Types
 ||| The parts that alone decide an object's size.
 public export
 data Sizes : Types.Header.HeaderPart k -> Type where
-  SizesArray : Sizes Types.Header.ArrayElems
-  SizesString : Sizes Types.Header.StringBytes
-  SizesStringChars : Sizes Types.Header.StringChars
-  SizesBuffer : Sizes Types.Header.BufferBytes
+  SizesArray : Sizes Types.Header.ArrayElemsP
+  SizesString : Sizes Types.Header.StringBytesP
+  SizesStringChars : Sizes Types.Header.StringCharsP
+  SizesBuffer : Sizes Types.Header.BufferBytesP
 
 ||| What fills a new object of a run-time size, by the part that sizes it: a
 ||| `Val` for every element of an `ARRAY`, which the collector scans;
@@ -27,16 +27,16 @@ data Sizes : Types.Header.HeaderPart k -> Type where
 ||| sizes nothing (`Sizes` has no proof for it) takes nothing.
 public export
 Fill : (IRCommon.Ty enc -> Type) -> Types.Header.HeaderPart k -> Type
-Fill var Types.Header.ArrayElems = Opnd var IRCommon.Ty.Val
-Fill var Types.Header.StringAscii = ()
-Fill var Types.Header.StringBytes = ()
-Fill var Types.Header.StringChars = ()
-Fill var Types.Header.BufferBytes = ()
-Fill var Types.Header.ConIdPart = ()
-Fill var Types.Header.ConArity = ()
-Fill var Types.Header.ClosureArity = ()
-Fill var Types.Header.ClosureFilled = ()
-Fill var Types.Header.BignumNegative = ()
-Fill var Types.Header.BignumWords = ()
-Fill var Types.Header.StructRaws = ()
-Fill var Types.Header.StructValues = ()
+Fill var Types.Header.ArrayElemsP = Opnd var IRCommon.Ty.Val
+Fill var Types.Header.StringAsciiP = ()
+Fill var Types.Header.StringBytesP = ()
+Fill var Types.Header.StringCharsP = ()
+Fill var Types.Header.BufferBytesP = ()
+Fill var Types.Header.ConIdP = ()
+Fill var Types.Header.ConArityP = ()
+Fill var Types.Header.ClosureArityP = ()
+Fill var Types.Header.ClosureFilledP = ()
+Fill var Types.Header.BignumNegativeP = ()
+Fill var Types.Header.BignumWordsP = ()
+Fill var Types.Header.StructRawsP = ()
+Fill var Types.Header.StructValuesP = ()

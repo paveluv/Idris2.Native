@@ -48,7 +48,7 @@ look xs = do
   during <- get "collections"
   hp <- allocationPointer
   lim <- allocationLimit
-  pure (before, during, hp == lim && readPart StringBytes bytes == 262144)
+  pure (before, during, hp == lim && readPart StringBytesP bytes == 262144)
 
 %cg native flat Probe.probe
 ||| The count the next collection will make: the count after the

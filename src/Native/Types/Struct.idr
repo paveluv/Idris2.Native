@@ -16,6 +16,9 @@
 ||| it is).
 module Native.Types.Struct
 
+import Native.Types.Kind
+import Native.Types.Repr
+
 import Native.Field
 
 %default total
@@ -25,3 +28,7 @@ import Native.Field
 ||| values.
 export
 data Struct : (fields : List Field) -> Type where [external]
+
+||| A mutable record is a `STRUCT` always.
+public export
+Only Kind.STRUCT (Struct fs) where

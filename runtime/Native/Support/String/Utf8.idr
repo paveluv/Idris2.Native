@@ -57,10 +57,10 @@ import Native.Types.StringRoutine
 
 ||| The bytes a header counts, and whether it says they are all ASCII.
 headerBytes : (header : Bits64) -> Bits64
-headerBytes = Types.Header.readPart Types.Header.StringBytes
+headerBytes = Types.Header.readPart Types.Header.StringBytesP
 
 headerAscii : (header : Bits64) -> Bool
-headerAscii h = Types.Header.readPart Types.Header.StringAscii h == 1
+headerAscii h = Types.Header.readPart Types.Header.StringAsciiP h == 1
 
 ||| The object a string is: a string is always an object.
 export
@@ -74,8 +74,8 @@ stringHeader s = Obj.header s
 ||| A string's header parts: whether it is ASCII, and its bytes.
 partsFor : (ascii : Bool) -> (bytes : Bits64) -> Types.Header.Parts Types.Kind.STRING
 partsFor ascii bytes =
-  Types.Header.withPart Types.Header.StringAscii (if ascii then 1 else 0)
-    (Types.Header.withPart Types.Header.StringBytes bytes Types.Header.noParts)
+  Types.Header.withPart Types.Header.StringAsciiP (if ascii then 1 else 0)
+    (Types.Header.withPart Types.Header.StringBytesP bytes Types.Header.noParts)
 
 ||| A new string of `bytes`, its header saying it is ASCII until `finish`
 ||| sets it, its bytes still to be written, its padding zero.

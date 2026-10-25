@@ -595,7 +595,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                                   pure (LowerFlat.MkValue [Rep.Word] [t]) else do
             let lay = Flat.Exp.shapeLayout s
             q <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr Types.Kind.CON x)
-            i <- TermIR.Build.emit1 (TermIR.Instr.LoadPart Types.Header.ConIdPart q)
+            i <- TermIR.Build.emit1 (TermIR.Instr.LoadPart Types.Header.ConIdP q)
             rs <- TermIR.Build.joinPoint (LowerFlat.tys lay) $ \done => do
               let branches = mapMaybe (\c => case (c.ordinary, LowerFlat.placement cs c.name) of
                                                (Flat.Exp.AsObject cid, Just (_, p)) =>
@@ -776,7 +776,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
           Nothing => TermIR.Build.unsupported "a case on a type constructor that has no id"
           Just ids => do
             q <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr Types.Kind.CON (get env s))
-            i <- TermIR.Build.emit1 (TermIR.Instr.LoadPart Types.Header.ConIdPart q)
+            i <- TermIR.Build.emit1 (TermIR.Instr.LoadPart Types.Header.ConIdP q)
             cases env after t is k (map snd alts)
               (fromMaybe [ERROR "no case alternative matched"] dflt) $
               \codes, other => onKeys i (zip (map cast ids) codes) other
@@ -842,7 +842,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
           if p == arrayPrim "prim__newArray" then case list of
             [_, x, y, _] => do count <- wideWord (get env x)
                                a <- TermIR.Build.emit1
-                                 (TermIR.Instr.AllocSized Types.Header.ArrayElems count (get env y))
+                                 (TermIR.Instr.AllocSized Types.Header.ArrayElemsP count (get env y))
                                set env r <$> TermIR.Build.emit1 (TermIR.Instr.WidenPtr a)
             _ => notLowered
           else if p == arrayPrim "prim__arrayGet" then case list of

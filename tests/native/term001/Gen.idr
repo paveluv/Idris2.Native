@@ -229,7 +229,7 @@ addInteger x y = do
 sumFields : Opnd vr Val -> Build Run c False vr l (Opnd vr Val)
 sumFields p = do
   q <- emit1 (NarrowPtr CON p)
-  tag <- emit1 (LoadPart ConIdPart q)
+  tag <- emit1 (LoadPart ConIdP q)
   [r] <- joinPoint [Val] $ \exit =>
     switch tag
       [ (0, do a <- emit1 (Load Val (MkMem (AtPtr q) Nothing 8))
@@ -344,7 +344,7 @@ floatsBody = build $ \[a, b] => do
 ||| number of checks that fail.
 bytesBody : Closed Run (Direct [W64] False) False []
 bytesBody = build $ \[] => do
-  str <- emit1 (AllocSized StringBytes (W 8) ())
+  str <- emit1 (AllocSized StringBytesP (W 8) ())
   emit0 (StoreN Sub16 (MkMem (AtPtr str) (Just (W 0)) 8) (W 0x1FFFE))
   emit0 (StoreN Sub8 (MkMem (AtPtr str) (Just (W 3)) 8) (W 0x1FF))
   emit0 (StoreN Sub32 (MkMem (AtPtr str) (Just (W 1)) 8) (W 0x180000001))
@@ -378,8 +378,8 @@ mainBody = build $ \[] => do
   u <- addInteger three p                       -- p is a pointer: slowAdd, 6
   w <- addInteger t u                           -- 42
   two <- emit1 (StaticAddr twoRef)
-  id <- emit1 (LoadPart ConIdPart two)              -- 2
-  arr <- emit1 (AllocSized ArrayElems (W 3) (val 0))
+  id <- emit1 (LoadPart ConIdP two)              -- 2
+  arr <- emit1 (AllocSized ArrayElemsP (W 3) (val 0))
   idf <- emit1 (Tag id)
   idv <- emit1 (WidenFix idf)
   emit0 (Store Val (MkMem (AtPtr arr) (Just (W 1)) 8) idv)
@@ -465,7 +465,7 @@ coverBody = build $ \[] => do
   k <- emit1 (GetPinned K)
   emit0 (SetPinned K k)
   pid <- emit1 (SystemCall 0 [W 39])
-  str <- emit1 (AllocSized StringBytes (W 5) ())
+  str <- emit1 (AllocSized StringBytesP (W 5) ())
   hdr <- emit1 (LoadHeader str)
   i64 <- emit1 (AllocObj Int64H [W 5])
   d64 <- emit1 (AllocObj DoubleH [dbl])

@@ -38,14 +38,14 @@ bufferObject = Obj.valueObject
 objectSize : Obj Types.Kind.BUFFER -> Runtime.Ordo.Op Runtime.Ordo Bits64
 objectSize o = do
   h <- Obj.header o
-  Runtime.Ordo.pure (Types.Header.readPart Types.Header.BufferBytes h)
+  Runtime.Ordo.pure (Types.Header.readPart Types.Header.BufferBytesP h)
 
 ||| A new buffer of `n` bytes, all zero.
 export covering
 zeroBuffer : (n : Bits64) -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform Buffer)
 zeroBuffer n = do
   o <- Obj.allocate Types.Kind.BUFFER
-    (Types.Header.withPart Types.Header.BufferBytes n Types.Header.noParts)
+    (Types.Header.withPart Types.Header.BufferBytesP n Types.Header.noParts)
   Runtime.Memory.fillBytes (Obj.objectBytes o 0) n 0
   Obj.objectValue o
 

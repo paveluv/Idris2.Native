@@ -140,8 +140,8 @@ seedText enc window = startText enc.val window ++ haltText enc.val ++ unsupporte
         X86.Asm.MovRR X86.Asm.R11 X86.Asm.RSI                     -- closure, argument
       , X86.Asm.MovRM X86.Asm.RAX (X86.Asm.MBase X86.Asm.R10 (0 - pt))                   -- header
       -- the arity, then the arguments filled
-      , X86.Asm.MovRR X86.Asm.RCX X86.Asm.RAX ] ++ part X86.Asm.RCX Types.Header.ClosureArity ++
-      [ X86.Asm.MovRR X86.Asm.RDX X86.Asm.RAX ] ++ part X86.Asm.RDX Types.Header.ClosureFilled ++
+      , X86.Asm.MovRR X86.Asm.RCX X86.Asm.RAX ] ++ part X86.Asm.RCX Types.Header.ClosureArityP ++
+      [ X86.Asm.MovRR X86.Asm.RDX X86.Asm.RAX ] ++ part X86.Asm.RDX Types.Header.ClosureFilledP ++
       [ X86.Asm.MovRR X86.Asm.R8 X86.Asm.RDX,
         X86.Asm.AluI X86.Asm.ADD X86.Asm.R8 1                      -- arguments after this one
       , X86.Asm.Alu X86.Asm.CMP X86.Asm.R8 X86.Asm.RCX, X86.Asm.Jcc X86.Asm.B extend
@@ -180,8 +180,8 @@ seedText enc window = startText enc.val window ++ haltText enc.val ++ unsupporte
       , X86.Asm.MovRR X86.Asm.RDI X86.Asm.R15, X86.Asm.MovRR X86.Asm.R15 X86.Asm.RSI
       , X86.Asm.Lbl initClosure                                  -- rdi: the new closure
       , X86.Asm.MovRM X86.Asm.RAX (X86.Asm.MBase X86.Asm.R10 (0 - pt)),
-        X86.Asm.MovRR X86.Asm.RDX X86.Asm.RAX ] ++ part X86.Asm.RDX Types.Header.ClosureFilled ++
-      [ X86.Asm.MovRI X86.Asm.RSI (Types.Header.partUnit Types.Header.ClosureFilled),
+        X86.Asm.MovRR X86.Asm.RDX X86.Asm.RAX ] ++ part X86.Asm.RDX Types.Header.ClosureFilledP ++
+      [ X86.Asm.MovRI X86.Asm.RSI (Types.Header.partUnit Types.Header.ClosureFilledP),
         X86.Asm.Alu X86.Asm.ADD X86.Asm.RAX X86.Asm.RSI,
         X86.Asm.MovMR (X86.Asm.MBase X86.Asm.RDI 0) X86.Asm.RAX   -- one more filled
       , X86.Asm.MovRM X86.Asm.RAX (X86.Asm.MBase X86.Asm.R10 (8 - pt)),

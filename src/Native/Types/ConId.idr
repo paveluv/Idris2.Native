@@ -39,9 +39,9 @@ declared n = MkConId n
 ||| The id a constructor's header holds.
 export %inline
 fromHeader : (header : Bits64) -> ConId
-fromHeader h = MkConId (Header.readPart Header.ConIdPart h)
+fromHeader h = MkConId (Header.readPart Header.ConIdP h)
 
 ||| A constructor's header parts with its id.
 export %inline
 withConstructor : ConId -> Header.Parts Kind.CON -> Header.Parts Kind.CON
-withConstructor c = Header.withPart Header.ConIdPart c.word
+withConstructor c = Header.withPart Header.ConIdP c.word

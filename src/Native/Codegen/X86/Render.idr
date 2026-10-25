@@ -1001,14 +1001,14 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                   -- The object's bytes, from the count in `r`: the header word, then the
                   -- elements as words, or the bytes rounded up to words.
                   partSize : Types.Header.HeaderPart k' -> Render enc (Asm.Reg64 -> List Asm.Instr)
-                  partSize Types.Header.ArrayElems =
+                  partSize Types.Header.ArrayElemsP =
                     pure (\r => [Asm.ShiftI Asm.SHL r 3, Asm.AluI Asm.ADD r 8])
                   -- a string made by its count is not known to be ASCII: its bit is 0,
                   -- which only costs the fast paths
-                  partSize Types.Header.StringBytes = pure bytesSize
-                  partSize Types.Header.StringChars =
+                  partSize Types.Header.StringBytesP = pure bytesSize
+                  partSize Types.Header.StringCharsP =
                     pure (\r => Asm.ShiftI Asm.SHL r 2 :: bytesSize r)
-                  partSize Types.Header.BufferBytes = pure bytesSize
+                  partSize Types.Header.BufferBytesP = pure bytesSize
                   partSize q = failWith ("AllocSized cannot size an object by " ++ show q)
 
                   ||| Allocate an object whose size depends on `count`, as `allocate` does a

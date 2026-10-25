@@ -8,7 +8,7 @@
 ||| Nothing here takes a value for what it is not: each conversion asks the
 ||| evidence of the representation contract (`Types.Repr`). A value
 ||| becomes an object of a kind that holds every value of its type
-||| (`Only`), an object a value of a type the kind holds (`Represents`); a
+||| (`Only`), an object a value of a type the kind holds (`Repr`); a
 ||| constructor of a data type is read through a view of its fields
 ||| (`asCon`, `field`, by `ConOf` and `FieldOf`) and made whole (`con0`,
 ||| `con2`); a fixnum is read and made as the integer it stands for
@@ -132,7 +132,7 @@ valueObject v = do
 
 ||| The value an object is, of a type its kind holds values of.
 export %inline
-objectValue : {auto 0 rep : Types.Repr.Represents k a} -> Obj k ->
+objectValue : {auto 0 rep : Types.Repr k a} -> Obj k ->
               Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform a)
 objectValue (MkObj _ a) = Runtime.Memory.objectValue a
 
@@ -141,7 +141,7 @@ objectValue (MkObj _ a) = Runtime.Memory.objectValue a
 ||| header's kind code (`Types.Kind.headerCode`), compared with `k`'s.
 export %inline
 asKind : (k : Types.Kind) -> {auto 0 objs : Types.Repr.Objects a} ->
-         {auto 0 rep : Types.Repr.Represents k a} ->
+         {auto 0 rep : Types.Repr k a} ->
          {auto 0 shaped : Types.Kind.shape k = Just s} -> Flat.Uniform a ->
          Runtime.Ordo.Op Runtime.Ordo (Maybe (Obj k))
 asKind k v = do
@@ -217,7 +217,7 @@ data Con : (0 t : Type) -> (0 c : Types.ConId) -> Type where
 ||| constructor id.
 export %inline
 asCon : (c : Types.ConId) -> {auto 0 only : Types.Repr.Only Types.Kind.CON t} ->
-        {auto 0 con : Types.Repr.IsCon t c} ->
+        {0 n : Nat} -> {auto 0 con : Types.Repr.ConOf t c n} ->
         Flat.Uniform t -> Runtime.Ordo.Op Runtime.Ordo (Maybe (Con t c))
 asCon c v = do
   a <- Runtime.Memory.valueObject {s = HeapObj.Shape.VALUES} v
@@ -255,7 +255,7 @@ con2 : (c : Types.ConId) -> {auto 0 only : Types.Repr.Only Types.Kind.CON t} ->
 con2 c x y = do
   h <- checked Types.Kind.CON
          (Types.ConId.withConstructor c
-           (Types.Header.withPart Types.Header.ConArity 2 Types.Header.noParts))
+           (Types.Header.withPart Types.Header.ConArityP 2 Types.Header.noParts))
   wx <- Runtime.Memory.valueWord x
   wy <- Runtime.Memory.valueWord y
   a <- Runtime.Space.allocate 24
@@ -280,8 +280,8 @@ beginStruct : (raws, values : Bits64) -> (0 counts : Field.Counted fs raws value
               Runtime.Ordo.Op Runtime.Ordo (Building fs 0)
 beginStruct raws values _ = do
   h <- checked Types.Kind.STRUCT
-         (Types.Header.withPart Types.Header.StructRaws raws
-           (Types.Header.withPart Types.Header.StructValues values Types.Header.noParts))
+         (Types.Header.withPart Types.Header.StructRawsP raws
+           (Types.Header.withPart Types.Header.StructValuesP values Types.Header.noParts))
   let words = HeapObj.Shape.headerObjectWords h
   a <- Runtime.Space.allocate (8 * words)
   let o = Runtime.Memory.objectAt {s = HeapObj.Shape.MIXED} a

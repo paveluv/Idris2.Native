@@ -1,15 +1,24 @@
-||| What ordinary code holds the values of a type as (`Represents`, `Only`,
-||| `ConOf`, `FieldOf`, `Immediate`): the representation contract between
-||| the code generator, which lays values out, and the runtime's support
-||| tier, which reads and makes them.
+||| What ordinary code holds the values of a type as (`Only`, `Repr`,
+||| `Objects`, `Handles`, `ConOf`, `FieldOf`, `Fixnums`, `Immediate`): the
+||| representation contract between the code generator, which lays values
+||| out, and the runtime's support tier, which reads and makes them.
 |||
-||| Each constructor of these relations is a statement of the layout, and
-||| the only place it is made: the support tier converts between a value
-||| and an object, reads a field, or makes a value, only with the evidence
-||| of one (`Native.Support.Obj` takes it), so that no code takes a value
-||| for what it is not. A statement the code generator does not keep would
-||| be a wrong layout, which the tests of the primitive that uses it find:
-||| the statements are the trusted part, few and in one place.
+||| Each relation is an interface with no methods, and each of its
+||| implementations a statement of a layout: the support tier converts
+||| between a value and an object, reads a field, or makes a value, only
+||| with the evidence of one (`Native.Support.Obj` takes it, erased), so that
+||| no code takes a value for what it is not. A statement the code
+||| generator does not keep would be a wrong layout, which the tests of the
+||| primitive that uses it find: the statements are the trusted part, few,
+||| and each in one place.
+|||
+||| The relations are open: a type's statements are made in the module that
+||| defines the type, which answers for them, and here only for the types
+||| of the libraries Idris ships, which no module of ours defines
+||| (`String`, `List`, `Buffer`, the pointers, `Integer`, `Char`). So a
+||| package that lays a type of its own over a kind states it with the type,
+||| and neither this module nor the code generator changes. The linter
+||| checks the place of each statement (`repr-orphan`).
 |||
 ||| Part of the type layer, the modules of `Types`, which the code generator
 ||| and the runtime's support tier read.
@@ -17,58 +26,76 @@ module Native.Types.Repr
 
 import Native.Types.ConId
 import Native.Types.Kind
-import Native.Types.Struct
 
 import Data.Buffer
-import Native.Field
 
 %default total
 
 ||| Every value of `a` is an object of kind `k`: a value of `a` can be taken
-||| for one. A foreign pointer is not one of these, as it is of two kinds
-||| (`Represents`).
+||| for one. The type decides the kind. A foreign pointer is not one of
+||| these, as it is of two kinds (`Repr`).
 public export
-data Only : Kind -> Type -> Type where
-  ||| A string is a `STRING` always, the empty one too.
-  AString : Only Kind.STRING String
-  ||| A list is a `CON` always: `[]` a static object of no fields.
-  AList : Only Kind.CON (List a)
-  ||| A buffer of `Data.Buffer` is a `BUFFER` always, the empty one too.
-  ABuffer : Only Kind.BUFFER Buffer
-  ||| A mutable record is a `STRUCT` always.
-  AStruct : Only Kind.STRUCT (Struct fs)
+interface Only (0 k : Kind) (0 a : Type) | a where
+
+||| A string is a `STRING` always, the empty one too.
+public export
+Only Kind.STRING String where
+
+||| A list is a `CON` always: `[]` a static object of no fields.
+public export
+Only Kind.CON (List a) where
+
+||| A buffer of `Data.Buffer` is a `BUFFER` always, the empty one too.
+public export
+Only Kind.BUFFER Buffer where
 
 ||| An object of kind `k` is a value of `a`: one can be given as a value of
 ||| `a`.
 public export
-data Represents : Kind -> Type -> Type where
-  ||| A kind that holds every value of a type holds values of it.
-  Sole : Only k a -> Represents k a
-  ||| A foreign pointer is an address outside the heap, as a `PTR`, the null
-  ||| one too;
-  AnAddress : Represents Kind.PTR (Ptr a)
-  AnyAddress : Represents Kind.PTR AnyPtr
-  ||| or, where `base` asks the runtime for a pointer to zero-ended bytes and
-  ||| reads it only through the runtime, the string itself
-  ||| (`Support.Ptr`), as an `AnyPtr` too, which `free` takes.
-  AHeapString : Represents Kind.STRING (Ptr String)
-  AnyHeapString : Represents Kind.STRING AnyPtr
-  ||| An `Integer` outside the fixnum range is a `BIGNUM`, under an encoding
-  ||| with fixnums (`Fixnums`).
-  ABignum : Represents Kind.BIGNUM Integer
+interface Repr (0 k : Kind) (0 a : Type) where
 
-||| Every value of `a` is an object whose header says its kind, or for a
-||| type of `Handles` a handle: what a value of a type of several kinds is
-||| read by (`Support.Obj.asKind`), which takes a handle for no object.
+||| A kind that holds every value of a type holds values of it.
 public export
-data Objects : Type -> Type where
-  ||| A type whose values are all objects of one kind.
-  OfOne : Only k a -> Objects a
-  ||| A foreign pointer, of either kind.
-  Pointers : Objects (Ptr a)
-  AnyPointers : Objects AnyPtr
-  ||| An `Integer`, a `BIGNUM` where it is no fixnum (`Fixnums`).
-  Integers : Objects Integer
+Only k a => Repr k a where
+
+||| A foreign pointer is an address outside the heap, as a `PTR`, the null
+||| one too;
+public export
+Repr Kind.PTR (Ptr a) where
+
+public export
+Repr Kind.PTR AnyPtr where
+
+||| or, where `base` asks the runtime for a pointer to zero-ended bytes and
+||| reads it only through the runtime, the string itself (`Support.Ptr`),
+||| as an `AnyPtr` too, which `free` takes.
+public export
+Repr Kind.STRING (Ptr String) where
+
+public export
+Repr Kind.STRING AnyPtr where
+
+||| An `Integer` outside the fixnum range is a `BIGNUM`, under an encoding
+||| with fixnums (`Fixnums`).
+public export
+Repr Kind.BIGNUM Integer where
+
+||| A value of `a` is an object of one of several kinds, whose header says
+||| which, or for a type of `Handles` a handle: what a value of such a type
+||| is read by (`Support.Obj.asKind`), which takes a handle for no object.
+public export
+interface Objects (0 a : Type) where
+
+||| A foreign pointer, of either type, is a `PTR` or a `STRING`.
+public export
+Objects (Ptr a) where
+
+public export
+Objects AnyPtr where
+
+||| An `Integer` is a `BIGNUM` where it is no fixnum (`Fixnums`).
+public export
+Objects Integer where
 
 ||| A value of `a` may be a fixnum: a number the system tier gives for a
 ||| value of its own (`Native.System`), a handle, which the libraries hold
@@ -76,9 +103,13 @@ data Objects : Type -> Type where
 ||| pointer may be one, of either type, as the prelude turns one into the
 ||| other.
 public export
-data Handles : Type -> Type where
-  AnyHandle : Handles AnyPtr
-  AHandle : Handles (Ptr a)
+interface Handles (0 a : Type) where
+
+public export
+Handles AnyPtr where
+
+public export
+Handles (Ptr a) where
 
 ||| The ids of `List`'s constructors, `[]` then `(::)`, as it declares them.
 export
@@ -88,37 +119,46 @@ listCons = ConId.declared 1
 
 ||| Constructor `c` of the data type `t` is a `CON` of the id `c` and `n`
 ||| fields: a count no code computes with, only the statement's, as the
-||| code generator's `ConH` has it. The ids are qualified in the constructors' types, here and
-||| below: there a bare `listCons` would be a new variable, and the
-||| statement one of every id.
+||| code generator's `ConH` has it. The type and the id decide the count,
+||| which a search finds. The ids are qualified in the statements: there a
+||| bare `listCons` would be a new variable, and the statement one of
+||| every id.
 public export
-data ConOf : (t : Type) -> (c : ConId) -> (n : Nat) -> Type where
-  ListNil : ConOf (List a) Repr.listNil 0
-  ListCons : ConOf (List a) Repr.listCons 2
+interface ConOf (0 t : Type) (0 c : ConId) (0 n : Nat) | t, c where
 
-||| `c` is a constructor of `t`, of some number of fields: what a view of a
-||| value as one of its constructors asks.
 public export
-data IsCon : (t : Type) -> (c : ConId) -> Type where
-  HasArity : {0 n : Nat} -> ConOf t c n -> IsCon t c
+ConOf (List a) Repr.listNil 0 where
+
+public export
+ConOf (List a) Repr.listCons 2 where
 
 ||| Field `i` of constructor `c` of `t` holds a value of `f`.
 public export
-data FieldOf : (t : Type) -> (c : ConId) -> (i : Bits64) -> (f : Type) -> Type where
-  ConsHead : FieldOf (List a) Repr.listCons 0 a
-  ConsTail : FieldOf (List a) Repr.listCons 1 (List a)
+interface FieldOf (0 t : Type) (0 c : ConId) (0 i : Bits64) (0 f : Type) | t, c, i where
+
+||| The head of a `(::)`;
+public export
+FieldOf (List a) Repr.listCons 0 a where
+
+||| its tail.
+public export
+FieldOf (List a) Repr.listCons 1 (List a) where
 
 ||| A value of `t` may be a fixnum, the signed integer it stands for: an
 ||| `Integer` is one exactly where it is in the fixnum range, under an
-||| encoding with fixnums, and a `BIGNUM` otherwise (`ABignum`), never the
-||| other way round, so that one integer has one word.
+||| encoding with fixnums, and a `BIGNUM` otherwise, never the other way
+||| round, so that one integer has one word.
 public export
-data Fixnums : Type -> Type where
-  SmallInteger : Fixnums Integer
+interface Fixnums (0 t : Type) where
+
+public export
+Fixnums Integer where
 
 ||| Ordinary code holds every value of `t` as a fixnum, the integer it
 ||| stands for: never an object.
 public export
-data Immediate : Type -> Type where
-  ||| A character is its code point.
-  AChar : Immediate Char
+interface Immediate (0 t : Type) where
+
+||| A character is its code point.
+public export
+Immediate Char where

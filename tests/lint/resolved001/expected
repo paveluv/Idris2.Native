@@ -2,6 +2,8 @@
 ./Gallery.idr:5:1 import-indirect: `Shape` is used (`Shape`, `Circle`) only through `Canvas`: import it
 ./Mode.idr:9:1 public-unneeded: `Mode`'s constructors are used only in its module: `export` keeps them there
 ./Mode.idr:20:1 public-unneeded: no other module uses `slower`: its body need not be public
+./Native/Shop/Crate.idr:17:1 repr-orphan: `Immediate` is stated for a type no module of ours defines, outside `Native.Types.Repr`: state it there
+./Native/Shop/Ledger.idr:11:1 repr-orphan: `Handles` is stated for a type of `Native.Shop.Crate` outside it: state it where the type is defined
 ./Native/Support/Lease.idr:34:58 sealed-allocator: `releaseBlock` leaves the linear blocks of `Native.Runtime.Alloc.Block`: say why it is sound
 ./Native/Support/Lease.idr:47:15 sealed-allocator: `adoptBlock` leaves the linear blocks of `Native.Runtime.Alloc.Block`: say why it is sound
 ./Native/Support/Lease.idr:51:32 sealed-allocator: `adoptBlock` leaves the linear blocks of `Native.Runtime.Alloc.Block`: say why it is sound
@@ -17,8 +19,8 @@
 ./Values.idr:16:14 sealed-values: `objectValue` takes a value for what the caller says: convert through `Native.Support.Obj`, with the representation contract's evidence
 ./Viewer.idr:7:1 import-indirect: `Data.Fin` is used (`Fin`, `FZ`) only through `Data.Vect`: import it
 ./Viewer.idr:8:1 import-indirect: `Shape` is used (`Square`, `Shape`) only through `Shapes`: import it
-    directness     90  modules used that are imported directly: 37 of 41
-    leanness       87  private imports needed: 20 of 23
+    directness     91  modules used that are imported directly: 40 of 44
+    leanness       89  private imports needed: 24 of 27
   efficiency       40
     accumulation   40  accumulations in a snoc-list or a builder: 2 of 5
           1  JoinAll.flatten: 0 grown at an end with `++`, 1 joined by a left fold

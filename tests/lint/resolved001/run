@@ -10,7 +10,9 @@
 # `Page` makes a byte address from a word; `Native.Support.Lease` leaves
 # the allocator's linear blocks, at base's foreign surface and outside it;
 # `Values` converts a value through the core's conversion, not the support
-# tier's door; `Plain` writes names of our modules bare.
+# tier's door; `Plain` writes names of our modules bare; `Native.Shop.Crate`
+# states a layout for a type of `base` outside the contract, and
+# `Native.Shop.Ledger` one for `Crate` outside `Crate`'s module.
 # Then the score's components that the resolution measures, and the
 # accumulation with what costs it: `JoinAll` accumulates lists in each
 # shape, the superlinear ones counted against it.
