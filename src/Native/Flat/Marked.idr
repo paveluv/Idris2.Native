@@ -167,6 +167,10 @@ markedForms primitives load
 ||| the loading, as a module loaded may define one (`Mul128`): before it, a
 ||| primitive's meaning-body would be translated for it. So a module imports
 ||| only what it uses.
+|||
+||| A module that defines no flat function has nothing to check, and the
+||| check loads nothing for it: most modules, and every module of a program
+||| that marks none.
 export
 checkModule : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} ->
               (primitives : Ref Ctxt Defs -> Core (List Name)) -> (sourceFile : String) -> Core ()
@@ -174,32 +178,47 @@ checkModule primitives sourceFile
     = do here <- ctxtPathToNS sourceFile
          marked <- Translate.flatNames !(getDirectives markingCG)
          mine <- filterM (definedIn here) (fst marked)
-         before <- get Ctxt
-         loadAll before
-         -- the backend's primitives, those of the modules loaded too
-         prims <- primitives c
-         (_, errs) <- Translate.flatForms prims mine
-         loaded <- get Ctxt
-         put Ctxt ({ gamma := loaded.gamma } before)
-         unless (null errs) $ setSession ({ directives $= (reportedMark ::) } !getSession)
-         report errs
+         if null mine then pure () else do
+           before <- get Ctxt
+           loadAll before
+           -- the backend's primitives, those of the modules loaded too
+           prims <- primitives c
+           (_, errs) <- Translate.flatForms prims mine
+           loaded <- get Ctxt
+           put Ctxt ({ gamma := loaded.gamma } before)
+           unless (null errs) $ setSession ({ directives $= (reportedMark ::) } !getSession)
+           report errs
   where
     ||| The modules a module's TTC says it imports, each with whether it
     ||| re-exports it and the namespace it imports it as: read from the TTC's
     ||| start, as Idris's `readTTCFile` reads it, and as it reads it only in
     ||| full for a module not yet loaded. The fields before the imports are
     ||| the pinned Idris's TTC's, in its order.
+    |||
+    ||| Each field is read by a function of its own type: Idris finds a `TTC`
+    ||| instance slowly, the more so for a type it must infer from the
+    ||| statements around the read, as for `the (Core T) fromBuf` in a `do`
+    ||| block, which took four times as long.
     importsIn : String -> Core (List (ModuleIdent, Namespace))
     importsIn fname
         = do Right buffer <- coreLift (readFromFile fname)
                | Left _ => pure []
              b <- newRef Bin buffer
              catch (do ignore (getHashes fname b)
-                       ignore (the (Core (List (Namespace, Int))) fromBuf)
-                       ignore (the (Core (List (CG, String, List String))) fromBuf)
-                       ims <- the (Core (List (ModuleIdent, Bool, Namespace))) fromBuf
+                       ignore importHashes
+                       ignore incData
+                       ims <- importEntries
                        pure (map (\(m, _, as) => (m, as)) ims))
                    (\_ => pure [])
+      where
+        importHashes : Ref Bin Binary => Core (List (Namespace, Int))
+        importHashes = fromBuf
+
+        incData : Ref Bin Binary => Core (List (CG, String, List String))
+        incData = fromBuf
+
+        importEntries : Ref Bin Binary => Core (List (ModuleIdent, Bool, Namespace))
+        importEntries = fromBuf
 
     ||| Every module the module imports, and theirs, loaded, as a program's
     ||| compilation loads them: the import graph walked from the module's

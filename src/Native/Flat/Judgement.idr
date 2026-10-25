@@ -29,6 +29,7 @@
 ||| layouts in turn, sharing no register between constructors.
 module Native.Flat.Judgement
 
+import Native.Flat.Definition
 import Native.Flat.Exp
 import Native.Flat.Problem
 
@@ -184,8 +185,8 @@ mutual
           = do defs <- get Ctxt
                Just gdef <- lookupCtxtExact n (gamma defs)
                  | Nothing => pure (Rejected Problem.StuckType)
-               let TCon _ _ _ tyflags _ (Just cons) _ = definition gdef
-                 | _ => pure (Rejected Problem.StuckType)
+               Just (tyflags, cons) <- pure (Definition.dataDeclaration (definition gdef))
+                 | Nothing => pure (Rejected Problem.StuckType)
                tn <- toFullNames n
                cdefs <- catMaybes <$> traverse (\cn => lookupCtxtExact cn (gamma defs)) cons
                if natural cdefs then pure (Rejected (Problem.NaturalType tn)) else
@@ -234,8 +235,8 @@ mutual
                   = do defs <- get Ctxt
                        Just gdef <- lookupCtxtExact n (gamma defs)
                          | Nothing => pure []
-                       let TCon _ _ _ _ _ (Just cons) _ = definition gdef
-                         | _ => pure []
+                       Just (_, cons) <- pure (Definition.dataDeclaration (definition gdef))
+                         | Nothing => pure []
                        cdefs <- catMaybes <$> traverse (\cn => lookupCtxtExact cn (gamma defs)) cons
                        tys <- Data.Builder.joinMap id <$> traverse (fieldTypes []) cdefs
                        let refs = Data.Builder.joinMap (\t => keys (getRefs (UN Underscore) t)) tys
@@ -298,7 +299,7 @@ newtypeOverFunction (NTCon _ n _ args)
     = do defs <- get Ctxt
          Just gdef <- lookupCtxtExact n (gamma defs)
            | Nothing => pure Nothing
-         let TCon _ _ _ _ _ (Just [cn]) _ = definition gdef
+         Just (_, [cn]) <- pure (Definition.dataDeclaration (definition gdef))
            | _ => pure Nothing
          Just cdef <- lookupCtxtExact cn (gamma defs)
            | Nothing => pure Nothing

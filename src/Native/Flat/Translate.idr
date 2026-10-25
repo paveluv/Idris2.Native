@@ -59,6 +59,7 @@
 ||| that asked for them.
 module Native.Flat.Translate
 
+import Native.Flat.Definition
 import Native.Flat.Exp
 import Native.Flat.Judgement
 import Native.Flat.Problem
@@ -760,8 +761,8 @@ root n
                 = do defs <- get Ctxt
                      Just gdef <- lookupCtxtExact tn (gamma defs)
                        | Nothing => pure Nothing
-                     pure $ case definition gdef of
-                                 TCon _ _ _ _ _ (Just (_ :: _ :: _)) _ => Just tag
+                     pure $ case Definition.dataDeclaration (definition gdef) of
+                                 Just (_, _ :: _ :: _) => Just tag
                                  _ => Nothing
             sumTag _ _ = pure Nothing
 
@@ -1720,8 +1721,8 @@ shape sk
                defs <- get Ctxt
                Just gdef <- lookupCtxtExact n (gamma defs)
                  | Nothing => pure Nothing
-               let TCon _ _ _ _ _ (Just cons) _ = definition gdef
-                 | _ => pure Nothing
+               Just (_, cons) <- pure (Definition.dataDeclaration (definition gdef))
+                 | Nothing => pure Nothing
                cs <- traverse (conShape args) cons
                pure (Exp.DataShape <$> the (Maybe (List Exp.ConShape)) (sequence cs))
       typeShape _ = pure Nothing

@@ -85,6 +85,7 @@ modules =
     Native.Field,
     Native.Flat.Check,
     Native.Flat.ConstType,
+    Native.Flat.Definition,
     Native.Flat.Exp,
     Native.Flat.Judgement,
     Native.Flat.Marked,
