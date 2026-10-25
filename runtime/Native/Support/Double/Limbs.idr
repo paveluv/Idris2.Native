@@ -27,7 +27,7 @@ import Native.Types.Header
 ||| A natural number in limbs.
 public export
 Limbs : Type
-Limbs = Obj Types.Kind.BUFFER
+Limbs = Obj Types.Kind.BYTES
 
 ||| The limbs a number may have: 96, 6144 bits, more than the decision of
 ||| any decimal's double takes (some 3300).
@@ -42,15 +42,15 @@ setCount : Limbs -> Bits64 -> Runtime.Ordo.Op Runtime.Ordo ()
 setCount x n = Obj.store64 x 0 n
 
 ||| The number's limbs, after its count.
-run : Limbs -> Bignum.Run Types.Kind.BUFFER
+run : Limbs -> Bignum.Run Types.Kind.BYTES
 run x = Bignum.MkRun x 8
 
 ||| A new number, zero.
 export
 newLimbs : Runtime.Ordo.Op Runtime.Ordo Limbs
 newLimbs = do
-  x <- Obj.allocate Types.Kind.BUFFER
-    (Types.Header.withPart Types.Header.BufferBytesP (8 * (1 + capacity)) Types.Header.noParts)
+  x <- Obj.allocate Types.Kind.BYTES
+    (Types.Header.withPart Types.Header.BytesLengthP (8 * (1 + capacity)) Types.Header.noParts)
   setCount x 0
   Runtime.Ordo.pure x
 

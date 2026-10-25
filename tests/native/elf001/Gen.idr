@@ -10,8 +10,8 @@
 module Gen
 
 import Data.SortedMap
-import Native.Codegen.Bytes
 import Native.Codegen.ELF
+import Native.Codegen.LittleEndian
 import Native.Codegen.Platform
 import Native.Codegen.X86.Asm
 import Native.Codegen.X86.Encode

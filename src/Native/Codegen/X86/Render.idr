@@ -66,7 +66,6 @@ import Data.Maybe
 import Data.SortedMap
 import Data.Zippable
 import Native.Area
-import Native.Codegen.Bytes
 import Native.Codegen.IRCommon.Conv as IRCommon
 import Native.Codegen.IRCommon.Op
 import Native.Codegen.IRCommon.Pinned as IRCommon
@@ -76,6 +75,7 @@ import Native.Codegen.Linkage.Realised as Linkage
 import Native.Codegen.Linkage.ResumePoint
 import Native.Codegen.Linkage.Routine
 import Native.Codegen.Linkage.Sym as Linkage
+import Native.Codegen.LittleEndian
 import Native.Codegen.LocatedIR.Block as LocatedIR
 import Native.Codegen.LocatedIR.Cont as LocatedIR
 import Native.Codegen.LocatedIR.Function as LocatedIR
@@ -196,11 +196,11 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
         fields <- traverse field s.fields
         pure
           (toList
-            (Data.Builder.piece (Bytes.le64 (cast (Types.Header.encodeHeader s.header)))
+            (Data.Builder.piece (LittleEndian.le64 (cast (Types.Header.encodeHeader s.header)))
              <+> concatMap Data.Builder.piece fields))
         where
           field : LocatedIR.Static.SField -> Render enc (List Bits8)
-          field (LocatedIR.Static.SWord w) = pure (Bytes.le64 (cast w))
+          field (LocatedIR.Static.SWord w) = pure (LittleEndian.le64 (cast w))
           field _ =
             failWith ("the rendering does not support code or static references in statics yet")
 
@@ -886,7 +886,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                 -- A double's slot holds its bits, so a constant is a word and a negation
                 -- flips the sign bit.
                 LocatedIR.Instr.FConst d x => do
-                                  emit (Asm.MovRI Asm.RAX (Bytes.doubleBits x))
+                                  emit (Asm.MovRI Asm.RAX (LittleEndian.doubleBits x))
                                   store d Asm.RAX
                 LocatedIR.Instr.FNeg d x => do
                                   loadReg Asm.RAX x
@@ -1008,7 +1008,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                   partSize Types.Header.StringBytesP = pure bytesSize
                   partSize Types.Header.StringCharsP =
                     pure (\r => Asm.ShiftI Asm.SHL r 2 :: bytesSize r)
-                  partSize Types.Header.BufferBytesP = pure bytesSize
+                  partSize Types.Header.BytesLengthP = pure bytesSize
                   partSize q = failWith ("AllocSized cannot size an object by " ++ show q)
 
                   ||| Allocate an object whose size depends on `count`, as `allocate` does a
@@ -1151,15 +1151,16 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                           else emits [Asm.MovRI Asm.RCX v, Asm.Alu op Asm.RAX Asm.RCX]
                       aluTwice op y = do loadTwice Asm.RCX y; emit (Asm.Alu op Asm.RAX Asm.RCX)
 
-                  ||| The kinds whose objects are written after they are made. They are
-                  ||| allocated by a call to `idris_alloc_mutable`, never by the inline bump,
-                  ||| so that a collector with a nursery can keep them out of it, and then a
-                  ||| write into an old object never makes it point into the nursery.
+                  ||| The kinds whose objects hold values the collector follows and are
+                  ||| written after they are made. They are allocated by a call to
+                  ||| `idris_alloc_mutable`, never by the inline bump, so that a collector
+                  ||| with a nursery can keep them out of it, and then a write into an old
+                  ||| object never makes it point into the nursery. A raw object (`BYTES`)
+                  ||| may be written too, but holds no pointer, so the bump serves it.
                   mutableKind : Types.Kind -> Bool
                   mutableKind Types.Kind.IOREF = True
                   mutableKind Types.Kind.ARRAY = True
                   mutableKind Types.Kind.STRUCT = True
-                  mutableKind Types.Kind.BUFFER = True
                   mutableKind _ = False
 
                   ||| Allocate a mutable object of the bytes `bytesInto` computes into a

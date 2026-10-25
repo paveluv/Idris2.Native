@@ -147,7 +147,7 @@ data Instr : Types.Enc -> Type where
                (live : List (Reg enc)) -> Instr enc
   ||| A whole object whose size is known only at run time: the destination, a
   ||| `PtrTo k`, becomes a new object of the part's kind, whose size part is
-  ||| `count`, a `W64`: an `ARRAY`'s elements, a `STRING`'s or a `BUFFER`'s
+  ||| `count`, a `W64`: an `ARRAY`'s elements, a `STRING`'s or a `BYTES`'s
   ||| bytes. Every word the collector scans is set to `fill`, a `Val`, which a
   ||| kind that scans its fields needs and the others do not take; their bytes
   ||| are left as they are. As with `AllocObj`, one instruction makes the

@@ -9,10 +9,10 @@
 ||| allocation window, r12 the current continuation.
 module Native.Codegen.Seed
 
-import Native.Codegen.Bytes
 import Native.Codegen.Linkage.Areas as Linkage
 import Native.Codegen.Linkage.ResumePoint
 import Native.Codegen.Linkage.Sym as Linkage
+import Native.Codegen.LittleEndian
 import Native.Codegen.Target
 import Native.Codegen.X86.Asm
 import Native.Codegen.X86.Target
@@ -271,8 +271,8 @@ export
 seedRodata : (textLabels : SortedMap X86.Asm.Label Int) -> (List Bits8, List (Linkage.Sym, Int))
 seedRodata tl =
   let haltCode = fromMaybe 0 (lookup (Linkage.Sym.label Linkage.Sym.SymHalt) tl)
-      halt = Bytes.le64 (cast haltCode) ++ Bytes.le64 0            -- code, parent
-      m = Bytes.pad8 msgStackOverflow
+      halt = LittleEndian.le64 (cast haltCode) ++ LittleEndian.le64 0            -- code, parent
+      m = LittleEndian.pad8 msgStackOverflow
   in ( halt ++ m
      , [ (Linkage.Sym.SymHALT, 0)
        , (Linkage.Sym.SymMsgStackOverflow, cast (length halt)) ] )

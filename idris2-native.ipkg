@@ -14,7 +14,6 @@ sourcedir = "src"
 modules =
     Native.Area,
     Native.Carrier,
-    Native.Codegen.Bytes,
     Native.Codegen.Doubles,
     Native.Codegen.ELF,
     Native.Codegen.Evaluate,
@@ -35,6 +34,7 @@ modules =
     Native.Codegen.Linkage.RuntimeModule,
     Native.Codegen.Linkage.Sym,
     Native.Codegen.Linkage.SystemLibrary,
+    Native.Codegen.LittleEndian,
     Native.Codegen.LocatedIR.Block,
     Native.Codegen.LocatedIR.Cont,
     Native.Codegen.LocatedIR.Dump,

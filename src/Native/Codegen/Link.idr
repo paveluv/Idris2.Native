@@ -4,10 +4,10 @@
 ||| (`Native.Codegen.Linkage.Areas`).
 module Native.Codegen.Link
 
-import Native.Codegen.Bytes
 import Native.Codegen.ELF
 import Native.Codegen.Linkage.Areas as Linkage
 import Native.Codegen.Linkage.Sym as Linkage
+import Native.Codegen.LittleEndian
 import Native.Codegen.Platform
 import Native.Codegen.Seed
 import Native.Codegen.X86.Asm
@@ -41,10 +41,10 @@ linkProgram enc window areas program items =
       tl = X86.Encode.layout ELF.textBase text
       ts = X86.Encode.codeSize ELF.textBase text
       (seedData, rsyms) = Seed.seedRodata tl
-      rodata = foldl (\b, (_, item) => b <>< Bytes.pad8 item) ([<] <>< seedData) items
+      rodata = foldl (\b, (_, item) => b <>< LittleEndian.pad8 item) ([<] <>< seedData) items
       offsets = offsetsFrom (cast (length seedData)) items
       as = Linkage.Areas.maxAreas Seed.seedAreas areas
-      lay = ELF.planLayout ts (Bytes.byteCount rodata) (Seed.seedBssSize as)
+      lay = ELF.planLayout ts (LittleEndian.byteCount rodata) (Seed.seedBssSize as)
       env = fromList (map (\(s, off) => (Linkage.Sym.label s, rodataBase lay + off)) rsyms
                    ++ map (\(s, off) => (Linkage.Sym.label s, bssBase lay + off))
                      (Seed.seedBss as)
@@ -59,7 +59,7 @@ linkProgram enc window areas program items =
     offsetsFrom : Int -> List (X86.Asm.Label, List Bits8) -> List (X86.Asm.Label, Int)
     offsetsFrom _ [] = []
     offsetsFrom at ((l, item) :: rest) = (l, at)
-      :: offsetsFrom (at + cast (length (Bytes.pad8 item))) rest
+      :: offsetsFrom (at + cast (length (LittleEndian.pad8 item))) rest
 
 ||| The default allocation window: 4 MiB, the bytes the inline bump may
 ||| allocate before the runtime's slow path runs, which extends the window

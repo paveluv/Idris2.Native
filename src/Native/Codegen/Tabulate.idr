@@ -4,8 +4,8 @@
 ||| table is).
 module Native.Codegen.Tabulate
 
-import Native.Codegen.Bytes
 import Native.Codegen.Evaluate
+import Native.Codegen.LittleEndian
 import Native.Codegen.LowerFlat
 
 import Core.CompileExpr
@@ -45,14 +45,14 @@ tabulate compiled fuel n lo hi = do
   where
     -- the words of a value: a constant's, or a constructor's fields' in order
     valueWords : Evaluate.Value -> Maybe (List Integer)
-    valueWords (Evaluate.VConst (Db x)) = Just [Bytes.doubleBits x]
+    valueWords (Evaluate.VConst (Db x)) = Just [LittleEndian.doubleBits x]
     valueWords (Evaluate.VConst k) = (\w => [cast w]) <$> LowerFlat.constWord k
     valueWords (Evaluate.VCon _ _ fs) = concat <$> traverse valueWords fs
     valueWords _ = Nothing
 
     rows : List Evaluate.Value -> SnocList (List Integer) -> Maybe Nat -> Either String Tabulated
     rows [] acc width =
-      Right (MkTabulated n lo (fromMaybe 0 width) (concatMap Bytes.le64 (concat (acc <>> []))))
+      Right (MkTabulated n lo (fromMaybe 0 width) (concatMap LittleEndian.le64 (concat (acc <>> []))))
     rows (v :: vs) acc width = case valueWords v of
       Nothing => Left ("the table " ++ show n ++ " has a value that is not constants")
       Just ws =>

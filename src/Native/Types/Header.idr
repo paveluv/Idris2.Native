@@ -50,7 +50,7 @@ data Header : Enc -> Kind -> Type where
   IORefH   : Header enc Kind.IOREF
   ArrayH   : (elems : Nat) -> Header enc Kind.ARRAY
   StructH  : (raws : Nat) -> (values : Nat) -> Header enc Kind.STRUCT
-  BufferH  : (bytes : Nat) -> Header enc Kind.BUFFER
+  BytesH  : (bytes : Nat) -> Header enc Kind.BYTES
   PtrH     : Header enc Kind.PTR
 
 ||| A part of a header, by kind: what `LoadPart` reads.
@@ -68,7 +68,7 @@ data HeaderPart : Kind -> Type where
   ArrayElemsP     : HeaderPart Kind.ARRAY
   StructRawsP     : HeaderPart Kind.STRUCT
   StructValuesP   : HeaderPart Kind.STRUCT
-  BufferBytesP    : HeaderPart Kind.BUFFER
+  BytesLengthP    : HeaderPart Kind.BYTES
 
 public export
 Show (HeaderPart kn) where
@@ -84,7 +84,7 @@ Show (HeaderPart kn) where
   show ArrayElemsP = "ArrayElemsP"
   show StructRawsP = "StructRawsP"
   show StructValuesP = "StructValuesP"
-  show BufferBytesP = "BufferBytesP"
+  show BytesLengthP = "BytesLengthP"
 
 ||| A header's parts with their values, in order.
 public export
@@ -104,7 +104,7 @@ parts (BignumH p) = bignums enc.bignum p
     bignums (MkBignumEnc _ BignumEnc.TwosComplement) q = absurd q
 parts (ArrayH n) = [(ArrayElemsP, n)]
 parts (StructH r v) = [(StructRawsP, r), (StructValuesP, v)]
-parts (BufferH n) = [(BufferBytesP, n)]
+parts (BytesH n) = [(BytesLengthP, n)]
 parts Int64H = []
 parts DoubleH = []
 parts IORefH = []
@@ -126,7 +126,7 @@ headed (BignumH _) = ItIsJust
 headed IORefH = ItIsJust
 headed (ArrayH _) = ItIsJust
 headed (StructH _ _) = ItIsJust
-headed (BufferH _) = ItIsJust
+headed (BytesH _) = ItIsJust
 headed PtrH = ItIsJust
 
 ||| Where a part lives in the header word: its first bit and its width, as
@@ -155,7 +155,7 @@ place BignumWordsP =
 place ArrayElemsP = HeapObj.Shape.place HeapObj.Shape.Values
 place StructRawsP = HeapObj.Shape.place HeapObj.Shape.Raws
 place StructValuesP = HeapObj.Shape.place HeapObj.Shape.MixedValues
-place BufferBytesP = HeapObj.Shape.place HeapObj.Shape.Bytes
+place BytesLengthP = HeapObj.Shape.place HeapObj.Shape.Bytes
 
 ||| The bits every header of the kind has: its code, and the counts of its
 ||| shape that the kind fixes. A header is this word plus its parts, each
@@ -300,7 +300,7 @@ decodeHeader enc w = do
     parse (Just Kind.IOREF) = Just (Kind.IOREF ** IORefH)
     parse (Just Kind.ARRAY) = Just (Kind.ARRAY ** ArrayH (get ArrayElemsP))
     parse (Just Kind.STRUCT) = Just (Kind.STRUCT ** StructH (get StructRawsP) (get StructValuesP))
-    parse (Just Kind.BUFFER) = Just (Kind.BUFFER ** BufferH (get BufferBytesP))
+    parse (Just Kind.BYTES) = Just (Kind.BYTES ** BytesH (get BytesLengthP))
     parse (Just Kind.PTR) = Just (Kind.PTR ** PtrH)
     parse (Just Kind.CONT) = Nothing
     parse Nothing = Nothing
@@ -327,7 +327,7 @@ counts (BignumH p) = bignums enc.bignum p
 counts IORefH = HeapObj.Shape.ValuesOf 1
 counts (ArrayH n) = HeapObj.Shape.ValuesOf n
 counts (StructH r v) = HeapObj.Shape.MixedOf r v
-counts (BufferH n) = HeapObj.Shape.BytesOf n
+counts (BytesH n) = HeapObj.Shape.BytesOf n
 counts PtrH = HeapObj.Shape.WordsOf 1
 
 ||| The number of fields: the object's words after its header.

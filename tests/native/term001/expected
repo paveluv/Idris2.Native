@@ -28,7 +28,7 @@ function Main.cmain CPS [] entry 0
     slot18:Ptr PTR := AllocObj PTR (slot14:W64) live [slot3:W64, slot14:W64, slot15:Ptr INT64]
     slot19:Ptr ARRAY := AllocObj ARRAY ArrayElemsP=2 (#1, #2) live [slot3:W64, slot15:Ptr INT64]
     slot20:Ptr STRING := AllocObj STRING StringAsciiP=1 StringBytesP=3 (#0) live [slot3:W64, slot15:Ptr INT64]
-    slot21:Ptr BUFFER := AllocObj BUFFER BufferBytesP=9 (#0, #0) live [slot3:W64, slot15:Ptr INT64]
+    slot21:Ptr BYTES := AllocObj BYTES BytesLengthP=9 (#0, #0) live [slot3:W64, slot15:Ptr INT64]
     slot22:W64 := DirectCall Main.Memory.roundTrip (slot3:W64) live [slot15:Ptr INT64]
     DirectCall idris_routine () mayCollect live [slot15:Ptr INT64, slot22:W64]
     slot23:Val := Widen slot15:Ptr INT64

@@ -473,7 +473,7 @@ coverBody = build $ \[] => do
   ptr <- emit1 (AllocObj PtrH [hdr])
   arr <- emit1 (AllocObj (ArrayH 2) [val 1, val 2])
   bytes <- emit1 (AllocObj (StringH (MkUtf8Parts True 3)) [W 0])
-  buf <- emit1 (AllocObj (BufferH 9) [W 0, W 0])
+  buf <- emit1 (AllocObj (BytesH 9) [W 0, W 0])
   [w] <- directCall roundTripRef [lt]
   _ <- directCall routineRef []
   i64v <- emit1 (WidenPtr i64)

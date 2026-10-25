@@ -643,7 +643,7 @@ digitsIn w = if w < 10 then 1 else 1 + digitsIn (Prelude.div w 10)
 ||| A word's `width` last decimal digits, zeros before them, as bytes of the
 ||| buffer ending before `end`.
 covering
-writeDigits : Obj Types.Kind.BUFFER -> (end, width, w : Bits64) -> Runtime.Ordo.Op Runtime.Ordo ()
+writeDigits : Obj Types.Kind.BYTES -> (end, width, w : Bits64) -> Runtime.Ordo.Op Runtime.Ordo ()
 writeDigits b end width w = if width == 0 then Runtime.Ordo.pure () else do
   Obj.store8 b (end - 1) (48 + Prelude.mod w 10)
   writeDigits b (end - 1) (width - 1) (Prelude.div w 10)
@@ -664,8 +664,8 @@ toDecimal x = do
   top <- Run.limb (limbs cs) (k - 1)
   let sign : Bits64 = if a.negative then 1 else 0
       n = sign + digitsIn top + 19 * (k - 1)
-  b <- Obj.allocate Types.Kind.BUFFER
-         (Types.Header.withPart Types.Header.BufferBytesP n Types.Header.noParts)
+  b <- Obj.allocate Types.Kind.BYTES
+         (Types.Header.withPart Types.Header.BytesLengthP n Types.Header.noParts)
   if a.negative then Obj.store8 b 0 45 else Runtime.Ordo.pure ()
   write b (limbs cs) k n
   writeDigits b (sign + digitsIn top) (digitsIn top) top
@@ -684,7 +684,7 @@ toDecimal x = do
 
     -- the chunks below the highest, 19 digits each, from the end
     covering
-    write : Obj Types.Kind.BUFFER -> Run Types.Kind.BIGNUM -> (k, end : Bits64) ->
+    write : Obj Types.Kind.BYTES -> Run Types.Kind.BIGNUM -> (k, end : Bits64) ->
             Runtime.Ordo.Op Runtime.Ordo ()
     write b cs k end = go 0 end
       where

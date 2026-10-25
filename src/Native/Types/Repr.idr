@@ -45,9 +45,9 @@ Only Kind.STRING String where
 public export
 Only Kind.CON (List a) where
 
-||| A buffer of `Data.Buffer` is a `BUFFER` always, the empty one too.
+||| A buffer of `Data.Buffer` is a `BYTES` always, the empty one too.
 public export
-Only Kind.BUFFER Buffer where
+Only Kind.BYTES Buffer where
 
 ||| An object of kind `k` is a value of `a`: one can be given as a value of
 ||| `a`.

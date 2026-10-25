@@ -19,7 +19,7 @@ data Sizes : Types.Header.HeaderPart k -> Type where
   SizesArray : Sizes Types.Header.ArrayElemsP
   SizesString : Sizes Types.Header.StringBytesP
   SizesStringChars : Sizes Types.Header.StringCharsP
-  SizesBuffer : Sizes Types.Header.BufferBytesP
+  SizesBytes : Sizes Types.Header.BytesLengthP
 
 ||| What fills a new object of a run-time size, by the part that sizes it: a
 ||| `Val` for every element of an `ARRAY`, which the collector scans;
@@ -31,7 +31,7 @@ Fill var Types.Header.ArrayElemsP = Opnd var IRCommon.Ty.Val
 Fill var Types.Header.StringAsciiP = ()
 Fill var Types.Header.StringBytesP = ()
 Fill var Types.Header.StringCharsP = ()
-Fill var Types.Header.BufferBytesP = ()
+Fill var Types.Header.BytesLengthP = ()
 Fill var Types.Header.ConIdP = ()
 Fill var Types.Header.ConArityP = ()
 Fill var Types.Header.ClosureArityP = ()

@@ -13,11 +13,11 @@ import Native.Codegen.X86.Asm
 import Data.Bits
 import Data.List
 import Data.SortedMap
-import Native.Codegen.Bytes
+import Native.Codegen.LittleEndian
 %default total
 
 ------------------------------------------------------------------------------
--- Immediates (byte order helpers live in Native.Codegen.Bytes)
+-- Immediates (byte order helpers live in Native.Codegen.LittleEndian)
 
 export
 fitsInt8 : Int -> Bool
@@ -38,11 +38,11 @@ encodeRaw pc rel instr = case instr of
   Asm.MovRR d s => form [] True [0x89] (Asm.regNum s) (Left d) 0 False []
   Asm.MovRI d i =>
         if fitsInt32 i
-          then form [] True [0xC7] 0 (Left d) 0 False (Bytes.le32 (cast i))
-          else rex True 0 0 (Asm.regNum d) False ++ [0xB8 + lo (Asm.regNum d)] ++ Bytes.le64 i
+          then form [] True [0xC7] 0 (Left d) 0 False (LittleEndian.le32 (cast i))
+          else rex True 0 0 (Asm.regNum d) False ++ [0xB8 + lo (Asm.regNum d)] ++ LittleEndian.le64 i
   Asm.MovRM d m => form [] True [0x8B] (Asm.regNum d) (Right m) rel False []
   Asm.MovMR m s => form [] True [0x89] (Asm.regNum s) (Right m) rel False []
-  Asm.MovMI m i => form [] True [0xC7] 0 (Right m) rel False (Bytes.le32 i)
+  Asm.MovMI m i => form [] True [0xC7] 0 (Right m) rel False (LittleEndian.le32 i)
   Asm.Lea d m => form [] True [0x8D] (Asm.regNum d) (Right m) rel False []
   Asm.Load Asm.W8 False d m => form [] True [0x0F, 0xB6] (Asm.regNum d) (Right m) rel False []
   Asm.Load Asm.W8 True d m => form [] True [0x0F, 0xBE] (Asm.regNum d) (Right m) rel False []
@@ -55,18 +55,18 @@ encodeRaw pc rel instr = case instr of
   Asm.Store Asm.W32 m s => form [] False [0x89] (Asm.regNum s) (Right m) rel False []
   Asm.Alu op d s => form [] True [0x01 + 8 * Asm.aluDigit op] (Asm.regNum s) (Left d) 0 False []
   Asm.AluI op d i =>
-        if fitsInt8 i then form [] True [0x83] (Asm.aluDigit op) (Left d) 0 False (Bytes.le8 i)
-        else form [] True [0x81] (Asm.aluDigit op) (Left d) 0 False (Bytes.le32 i)
+        if fitsInt8 i then form [] True [0x83] (Asm.aluDigit op) (Left d) 0 False (LittleEndian.le8 i)
+        else form [] True [0x81] (Asm.aluDigit op) (Left d) 0 False (LittleEndian.le32 i)
   Asm.AluRM op d m =>
     form [] True [0x03 + 8 * Asm.aluDigit op] (Asm.regNum d) (Right m) rel False []
   Asm.AluMR op m s =>
     form [] True [0x01 + 8 * Asm.aluDigit op] (Asm.regNum s) (Right m) rel False []
   Asm.Test a b => form [] True [0x85] (Asm.regNum b) (Left a) 0 False []
-  Asm.TestI a i => form [] True [0xF7] 0 (Left a) 0 False (Bytes.le32 i)
+  Asm.TestI a i => form [] True [0xF7] 0 (Left a) 0 False (LittleEndian.le32 i)
   Asm.Imul d s => form [] True [0x0F, 0xAF] (Asm.regNum d) (Left s) 0 False []
   Asm.ImulI d s i =>
-        if fitsInt8 i then form [] True [0x6B] (Asm.regNum d) (Left s) 0 False (Bytes.le8 i)
-        else form [] True [0x69] (Asm.regNum d) (Left s) 0 False (Bytes.le32 i)
+        if fitsInt8 i then form [] True [0x6B] (Asm.regNum d) (Left s) 0 False (LittleEndian.le8 i)
+        else form [] True [0x69] (Asm.regNum d) (Left s) 0 False (LittleEndian.le32 i)
   Asm.Cqo => [0x48, 0x99]
   Asm.Idiv r => form [] True [0xF7] 7 (Left r) 0 False []
   Asm.DivU r => form [] True [0xF7] 6 (Left r) 0 False []
@@ -75,9 +75,9 @@ encodeRaw pc rel instr = case instr of
   Asm.Not r => form [] True [0xF7] 2 (Left r) 0 False []
   Asm.ShiftI op r n => form [] True [0xC1] (Asm.shiftDigit op) (Left r) 0 False [n]
   Asm.ShiftCl op r => form [] True [0xD3] (Asm.shiftDigit op) (Left r) 0 False []
-  Asm.Jmp _ => 0xE9 :: Bytes.le32 rel
-  Asm.Jcc c _ => [0x0F, 0x80 + Asm.condCode c] ++ Bytes.le32 rel
-  Asm.Call _ => 0xE8 :: Bytes.le32 rel
+  Asm.Jmp _ => 0xE9 :: LittleEndian.le32 rel
+  Asm.Jcc c _ => [0x0F, 0x80 + Asm.condCode c] ++ LittleEndian.le32 rel
+  Asm.Call _ => 0xE8 :: LittleEndian.le32 rel
   Asm.JmpR r => form [] False [0xFF] 4 (Left r) 0 False []
   Asm.JmpM m => form [] False [0xFF] 4 (Right m) rel False []
   Asm.CallR r => form [] False [0xFF] 2 (Left r) 0 False []
@@ -102,7 +102,7 @@ encodeRaw pc rel instr = case instr of
   Asm.Int3 => [0xCC]
   Asm.Lbl _ => []
   Asm.Align n => replicate (padding pc n) 0xCC
-  Asm.Quad v => Bytes.le64 v
+  Asm.Quad v => LittleEndian.le64 v
   Asm.Bytes bs => bs
   Asm.Comment _ => []
   where
@@ -166,14 +166,14 @@ encodeRaw pc rel instr = case instr of
         rmBytes : (reg : Bits8) -> Either Asm.Reg64 Asm.Mem -> (rip : Int) -> List Bits8
         rmBytes reg x rip = case x of
           Left r => [modrm 3 reg (Asm.regNum r)]
-          Right (Asm.MRip _ _) => modrm 0 reg 5 :: Bytes.le32 rip
+          Right (Asm.MRip _ _) => modrm 0 reg 5 :: LittleEndian.le32 rip
           Right (Asm.MBase base d) =>
             let b = Asm.regNum base
                 sib : List Bits8
                 sib = if lo b == 4 then [0x24] else []         -- rsp/r12 need a SIB
             in if d == 0 && lo b /= 5 then modrm 0 reg b :: sib     -- rbp/r13 cannot use mod 00
-               else if fitsInt8 d then (modrm 1 reg b :: sib) ++ Bytes.le8 d
-               else (modrm 2 reg b :: sib) ++ Bytes.le32 d
+               else if fitsInt8 d then (modrm 1 reg b :: sib) ++ LittleEndian.le8 d
+               else (modrm 2 reg b :: sib) ++ LittleEndian.le32 d
           where
             modrm : (md : Bits8) -> (reg : Bits8) -> (rm : Bits8) -> Bits8
             modrm md reg rm = shiftL md 6 .|. shiftL (lo reg) 3 .|. lo rm

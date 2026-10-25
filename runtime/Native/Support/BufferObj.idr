@@ -1,4 +1,4 @@
-||| Buffers of `Data.Buffer` as the runtime keeps them: a `BUFFER` object,
+||| Buffers of `Data.Buffer` as the runtime keeps them: a `BYTES` object,
 ||| its bytes after its header, as many as the header says, zero when it
 ||| is made, as Chez's are.
 |||
@@ -31,21 +31,21 @@ import Native.Types.Repr
 
 ||| The buffer's object.
 %inline
-bufferObject : Flat.Uniform Buffer -> Runtime.Ordo.Op Runtime.Ordo (Obj Types.Kind.BUFFER)
+bufferObject : Flat.Uniform Buffer -> Runtime.Ordo.Op Runtime.Ordo (Obj Types.Kind.BYTES)
 bufferObject = Obj.valueObject
 
 ||| The bytes of a buffer's object.
-objectSize : Obj Types.Kind.BUFFER -> Runtime.Ordo.Op Runtime.Ordo Bits64
+objectSize : Obj Types.Kind.BYTES -> Runtime.Ordo.Op Runtime.Ordo Bits64
 objectSize o = do
   h <- Obj.header o
-  Runtime.Ordo.pure (Types.Header.readPart Types.Header.BufferBytesP h)
+  Runtime.Ordo.pure (Types.Header.readPart Types.Header.BytesLengthP h)
 
 ||| A new buffer of `n` bytes, all zero.
 export covering
 zeroBuffer : (n : Bits64) -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform Buffer)
 zeroBuffer n = do
-  o <- Obj.allocate Types.Kind.BUFFER
-    (Types.Header.withPart Types.Header.BufferBytesP n Types.Header.noParts)
+  o <- Obj.allocate Types.Kind.BYTES
+    (Types.Header.withPart Types.Header.BytesLengthP n Types.Header.noParts)
   Runtime.Memory.fillBytes (Obj.objectBytes o 0) n 0
   Obj.objectValue o
 
@@ -59,7 +59,7 @@ size b = do
 ||| The buffer's object, if its `n` bytes from the offset lie inside it;
 ||| the end of the program if not.
 inside : Flat.Uniform Buffer -> (offset, n : Int) ->
-         Runtime.Ordo.Op Runtime.Ordo (Obj Types.Kind.BUFFER)
+         Runtime.Ordo.Op Runtime.Ordo (Obj Types.Kind.BYTES)
 inside b offset n = do
   o <- bufferObject b
   all <- objectSize o

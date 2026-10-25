@@ -42,7 +42,7 @@ headers =
   , (_ ** Int64H), (_ ** DoubleH), (_ ** IORefH), (_ ** PtrH)
   , (_ ** StringH (MkUtf8Parts True 0)), (_ ** StringH (MkUtf8Parts False 1))
   , (_ ** StringH (MkUtf8Parts True (largest 47)))
-  , (_ ** BufferH 0), (_ ** BufferH (largest 47))
+  , (_ ** BytesH 0), (_ ** BytesH (largest 47))
   , (_ ** BignumH (MkSignMagnitudeParts False 0)), (_ ** BignumH (MkSignMagnitudeParts True 1))
   , (_ ** BignumH (MkSignMagnitudeParts True (largest 44)))
   , (_ ** ArrayH 0), (_ ** ArrayH 1), (_ ** ArrayH (largest 28))
@@ -57,7 +57,7 @@ tooWide : List (k : Kind ** Header TestEnc k)
 tooWide =
   [ (_ ** ConH (largest 20 + 1) 0), (_ ** ConH 0 (largest 28 + 1))
   , (_ ** ClosureH (largest 16 + 1) 0), (_ ** ClosureH 0 (largest 28 + 1))
-  , (_ ** StringH (MkUtf8Parts False (largest 47 + 1))), (_ ** BufferH (largest 47 + 1))
+  , (_ ** StringH (MkUtf8Parts False (largest 47 + 1))), (_ ** BytesH (largest 47 + 1))
   , (_ ** BignumH (MkSignMagnitudeParts False (largest 44 + 1))), (_ ** ArrayH (largest 28 + 1)) ]
 
 noHeader : List (String, Int64)

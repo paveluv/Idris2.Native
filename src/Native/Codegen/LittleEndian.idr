@@ -1,6 +1,6 @@
 ||| Little-endian byte serialisation shared by the encoder and the object
 ||| writers. Every target in scope is little-endian.
-module Native.Codegen.Bytes
+module Native.Codegen.LittleEndian
 
 import Data.List
 

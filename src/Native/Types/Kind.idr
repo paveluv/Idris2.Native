@@ -54,9 +54,12 @@ data Kind
     ||| words and of values in its header, the raw words at 8, which the
     ||| collector does not scan, then the values, `Val`s.
     STRUCT
-  | ||| A byte buffer, laid out as a `STRING`, without the claim of an
-    ||| encoding.
-    BUFFER
+  | ||| Bytes, laid out as a `STRING`, without the claim of an encoding:
+    ||| the raw bytes object of every type that holds bytes and no other
+    ||| claim, base's mutable `Buffer` and the immutable `Types.Bytes`
+    ||| alike. Whether the bytes change, and what they mean, is the type's,
+    ||| stated by the representation contract (`Types.Repr`), not here.
+    BYTES
   | ||| A foreign pointer: one raw word at 8, which the collector never
     ||| follows.
     PTR
@@ -83,7 +86,7 @@ shape INT64 = Just HeapObj.Shape.RAW
 shape DOUBLE = Just HeapObj.Shape.RAW
 shape PTR = Just HeapObj.Shape.RAW
 shape STRING = Just HeapObj.Shape.RAW
-shape BUFFER = Just HeapObj.Shape.RAW
+shape BYTES = Just HeapObj.Shape.RAW
 shape BIGNUM = Just HeapObj.Shape.RAW
 shape CONT = Nothing
 
@@ -99,7 +102,7 @@ tag INT64 = 0
 tag DOUBLE = 1
 tag PTR = 2
 tag STRING = 3
-tag BUFFER = 4
+tag BYTES = 4
 tag BIGNUM = 5
 tag CONT = 0
 
@@ -124,7 +127,7 @@ fromCode 0x002 = Just INT64
 fromCode 0x102 = Just DOUBLE
 fromCode 0x202 = Just PTR
 fromCode 0x302 = Just STRING
-fromCode 0x402 = Just BUFFER
+fromCode 0x402 = Just BYTES
 fromCode 0x502 = Just BIGNUM
 fromCode 0 = Just CONT
 fromCode _ = Nothing
@@ -153,7 +156,7 @@ DecEq Kind where
       kindRoundTrip IOREF = Refl
       kindRoundTrip ARRAY = Refl
       kindRoundTrip STRUCT = Refl
-      kindRoundTrip BUFFER = Refl
+      kindRoundTrip BYTES = Refl
       kindRoundTrip PTR = Refl
       kindRoundTrip CONT = Refl
 
@@ -171,7 +174,7 @@ Show Kind where
   show IOREF = "IOREF"
   show ARRAY = "ARRAY"
   show STRUCT = "STRUCT"
-  show BUFFER = "BUFFER"
+  show BYTES = "BYTES"
   show PTR = "PTR"
   show CONT = "CONT"
 

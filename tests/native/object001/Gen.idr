@@ -37,7 +37,7 @@ headers =
   , (_ ** Int64H), (_ ** DoubleH), (_ ** IORefH), (_ ** PtrH)
   , (_ ** StringH (MkUtf8Parts True 0)), (_ ** StringH (MkUtf8Parts False 1))
   , (_ ** StringH (MkUtf8Parts True 9)), (_ ** StringH (MkUtf8Parts False (largest 47)))
-  , (_ ** BufferH 0), (_ ** BufferH 17), (_ ** BufferH (largest 47))
+  , (_ ** BytesH 0), (_ ** BytesH 17), (_ ** BytesH (largest 47))
   , (_ ** BignumH (MkSignMagnitudeParts False 0)), (_ ** BignumH (MkSignMagnitudeParts True 3))
   , (_ ** BignumH (MkSignMagnitudeParts True (largest 44)))
   , (_ ** ArrayH 0), (_ ** ArrayH 5), (_ ** ArrayH (largest 28))
@@ -60,7 +60,7 @@ layout (BignumH p) = (1 + p.words, (1, 0))         -- the limbs, raw
 layout IORefH = (2, (1, 1))                     -- the one value
 layout (ArrayH n) = (1 + n, (1, n))             -- the elements, all values
 layout (StructH r v) = (1 + r + v, (1 + r, v))  -- the raw words, then the values
-layout (BufferH n) = (1 + padded n, (1, 0))
+layout (BytesH n) = (1 + padded n, (1, 0))
 
 check : (k : Kind ** Header TestEnc k) -> List String
 check (k ** h) =
