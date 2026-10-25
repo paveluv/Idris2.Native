@@ -620,7 +620,8 @@ export
 fileRules : Source.SourceFile -> Mentions -> List Declared -> List Finding
 fileRules f ms ds =
   importOrder f ++ publicImport f ++ defaultTotality f ++ elabReflection f ms
-  ++ trustEscape f ms ++ casts f ms ++ citesPlan f ++ todo f ++ headerComment f
+  ++ trustEscape f ms ds ++ casts f ms ++ forgedInstance f ms ++ citesPlan f ++ todo f
+  ++ headerComment f
   ++ implementationAdjacent f ds ++ moduleType f ds
   ++ recordConstructor f ds ++ externName f ds ms ++ ofName f ++ splitClause f
   where
@@ -825,22 +826,41 @@ fileRules f ms ds =
         believed : List String
         believed = ["believe_me", "really_believe_me"]
 
+    ||| `forged-instance`: an implementation of an interface built from the
+    ||| constructor Idris makes for it (`__mkShow`, `__mkImmutable`), which
+    ||| no search vouches for. For a relation of the representation contract
+    ||| (`Native.Types.Repr`) it is a statement no module answers for, a cast
+    ||| by another name. No suppression lifts it: write an implementation.
+    forgedInstance : Source.SourceFile -> Mentions -> List Finding
+    forgedInstance f ms =
+      [ finding f "forged-instance" fc (nameRoot n)
+          ("`" ++ nameRoot n ++ "` builds an implementation from the interface's constructor, "
+           ++ "which no search vouches for: write an implementation")
+      | (fc, n) <- ms.refs, isPrefixOf "__mk" (nameRoot n) ]
+
     ||| `trust-escape`: a use of one of `escapes`, each to be suppressed with its
-    ||| reason.
-    trustEscape : Source.SourceFile -> Mentions -> List Finding
-    trustEscape f ms =
+    ||| reason. In the module that defines one, its definition is no use: the
+    ||| head of a clause or of its claim, which starts a line; every other
+    ||| mention there is one.
+    trustEscape : Source.SourceFile -> Mentions -> List Declared -> List Finding
+    trustEscape f ms ds =
       [ finding f "trust-escape" fc (nameRoot n) ("`" ++ nameRoot n ++ "`: say why it is sound")
-      | (fc, n) <- ms.refs, nameRoot n `elem` escapes ]
+      | (fc, n) <- ms.refs, nameRoot n `elem` escapes, not (definition fc n) ]
       where
+        definition : FC -> Name -> Bool
+        definition fc n = snd (position fc) == 0 && any (\d => nameRoot n `elem` d.defines) ds
+
         ||| The functions that leave what the typechecker proves: each use says why
         ||| it is sound.
         escapes : List String
-        escapes = ["assert_total", "assert_smaller", "idris_crash", "unsafePerformIO"]
+        escapes =
+          ["assert_total", "assert_smaller", "idris_crash", "unsafePerformIO", "uncheckedWord"]
 
 ||| The rules no suppression lifts: what they report is to be changed.
 export
 unsuppressibleRules : List String
-unsuppressibleRules = ["cast", "sealed-boundary", "sealed-values", "of-name", "repr-orphan"]
+unsuppressibleRules =
+  ["cast", "sealed-boundary", "sealed-values", "of-name", "repr-orphan", "forged-instance"]
 
 ||| The names of the rules over the text, those over the graph included;
 ||| `ResolvedRules.resolvedRuleNames` are the others.
@@ -848,6 +868,7 @@ export
 ruleNames : List String
 ruleNames =
   [ "import-order", "public-import", "default-totality", "elab-reflection"
-  , "trust-escape", "cast", "cites-plan", "todo", "header-comment", "implementation-adjacent"
+  , "trust-escape", "cast", "forged-instance", "cites-plan", "todo", "header-comment",
+    "implementation-adjacent"
   , "layering", "syscall", "import-alias", "self-qualified", "record-constructor", "module-type",
     "extern-name", "of-name", "split-clause" ]

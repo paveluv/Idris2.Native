@@ -23,9 +23,11 @@
 |||
 ||| The backend's primitives are found the same way (`Native.Primitive`),
 ||| each a definition `FunctionTy (signature c)` of a module of
-||| `Native.Primitive`, at most one of each: a program that imports none
-||| uses none. The tables (`Native.Table`) are found by their type too,
-||| `Table lo hi r`, wherever they are, with their ranges.
+||| `Native.Primitive`, or, for one that reads an object, `PureLoad a
+||| (signature c)` of the module of `Native.Types` that defines `a`; at
+||| most one of each: a program that imports none uses none. The tables
+||| (`Native.Table`) are found by their type too, `Table lo hi r`, wherever
+||| they are, with their ranges.
 |||
 ||| Part of what generated code, the runtime and the linker agree on
 ||| (`Native.Codegen.Linkage.Routine` says what it is).
@@ -39,11 +41,11 @@ import Core.Context
 import Core.Context.Context
 import Core.Core
 import Core.Env
+import Core.FC
 import Core.Name
 import Core.Name.Namespace
 import Core.Name.Scoped
 import Core.Normalise
-import Core.TT
 import Core.TT.Primitive
 import Core.TT.Term
 import Core.Value
@@ -91,8 +93,8 @@ in' : Namespace -> String -> Name
 in' ns n = NS ns (UN (Basic n))
 
 ||| The definitions the context keeps whose type is the port of a
-||| constructor of a contract's enumeration, `f (port c)` for a head `f` of
-||| `heads`, or its signature, `f (signature c)`,
+||| constructor of a contract's enumeration, `f ... (port c)` for a head `f`
+||| of `heads`, or its signature, `f ... (signature c)`, the last argument,
 ||| each with its constructor's name and the code generator's own
 ||| constructor; exactly one of each if `required`, else at most one, or
 ||| which have none or more. The constructors are the enumeration's list's
@@ -154,20 +156,61 @@ entries required contract listName own heads keep = do
           i <- lookup c byConstructor
           pure (n', c, i)
 
-||| The backend's primitives the context defines (`Native.Primitive`), each
-||| by its type, `FunctionTy (signature c)`, in a module of
-||| `Native.Primitive`: at most one of each.
+||| The backend's primitives the context defines (`Native.Primitive`), at
+||| most one of each: a function of words, by its type `FunctionTy
+||| (signature c)`, in a module of `Native.Primitive`; or one that reads an
+||| object of a type `a`, by its type `PureLoad a (signature c)`, in the
+||| module of `Native.Types` that defines `a`, which answers for the type's
+||| statements. A definition of either head elsewhere is a problem, as two
+||| of one primitive are.
 primitives : {auto c : Ref Ctxt Defs} -> Core (Either String (List (Name, Name, Primitive)))
-primitives =
-  entries False "Native.Primitive" "allPrimitives" Primitive.allPrimitives [functionTy] inPrimitive
+primitives = do
+  Right found <- entries False "Native.Primitive" "allPrimitives" Primitive.allPrimitives
+                   [functionTy, pureLoad] inGroups
+    | Left e => pure (Left e)
+  misplaced <- catMaybes <$> traverse (\(n, _, _) => place n) found
+  pure (if null misplaced then Right found else Left (concat (intersperse "; " misplaced)))
   where
     functionTy : Name
     functionTy = in' (mkNamespace "Native.Primitive") "FunctionTy"
 
-    inPrimitive : Name -> GlobalDef -> Bool
-    inPrimitive (NS ns _) _ = ns /= mkNamespace "Native.Primitive"
-      && isParentOf (mkNamespace "Native.Primitive") ns
-    inPrimitive _ _ = False
+    pureLoad : Name
+    pureLoad = in' (mkNamespace "Native.Types.PureLoad") "PureLoad"
+
+    -- strictly under a group of modules
+    under : String -> Namespace -> Bool
+    under g ns = ns /= mkNamespace g && isParentOf (mkNamespace g) ns
+
+    -- in a module of either group, by the name alone; where each head may
+    -- be, `place` says
+    inGroups : Name -> GlobalDef -> Bool
+    inGroups (NS ns _) _ = under "Native.Primitive" ns || under "Native.Types" ns
+    inGroups _ _ = False
+
+    -- the module of a type's head, `Bytes` of `PureLoad Bytes ...`
+    typeModule : Term vars -> Maybe Namespace
+    typeModule t = case getFnArgs t of
+      (Ref _ _ (NS ns _), _) => Just ns
+      _ => Nothing
+
+    -- what is wrong with where a primitive is defined, if anything
+    place : Name -> Core (Maybe String)
+    place n@(NS ns _) = do
+      defs <- get Ctxt
+      Just g <- lookupCtxtExact n (gamma defs)
+        | Nothing => pure Nothing
+      ty <- toFullNames (type g)
+      pure $ case getFnArgs ty of
+        (Ref _ _ f, args) =>
+          if f == functionTy
+            then if under "Native.Primitive" ns then Nothing
+                 else Just (show n ++ " is a primitive outside the modules of Native.Primitive")
+            else case args of
+              (a :: _) => if typeModule a == Just ns then Nothing
+                          else Just (show n ++ " reads a type it is not defined with")
+              [] => Just (show n ++ " reads no type")
+        _ => Nothing
+    place _ = pure Nothing
 
 ||| The tables the context defines (`Native.Table`), each by its type,
 ||| `Table lo hi r`, with its range if `lo` and `hi` reduce to `Int`s.
@@ -191,14 +234,17 @@ tables = do
           _ => (n', Nothing)
 
 ||| The definitions the flat translation takes a call of as a primitive's:
-||| the backend's primitives and the tables the context defines; none of a
-||| primitive where there are two of one, which `realise` reports.
+||| the backend's primitives and the tables the context defines. Two of one
+||| primitive, or one defined where it may not be, end the compilation here,
+||| with what is wrong, before any translation would take its calls for
+||| calls of functions.
 export
 flatPrimitives : Ref Ctxt Defs -> Core (List Name)
 flatPrimitives c = do
-  ps <- either (const []) (map (\(n, _, _) => n)) <$> primitives
+  Right ps <- primitives
+    | Left e => throw (GenericMsg EmptyFC ("the backend's primitives: " ++ e))
   ts <- map fst <$> tables
-  pure (ps ++ ts)
+  pure (map (\(n, _, _) => n) ps ++ ts)
 
 ||| The contract as the loaded runtime realises it, for the platform and the
 ||| encodings, or what is missing.

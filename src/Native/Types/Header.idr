@@ -50,7 +50,7 @@ data Header : Enc -> Kind -> Type where
   IORefH   : Header enc Kind.IOREF
   ArrayH   : (elems : Nat) -> Header enc Kind.ARRAY
   StructH  : (raws : Nat) -> (values : Nat) -> Header enc Kind.STRUCT
-  BytesH  : (bytes : Nat) -> Header enc Kind.BYTES
+  BytesH   : (bytes : Nat) -> Header enc Kind.BYTES
   PtrH     : Header enc Kind.PTR
 
 ||| A part of a header, by kind: what `LoadPart` reads.
@@ -285,7 +285,8 @@ decodeHeader enc w = do
     -- parts' type.
     string : (enc' : Enc) -> Maybe (k : Kind ** Header enc' k)
     string (MkEnc _ _ StringEnc.Utf8) =
-      Just (Kind.STRING ** StringH (StringEnc.MkUtf8Parts (get StringAsciiP == 1) (get StringBytesP)))
+      Just
+        (Kind.STRING ** StringH (StringEnc.MkUtf8Parts (get StringAsciiP == 1) (get StringBytesP)))
     string (MkEnc _ _ StringEnc.Utf32) =
       Just (Kind.STRING ** StringH (StringEnc.MkUtf32Parts (get StringCharsP)))
 

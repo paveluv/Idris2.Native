@@ -1,21 +1,26 @@
 ||| The backend's primitives (`Primitive`): operations of the machine that
-||| Idris has no primitive for, each a pure function of words, defined in
-||| Idris and computed by the native code generator as the instructions it
-||| stands for.
+||| Idris has no primitive for, each a pure function of words, or of an
+||| object of one type and words, defined in Idris and computed by the
+||| native code generator as the instructions it stands for.
 |||
 ||| A primitive is an Idris definition, with a body that is its meaning: a
 ||| backend that knows nothing of it compiles the body, so a program that
 ||| uses one runs anywhere, and the native code generator, which knows it,
 ||| expands each call to its instructions instead, so the body is never
-||| compiled there. Each is defined in a module of `Native.Primitive`, by its
-||| signature's type (`FunctionTy`), which Idris checks the body against.
-||| That type is the one mark of a primitive: the code generator finds the
-||| definition by it, checks there is at most one of each, and has the flat
-||| translation take a call of it as a call of a primitive, leaving the body
-||| alone.
+||| compiled there. Idris checks the body against the primitive's type,
+||| which is its mark, of one of two heads: a function of words is defined
+||| in a module of `Native.Primitive` by its signature's type
+||| (`FunctionTy`); one that reads an object (`PayloadWord`) is defined at
+||| the one type it reads, in that type's module of `Native.Types`, by a
+||| type that asks the representation contract for the type's leave
+||| (`Types.PureLoad`), its signature's arrow after the object. The code
+||| generator finds the definition by its mark, checks there is at most one
+||| of each and that it is where its head says, and has the flat
+||| translation take a call of it as a call of a primitive, leaving the
+||| body alone.
 |||
 ||| Unlike the contract's other entries (`Native.Port` says what they are),
-||| a primitive takes no token, since it reads and changes nothing, may
+||| a primitive takes no token, since it reads nothing that changes, may
 ||| give several words, and is the program's as much as the runtime's.
 |||
 ||| A signature may state what the machine requires of a primitive's
@@ -52,6 +57,12 @@ data Primitive
   | ||| A double's 64 bits, as IEEE 754 lays them out, and the double of 64
     ||| bits.
     DoubleBits | BitsDouble
+  | ||| The word of an immutable `BYTES` object's payload at an index and a
+    ||| displacement, both in words, as the machine stores it: a load, with
+    ||| no check that it is inside, from an object no one writes once it is
+    ||| made, so that it may be done at any time. Defined at one type
+    ||| (`Types.Bytes`), by `Types.PureLoad`.
+    PayloadWord
 
 ||| A proposition about arguments of the machine types: a type, of each
 ||| argument in turn.
@@ -106,6 +117,7 @@ signature Div128 =
     (Just (\_, _, divisor, qr => (snd qr < divisor) = True))
 signature DoubleBits = MkSignature [Mach.F64] [Mach.U64] Nothing Nothing
 signature BitsDouble = MkSignature [Mach.U64] [Mach.F64] Nothing Nothing
+signature PayloadWord = MkSignature [Mach.IWord, Mach.IWord] [Mach.U64] Nothing Nothing
 
 ||| The Idris type of a primitive of the signature: a function of its
 ||| arguments, then of an erased proof of what it requires of them, if
@@ -129,7 +141,7 @@ FunctionTy sig = arrows sig.takes sig.requires sig.ensures
 ||| element by element.
 public export
 allPrimitives : List Primitive
-allPrimitives = [Mul128, Div128, DoubleBits, BitsDouble]
+allPrimitives = [Mul128, Div128, DoubleBits, BitsDouble, PayloadWord]
 
 ||| The list holds every primitive.
 complete : (p : Primitive) -> Elem p Primitive.allPrimitives
@@ -137,3 +149,4 @@ complete Mul128 = %search
 complete Div128 = %search
 complete DoubleBits = %search
 complete BitsDouble = %search
+complete PayloadWord = %search

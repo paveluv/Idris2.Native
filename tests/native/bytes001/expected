@@ -1,0 +1,131 @@
+[7, 1007, 2007, 3007, 4007, 5007]
+[1007, 2007, 3007, 4007, 5007]
+[2007, 3007, 4007, 5007]
+15042
+([7, 1007, 2007, 3007, 4007, 5007], [7, 1007, 2007, 3007, 4007])
+(9223372036854775808, (9223372036854775809, 9223372036854775809))
+(0, 0)
+(3007, 9223372036854775809)
+[7, 1007, 2007, 3007, 4007, 5007]
+[1007, 2007, 3007, 4007, 5007]
+[2007, 3007, 4007, 5007]
+15042
+([7, 1007, 2007, 3007, 4007, 5007], [7, 1007, 2007, 3007, 4007])
+(9223372036854775808, (9223372036854775809, 9223372036854775809))
+(0, 0)
+(3007, 9223372036854775809)
+[7, 1007, 2007, 3007, 4007, 5007]
+[1007, 2007, 3007, 4007, 5007]
+[2007, 3007, 4007, 5007]
+15042
+([7, 1007, 2007, 3007, 4007, 5007], [7, 1007, 2007, 3007, 4007])
+(9223372036854775808, (9223372036854775809, 9223372036854775809))
+(0, 0)
+(3007, 9223372036854775809)
+# _flat.Main.pick
+L64:
+sub rsp, 8
+mov rax, qword ptr [rip+L17]
+cmp rsp, rax
+jb L18
+lea rbx, [rip+L13]
+mov qword ptr [rbx], rdi
+mov qword ptr [rbx+8], rsi
+jmp L65
+L65:
+mov rax, qword ptr [rbx]
+mov qword ptr [rbx+16], rax
+mov rax, qword ptr [rbx+16]
+mov rdx, qword ptr [rbx+8]
+shl rdx, 3
+add rax, rdx
+mov rcx, qword ptr [rax+16]
+mov qword ptr [rbx+24], rcx
+mov rdi, qword ptr [rbx+24]
+add rsp, 8
+ret
+pick calls nothing
+# _flat.Main.at
+L64:
+sub rsp, 8
+mov rax, qword ptr [rip+L17]
+cmp rsp, rax
+jb L18
+lea rbx, [rip+L13]
+mov qword ptr [rbx], rdi
+mov qword ptr [rbx+8], rsi
+mov qword ptr [rbx+16], rdx
+jmp L65
+L65:
+mov rax, qword ptr [rbx]
+mov qword ptr [rbx+24], rax
+mov rax, qword ptr [rbx+8]
+mov rcx, qword ptr [rbx+16]
+add rax, rcx
+mov qword ptr [rbx+32], rax
+mov rax, qword ptr [rbx+24]
+mov rdx, qword ptr [rbx+32]
+shl rdx, 3
+add rax, rdx
+mov rcx, qword ptr [rax+8]
+mov qword ptr [rbx+40], rcx
+mov rdi, qword ptr [rbx+40]
+add rsp, 8
+ret
+at calls nothing
+# _flat.Main.far
+L64:
+sub rsp, 8
+mov rax, qword ptr [rip+L17]
+cmp rsp, rax
+jb L18
+lea rbx, [rip+L13]
+mov qword ptr [rbx], rdi
+mov qword ptr [rbx+8], rsi
+jmp L65
+L65:
+mov rax, qword ptr [rbx+8]
+mov rcx, 134217728
+sub rax, rcx
+mov qword ptr [rbx+16], rax
+mov rax, qword ptr [rbx]
+mov qword ptr [rbx+24], rax
+mov rax, qword ptr [rbx+16]
+mov rcx, 134217728
+add rax, rcx
+mov qword ptr [rbx+32], rax
+mov rax, qword ptr [rbx+24]
+mov rdx, qword ptr [rbx+32]
+shl rdx, 3
+add rax, rdx
+mov rcx, qword ptr [rax+8]
+mov qword ptr [rbx+40], rcx
+mov rdi, qword ptr [rbx+40]
+add rsp, 8
+ret
+far calls nothing
+== val-encoding=tag0
+# _flat.Main.pick
+L64:
+sub rsp, 8
+mov rax, qword ptr [rip+L17]
+cmp rsp, rax
+jb L18
+lea rbx, [rip+L13]
+mov qword ptr [rbx], rdi
+mov qword ptr [rbx+8], rsi
+jmp L65
+L65:
+mov rax, qword ptr [rbx]
+mov qword ptr [rbx+16], rax
+mov rax, qword ptr [rbx+16]
+mov rdx, qword ptr [rbx+8]
+shl rdx, 3
+add rax, rdx
+mov rcx, qword ptr [rax+15]
+mov qword ptr [rbx+24], rcx
+mov rdi, qword ptr [rbx+24]
+add rsp, 8
+ret
+pick calls nothing
+Refused.idr checked

@@ -52,7 +52,8 @@ tabulate compiled fuel n lo hi = do
 
     rows : List Evaluate.Value -> SnocList (List Integer) -> Maybe Nat -> Either String Tabulated
     rows [] acc width =
-      Right (MkTabulated n lo (fromMaybe 0 width) (concatMap LittleEndian.le64 (concat (acc <>> []))))
+      Right
+        (MkTabulated n lo (fromMaybe 0 width) (concatMap LittleEndian.le64 (concat (acc <>> []))))
     rows (v :: vs) acc width = case valueWords v of
       Nothing => Left ("the table " ++ show n ++ " has a value that is not constants")
       Just ws =>

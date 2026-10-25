@@ -26,6 +26,13 @@
 ||| here too (`valueHandle`, `handleValue`). The core's conversions, which
 ||| take a value of any type, are used outside the core only here, which the
 ||| linter checks.
+|||
+||| What the evidence separates is kinds: no string is taken for a cons
+||| cell, no raw store goes into an object of values. It does not separate
+||| the types of one kind: an `Obj k` remembers the kind, not the type it
+||| came from, so a value given back at another type of its kind, or a
+||| store into an object of an immutable type (a published `String` or
+||| `Types.Bytes`), is the support tier's to avoid, by what it holds.
 module Native.Support.Obj
 
 import Native.Carrier

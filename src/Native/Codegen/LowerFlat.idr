@@ -46,6 +46,9 @@ import Native.Codegen.Linkage.Routine
 import Native.Codegen.TermIR.Body
 import Native.Codegen.TermIR.Build as TermIR
 import Native.Codegen.TermIR.Decls as TermIR
+-- lint: allow import-unused: a load from an object's payload is admitted by the kind's
+-- cell type, which reduces only where its definition is visible
+import Native.Codegen.TermIR.FieldTys
 import Native.Codegen.TermIR.Instr
 import Native.Codegen.TermIR.IsInt
 import Native.Codegen.TermIR.Mem as TermIR
@@ -483,7 +486,8 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
           TermIR.Build.unsupported ("the table " ++ show n ++ " at an index of another layout")
 
         ||| A primitive's instructions, from its arguments' registers, which are
-        ||| its signature's, into its results'.
+        ||| its signature's, after the object's one for a primitive that reads
+        ||| one (`Types.PureLoad`), into its results'.
         primitive : Name -> Primitive -> Value enc v -> B (Value enc v)
         primitive n Primitive.Mul128 (MkValue [Rep.Word, Rep.Word] [x, y]) = do
           [h, l] <- TermIR.Build.emit (TermIR.Instr.Mul128 x y)
@@ -497,9 +501,31 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
         primitive n Primitive.BitsDouble (MkValue [Rep.Word] [w]) = do
           f <- TermIR.Build.emit1 (TermIR.Instr.Convert IRCommon.Op.BitsF w)
           pure (MkValue [Rep.Dbl] [f])
+        -- the object's word at the index and the displacement: one load, the
+        -- index scaled, a constant displacement in the address's own
+        -- displacement past the header, where it fits with room to spare
+        primitive n Primitive.PayloadWord (MkValue [Rep.Uniform, Rep.Word, Rep.Word] [u, i, d]) = do
+          p <- TermIR.Build.emit1 (TermIR.Instr.NarrowPtr Types.Kind.BYTES u)
+          w <- case d of
+                 TermIR.Opnd.W c =>
+                   if c >= -0x8000000 && c < 0x8000000
+                     then TermIR.Build.emit1
+                       (TermIR.Instr.Load IRCommon.Ty.W64
+                         (TermIR.MkMem (TermIR.Mem.AtPtr p) (Just i) (8 + 8 * cast c)))
+                     else displaced p
+                 _ => displaced p
+          pure (MkValue [Rep.Word] [w])
+          where
+            -- the index and the displacement added first
+            displaced : TermIR.Opnd v (IRCommon.Ty.PtrTo Types.Kind.BYTES) ->
+                        B (TermIR.Opnd v IRCommon.Ty.W64)
+            displaced p = do
+              j <- TermIR.Build.emit1 (TermIR.Instr.Arith IRCommon.Op.Add i d)
+              TermIR.Build.emit1
+                (TermIR.Instr.Load IRCommon.Ty.W64 (TermIR.MkMem (TermIR.Mem.AtPtr p) (Just j) 8))
         primitive n _ _ =
           TermIR.Build.unsupported
-            ("the primitive " ++ show n ++ " on registers other than its signature's")
+            ("the primitive " ++ show n ++ " on registers other than its arrow's")
 
         ||| An inline extern's instructions, from its arguments' registers, which
         ||| are its port's: the intrinsic's expansion (`Linkage.Expansion`), which

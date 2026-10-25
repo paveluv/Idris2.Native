@@ -39,7 +39,8 @@ encodeRaw pc rel instr = case instr of
   Asm.MovRI d i =>
         if fitsInt32 i
           then form [] True [0xC7] 0 (Left d) 0 False (LittleEndian.le32 (cast i))
-          else rex True 0 0 (Asm.regNum d) False ++ [0xB8 + lo (Asm.regNum d)] ++ LittleEndian.le64 i
+          else rex True 0 0 (Asm.regNum d) False ++ [0xB8 + lo (Asm.regNum d)]
+            ++ LittleEndian.le64 i
   Asm.MovRM d m => form [] True [0x8B] (Asm.regNum d) (Right m) rel False []
   Asm.MovMR m s => form [] True [0x89] (Asm.regNum s) (Right m) rel False []
   Asm.MovMI m i => form [] True [0xC7] 0 (Right m) rel False (LittleEndian.le32 i)
@@ -55,7 +56,8 @@ encodeRaw pc rel instr = case instr of
   Asm.Store Asm.W32 m s => form [] False [0x89] (Asm.regNum s) (Right m) rel False []
   Asm.Alu op d s => form [] True [0x01 + 8 * Asm.aluDigit op] (Asm.regNum s) (Left d) 0 False []
   Asm.AluI op d i =>
-        if fitsInt8 i then form [] True [0x83] (Asm.aluDigit op) (Left d) 0 False (LittleEndian.le8 i)
+        if fitsInt8 i
+          then form [] True [0x83] (Asm.aluDigit op) (Left d) 0 False (LittleEndian.le8 i)
         else form [] True [0x81] (Asm.aluDigit op) (Left d) 0 False (LittleEndian.le32 i)
   Asm.AluRM op d m =>
     form [] True [0x03 + 8 * Asm.aluDigit op] (Asm.regNum d) (Right m) rel False []

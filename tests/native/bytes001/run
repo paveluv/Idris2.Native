@@ -1,0 +1,50 @@
+. ../../testutils.sh
+
+# The reads on both code generators: the same program, compiled by the
+# native one and by Chez, prints the same.
+idris2 --cg native -p idris2-native-runtime -p idris2-native --directive dump-asm=build/asm.s -o bytes-native Bytes.idr > /dev/null
+./build/exec/bytes-native
+idris2 --cg chez -p idris2-native-runtime -p idris2-native -o bytes-chez Bytes.idr > /dev/null
+./build/exec/bytes-chez
+# and natively under the encoding whose pointers carry a tag, which the
+# load's displacement takes off
+idris2 --cg native -p idris2-native-runtime -p idris2-native --directive val-encoding=tag0 -o bytes-tag0 Bytes.idr > /dev/null
+./build/exec/bytes-tag0
+
+# The flat forms, as the renderer emits them: `pick` (a constant
+# displacement, folded), under each encoding of uniform values; `at` (a
+# displacement known at run time) and `far` (one too far to fold), each
+# the index and the displacement added, then one load; none of them calls.
+# (`Main.pick` itself is ordinary code's wrapper, which calls the flat
+# form.) Program labels (64 and up) are renumbered in order of appearance.
+form () {
+  awk -v want="# _flat.Main.$2" '/^# / { on = ($0 == want) }
+       on {
+         out = ""
+         while (match($0, /L[0-9]+/)) {
+           l = substr($0, RSTART, RLENGTH)
+           if (substr(l, 2) + 0 >= 64 && !(l in name)) name[l] = "L" (64 + n++)
+           out = out substr($0, 1, RSTART - 1) (l in name ? name[l] : l)
+           $0 = substr($0, RSTART + RLENGTH)
+         }
+         print out $0
+       }' "$1" > build/form.s
+  if [ -s build/form.s ]; then
+    cat build/form.s
+    if grep -q "call" build/form.s; then echo "$2 calls"; else echo "$2 calls nothing"; fi
+  else
+    echo "no machine code of the flat Main.$2"
+  fi
+}
+idris2 --cg native -p idris2-native-runtime -p idris2-native --directive val-encoding=tag0 --directive dump-asm=build/asm-tag0.s -o bytes-tag0-dump Bytes.idr > /dev/null
+for f in pick at far; do form build/asm.s $f; done
+echo "== val-encoding=tag0"
+form build/asm-tag0.s pick
+
+# A pure load of a buffer is refused where it is declared. `idris2 --check`
+# can report an error and still exit with 0, so its output says: nothing
+# but the line of the module built when the block was refused as it should.
+idris2 -p idris2-native-runtime -p idris2-native --check Refused.idr > check.out 2>&1
+grep -v "Building Refused" check.out
+echo "Refused.idr checked"
+rm -f check.out

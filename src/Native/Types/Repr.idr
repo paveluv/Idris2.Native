@@ -1,16 +1,22 @@
 ||| What ordinary code holds the values of a type as (`Only`, `Repr`,
-||| `Objects`, `Handles`, `ConOf`, `FieldOf`, `Fixnums`, `Immediate`): the
-||| representation contract between the code generator, which lays values
-||| out, and the runtime's support tier, which reads and makes them.
+||| `Objects`, `Handles`, `ConOf`, `FieldOf`, `Fixnums`, `Immediate`), and
+||| whether they change once made (`Immutable`): the representation
+||| contract between the code generator, which lays values out, and the
+||| runtime's support tier, which reads and makes them.
 |||
 ||| Each relation is an interface with no methods, and each of its
-||| implementations a statement of a layout: the support tier converts
+||| implementations a statement; evidence is made only by searching for
+||| one, never by the interface's constructor, which the linter refuses
+||| (`forged-instance`). The layout relations are what the support tier's
+||| door asks for (`Native.Support.Obj`, erased): the support tier converts
 ||| between a value and an object, reads a field, or makes a value, only
-||| with the evidence of one (`Native.Support.Obj` takes it, erased), so that
-||| no code takes a value for what it is not. A statement the code
-||| generator does not keep would be a wrong layout, which the tests of the
-||| primitive that uses it find: the statements are the trusted part, few,
-||| and each in one place.
+||| with the evidence of one, so that no code takes a value for what it is
+||| not. A layout statement the code generator does not keep would be a
+||| wrong layout, which the tests of the primitive that uses it find.
+||| `Immutable` states no layout: it is what a pure load's type asks for
+||| (`Types.PureLoad`), and a false one would let a load read a word before
+||| or after a write it may not be moved past. The statements are the
+||| trusted part, few, and each in one place.
 |||
 ||| The relations are open: a type's statements are made in the module that
 ||| defines the type, which answers for them, and here only for the types
@@ -153,6 +159,13 @@ interface Fixnums (0 t : Type) where
 
 public export
 Fixnums Integer where
+
+||| A published value of `a` is never written: once a value of `a` exists,
+||| the object it is stays as it is until it is collected. What a pure load
+||| asks of the type it reads (`Types.PureLoad`), since such a load may be
+||| done at any time, and its result shared.
+public export
+interface Immutable (0 a : Type) where
 
 ||| Ordinary code holds every value of `t` as a fixnum, the integer it
 ||| stands for: never an object.
