@@ -2,7 +2,7 @@
 ||| (`Types.Struct`), its handle, what its reads found and the offsets into
 ||| its input buffer as raw words, and the buffer, kept in the table of open
 ||| files (`table`), whose slot `base` holds the number of, a handle
-||| (`Types.Represents.Handles`), as a `FilePtr`.
+||| (`Types.Repr.Handles`), as a `FilePtr`.
 |||
 ||| Output is not buffered: each write goes to the system as it is made,
 ||| so that nothing waits to be flushed, and the standard output's writes,

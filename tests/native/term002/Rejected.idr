@@ -242,10 +242,10 @@ failing "Mismatch between: Opnd v Val and ()"
     return x
 
 -- An object sized by a part that does not decide its size.
-failing "Can't find an implementation for Sizes ConId"
+failing "Can't find an implementation for Sizes ConIdPart"
   sizedById : Closed D CPS False [Val]
   sizedById = build $ \[x] => do
-    p <- emit1 (AllocSized ConId (W 2) ())
+    p <- emit1 (AllocSized ConIdPart (W 2) ())
     return x
 
 -- A static used as an object of another kind.

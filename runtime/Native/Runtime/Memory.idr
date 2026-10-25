@@ -302,7 +302,7 @@ fillBytes to n b = go 0
 ||| These and the conversions below take a value of any type for what the
 ||| caller says: outside the core, only the support tier's door
 ||| (`Support.Obj`) uses them, with the evidence of the representation
-||| contract (`Types.Represents`), which the linter checks.
+||| contract (`Types.Repr`), which the linter checks.
 export
 valueObject : Flat.Uniform a -> Ordo.Op Ordo (Addr s)
 valueObject v = do

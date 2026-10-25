@@ -7,7 +7,7 @@ import Native.Flat.Uniform as Flat
 import Native.Runtime.ByteAddr as Runtime
 import Native.Runtime.Ordo as Runtime
 import Native.Support.Ptr
-import Native.Types.Represents
+import Native.Types.Repr
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)

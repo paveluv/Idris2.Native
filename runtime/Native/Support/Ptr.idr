@@ -32,7 +32,7 @@ import Native.Runtime.Memory
 import Native.Runtime.Ordo as Runtime
 import Native.Types.Header
 import Native.Types.Kind
-import Native.Types.Represents as Types
+import Native.Types.Repr as Types
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
@@ -53,7 +53,7 @@ data Pointee : Type where
 
 ||| A new pointer of the address, as ordinary code holds it.
 export %inline
-newPtr : {auto 0 rep : Types.Represents Types.Kind.PTR a} -> (address : Runtime.ByteAddr) ->
+newPtr : {auto 0 rep : Types.Repr.Represents Types.Kind.PTR a} -> (address : Runtime.ByteAddr) ->
          Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform a)
 newPtr address = do
   p <- Obj.allocate Types.Kind.PTR Types.Header.noParts
@@ -62,7 +62,7 @@ newPtr address = do
 
 ||| The null pointer.
 export %inline
-nullPtr : {auto 0 rep : Types.Represents Types.Kind.PTR a} ->
+nullPtr : {auto 0 rep : Types.Repr.Represents Types.Kind.PTR a} ->
           Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform a)
 nullPtr = newPtr Runtime.ByteAddr.null
 
@@ -76,9 +76,9 @@ stringPtr s = do
 ||| What a pointer is: a handle, or by its object's kind; the program ends
 ||| for one of none of them.
 export %inline
-pointee : {auto 0 objs : Types.Represents.Objects a} -> {auto 0 hs : Types.Represents.Handles a} ->
-          {auto 0 str : Types.Represents Types.Kind.STRING a} ->
-          {auto 0 adr : Types.Represents Types.Kind.PTR a} ->
+pointee : {auto 0 objs : Types.Repr.Objects a} -> {auto 0 hs : Types.Repr.Handles a} ->
+          {auto 0 str : Types.Repr.Represents Types.Kind.STRING a} ->
+          {auto 0 adr : Types.Repr.Represents Types.Kind.PTR a} ->
           Flat.Uniform a -> Runtime.Ordo.Op Runtime.Ordo Pointee
 pointee v = do
   handle <- Obj.valueHandle v

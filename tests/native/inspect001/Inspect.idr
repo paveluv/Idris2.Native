@@ -268,7 +268,7 @@ gatedEq =
 exemptEq : List (String, String)
 exemptEq =
   [ ("ByteAddr", "a record of one word, compared as its word, whose constructor is the runtime's")
-  , ("ConstructorId",
+  , ("ConId",
      "a record of one word, compared as its word, whose constructor is its module's") ]
 
 failures : List String

@@ -30,7 +30,7 @@ import Native.Support.BufferObj
 import Native.Support.Obj
 import Native.Support.Ptr
 import Native.Support.Text
-import Native.Types.Represents
+import Native.Types.Repr
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
@@ -231,7 +231,7 @@ newlineFrom b from to = primIO $ \w => let (Runtime.MkOrdo # i) = op Runtime.MkO
       Runtime.Ordo.pure (from + cast i)
 
 %cg native flat System.Call.handlePointer
-||| The pointer a handle is given as (`Types.Represents.Handles`).
+||| The pointer a handle is given as (`Types.Repr.Handles`).
 export
 handlePointer : (number : Int) -> Flat.Uniform AnyPtr
 handlePointer n = let (Runtime.MkOrdo # p) = Support.Obj.handleValue (cast n) Runtime.MkOrdo in p

@@ -40,7 +40,7 @@ function Main.sumTo CPS [slot0:Val, slot1:Val] entry 0
 function Main.side CPS [slot0:Val] entry 0
   0:
     slot1:Ptr CON := Narrow Ptr CON slot0:Val
-    slot2:W64 := LoadPart ConId slot1:Ptr CON
+    slot2:W64 := LoadPart ConIdPart slot1:Ptr CON
     Switch slot2:W64 [0 -> 2, 1 -> 3, 2 -> 10] else 11
   1:
     slot26:W64 := DirectCall _flat.Main.side (slot3:W64, slot4:F64, slot5:W64, slot6:W64) live []
@@ -112,7 +112,7 @@ function Main.side CPS [slot0:Val] entry 0
 function Main.grow CPS [slot0:Val] entry 0
   0:
     slot1:Ptr CON := Narrow Ptr CON slot0:Val
-    slot2:W64 := LoadPart ConId slot1:Ptr CON
+    slot2:W64 := LoadPart ConIdPart slot1:Ptr CON
     Switch slot2:W64 [0 -> 2, 1 -> 3, 2 -> 10] else 11
   1:
     slot26:W64, slot27:F64, slot28:W64, slot29:W64 := DirectCall _flat.Main.grow (slot3:W64, slot4:F64, slot5:W64, slot6:W64) live []
@@ -175,7 +175,7 @@ function Main.grow CPS [slot0:Val] entry 0
   13:
     slot31:Ptr DOUBLE := AllocObj DOUBLE (slot27:F64) live [slot27:F64]
     slot32:Val := Widen slot31:Ptr DOUBLE
-    slot33:Ptr CON := AllocObj CON ConId=0 ConArity=1 (slot32:Val) live [slot32:Val]
+    slot33:Ptr CON := AllocObj CON ConIdPart=0 ConArity=1 (slot32:Val) live [slot32:Val]
     slot34:Val := Widen slot33:Ptr CON
     slot30:Val := slot34:Val
     Jump 12
@@ -195,7 +195,7 @@ function Main.grow CPS [slot0:Val] entry 0
     slot35:Val := slot39:Val
     Jump 15
   17:
-    slot45:Ptr CON := AllocObj CON ConId=1 ConArity=2 (slot35:Val, slot40:Val) live [slot35:Val, slot40:Val]
+    slot45:Ptr CON := AllocObj CON ConIdPart=1 ConArity=2 (slot35:Val, slot40:Val) live [slot35:Val, slot40:Val]
     slot46:Val := Widen slot45:Ptr CON
     slot30:Val := slot46:Val
     Jump 12

@@ -1,7 +1,7 @@
 -- The runtime takes no value for what it is not: each conversion between a
 -- value, as ordinary code holds it (`Uniform a`), and an object of the
 -- heap asks the evidence of the representation contract
--- (`Native.Types.Represents`), which states, once, how the code generator
+-- (`Native.Types.Repr`), which states, once, how the code generator
 -- lays values out. This file typechecks exactly when each `failing` block
 -- fails, for the reason it names, and the rest checks.
 --
@@ -31,9 +31,9 @@ import Native.Flat.Uniform as Flat
 import Native.HeapObj.Shape
 import Native.Runtime.Ordo
 import Native.Support.Obj
-import Native.Types.ConstructorId
+import Native.Types.ConId
 import Native.Types.Kind
-import Native.Types.Represents
+import Native.Types.Repr
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
@@ -99,15 +99,15 @@ failing "Can't find an implementation for shape CON = Just RAW"
     o <- Obj.valueObject {k = CON} xs
     Obj.store64 o 8 0
 
-failing "Can't find an implementation for Num ConstructorId"
+failing "Can't find an implementation for Num ConId"
   -- a constructor's id is an identity: nothing computes one
-  nextCon : ConstructorId
+  nextCon : ConId
   nextCon = listCons + 1
 
-failing "Name Native.Types.ConstructorId.MkConstructorId is private"
+failing "Name Native.Types.ConId.MkConId is private"
   -- nor is one made of a word
-  forgedId : ConstructorId
-  forgedId = MkConstructorId 7
+  forgedId : ConId
+  forgedId = MkConId 7
 
 -- a pointer to bytes read as the string it may be
 asString : Flat.Uniform (Ptr String) -> Op Ordo (Maybe (Obj STRING))

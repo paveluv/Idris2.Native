@@ -13,7 +13,7 @@ import Native.Runtime.System
 import Native.Support.Ptr
 import Native.Support.Text
 import Native.System.Environment
-import Native.Types.Represents
+import Native.Types.Repr
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)

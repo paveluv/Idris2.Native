@@ -813,7 +813,7 @@ fileRules f ms ds =
     ||| `cast`: a use of `believe_me` or `really_believe_me`, which takes a value
     ||| of one type for one of another, whatever the two are. No suppression
     ||| lifts it: what a value is, the representation contract states
-    ||| (`Types.Represents`), and the conversions ask its evidence.
+    ||| (`Types.Repr`), and the conversions ask its evidence.
     casts : Source.SourceFile -> Mentions -> List Finding
     casts f ms =
       [ finding f "cast" fc (nameRoot n)

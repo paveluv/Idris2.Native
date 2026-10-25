@@ -242,8 +242,8 @@ importAlias fileExports f refs =
 ||| mean the same: a name that begins with a capital, anywhere; one that
 ||| begins with a small letter, on a clause's right-hand side. In a type or
 ||| a pattern, Idris takes a bare name of a small letter for a new variable,
-||| though a definition of it is in scope (`Represents.listCons` in
-||| `Native.Types.Represents`'s constructors' types is the definition, bare
+||| though a definition of it is in scope (`Repr.listCons` in
+||| `Native.Types.Repr`'s constructors' types is the definition, bare
 ||| `listCons` a variable), so the qualifier is what names the definition.
 export
 selfQualified : Source.SourceFile -> (defines : List String) -> List (FC, Name) -> List Finding

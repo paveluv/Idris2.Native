@@ -13,9 +13,9 @@
 |||
 ||| Part of the type layer, the modules of `Types`, which the code generator
 ||| and the runtime's support tier read.
-module Native.Types.Represents
+module Native.Types.Repr
 
-import Native.Types.ConstructorId
+import Native.Types.ConId
 import Native.Types.Kind
 import Native.Types.Struct
 
@@ -82,9 +82,9 @@ data Handles : Type -> Type where
 
 ||| The ids of `List`'s constructors, `[]` then `(::)`, as it declares them.
 export
-listNil, listCons : ConstructorId
-listNil = ConstructorId.declared 0
-listCons = ConstructorId.declared 1
+listNil, listCons : ConId
+listNil = ConId.declared 0
+listCons = ConId.declared 1
 
 ||| Constructor `c` of the data type `t` is a `CON` of the id `c` and `n`
 ||| fields: a count no code computes with, only the statement's, as the
@@ -92,21 +92,21 @@ listCons = ConstructorId.declared 1
 ||| below: there a bare `listCons` would be a new variable, and the
 ||| statement one of every id.
 public export
-data ConOf : (t : Type) -> (c : ConstructorId) -> (n : Nat) -> Type where
-  ListNil : ConOf (List a) Represents.listNil 0
-  ListCons : ConOf (List a) Represents.listCons 2
+data ConOf : (t : Type) -> (c : ConId) -> (n : Nat) -> Type where
+  ListNil : ConOf (List a) Repr.listNil 0
+  ListCons : ConOf (List a) Repr.listCons 2
 
 ||| `c` is a constructor of `t`, of some number of fields: what a view of a
 ||| value as one of its constructors asks.
 public export
-data IsCon : (t : Type) -> (c : ConstructorId) -> Type where
+data IsCon : (t : Type) -> (c : ConId) -> Type where
   HasArity : {0 n : Nat} -> ConOf t c n -> IsCon t c
 
 ||| Field `i` of constructor `c` of `t` holds a value of `f`.
 public export
-data FieldOf : (t : Type) -> (c : ConstructorId) -> (i : Bits64) -> (f : Type) -> Type where
-  ConsHead : FieldOf (List a) Represents.listCons 0 a
-  ConsTail : FieldOf (List a) Represents.listCons 1 (List a)
+data FieldOf : (t : Type) -> (c : ConId) -> (i : Bits64) -> (f : Type) -> Type where
+  ConsHead : FieldOf (List a) Repr.listCons 0 a
+  ConsTail : FieldOf (List a) Repr.listCons 1 (List a)
 
 ||| A value of `t` may be a fixnum, the signed integer it stands for: an
 ||| `Integer` is one exactly where it is in the fixnum range, under an

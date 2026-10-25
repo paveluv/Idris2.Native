@@ -1,4 +1,4 @@
-||| A constructor's id (`ConstructorId`): which constructor of its data type
+||| A constructor's id (`ConId`): which constructor of its data type
 ||| an object is, from 0 in the order of the type's declaration, in its
 ||| header's `ConId` part.
 |||
@@ -6,14 +6,14 @@
 ||| arithmetic applies (there is no `Num`), so an id is not computed, nor a
 ||| count or another code taken for one. One is a constructor's place in its
 ||| type's declaration (`declared`), which the representation contract names
-||| (`Types.Represents.listCons`), or read from a header (`fromHeader`); one
+||| (`Types.Repr.listCons`), or read from a header (`fromHeader`); one
 ||| goes only into a header (`withConstructor`). No literal is one: a
 ||| `fromInteger` of its own would leave every literal of a module that
 ||| imports it two readings.
 |||
 ||| Part of the type layer, the modules of `Types`, which the code generator
 ||| and the runtime's support tier read.
-module Native.Types.ConstructorId
+module Native.Types.ConId
 
 import Native.Types.Header
 import Native.Types.Kind
@@ -22,26 +22,26 @@ import Native.Types.Kind
 
 ||| A constructor's id.
 export
-record ConstructorId where
-  constructor MkConstructorId
+record ConId where
+  constructor MkConId
   word : Bits64
 
 export
-Eq ConstructorId where
+Eq ConId where
   a == b = a.word == b.word
 
 ||| The id of the constructor `n` after the first in its type's
 ||| declaration.
 export %inline
-declared : (n : Bits64) -> ConstructorId
-declared n = MkConstructorId n
+declared : (n : Bits64) -> ConId
+declared n = MkConId n
 
 ||| The id a constructor's header holds.
 export %inline
-fromHeader : (header : Bits64) -> ConstructorId
-fromHeader h = MkConstructorId (Header.readPart Header.ConId h)
+fromHeader : (header : Bits64) -> ConId
+fromHeader h = MkConId (Header.readPart Header.ConIdPart h)
 
 ||| A constructor's header parts with its id.
 export %inline
-withConstructor : ConstructorId -> Header.Parts Kind.CON -> Header.Parts Kind.CON
-withConstructor c = Header.withPart Header.ConId c.word
+withConstructor : ConId -> Header.Parts Kind.CON -> Header.Parts Kind.CON
+withConstructor c = Header.withPart Header.ConIdPart c.word

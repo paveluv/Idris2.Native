@@ -21,7 +21,7 @@ import Native.Runtime.Memory
 import Native.Runtime.Ordo as Runtime
 import Native.Types.Header
 import Native.Types.Kind
-import Native.Types.Represents
+import Native.Types.Repr
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)

@@ -11,7 +11,7 @@ import Native.Support.Obj
 import Native.Support.Ptr
 import Native.Support.Text
 import Native.Types.Kind
-import Native.Types.Represents
+import Native.Types.Repr
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)

@@ -18,7 +18,7 @@ import Native.Support.Ptr
 import Native.Support.Text
 import Native.System.Call
 import Native.System.File
-import Native.Types.Represents
+import Native.Types.Repr
 
 %default total
 

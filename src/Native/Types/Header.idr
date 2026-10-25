@@ -56,7 +56,7 @@ data Header : Enc -> Kind -> Type where
 ||| A part of a header, by kind: what `LoadPart` reads.
 public export
 data HeaderPart : Kind -> Type where
-  ConId          : HeaderPart Kind.CON
+  ConIdPart          : HeaderPart Kind.CON
   ConArity       : HeaderPart Kind.CON
   ClosureArity   : HeaderPart Kind.CLOSURE
   ClosureFilled  : HeaderPart Kind.CLOSURE
@@ -72,7 +72,7 @@ data HeaderPart : Kind -> Type where
 
 public export
 Show (HeaderPart kn) where
-  show ConId = "ConId"
+  show ConIdPart = "ConIdPart"
   show ConArity = "ConArity"
   show ClosureArity = "ClosureArity"
   show ClosureFilled = "ClosureFilled"
@@ -89,7 +89,7 @@ Show (HeaderPart kn) where
 ||| A header's parts with their values, in order.
 public export
 parts : {enc : Enc} -> {0 k : Kind} -> Header enc k -> List (HeaderPart k, Nat)
-parts (ConH c a) = [(ConId, c), (ConArity, a)]
+parts (ConH c a) = [(ConIdPart, c), (ConArity, a)]
 parts (ClosureH a f) = [(ClosureArity, a), (ClosureFilled, f)]
 parts (StringH p) = strings enc.string p
   where
@@ -137,7 +137,7 @@ headed PtrH = ItIsJust
 ||| `idris_apply` all read it here. A kind's parts do not overlap.
 public export
 place : {0 k : Kind} -> HeaderPart k -> (Bits64, Bits64)
-place ConId = HeapObj.Shape.place {s = HeapObj.Shape.VALUES} HeapObj.Shape.Part
+place ConIdPart = HeapObj.Shape.place {s = HeapObj.Shape.VALUES} HeapObj.Shape.Part
 place ConArity = HeapObj.Shape.place HeapObj.Shape.Values
 place ClosureArity = HeapObj.Shape.place {s = HeapObj.Shape.MIXED} HeapObj.Shape.Part
 place ClosureFilled = HeapObj.Shape.place HeapObj.Shape.MixedValues
@@ -290,7 +290,7 @@ decodeHeader enc w = do
       Just (Kind.STRING ** StringH (StringEnc.MkUtf32Parts (get StringChars)))
 
     parse : Maybe Kind -> Maybe (k : Kind ** Header enc k)
-    parse (Just Kind.CON) = Just (Kind.CON ** ConH (get ConId) (get ConArity))
+    parse (Just Kind.CON) = Just (Kind.CON ** ConH (get ConIdPart) (get ConArity))
     parse (Just Kind.CLOSURE) =
       Just (Kind.CLOSURE ** ClosureH (get ClosureArity) (get ClosureFilled))
     parse (Just Kind.INT64) = Just (Kind.INT64 ** Int64H)

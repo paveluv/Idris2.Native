@@ -39,7 +39,7 @@ import Native.Support.Text
 import Native.Types.Header
 import Native.Types.IntegerRoutine
 import Native.Types.Kind
-import Native.Types.Represents
+import Native.Types.Repr
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)

@@ -43,7 +43,7 @@ import Native.Support.Double.Shortest
 import Native.Support.Obj
 import Native.Types.Header
 import Native.Types.Kind
-import Native.Types.Represents
+import Native.Types.Repr
 import Native.Types.StringRoutine
 
 %hide Prelude.Interfaces.(>>=)
@@ -312,7 +312,7 @@ compare x y = do
 ------------------------------------------------------------------------------
 -- Lists of characters and of strings: `prelude`'s `fastPack`, `fastUnpack`
 -- and `fastConcat`, through the view of a list's constructors that the
--- representation contract gives (`Types.Represents`: `[]` and `(::)`, its
+-- representation contract gives (`Types.Repr`: `[]` and `(::)`, its
 -- head then its tail, a character a fixnum).
 
 %cg native flat Support.String.Utf8.fastPack
@@ -336,7 +336,7 @@ fastPack xs = let (Runtime.MkOrdo # r) = packOp xs Runtime.MkOrdo in r
         packMeasure : Flat.Uniform (List Char) -> (bytes, seen : Bits64) ->
                       Runtime.Ordo.Op Runtime.Ordo (Bits64, Bits64)
         packMeasure xs bytes seen = do
-          cell <- Obj.asCon {t = List Char} Types.Represents.listCons xs
+          cell <- Obj.asCon {t = List Char} Types.Repr.listCons xs
           case cell of
             Nothing => Runtime.Ordo.pure (bytes, seen)
             Just c => do
@@ -350,7 +350,7 @@ fastPack xs = let (Runtime.MkOrdo # r) = packOp xs Runtime.MkOrdo in r
         packWrite : Flat.Uniform (List Char) -> Obj Types.Kind.STRING -> (j : Bits64) ->
                     Runtime.Ordo.Op Runtime.Ordo ()
         packWrite xs s j = do
-          cell <- Obj.asCon {t = List Char} Types.Represents.listCons xs
+          cell <- Obj.asCon {t = List Char} Types.Repr.listCons xs
           case cell of
             Nothing => Runtime.Ordo.pure ()
             Just c => do
@@ -374,7 +374,7 @@ fastUnpack str = let (Runtime.MkOrdo # r) = unpackOp str Runtime.MkOrdo in r
     unpackOp str = do
       s <- stringObject str
       h <- stringHeader s
-      nil <- Obj.con0 {t = List Char} Types.Represents.listNil
+      nil <- Obj.con0 {t = List Char} Types.Repr.listNil
       build s (headerBytes h) nil
       where
         ||| Where the character that ends before byte `j` starts: the first
@@ -394,7 +394,7 @@ fastUnpack str = let (Runtime.MkOrdo # r) = unpackOp str Runtime.MkOrdo in r
           i <- startBefore s j
           c <- decodeAt s i
           ch <- Obj.ofImmediate {t = Char} c
-          cell <- Obj.con2 {t = List Char} Types.Represents.listCons ch rest
+          cell <- Obj.con2 {t = List Char} Types.Repr.listCons ch rest
           build s i cell
 
 %cg native flat Support.String.Utf8.fastConcat
@@ -418,7 +418,7 @@ fastConcat xs = let (Runtime.MkOrdo # r) = concatOp xs Runtime.MkOrdo in r
         concatMeasure : Flat.Uniform (List String) -> (bytes : Bits64) -> (ascii : Bool) ->
                         Runtime.Ordo.Op Runtime.Ordo (Bits64, Bool)
         concatMeasure xs bytes ascii = do
-          cell <- Obj.asCon {t = List String} Types.Represents.listCons xs
+          cell <- Obj.asCon {t = List String} Types.Repr.listCons xs
           case cell of
             Nothing => Runtime.Ordo.pure (bytes, ascii)
             Just c => do
@@ -433,7 +433,7 @@ fastConcat xs = let (Runtime.MkOrdo # r) = concatOp xs Runtime.MkOrdo in r
         concatWrite : Flat.Uniform (List String) -> Obj Types.Kind.STRING -> (j : Bits64) ->
                       Runtime.Ordo.Op Runtime.Ordo ()
         concatWrite xs r j = do
-          cell <- Obj.asCon {t = List String} Types.Represents.listCons xs
+          cell <- Obj.asCon {t = List String} Types.Repr.listCons xs
           case cell of
             Nothing => Runtime.Ordo.pure ()
             Just c => do

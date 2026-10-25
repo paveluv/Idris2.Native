@@ -229,7 +229,7 @@ addInteger x y = do
 sumFields : Opnd vr Val -> Build Run c False vr l (Opnd vr Val)
 sumFields p = do
   q <- emit1 (NarrowPtr CON p)
-  tag <- emit1 (LoadPart ConId q)
+  tag <- emit1 (LoadPart ConIdPart q)
   [r] <- joinPoint [Val] $ \exit =>
     switch tag
       [ (0, do a <- emit1 (Load Val (MkMem (AtPtr q) Nothing 8))
@@ -378,7 +378,7 @@ mainBody = build $ \[] => do
   u <- addInteger three p                       -- p is a pointer: slowAdd, 6
   w <- addInteger t u                           -- 42
   two <- emit1 (StaticAddr twoRef)
-  id <- emit1 (LoadPart ConId two)              -- 2
+  id <- emit1 (LoadPart ConIdPart two)              -- 2
   arr <- emit1 (AllocSized ArrayElems (W 3) (val 0))
   idf <- emit1 (Tag id)
   idv <- emit1 (WidenFix idf)
