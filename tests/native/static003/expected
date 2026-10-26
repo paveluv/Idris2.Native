@@ -109,3 +109,41 @@ lea rdi, [rip+L66+1]
 add rsp, 8
 ret
 listed calls nothing
+("caf\233 \8364\128512", True)
+(7, 7)
+(['h', '\233', 'l', 'l', 'o'], True)
+("static\ncaf\233\n\n", True)
+"a\tb \"q\" caf\233\&9 \SOH\SO\&H \\ \DEL"
+True
+(("", ([], "")), True)
+("caf\233 \8364\128512", True)
+(7, 7)
+(['h', '\233', 'l', 'l', 'o'], True)
+("static\ncaf\233\n\n", True)
+"a\tb \"q\" caf\233\&9 \SOH\SO\&H \\ \DEL"
+True
+(("", ([], "")), True)
+("caf\233 \8364\128512", True)
+(7, 7)
+(['h', '\233', 'l', 'l', 'o'], True)
+("static\ncaf\233\n\n", True)
+"a\tb \"q\" caf\233\&9 \SOH\SO\&H \\ \DEL"
+True
+(("", ([], "")), True)
+Main.packed not computed by the program
+Main.unpacked not computed by the program
+Main.joined not computed by the program
+Main.escaped not computed by the program
+Main.empties not computed by the program
+packed: STRING StringAsciiP=0 StringBytesP=13
+unpacked: 104 :: 233 :: 108 :: 108 :: 111 :: Nil (_native.con0)
+packedFrom calls nothing
+unpackedFrom calls nothing
+Error: native: refused as static constants:
+  Forged.surrogate is not computable when the program is compiled: a pack of a list that holds 55296, which is no character, in Forged.surrogate
+  Forged.numbers is not computable when the program is compiled: a concatenation of a list that holds 1, which is no string, in Forged.numbers
+  Forged.number is not computable when the program is compiled: an unpack of 5, which is no string, in Forged.number
+  Forged.found is not computable when the program is compiled: a pack of a value that is no list, in Forged.found
+  Forged.consShaped is not computable when the program is compiled: a pack of a value that is no list, in Forged.consShaped
+  Forged.consNumbered is not computable when the program is compiled: a pack of a value that is no list, in Forged.consNumbered
+

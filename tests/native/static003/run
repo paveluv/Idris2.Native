@@ -204,3 +204,43 @@ for c in primes pair; do
 done
 echo "== val-encoding=tag0"
 listing build/flat-tag0.s _flat.Main.listed listed
+
+# Strings and lists of characters the prelude's functions between them
+# compute: the program `Strings`, natively, on Chez and natively under
+# tag0, all printing the same, each value compared with the same made as
+# the program runs, by the runtime's functions.
+idris2 --cg native -p idris2-native-runtime -p idris2-native --directive dump-asm=build/strings.s \
+  --directive dump-ir=build/strings.txt -o strings-native Strings.idr > /dev/null
+./build/exec/strings-native
+idris2 --cg chez -p idris2-native-runtime -p idris2-native -o strings-chez Strings.idr > /dev/null
+./build/exec/strings-chez
+idris2 --cg native -p idris2-native-runtime -p idris2-native --directive val-encoding=tag0 \
+  -o strings-tag0 Strings.idr > /dev/null
+./build/exec/strings-tag0
+
+# None of them computed by the program, as `Static`'s. From the IR: the
+# string `packedFrom` returns, a literal's object, its header counting
+# its UTF-8's bytes, 13, not all ASCII, as the runtime's `fastPack`
+# records them; and the cells `unpackedFrom` returns, each head the
+# fixnum of a character. Neither reader calls.
+for c in packed unpacked joined escaped empties; do
+  if grep -q -e "^# Main\.$c\$" -e "value of Main\.$c)" build/strings.s; then
+    echo "Main.$c computed by the program"
+  else
+    echo "Main.$c not computed by the program"
+  fi
+done
+ir=build/strings.txt
+header () {
+  name="$1" awk 'index($0, "static " ENVIRON["name"] " ") == 1 {
+                   line = substr($0, length(ENVIRON["name"]) + 9); sub(/:.*/, "", line)
+                   print line
+                 }' "$ir"
+}
+echo "packed: $(header "$(returned packedFrom)")"
+echo "unpacked: $(cells "$(returned unpackedFrom)")"
+for f in packedFrom unpackedFrom; do listing build/strings.s Main.$f $f | tail -n 1; done
+
+# Values of the functions that Idris's types do not allow, which a
+# `believe_me` makes, refused when the program is compiled, in one error.
+idris2 --cg native -o forged Forged.idr

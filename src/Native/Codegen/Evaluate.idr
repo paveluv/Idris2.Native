@@ -14,7 +14,9 @@
 ||| (`divergence`), where it is not computed; and a cast of a character to
 ||| a string, which `getOp` escapes, is the string of the character. A
 ||| maker of an object from words, and the primitive that reads one, mean
-||| what their marks say (`Meanings`), not what their bodies do. An
+||| what their marks say (`Meanings`), not what their bodies do; and the
+||| prelude's foreign functions between strings and lists what the
+||| runtime's functions that implement them compute. An
 ||| expression that only the running program can compute, a foreign
 ||| function, a crash, a constant that needs its own value, or one that
 ||| takes more steps than the fuel, is not computed, and says why.
@@ -26,6 +28,7 @@ module Native.Codegen.Evaluate
 
 import Native.Codegen.ConstantWord
 import Native.Codegen.IntWidth
+import Native.Codegen.Linkage.ForeignFunctions
 
 import Compiler.CompileExpr
 import Core.CompileExpr
@@ -34,6 +37,7 @@ import Core.Context.Context
 import Core.Core
 import Core.FC
 import Core.Name
+import Core.Name.Namespace
 import Core.Name.Scoped
 import Core.Primitives
 import Core.TT
@@ -135,15 +139,20 @@ compileFor ns = go ns empty
 ||| What the evaluation takes a call of a definition to mean other than by
 ||| its body: the makers of an object from words (`Types.FromWords`), each
 ||| found by its mark, whose call is the object of the words its function
-||| gives; and the backend's primitives (`Native.Primitive`), of which the
-||| one that reads such an object (`PayloadWord`) is the object's word. Both
-||| bodies reach what only the running program does, a buffer's foreign
-||| functions, where the meanings need none.
+||| gives; the backend's primitives (`Native.Primitive`), of which the one
+||| that reads such an object (`PayloadWord`) is the object's word; and the
+||| prelude's functions between strings and lists that the program's
+||| string encoding implements (`ForeignFunctions.stringFunctions`), each
+||| the string or the list that the runtime's function makes of its
+||| argument. The makers' and the primitives' bodies reach what only the
+||| running program does, a buffer's foreign functions, and the prelude's
+||| functions are foreign, of no body; the meanings need neither.
 public export
 record Meanings where
   constructor MkMeanings
   makers : SortedSet Name
   primitives : SortedMap Name Primitive
+  stringFunctions : SortedMap Name Linkage.ForeignFunctions.StringFunction
 
 ||| A constant as the evaluation has it so far: being evaluated, or its
 ||| value.
@@ -243,6 +252,49 @@ evaluation meanings compiled fuel = do
         wordCount ws' = maybe 0 (\last => cast {to = Integer} (fst last) + 1) (rightMost ws')
     payloadWord fc _ = stuck fc "a read of a word of an object no maker made"
 
+    -- a value as a refusal names it: a constant as Idris writes it
+    described : Value -> String
+    described (VConst k) = show k
+    described _ = "a value that is no constant"
+
+    ||| `[]` as every list in Idris's compiled forms is made of: a
+    ||| constructor Idris makes of its own for the prelude's, as for those
+    ||| of every type of its shape, and defines among the program's
+    ||| compiled definitions (`Compiler.Opts.Constructor`).
+    listNil : Name
+    listNil = NS (mkNamespace "_builtin") (UN (Basic "NIL"))
+
+    ||| `(::)`, as `listNil` is `[]`, and a pair's constructor too: Idris
+    ||| takes a type's one constructor of two fields for it.
+    listCons : Name
+    listCons = NS (mkNamespace "_builtin") (UN (Basic "CONS"))
+
+    -- the elements of a list after those so far, in order, each as
+    -- `element` reads it, one step a cell; of a list that holds one it
+    -- does not read, as one of `kind`, or of a value that is no list, why
+    -- not, as `what` of it, "a pack" of a list
+    elements : Ref Steps Nat => FC -> (what, kind : String) -> (Value -> Maybe a) -> Value ->
+               SnocList a -> Core (List a)
+    elements fc what kind element (VCon n _ [x, rest] _) acc =
+      if n /= listCons then stuck fc (what ++ " of a value that is no list") else
+        case element x of
+          Just e => do tick fc; elements fc what kind element rest (acc :< e)
+          Nothing =>
+            stuck fc (what ++ " of a list that holds " ++ described x ++ ", which is no " ++ kind)
+    elements fc what kind element (VCon n _ [] _) acc =
+      if n == listNil then pure (acc <>> []) else stuck fc (what ++ " of a value that is no list")
+    elements fc what _ _ _ _ = stuck fc (what ++ " of a value that is no list")
+
+    -- the character a value is, if it is one
+    character : Value -> Maybe Char
+    character (VConst (Ch c)) = Just c
+    character _ = Nothing
+
+    -- the string a value is, if it is one
+    string : Value -> Maybe String
+    string (VConst (Str s)) = Just s
+    string _ = Nothing
+
     ||| Why the compilation would compute a primitive at these constants
     ||| otherwise than the running program does, if it would. The evaluation
     ||| computes a primitive by Idris's meaning of it (`getOp`), which the
@@ -325,18 +377,20 @@ evaluation meanings compiled fuel = do
       eval env (NmCrash fc msg) = stuck fc ("a crash: " ++ msg)
 
       -- a definition applied to arguments: what it means, if the meanings
-      -- say (a maker's object, the payload word), else its body; at as
-      -- many arguments as it takes, its result applied to the rest if more,
-      -- a partial application if fewer
+      -- say (a maker's object, the payload word, or what a prelude
+      -- function between strings and lists makes of its one argument),
+      -- else its body; at as many arguments as it takes, its result
+      -- applied to the rest if more, a partial application if fewer
       global : Ref Steps Nat => Ref Serials Nat => Ref Memo (SortedMap Name Memoised) =>
                FC -> Name -> List Value -> Core Value
       global fc n' as =
         if contains n' meanings.makers then meant fc n' Types.FromWords.arity (made fc n') as
         else
-        case lookup n' meanings.primitives of
-          Just Primitive.PayloadWord =>
+        case (lookup n' meanings.primitives, lookup n' meanings.stringFunctions) of
+          (Just Primitive.PayloadWord, _) =>
             meant fc n' (Types.PureLoad.arity (Primitive.signature Primitive.PayloadWord))
               (payloadWord fc) as
+          (_, Just f) => meant fc n' 1 (stringFunction fc f) as
           _ => case !(compiledForm fc n') of
             MkNmFun [] b => applyAll fc !(constant fc n' b) as
             MkNmFun ps b =>
@@ -398,6 +452,38 @@ evaluation meanings compiled fuel = do
                 | _ => stuck fc ("word " ++ show i ++ " of " ++ show n' ++ ", which is no Bits64")
               fill (i + 1) (insert i w acc)
       made fc n' _ = stuck fc ("a call of the maker " ++ show n' ++ " at a count that is no Int")
+
+      -- a prelude function between strings and lists at its argument, as
+      -- the runtime's function computes it, one step a cell: the string of
+      -- a list's characters; the list of a string's characters, made as
+      -- compiled code makes a list, by Idris's definitions of its
+      -- constructors; and a list's strings end to end. Idris's characters
+      -- and strings hold Unicode scalar values only, whose UTF-8 the
+      -- runtime writes and reads, so that of them its functions mean what
+      -- Idris's do. Of another value, which only a `believe_me` makes, the
+      -- program's meaning is not certain, and it is not computed: the
+      -- runtime would write a number held as a character as the bytes of
+      -- the character of that number, a surrogate's too, and read a value
+      -- of another type as a list by its constructor's id alone.
+      stringFunction : Ref Steps Nat => Ref Serials Nat => Ref Memo (SortedMap Name Memoised) =>
+                       FC -> Linkage.ForeignFunctions.StringFunction -> List Value -> Core Value
+      stringFunction fc Linkage.ForeignFunctions.FastPack [xs] =
+        VConst . Str . pack <$> elements fc "a pack" "character" character xs [<]
+      stringFunction fc Linkage.ForeignFunctions.FastConcat [xs] =
+        VConst . Str . fastConcat <$> elements fc "a concatenation" "string" string xs [<]
+      stringFunction fc Linkage.ForeignFunctions.FastUnpack [VConst (Str s)] =
+        cells (reverse (unpack s)) !(global fc listNil [])
+        where
+          -- the characters, the last first, each put in front of the list
+          cells : List Char -> Value -> Core Value
+          cells [] rest = pure rest
+          cells (c :: cs) rest = do
+            tick fc
+            cells cs !(global fc listCons [VConst (Ch c), rest])
+      stringFunction fc Linkage.ForeignFunctions.FastUnpack [x] =
+        stuck fc ("an unpack of " ++ described x ++ ", which is no string")
+      stringFunction fc _ _ =
+        stuck fc "a prelude function between strings and lists at other than one argument"
 
       applyAll : Ref Steps Nat => Ref Serials Nat => Ref Memo (SortedMap Name Memoised) =>
                  FC -> Value -> List Value -> Core Value

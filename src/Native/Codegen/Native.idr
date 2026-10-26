@@ -150,11 +150,12 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
     ||| The most steps an evaluation when the program is compiled takes to
     ||| compute one value, a table's row or a constant, one marked static or
     ||| one either reads, which is computed once, in steps of its own
-    ||| (`Native.Codegen.Evaluate`). Each step is a call, a case, an
-    ||| operation or a word made: a bound on the work of each value, but for
-    ||| what one step costs as its values grow, such as an operation on a
-    ||| long string. A value that needs more is not computed, an error, and
-    ||| never computed some other way.
+    ||| (`Native.Codegen.Evaluate`). Each step is a let, a call, a case, an
+    ||| operation, a word made, or a cell of a list that a prelude function
+    ||| between strings and lists reads or makes: a bound on the work of each
+    ||| value, but for what one step costs as its values grow, such as an
+    ||| operation on a long string. A value that needs more is not computed,
+    ||| an error, and never computed some other way.
     evaluationFuel : Nat
     evaluationFuel = 100000000
 
@@ -295,10 +296,13 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
             systemExports : String
             systemExports = "native-system"
 
-        ||| What the evaluation takes the realised makers and primitives to
-        ||| mean (`Evaluate.Meanings`).
-        realisedMeanings : Linkage.Realised -> Evaluate.Meanings
-        realisedMeanings realised = Evaluate.MkMeanings realised.makers realised.primitives
+        ||| What the evaluation takes the realised makers and primitives, and
+        ||| the prelude's functions between strings and lists that the string
+        ||| encoding's module implements, to mean (`Evaluate.Meanings`).
+        realisedMeanings : Types.Enc -> Linkage.Realised -> Evaluate.Meanings
+        realisedMeanings enc realised =
+          Evaluate.MkMeanings realised.makers realised.primitives
+            (map fst (Linkage.ForeignFunctions.stringFunctions enc.string))
 
         ||| The constants the program marks static, each checked now to be a
         ||| definition of no arguments, which no directive marks flat too,
@@ -531,7 +535,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
           let reachedMarks = filter (\n => any ((== n) . fst) defs || elem n readByForms)
                                marked.staticConstants
           (staticReads, staticObjects) <- phase "the static constants evaluated"
-            (checkStaticConstants enc.bignum (realisedMeanings realised) compiled
+            (checkStaticConstants enc.bignum (realisedMeanings enc realised) compiled
               marked.flatFunctions reachedMarks marked.staticConstants)
           -- the definitions evaluated once, on their first use: every one of
           -- no arguments but the entry and those marked static, whose values
@@ -626,7 +630,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
             tabulated : (Name, (Int, Int)) -> Core Tabulate.Tabulated
             tabulated (n, (lo, hi)) = do
               Right t <-
-                Tabulate.tabulate (realisedMeanings realised) compiled evaluationFuel n lo hi
+                Tabulate.tabulate (realisedMeanings enc realised) compiled evaluationFuel n lo hi
                 | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
               pure t
 
