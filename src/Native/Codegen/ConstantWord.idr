@@ -8,7 +8,10 @@
 ||| its pattern's signed value, an `Integer`'s by its value, a double's by
 ||| its bits, a string's by its text. An integer constant is read by its
 ||| type's width (`Native.Codegen.IntWidth`), which the lowering's integer
-||| operations wrap to as well.
+||| operations wrap to as well. The objects that values computed as the
+||| program is compiled are made of, besides these, are constructors with
+||| fields and the objects makers made, which are named as they are made
+||| (`Native.Codegen.ValueWord`).
 module Native.Codegen.ConstantWord
 
 import Native.Codegen.IntWidth
@@ -54,6 +57,17 @@ export
 nullaryCon : Int -> Name
 nullaryCon conId = NS (mkNamespace "_native") (UN (Basic ("con" ++ show conId)))
 
+||| A uniform value as a word of the program before the rendering encodes
+||| it: a fixnum, the erased value, or the address of a static object.
+public export
+data StaticWord : Type where
+  ||| A fixnum, its range decided when the word is made (`fixnumWord`).
+  Fixnum : (i : Int64) -> {auto 0 ok : So (HeapObj.ValEnc.inFixnumRange (cast i))} -> StaticWord
+  ||| The erased value.
+  Erased : StaticWord
+  ||| The address of the static object of this name.
+  Object : Name -> StaticWord
+
 ||| What a static object of the program holds.
 public export
 data StaticPlan
@@ -70,17 +84,9 @@ data StaticPlan
   | ||| The object a maker made (`Types.FromWords`): a `BYTES` of these
     ||| words, in order, eight bytes each.
     Words (List Bits64)
-
-||| A uniform value as a word of the program before the rendering encodes
-||| it: a fixnum, the erased value, or the address of a static object.
-public export
-data StaticWord : Type where
-  ||| A fixnum, its range decided when the word is made (`fixnumWord`).
-  Fixnum : (i : Int64) -> {auto 0 ok : So (HeapObj.ValEnc.inFixnumRange (cast i))} -> StaticWord
-  ||| The erased value.
-  Erased : StaticWord
-  ||| The address of the static object of this name.
-  Object : Name -> StaticWord
+  | ||| A constructor with fields, of this id: a `CON` whose fields are
+    ||| these words, in order.
+    Constructor Int (List StaticWord)
 
 ||| An integer as a fixnum, if it is in the fixnum range: the test a
 ||| constant's word is made by, and the lowering's for an integer it is

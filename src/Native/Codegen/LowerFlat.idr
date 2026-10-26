@@ -341,7 +341,7 @@ flatRead bignum staticReads n sk lay = case (lookup n staticReads, sk, lay) of
   (Just (StaticRead.Literal k), _, [Rep.Uniform]) =>
     HeldUniform . fst <$> ConstantWord.constantWord bignum k
   (Just StaticRead.Erased, _, [Rep.Uniform]) => Right (HeldUniform ConstantWord.Erased)
-  (Just (StaticRead.Object o _), _, [Rep.Uniform]) => Right (HeldUniform (ConstantWord.Object o))
+  (Just (StaticRead.Object o), _, [Rep.Uniform]) => Right (HeldUniform (ConstantWord.Object o))
   (Just (StaticRead.Literal k), Flat.Exp.SPrim t, _) =>
     if Flat.ConstType.constType k == Just t then Right (HeldConstant k)
       else Left ("the constant " ++ show n ++ ", marked static, whose value " ++ show k

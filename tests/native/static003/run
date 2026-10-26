@@ -1,0 +1,206 @@
+. ../../testutils.sh
+
+# Constants marked static whose values are constructors with fields, on
+# both code generators: natively each is the objects the code generator
+# laid out as it compiled the program, and on Chez the value the program
+# computes before `main`; each is compared with the same made as the
+# program runs. All three print the same: native, Chez, and native under
+# the encoding whose pointers carry a tag.
+idris2 --cg native -p idris2-native-runtime -p idris2-native --directive dump-asm=build/asm.s \
+  --directive dump-ir=build/ir.txt -o static-native Static.idr > /dev/null
+./build/exec/static-native
+idris2 --cg chez -p idris2-native-runtime -p idris2-native -o static-chez Static.idr > /dev/null
+./build/exec/static-chez
+idris2 --cg native -p idris2-native-runtime -p idris2-native --directive val-encoding=tag0 \
+  -o static-tag0 Static.idr > /dev/null
+./build/exec/static-tag0
+
+# The image computes none of them: no function of a marked constant's
+# name, which would give its value from its cell, and no function that
+# computes the value, `_native.(value of ...)`, which an unmarked
+# constant has (constant001).
+for c in primes counted sample grid; do
+  if grep -q -e "^# Main\.$c\$" -e "value of Main\.$c)" build/asm.s; then
+    echo "Main.$c computed by the program"
+  else
+    echo "Main.$c not computed by the program"
+  fi
+done
+
+# The objects, as the IR the image is rendered from holds them: each line
+# of the dump a static object, its header, then its words, a fixnum as
+# `#n` and another object by its name. The static a reader returns, and a
+# list's cells from it, each head a number or an object, the objects
+# named in the order they are met, to the object every `Nil` is. Each
+# reads the dump `ir` names.
+ir=build/ir.txt
+returned () {
+  awk -v f="function Main.$1 " 'index($0, f) == 1 { on = 1; next }
+       on && /Return @/ { sub(/.*Return @/, ""); print; exit }' "$ir"
+}
+cells () {
+  awk -v start="$1" '
+    /^static .* CON .*: / {
+      line = substr($0, 8); name = substr(line, 1, index(line, " CON ") - 1)
+      sub(/^[^:]*: /, "", line); words[name] = line
+    }
+    END {
+      s = start; out = ""
+      while (s in words) {
+        split(words[s], w, ", ")
+        h = w[1]
+        if (h ~ /^#/) h = substr(h, 2)
+        else if (h in words) { if (!(h in seen)) seen[h] = "object " (++k); h = seen[h] }
+        out = out h " :: "
+        s = w[2]
+      }
+      print out "Nil (" s ")"
+    }' "$ir"
+}
+echo "primes: $(cells "$(returned primesFrom)")"
+echo "counted: $(cells "$(returned countedFrom)")"
+# `counted` is one cell, whose tail is the first cell of `primes`: the
+# static `primesFrom` returns
+p=$(returned primesFrom)
+c=$(returned countedFrom)
+if [ "$(awk -v s="static $c " 'index($0, s) == 1 { sub(/^[^:]*: /, ""); print }' "$ir")" \
+     = "#0, $p" ]; then
+  echo "counted: the cell 0 :: <the first cell of primes>"
+fi
+# The rows of `grid`: the first and the last one object
+echo "grid: $(cells "$(returned gridFrom)")"
+# The record `sample`: its header, then its ten words, the eighth the
+# address of `Just 9`'s object, which follows
+object () {
+  awk -v s="static $1 " 'index($0, s) == 1 { print substr($0, length(s) + 1) }' "$ir"
+}
+s=$(returned sampleFrom)
+echo "sample: $(object "$s")"
+echo "its found: $(object "$(object "$s" | sed 's/^[^:]*: //' | awk -F ', ' '{ print $8 }')")"
+
+# The readers, as the renderer emits them: the address of the first cell
+# (`lea`), then the return through the continuation (`jmp qword ptr
+# [r12]`). Neither calls.
+listing () {
+  awk -v want="# $2" '/^# / { on = ($0 == want) }
+       on {
+         out = ""
+         while (match($0, /L[0-9]+/)) {
+           l = substr($0, RSTART, RLENGTH)
+           if (substr(l, 2) + 0 >= 64 && !(l in name)) name[l] = "L" (64 + n++)
+           out = out substr($0, 1, RSTART - 1) (l in name ? name[l] : l)
+           $0 = substr($0, RSTART + RLENGTH)
+         }
+         print out $0
+       }' "$1" > build/listing.s
+  if [ -s build/listing.s ]; then
+    cat build/listing.s
+    if grep -q "call" build/listing.s; then echo "$3 calls"; else echo "$3 calls nothing"; fi
+  else
+    echo "no machine code of $2"
+  fi
+}
+for f in primesFrom countedFrom; do listing build/asm.s Main.$f $f; done
+
+# Values that hold one value twice: the program `Shared`, natively, on
+# Chez and natively under tag0, all printing the same. Its compilation
+# lays `tree` out walking each node once, so it ends, here under a time
+# limit, which a walk of every path, 2^64 of them, would exceed: the
+# compiler run as `idris2` runs it, the limit's command around it.
+limited () {
+  timeout 120 "$idris2" --no-banner --console-width 0 --no-color "$@" > /dev/null
+}
+if limited --cg native -p idris2-native-runtime -p idris2-native \
+     --directive dump-ir=build/shared.txt -o shared-native Shared.idr; then
+  echo "Shared compiled within the limit"
+fi
+./build/exec/shared-native
+idris2 --cg chez -p idris2-native-runtime -p idris2-native -o shared-chez Shared.idr > /dev/null
+./build/exec/shared-chez
+limited --cg native -p idris2-native-runtime -p idris2-native --directive val-encoding=tag0 \
+  -o shared-tag0 Shared.idr
+./build/exec/shared-tag0
+
+# From the IR: `tree`'s objects, from the static `treeFrom` returns, each
+# a node whose two words name one object, the node below, to the object
+# every `Leaf` is; and `twins`, the pair whose two words name one object,
+# a BYTES of the squares' words.
+ir=build/shared.txt
+nodes () {
+  awk -v start="$1" '
+    /^static .* CON .*: / {
+      line = substr($0, 8); name = substr(line, 1, index(line, " CON ") - 1)
+      sub(/^[^:]*: /, "", line); words[name] = line
+    }
+    END {
+      s = start; k = 0; twice = 1
+      while (s in words) {
+        split(words[s], w, ", ")
+        if (w[1] != w[2]) twice = 0
+        k++
+        s = w[1]
+      }
+      print k " objects, " (twice ? "each" : "not each") " holding the one below twice, to " s
+    }' "$ir"
+}
+echo "tree: $(nodes "$(returned treeFrom)")"
+pair=$(object "$(returned twinsFrom)" | sed 's/^[^:]*: //')
+if [ -n "$pair" ] && [ "${pair%%, *}" = "${pair#*, }" ]; then
+  echo "twins: both fields the address of one object, $(object "${pair%%, *}")"
+fi
+
+# Nothing allocated: `Held` reads a list of 3000 cells marked static
+# under a heap limit the cells would exceed, and exits with 0; a copy
+# without the mark exceeds the limit and ends with status 1, and the same
+# copy under no limit prints the same as `Held`. The copies are made under
+# build/, where the linter, which may run beside the tests, does not look.
+idris2 --cg native -p idris2-native-runtime -p idris2-native --directive nursery=4096 \
+  -o held Held.idr > /dev/null
+./build/exec/held 2>&1
+echo "status: $?"
+mkdir -p build/copies
+grep -v "^%cg native static" Held.idr > build/copies/Computed.idr
+sed -e 's/^  setHeapLimit 65536   -- the copy under no limit sets none$/  pure ()/' \
+  build/copies/Computed.idr > build/copies/Unlimited.idr
+(cd build/copies && for p in Computed Unlimited; do
+   idris2 --cg native -p idris2-native-runtime -p idris2-native --directive nursery=4096 \
+     -o $p $p.idr > /dev/null
+ done)
+./build/copies/build/exec/Computed 2>&1
+echo "status: $?"
+./build/copies/build/exec/Unlimited 2>&1
+echo "status: $?"
+
+# Read by flat code: a list held in one uniform register, read as its
+# value, and a pair of `Int`s, which flat code holds in two, read by its
+# flat form; natively, on Chez, by the flat oracle and natively under
+# tag0, all printing the same.
+idris2 --cg native -p idris2-native-runtime -p idris2-native --directive dump-asm=build/flat.s \
+  -o flat-native Flat.idr > /dev/null
+./build/exec/flat-native
+idris2 --cg chez -p idris2-native-runtime -p idris2-native -o flat-chez Flat.idr > /dev/null
+./build/exec/flat-chez
+idris2 --cg flat-oracle -p idris2-native-runtime -p idris2-native -o flat-oracle Flat.idr \
+  > /dev/null
+./build/exec/flat-oracle
+idris2 --cg native -p idris2-native-runtime -p idris2-native --directive val-encoding=tag0 \
+  --directive dump-asm=build/flat-tag0.s -o flat-tag0 Flat.idr > /dev/null
+./build/exec/flat-tag0
+
+# The flat readers, after the entry every flat function has: `listed` the
+# address of the first cell (`lea`), under tag0 with its pointer tag,
+# then the return, calling nothing; `paired` calls the flat form of
+# `pair`, `_flat.Main.pair`, which the image has. No ordinary function
+# computes either constant.
+listing build/flat.s _flat.Main.listed listed
+listing build/flat.s _flat.Main.paired paired | tail -n 1
+if grep -q "^# _flat\.Main\.pair\$" build/flat.s; then echo "the flat form of Main.pair"; fi
+for c in primes pair; do
+  if grep -q -e "^# Main\.$c\$" -e "value of Main\.$c)" build/flat.s; then
+    echo "Main.$c computed by ordinary code"
+  else
+    echo "Main.$c not computed by ordinary code"
+  fi
+done
+echo "== val-encoding=tag0"
+listing build/flat-tag0.s _flat.Main.listed listed

@@ -1,6 +1,6 @@
 ||| A text rendering of located-IR programs, for dumps and tests: one line per
-||| instruction, `dst := Op operands`, with each block under its label and
-||| its parameters.
+||| static, its header and its words, and one per instruction, `dst := Op
+||| operands`, with each block under its label and its parameters.
 module Native.Codegen.LocatedIR.Dump
 
 import Native.Codegen.LocatedIR.Block
@@ -156,11 +156,26 @@ export
 dumpFunction : {enc : Types.Enc} -> Function enc -> String
 dumpFunction f = fastConcat (toList (functionPieces f))
 
-||| A whole program, in pieces to write a piece at a time: the statics, then
-||| every function.
+||| A whole program, in pieces to write a piece at a time: the statics, each
+||| its header and its words, then every function.
 export
 dumpProgram : {enc : Types.Enc} -> Program enc -> Data.Builder String
 dumpProgram p =
-  concatMap (\s => Data.Builder.single ("static " ++ show s.sym ++ " " ++ show s.header ++ "\n"))
+  concatMap (\s => Data.Builder.single ("static " ++ show s.sym ++ " " ++ show s.header
+                                        ++ fields s.fields ++ "\n"))
     p.statics
   <+> concatMap (\f => functionPieces f <+> Data.Builder.single "\n") p.functions
+  where
+    -- a static's word: a raw word as it is, a fixnum as an immediate is
+    -- written, another static's address by its name, a function's entry
+    -- by the function's
+    field : Static.SField -> String
+    field (Static.SWord w) = show w
+    field (Static.SVal i) = "#" ++ show i
+    field (Static.SRef n) = show n
+    field (Static.SCode f) = "code " ++ show f
+
+    -- a static's words after its header, if it has any
+    fields : List Static.SField -> String
+    fields [] = ""
+    fields fs = ": " ++ joinBy ", " (map field fs)

@@ -76,6 +76,7 @@ modules =
     Native.Codegen.TermIR.StaticDef,
     Native.Codegen.TermIR.StaticSig,
     Native.Codegen.TermIR.Var,
+    Native.Codegen.ValueWord,
     Native.Codegen.Words,
     Native.Codegen.X86.Asm,
     Native.Codegen.X86.Datum,

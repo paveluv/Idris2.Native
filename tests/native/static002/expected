@@ -47,8 +47,8 @@ Main.unit not computed by the program
 Main.answer not computed by the program
 Main.power not computed by the program
 Main.edge not computed by the program
-static _native.(static Main.squares) BYTES BytesLengthP=64
-static _native.(static Main.successors) BYTES BytesLengthP=64
+static _native.static 0 BYTES BytesLengthP=64: 0, 1, 4, 9, 16, 25, 36, 49
+static _native.static 1 BYTES BytesLengthP=64: 1, 2, 5, 10, 17, 26, 37, 50
 10 cells fewer with the marks
 # Main.table
 L64:
@@ -202,9 +202,12 @@ mov rsi, 28
 jmp L3
 wider calls nothing
 Error: native: refused as static constants:
-  Unlaid.pair is a constructor with fields, which the code generator does not lay out as static data yet
   Unlaid.later is a delayed value, whose closure the code generator does not lay out as static data yet
   Unlaid.kind is a type, which the code generator does not lay out as static data yet
+  Unlaid.halvers is a value that holds a function, whose closure the code generator does not lay out as static data yet
+  Unlaid.adders is a value that holds a function, whose closure the code generator does not lay out as static data yet
+  Unlaid.kinds is a value that holds a type, which the code generator does not lay out as static data yet
+  Unlaid.delays is a value that holds a delayed value, whose closure the code generator does not lay out as static data yet
 
 Error: native: refused as static constants:
   Differs.reading is not computable when the program is compiled: the primitive cast-String-Int of ["1e3"], which the compilation reads as Chez does, more texts than the program reads, in Differs.reading

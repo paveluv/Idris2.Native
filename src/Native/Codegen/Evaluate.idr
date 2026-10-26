@@ -56,11 +56,14 @@ import Native.Types.PureLoad
 ||| A value as the evaluation has it: a constant, a constructor with its
 ||| fields, a function with the values it closes over or the arguments it
 ||| has so far, a delayed expression, an erased one, or an object made of
-||| words.
+||| words. A constructor and an object made of words carry a number of
+||| their own, which the evaluation gave each as it made it (`Serials`),
+||| so that one value held in two places, as a `let` or an argument shares
+||| it, is known to be one by its number, without a walk of what it holds.
 public export
 data Value : Type where
   VConst : Constant -> Value
-  VCon : Name -> (tag : Maybe Int) -> List Value -> Value
+  VCon : Name -> (tag : Maybe Int) -> List Value -> (serial : Nat) -> Value
   ||| A lambda, with the variables in scope where it was made.
   VLam : List (Name, Value) -> Name -> NamedCExp -> Value
   ||| A definition applied to fewer arguments than it takes.
@@ -70,10 +73,14 @@ data Value : Type where
   ||| The object a maker made (`Types.FromWords`): its payload's words, each
   ||| at its index from 0, so that a read of one does not walk the words
   ||| before it.
-  VBytes : SortedMap Int Bits64 -> Value
+  VBytes : SortedMap Int Bits64 -> (serial : Nat) -> Value
 
 ||| The label of the steps left, which bounds an evaluation.
 data Steps : Type where
+
+||| The label of the number the evaluation gives the next constructor or
+||| object made of words it makes: how many it made before.
+data Serials : Type where
 
 ||| The compiled forms of the definitions and of everything they call, as
 ||| their modules keep them, or compiled now: for functions that the program's compilation does not
@@ -175,11 +182,14 @@ inliningFix g = case collapseDefault (visibility g) of
 ||| own, as the compiled code computes it once, and no read of it is
 ||| charged those steps: so whether an evaluation has the steps it needs
 ||| depends neither on which evaluations came before it nor on how often it
-||| reads a constant. One that needs its own value is not computed.
+||| reads a constant. One that needs its own value is not computed. The
+||| constructors and objects of words every call makes are numbered by one
+||| count (`Serials`), so that two share a number only if they are one.
 evaluation : Meanings -> (compiled : SortedMap Name NamedDef) -> (fuel : Nat) ->
              Core (Name -> List Value -> Core (Either String Value))
 evaluation meanings compiled fuel = do
   s <- newRef Steps 0
+  ns <- newRef Serials 0
   m <- newRef Memo (the (SortedMap Name Memoised) empty)
   pure (\n, as => do
           put Steps fuel
@@ -207,6 +217,10 @@ evaluation meanings compiled fuel = do
     tick : Ref Steps Nat => FC -> Core ()
     tick fc = charge fc 1
 
+    -- the number of a value made now, which no value made before has
+    fresh : Ref Serials Nat => Core Nat
+    fresh = do k <- get Serials; put Serials (S k); pure k
+
     compiledForm : FC -> Name -> Core NamedDef
     compiledForm fc n' =
       maybe (stuck fc ("the definition " ++ show n' ++ ", which the program does not compile")) pure
@@ -216,7 +230,7 @@ evaluation meanings compiled fuel = do
     -- words: the word at their sum, which the machine's load gives too;
     -- outside the words, where the load gives any word, not computed
     payloadWord : FC -> List Value -> Core Value
-    payloadWord fc [VBytes ws, VConst (I i), VConst (I d)] =
+    payloadWord fc [VBytes ws _, VConst (I i), VConst (I d)] =
       let k = cast {to = Integer} i + cast d
           count = wordCount ws in
       case (if k < 0 || k >= count then Nothing else lookup (cast k) ws) of
@@ -289,7 +303,7 @@ evaluation meanings compiled fuel = do
           Nothing => Nothing
 
     mutual
-      eval : Ref Steps Nat => Ref Memo (SortedMap Name Memoised) =>
+      eval : Ref Steps Nat => Ref Serials Nat => Ref Memo (SortedMap Name Memoised) =>
              List (Name, Value) -> NamedCExp -> Core Value
       eval env (NmLocal fc x) = maybe (stuck fc ("the unbound " ++ show x)) pure (lookup x env)
       eval env (NmRef fc n') = global fc n' []
@@ -299,7 +313,7 @@ evaluation meanings compiled fuel = do
       eval env (NmApp fc f as) = do tick fc
                                     f' <- eval env f
                                     applyAll fc f' !(traverse (eval env) as)
-      eval env (NmCon _ n' _ tag as) = VCon n' tag <$> traverse (eval env) as
+      eval env (NmCon _ n' _ tag as) = do fs <- traverse (eval env) as; VCon n' tag fs <$> fresh
       eval env (NmOp fc op as) = do tick fc; prim fc op !(traverseVect (eval env) as)
       eval env (NmExtPrim fc p _) = stuck fc ("the external primitive " ++ show p)
       eval env (NmForce fc _ x) = force fc !(eval env x)
@@ -314,7 +328,7 @@ evaluation meanings compiled fuel = do
       -- say (a maker's object, the payload word), else its body; at as
       -- many arguments as it takes, its result applied to the rest if more,
       -- a partial application if fewer
-      global : Ref Steps Nat => Ref Memo (SortedMap Name Memoised) =>
+      global : Ref Steps Nat => Ref Serials Nat => Ref Memo (SortedMap Name Memoised) =>
                FC -> Name -> List Value -> Core Value
       global fc n' as =
         if contains n' meanings.makers then meant fc n' Types.FromWords.arity (made fc n') as
@@ -333,14 +347,14 @@ evaluation meanings compiled fuel = do
               if length as < arity then pure (VPartial n' as) else
                 case nt of
                   Just i => maybe (stuck fc ("the newtype " ++ show n')) pure (getAt i as)
-                  Nothing => pure (VCon n' tag (take arity as))
+                  Nothing => VCon n' tag (take arity as) <$> fresh
             MkNmForeign {} => stuck fc ("the foreign function " ++ show n')
             MkNmError e => catch (eval [] e) (within n')
 
       -- a definition of so many arguments that means a function of them
       -- applied to arguments: the function at as many as it takes, its
       -- result applied to the rest; a partial application if fewer
-      meant : Ref Steps Nat => Ref Memo (SortedMap Name Memoised) =>
+      meant : Ref Steps Nat => Ref Serials Nat => Ref Memo (SortedMap Name Memoised) =>
               FC -> Name -> (arity : Nat) -> (List Value -> Core Value) -> List Value -> Core Value
       meant fc n' arity meaning as =
         if length as < arity then pure (VPartial n' as)
@@ -351,7 +365,7 @@ evaluation meanings compiled fuel = do
       -- later read has its value; one that needs its own value is not
       -- computed. A failure leaves it unevaluated, so that each that
       -- reads it after says why.
-      constant : Ref Steps Nat => Ref Memo (SortedMap Name Memoised) =>
+      constant : Ref Steps Nat => Ref Serials Nat => Ref Memo (SortedMap Name Memoised) =>
                  FC -> Name -> NamedCExp -> Core Value
       constant fc n' b = case lookup n' !(get Memo) of
         Just (Evaluated v) => pure v
@@ -370,11 +384,12 @@ evaluation meanings compiled fuel = do
       -- none if `n` is not positive. The words' steps are charged before
       -- any word is made, so that a count the steps do not allow ends the
       -- evaluation before its object takes the memory of that many words.
-      made : Ref Steps Nat => Ref Memo (SortedMap Name Memoised) =>
+      made : Ref Steps Nat => Ref Serials Nat => Ref Memo (SortedMap Name Memoised) =>
              FC -> Name -> List Value -> Core Value
       made fc n' [VConst (I n), f] = do
         charge fc (cast n)
-        VBytes <$> fill 0 empty
+        ws <- fill 0 empty
+        VBytes ws <$> fresh
         where
           fill : Int -> SortedMap Int Bits64 -> Core (SortedMap Int Bits64)
           fill i acc =
@@ -384,7 +399,7 @@ evaluation meanings compiled fuel = do
               fill (i + 1) (insert i w acc)
       made fc n' _ = stuck fc ("a call of the maker " ++ show n' ++ " at a count that is no Int")
 
-      applyAll : Ref Steps Nat => Ref Memo (SortedMap Name Memoised) =>
+      applyAll : Ref Steps Nat => Ref Serials Nat => Ref Memo (SortedMap Name Memoised) =>
                  FC -> Value -> List Value -> Core Value
       applyAll fc f [] = pure f
       applyAll fc (VLam env x b) (a :: as) = do r <- eval ((x, a) :: env) b; applyAll fc r as
@@ -392,22 +407,23 @@ evaluation meanings compiled fuel = do
       applyAll fc VErased _ = pure VErased
       applyAll fc _ _ = stuck fc "the application of a value that is not a function"
 
-      force : Ref Steps Nat => Ref Memo (SortedMap Name Memoised) =>
+      force : Ref Steps Nat => Ref Serials Nat => Ref Memo (SortedMap Name Memoised) =>
               FC -> Value -> Core Value
       force fc (VDelay env x) = eval env x
       force fc v = pure v
 
-      conCase : Ref Steps Nat => Ref Memo (SortedMap Name Memoised) =>
+      conCase : Ref Steps Nat => Ref Serials Nat => Ref Memo (SortedMap Name Memoised) =>
                 FC -> List (Name, Value) -> Value -> List NamedConAlt -> Maybe NamedCExp ->
                 Core Value
-      conCase fc env (VCon n' _ fs) alts def = case find (\(MkNConAlt c _ _ _ _) => c == n') alts of
-        Just (MkNConAlt _ _ _ xs b) => eval (reverse (zip xs fs) ++ env) b
-        Nothing => maybe (stuck fc ("no alternative for " ++ show n')) (eval env) def
+      conCase fc env (VCon n' _ fs _) alts def =
+        case find (\(MkNConAlt c _ _ _ _) => c == n') alts of
+          Just (MkNConAlt _ _ _ xs b) => eval (reverse (zip xs fs) ++ env) b
+          Nothing => maybe (stuck fc ("no alternative for " ++ show n')) (eval env) def
       -- an erased value has one constructor, whose fields are erased too
       conCase fc env VErased [MkNConAlt _ _ _ xs b] _ = eval (map (\x => (x, VErased)) xs ++ env) b
       conCase fc env _ _ _ = stuck fc "a case on a value that is no constructor"
 
-      constCase : Ref Steps Nat => Ref Memo (SortedMap Name Memoised) =>
+      constCase : Ref Steps Nat => Ref Serials Nat => Ref Memo (SortedMap Name Memoised) =>
                   FC -> List (Name, Value) -> Value -> List NamedConstAlt -> Maybe NamedCExp ->
                   Core Value
       constCase fc env (VConst k) alts def = case find (\(MkNConstAlt k' _) => k' == k) alts of

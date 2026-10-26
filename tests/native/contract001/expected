@@ -4,3 +4,5 @@ allocSlow of two words: the runtime's Native.Runtime.Space.allocSlow has the for
 crash with a result: the runtime's Native.Runtime.System.crash has the form [W64, W64] -> [W64], but its port is [ByteAddr, W64] -> []
 prim__exit as declared: lowered
 prim__exit of a Bits64: Native.System.Foreign.System.prim__exit takes [Bits64, %World] and returns (PrimIO.IORes Builtin.Unit), but System.prim__exit is declared with [Int, %World] -> IORes Unit
+a pair and the string it holds: lowered
+a pair without the string it holds: the static object _native.static 0 holds the address of _native.string_"seven", which no declaration makes

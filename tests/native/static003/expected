@@ -1,0 +1,111 @@
+([2, 3, 5, 7, 2305843009213693951, 618970019642690137449562111], True)
+([0, 2, 3, 5, 7, 2305843009213693951, 618970019642690137449562111], True)
+(0.25, ("static", (-42, (9223372036854775815, 1180591620717411303424))))
+('x', (True, (Just 9, (7, ()))))
+(True, True)
+([[1, 2], [], [1, 2]], True)
+([2, 3, 5, 7, 2305843009213693951, 618970019642690137449562111], True)
+([0, 2, 3, 5, 7, 2305843009213693951, 618970019642690137449562111], True)
+(0.25, ("static", (-42, (9223372036854775815, 1180591620717411303424))))
+('x', (True, (Just 9, (7, ()))))
+(True, True)
+([[1, 2], [], [1, 2]], True)
+([2, 3, 5, 7, 2305843009213693951, 618970019642690137449562111], True)
+([0, 2, 3, 5, 7, 2305843009213693951, 618970019642690137449562111], True)
+(0.25, ("static", (-42, (9223372036854775815, 1180591620717411303424))))
+('x', (True, (Just 9, (7, ()))))
+(True, True)
+([[1, 2], [], [1, 2]], True)
+Main.primes not computed by the program
+Main.counted not computed by the program
+Main.sample not computed by the program
+Main.grid not computed by the program
+primes: 2 :: 3 :: 5 :: 7 :: 2305843009213693951 :: _native.integer_618970019642690137449562111 :: Nil (_native.con0)
+counted: 0 :: 2 :: 3 :: 5 :: 7 :: 2305843009213693951 :: _native.integer_618970019642690137449562111 :: Nil (_native.con0)
+counted: the cell 0 :: <the first cell of primes>
+grid: object 1 :: _native.con0 :: object 1 :: Nil (_native.con0)
+sample: CON ConIdP=0 ConArityP=10: _native.double_4598175219545276416, _native.string_"static", #-42, _native.(int64_-9223372036854775801), _native.integer_1180591620717411303424, #120, #1, _native.static 12, #7, #0
+its found: CON ConIdP=1 ConArityP=1: #9
+# Main.primesFrom
+L64:
+lea rbx, [rip+L13]
+mov qword ptr [rbx], rdi
+jmp L65
+L65:
+lea rax, [rip+L66]
+jmp qword ptr [r12]
+primesFrom calls nothing
+# Main.countedFrom
+L64:
+lea rbx, [rip+L13]
+mov qword ptr [rbx], rdi
+jmp L65
+L65:
+lea rax, [rip+L66]
+jmp qword ptr [r12]
+countedFrom calls nothing
+Shared compiled within the limit
+(64, 64)
+(True, True)
+([0, 1, 4, 9, 16, 25, 36, 49], (True, True))
+(64, 64)
+(True, True)
+([0, 1, 4, 9, 16, 25, 36, 49], (True, True))
+(64, 64)
+(True, True)
+([0, 1, 4, 9, 16, 25, 36, 49], (True, True))
+tree: 64 objects, each holding the one below twice, to _native.con0
+twins: both fields the address of one object, BYTES BytesLengthP=64: 0, 1, 4, 9, 16, 25, 36, 49
+(9004500500, 3000)
+(3001499500, True)
+status: 0
+idris: heap limit exceeded
+status: 1
+(9004500500, 3000)
+(3001499500, True)
+status: 0
+([2, 3, 5, 7, 1180591620717411303424], True)
+(48, True)
+((42, 5), True)
+([2, 3, 5, 7, 1180591620717411303424], True)
+(48, True)
+((42, 5), True)
+([2, 3, 5, 7, 1180591620717411303424], True)
+(48, True)
+((42, 5), True)
+([2, 3, 5, 7, 1180591620717411303424], True)
+(48, True)
+((42, 5), True)
+# _flat.Main.listed
+L64:
+sub rsp, 8
+mov rax, qword ptr [rip+L17]
+cmp rsp, rax
+jb L18
+lea rbx, [rip+L13]
+mov qword ptr [rbx], rdi
+jmp L65
+L65:
+lea rdi, [rip+L66]
+add rsp, 8
+ret
+listed calls nothing
+paired calls
+the flat form of Main.pair
+Main.primes not computed by ordinary code
+Main.pair not computed by ordinary code
+== val-encoding=tag0
+# _flat.Main.listed
+L64:
+sub rsp, 8
+mov rax, qword ptr [rip+L17]
+cmp rsp, rax
+jb L18
+lea rbx, [rip+L13]
+mov qword ptr [rbx], rdi
+jmp L65
+L65:
+lea rdi, [rip+L66+1]
+add rsp, 8
+ret
+listed calls nothing

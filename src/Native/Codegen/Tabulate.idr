@@ -48,7 +48,7 @@ tabulate meanings compiled fuel n lo hi = do
     valueWords : Evaluate.Value -> Maybe (List Integer)
     valueWords (Evaluate.VConst (Db x)) = Just [LittleEndian.doubleBits x]
     valueWords (Evaluate.VConst k) = (\w => [cast w]) <$> LowerFlat.constWord k
-    valueWords (Evaluate.VCon _ _ fs) = concat <$> traverse valueWords fs
+    valueWords (Evaluate.VCon _ _ fs _) = concat <$> traverse valueWords fs
     valueWords _ = Nothing
 
     rows : List Evaluate.Value -> SnocList (List Integer) -> Maybe Nat -> Either String Tabulated

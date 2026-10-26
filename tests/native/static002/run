@@ -27,8 +27,8 @@ for c in squares successors big greeting third none unit answer power edge; do
 done
 
 # The maker's objects, as the image holds them: each a BYTES of 64 bytes,
-# its eight words.
-grep "^static _native.(static Main\." build/ir.txt
+# its eight words, named by the order they were made in.
+grep "^static .* BYTES " build/ir.txt
 
 # No cell for any of them either. Each constant the program evaluates
 # once, on its first use, has a cell in the image, which the collector
@@ -118,10 +118,10 @@ for c in cubes limit step ratio huge small unit; do computed Tables $c; done
 computed Squares squares
 
 # `flag`, a `Bool`, which flat code holds as its tag and ordinary code as
-# an object's address: the image has its flat form, `_flat.Tables.flag`,
-# which computes it, and `flagged` calls it; but no ordinary function of
-# its name, nor one that computes the value, since ordinary code reads its
-# value.
+# the fixnum of its constructor's number: the image has its flat form,
+# `_flat.Tables.flag`, which computes it, and `flagged` calls it; but no
+# ordinary function of its name, nor one that computes the value, since
+# ordinary code reads its value.
 if grep -q "^# _flat\.Tables\.flag\$" build/flat.s; then echo "the flat form of Tables.flag"; fi
 if grep -q -e "^# Tables\.flag\$" -e "value of Tables\.flag)" build/flat.s; then
   echo "Tables.flag computed by ordinary code"

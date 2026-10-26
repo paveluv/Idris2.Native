@@ -16,6 +16,7 @@
 ||| compiled into every program with the program's own forms.
 module Native.Codegen.Native
 
+import Native.Codegen.ConstantWord
 import Native.Codegen.ELF
 import Native.Codegen.Evaluate
 import Native.Codegen.Link
@@ -309,27 +310,31 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
         ||| `evaluationFuel` steps of its own, whatever the order of the
         ||| marks, and its value must be computed and be one the code
         ||| generator lays out as static data under the bignum encoding
-        ||| (`StaticRead.staticRead`). Every one that fails ends the
+        ||| (`StaticRead.staticReads`). Every one that fails ends the
         ||| compilation, in one error that says why of each, in the order of
-        ||| the marks; else each reached is given as code reads it.
+        ||| the marks; else each reached is given as code reads it, with the
+        ||| static objects the reads name, and those they hold, by name.
         checkStaticConstants : Types.BignumEnc -> Evaluate.Meanings ->
                                (compiled : SortedMap Name NamedDef) ->
                                (flatFunctions, reached, marks : List Name) ->
-                               Core (SortedMap Name StaticRead)
+                               Core (SortedMap Name StaticRead,
+                                     SortedMap Name ConstantWord.StaticPlan)
         checkStaticConstants bignum meanings compiled flatFunctions reached marks = do
           defs <- get Ctxt
           refused <- catMaybes <$> traverse (refusal defs) marks
           values <- Evaluate.constants meanings compiled evaluationFuel
                       (filter (\n => isNothing (lookup n refused)) reached)
-          let reads = map (\(n, v) => (n, v >>= StaticRead.staticRead bignum n)) values
-          let failures = refused ++ mapMaybe (\(n, r) => (n,) <$> either Just (const Nothing) r)
-                                               reads
+          let (unlaid, reads, objects) =
+                StaticRead.staticReads bignum
+                  (mapMaybe (\(n, v) => (n,) <$> either (const Nothing) Just v) values)
+          let failures = refused ++ unlaid
+                           ++ mapMaybe (\(n, v) => (n,) <$> either Just (const Nothing) v) values
           let [] = mapMaybe (\n => (n,) <$> lookup n failures) marks
             | failed =>
               throw (GenericMsg EmptyFC
                 ("native: refused as static constants:"
                  ++ concatMap (\(n, why) => "\n  " ++ show n ++ " is " ++ why) failed))
-          pure (fromList (mapMaybe (\(n, r) => (n,) <$> either (const Nothing) Just r) reads))
+          pure (reads, objects)
           where
             -- why a constant marked static is refused before it is
             -- evaluated, if it is
@@ -525,7 +530,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
           let readByForms = map fst (concatMap Flat.Exp.formStatics forms)
           let reachedMarks = filter (\n => any ((== n) . fst) defs || elem n readByForms)
                                marked.staticConstants
-          staticReads <- phase "the static constants evaluated"
+          (staticReads, staticObjects) <- phase "the static constants evaluated"
             (checkStaticConstants enc.bignum (realisedMeanings realised) compiled
               marked.flatFunctions reachedMarks marked.staticConstants)
           -- the definitions evaluated once, on their first use: every one of
@@ -541,7 +546,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
           Right (_ ** term) <- phase "lowering"
             (later
               (Lower.lowerProgram enc settings.platform realised forms shapes tables staticReads
-                 constants flat bound defs))
+                 staticObjects constants flat bound defs))
             | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
           allocated <- phase "register allocation"
             (later (RegAlloc.allocRegs X86.Target.x86_64 term))

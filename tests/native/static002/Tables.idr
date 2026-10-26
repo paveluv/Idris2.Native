@@ -62,10 +62,13 @@ export
 unit : Uniform ()
 unit = MkUniform ()
 
--- As if written `flag = True`. Flat code holds a `Bool` as its tag, and
--- ordinary code as the address of its constructor's static object, so a
--- flat read of `flag` is not its value: it calls the constant's flat form,
--- which computes it. Ordinary code reads its value, with no call.
+-- As if written `flag = True`. Idris compiles a type whose constructors
+-- have no fields, as `Bool`'s, to the numbers of its constructors, so
+-- ordinary code holds `flag` as the fixnum 1. Flat code holds a `Bool` as
+-- its tag, a data type's layout, which is neither one uniform value nor a
+-- machine scalar, so a flat read of `flag` is not its value: it calls the
+-- constant's flat form, which computes it. Ordinary code reads its value,
+-- with no call.
 export
 flag : Bool
 flag = 2 < 3

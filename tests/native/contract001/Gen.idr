@@ -21,6 +21,14 @@
 -- an `Int` and the world, returning `IORes ()`, is implemented by
 -- `Support.Foreign.System.prim__exit` of the same type, position by
 -- position; one taking a `Bits64` where `base` says `Int` is refused.
+--
+-- And what it checks of the static objects it is given, which the values
+-- of constants marked static are laid out as: an object that holds
+-- another holds that one's address, which the lowering finds among the
+-- program's statics, and one it does not find stops it, with the error
+-- naming the holder. As if a constant were written `pair = (7, "seven")`,
+-- its object holds the fixnum 7 and the address of the string's object;
+-- given without the string's object, it is refused.
 module Main
 
 import Compiler.VMCode
@@ -32,6 +40,7 @@ import Data.List
 import Data.SortedMap
 import Data.SortedSet
 import Data.Vect
+import Native.Codegen.ConstantWord
 import Native.Codegen.IRCommon.Ty
 import Native.Codegen.Linkage.Realised
 import Native.Codegen.Linkage.Routine
@@ -121,13 +130,28 @@ exitBinding =
 
 checkWith : String -> List FlatDef -> List (Name, VMDef) -> IO ()
 checkWith what forms vmdefs = putStrLn $ what ++ ": " ++
-  case lowerProgram TestEnc defaultPlatform realised forms [] empty empty [] [exitBinding] []
+  case lowerProgram TestEnc defaultPlatform realised forms [] empty empty empty [] [exitBinding] []
          vmdefs of
     Left err => err
     Right _ => "lowered"
 
 check : String -> List FlatDef -> IO ()
 check what forms = checkWith what forms []
+
+||| The objects of `pair = (7, "seven")`, by their names: the pair's, of
+||| constructor 1, as Idris makes a pair (`_builtin.CONS`, of the one
+||| constructor of two fields), named as the first object a value is laid
+||| out as; and the string's, named as every string constant's object is.
+pairObject, sevenObject : Name
+pairObject = NS (mkNamespace "_native") (UN (Basic "static 0"))
+sevenObject = NS (mkNamespace "_native") (UN (Basic ("string_" ++ show "seven")))
+
+||| The lowering of no function, with the stand-ins and these static objects.
+checkObjects : String -> SortedMap Name StaticPlan -> IO ()
+checkObjects what objects = putStrLn $ what ++ ": " ++
+  case lowerProgram TestEnc defaultPlatform realised standIns [] empty empty objects [] [] [] [] of
+    Left err => err
+    Right _ => "lowered"
 
 ||| `base`'s `System.prim__exit : Int -> PrimIO ()`, as VMCode has it.
 exitForeign : (Name, VMDef)
@@ -157,3 +181,9 @@ main = do
   -- prim__exit (status : Bits64) : PrimIO ()
   checkWith "prim__exit of a Bits64" (exitImplementation (SPrim Bits64Type) :: standIns)
     [exitForeign]
+  -- pair = (7, "seven"): its object, and the string's
+  checkObjects "a pair and the string it holds"
+    (fromList
+       [(pairObject, Constructor 1 [Fixnum 7, Object sevenObject]), (sevenObject, Text "seven")])
+  checkObjects "a pair without the string it holds"
+    (fromList [(pairObject, Constructor 1 [Fixnum 7, Object sevenObject])])
