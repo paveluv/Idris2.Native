@@ -48,15 +48,22 @@
 ||| of a function, is taken apart by giving its function a name that stands
 ||| for the value applied to the pending arguments.
 |||
+||| A constant that a directive marks static, whose value the code
+||| generator computes as it compiles the program, is neither unfolded nor
+||| called: a read of it is its value (`FStatic`), where flat code holds
+||| that as ordinary code holds it, in one uniform register, or where it is
+||| a machine scalar. One of any other layout is called, its form computing
+||| it.
+|||
 ||| Whatever the translation cannot place in the regime, it reports as
 ||| `NotFlatBody` (`Flat.Problem`), with the chain of calls from the flat
 ||| function it started from to it.
 |||
-||| The flat functions are the ones a code generator's directive names
-||| (`markedNames`), and everything they call is translated in turn. The
-||| translation runs on the whole context, the imported modules' case trees
-||| included, and keeps the forms it makes for the one compilation or check
-||| that asked for them.
+||| The flat functions and the static constants are the ones a code
+||| generator's directives name (`markedNames`), and everything the flat
+||| functions call is translated in turn. The translation runs on the whole
+||| context, the imported modules' case trees included, and keeps the forms
+||| it makes for the one compilation or check that asked for them.
 module Native.Flat.Translate
 
 import Native.Flat.Definition
@@ -127,13 +134,15 @@ record Copy where
   key : List (Maybe ClosedTerm)
   form : Name
 
-||| The translation's state: the primitives, a counter for the names it
-||| makes, the forms being made, which count as made, the static values that
-||| names stand for, the forms made, the copies made, and the problem the
-||| translation stopped at, which `fail` records.
+||| The translation's state: the primitives, the constants the program
+||| marks static, a counter for the names it makes, the forms being made,
+||| which count as made, the static values that names stand for, the forms
+||| made, the copies made, and the problem the translation stopped at,
+||| which `fail` records.
 record FlatState where
   constructor MkFlatState
   primitives : List Name
+  staticConstants : List Name
   nextName : Int
   making : List Name
   statics : NameMap Static
@@ -344,12 +353,17 @@ staticArgs tr = traverse arg
     arg : (Applied, ClosedTerm) -> Core ClosedTerm
     arg (b, a) = if isErased b.rig then pure a else static tr a
 
-unfoldable : Tr -> Name -> GlobalDef -> Bool
-unfoldable tr fn gdef
+||| Whether a call of the definition is unfolded where the translation is:
+||| one marked inline, a case or with block, or one the compiler's inliner
+||| unfolds anyway, but in terms written inside its own body, and never a
+||| constant the program marks static (`staticConstants`), which flat code
+||| reads as the value the code generator computes.
+unfoldable : (staticConstants : List Name) -> Tr -> Name -> GlobalDef -> Bool
+unfoldable staticConstants tr fn gdef
     = let fl = gdef.flags in
           ((elem Inline fl && not (elem NoInline fl))
              || blockName fn || elem fn unfoldedAnyway)
-          && not (elem fn tr.unfolding)
+          && not (elem fn tr.unfolding) && not (elem fn staticConstants)
   where
     -- The definitions the compiler's inliner unfolds although they are not
     -- marked inline.
@@ -562,9 +576,10 @@ mutual
                Just gdef <- lookupCtxtExact n (gamma defs)
                  | Nothing => pure (tm, tr.unfolding)
                fn <- toFullNames n
+               marks <- staticConstants <$> get FlatSt
                case definition gdef of
                     PMDef _ targs ct _ _ =>
-                      if (hole || unfoldable tr fn gdef) && length as >= length targs
+                      if (hole || unfoldable marks tr fn gdef) && length as >= length targs
                          then do let now = take (length targs) as
                                  Just (bs, _) <- applyType (type gdef) now
                                    | Nothing => pure (tm, tr.unfolding)
@@ -599,6 +614,122 @@ mutual
       termConstant : ClosedTerm -> Maybe Constant
       termConstant (PrimVal _ k) = Just k
       termConstant _ = Nothing
+
+-- The constructor information the ordinary compilation gives `cn`.
+conInfo : {auto c : Ref Ctxt Defs} -> Name -> Core ConInfo
+conInfo cn
+    = do defs <- get Ctxt
+         Just gdef <- lookupCtxtExact cn (gamma defs)
+           | Nothing => pure DATACON
+         pure (fromFlags gdef.flags)
+  where
+    fromFlags : List DefFlag -> ConInfo
+    fromFlags [] = DATACON
+    fromFlags (ConType ci :: _) = ci
+    fromFlags (_ :: fs) = fromFlags fs
+
+-- Which of the first `arity` binders of `n`'s type are erased.
+erasure : {auto c : Ref Ctxt Defs} -> Name -> Nat -> Core (List Bool)
+erasure n arity
+    = do defs <- get Ctxt
+         Just gdef <- lookupCtxtExact n (gamma defs)
+           | Nothing => undefinedName EmptyFC n
+         go arity !(nf defs Env.empty (type gdef))
+  where
+    go : Nat -> ClosedNF -> Core (List Bool)
+    go (S k) (NBind fc _ (Pi _ rig _ _) sc)
+        = do defs <- get Ctxt
+             rest <- go k !(sc defs (toClosure defaultOpts Env.empty (Erased fc Placeholder)))
+             pure (isErased rig :: rest)
+    go _ _ = pure []
+
+-- The position among a constructor's run-time fields of its argument at
+-- `pos`, which the ordinary compilation represents a newtype by.
+newtypeField : {auto c : Ref Ctxt Defs} -> Name -> (arity : Nat) -> (pos : Nat) -> Core Nat
+newtypeField cn arity pos
+    = do es <- erasure cn arity
+         pure (length (filter not (take pos es)))
+
+||| The shape of the type a skeleton stands for (`Flat.Exp`): the
+||| registers its values take and how ordinary code represents them, as
+||| `forget` does. Nothing if the skeleton stands for no flat type, as when
+||| an argument it leaves out (`SOther`) decides a field's type. A code
+||| generator that lowers flat forms reads it at their boundary with
+||| ordinary code, and to build and open sums.
+export
+shape : {auto c : Ref Ctxt Defs} -> Exp.Skeleton -> Core (Maybe Exp.Shape)
+shape sk
+    = do Just tm <- skeletonTerm sk
+           | Nothing => pure Nothing
+         defs <- get Ctxt
+         typeShape !(nf defs Env.empty tm)
+  where
+    skeletonTerm : Exp.Skeleton -> Core (Maybe ClosedTerm)
+    skeletonTerm (Exp.SPrim t) = pure (Just (PrimVal EmptyFC (PrT t)))
+    skeletonTerm (Exp.SCon n as)
+        = do defs <- get Ctxt
+             Just gdef <- lookupCtxtExact n (gamma defs)
+               | Nothing => pure Nothing
+             Just as' <- sequence <$> traverse skeletonTerm as
+               | Nothing => pure Nothing
+             pure $ case definition gdef of
+                         TCon a _ _ _ _ _ _ => Just (apply EmptyFC (Ref EmptyFC (TyCon a) n) as')
+                         DCon t a _ => Just (apply EmptyFC (Ref EmptyFC (DataCon t a) n) as')
+                         _ => Nothing
+    skeletonTerm Exp.SOther = pure (Just (Erased EmptyFC Placeholder))
+
+    -- The id ordinary code gives an intrinsic constructor, as
+    -- `Compiler.Opts.Constructor` names and numbers them.
+    intrinsicTag : ConInfo -> Maybe Int
+    intrinsicTag NIL = Just 0
+    intrinsicTag CONS = Just 1
+    intrinsicTag NOTHING = Just 0
+    intrinsicTag JUST = Just 1
+    intrinsicTag _ = Nothing
+
+    -- The judgement goes first: it rejects the recursive types, whose
+    -- shapes have no end.
+    mutual
+      typeShape : ClosedNF -> Core (Maybe Exp.Shape)
+      typeShape ty@(NPrimVal _ (PrT t))
+          = do Judgement.LaidOut _ <- layout [] ty
+                           | _ => pure Nothing
+               pure (Just (Exp.PrimShape t))
+      typeShape ty@(NTCon _ n _ args)
+          = if !(toFullNames n) == Exp.uniformType then pure (Just Exp.UniformShape) else
+            if !(toFullNames n) == Exp.byteAddrType then pure (Just Exp.ByteAddrShape) else
+            do Judgement.LaidOut _ <- layout [] ty
+                           | _ => pure Nothing
+               defs <- get Ctxt
+               Just gdef <- lookupCtxtExact n (gamma defs)
+                 | Nothing => pure Nothing
+               Just (_, cons) <- pure (Definition.dataDeclaration (definition gdef))
+                 | Nothing => pure Nothing
+               cs <- traverse (conShape args) cons
+               pure (Exp.DataShape <$> the (Maybe (List Exp.ConShape)) (sequence cs))
+      typeShape _ = pure Nothing
+
+      conShape : List (FC, ClosedClosure) -> Name -> Core (Maybe Exp.ConShape)
+      conShape args cn
+          = do defs <- get Ctxt
+               Just cdef <- lookupCtxtExact cn (gamma defs)
+                 | Nothing => pure Nothing
+               let DCon tag arity nt = definition cdef
+                 | _ => pure Nothing
+               fs <- traverse (\t => typeShape !(nf defs Env.empty t))
+                 !(Judgement.fieldTypes args cdef)
+               let Just fs' = the (Maybe (List Exp.Shape)) (sequence fs)
+                 | Nothing => pure Nothing
+               ord <- case nt of
+                           Just (_, pos) => Exp.AsField <$> newtypeField cn arity pos
+                           Nothing => pure (ordinary tag !(conInfo cn))
+               pure (Just (Exp.MkConShape !(toFullNames cn) tag ord fs'))
+
+      -- As `Compiler.Opts.Constructor` represents a constructor that is not
+      -- a newtype's.
+      ordinary : Int -> ConInfo -> Exp.Ordinary
+      ordinary tag (ENUM _) = Exp.AsTag
+      ordinary tag ci = Exp.AsObject (fromMaybe tag (intrinsicTag ci))
 
 -- Make the flat form of `n`, a flat function, if its signature is ground.
 -- A generic one has flat forms at static arguments only. A primitive's form
@@ -932,14 +1063,17 @@ root n
                              Just gdef <- lookupCtxtExact n (gamma defs)
                                | Nothing => undefinedName fc n
                              fn <- toFullNames n
+                             st <- get FlatSt
                              case definition gdef of
                                   Builtin op => primOp tr fc fn gdef op ps
                                   ExternDef ar => primitive tr fc fn gdef ar ps
                                   ForeignDef ar _ => primitive tr fc fn gdef ar ps
                                   PMDef _ targs ct _ _ =>
-                                    if fn `elem` primitives !(get FlatSt)
+                                    if fn `elem` st.primitives
                                        then primitive tr fc fn gdef !(typeArity gdef) ps
-                                    else if unfoldable tr fn gdef
+                                    else if fn `elem` st.staticConstants
+                                       then staticConstant tr fc fn gdef ps
+                                    else if unfoldable st.staticConstants tr fn gdef
                                        then unfold tr fc fn gdef ct ps
                                        else demand tr fc fn gdef ps
                                   _ =>
@@ -1415,6 +1549,38 @@ root n
                                 copyDepth : Nat
                                 copyDepth = 8
 
+                        -- A constant the program marks static, at its erased arguments:
+                        -- its value, which the code generator computes as it compiles the
+                        -- program, if flat code holds it as ordinary code holds it, in one
+                        -- uniform register, or if it is a machine scalar; else a call of
+                        -- its form, which computes it. One applied to a run-time argument
+                        -- is no constant, and stops the translation.
+                        staticConstant : Tr -> FC -> Name -> GlobalDef -> List Pending -> Core Exp
+                        staticConstant tr fc fn gdef ps
+                            = do let (args, rest) = spanArgs ps
+                                 Just (bs, resTy) <- applyType (type gdef) args
+                                   | Nothing => demand tr fc fn gdef ps
+                                 when (any (\b => not (isErased b.rig)) bs) $
+                                   fail tr fc
+                                     (Problem.Unhandled
+                                       "A constant marked static, applied to run-time arguments,")
+                                 Right (sk, lay) <- laidOut resTy
+                                   | Left _ => demand tr fc fn gdef ps
+                                 held <- case sk of
+                                   Exp.SPrim _ => pure True
+                                   _ => do sh <- shape sk
+                                           pure (lay == [Rep.Uniform]
+                                                 && maybe False Exp.heldAsUniform sh)
+                                 if held && null rest
+                                    then pure (Exp.FStatic fc fn sk lay)
+                                    else demand tr fc fn gdef ps
+                          where
+                            -- the arguments in front, and what follows them
+                            spanArgs : List Pending -> (List ClosedTerm, List Pending)
+                            spanArgs (PArg a :: ps') = let (as, rest) = spanArgs ps' in
+                                                         (a :: as, rest)
+                            spanArgs ps' = ([], ps')
+
                     -- `let x = v in sc`, or `(\x => sc) v`, in one body: a flat value is bound
                     -- to a variable unless it is an atom, and a static one is substituted.
                     bindValue : Tr -> FC -> (x : Name) -> RigCount -> (ty : ClosedTerm) ->
@@ -1609,12 +1775,15 @@ markedNames mark directives
 ||| not flat, or a body. A function that fails leaves no forms behind, of its
 ||| own or of its callees. A call of one of the backend's primitives, which
 ||| the code generator names (`primitives`), is the primitive's, and each
-||| primitive given has the form that applies it.
+||| primitive given has the form that applies it. A read of a constant the
+||| program marks static (`staticConstants`) is its value (`FStatic`) where
+||| flat code holds that as ordinary code does, in one uniform register, or
+||| as a machine scalar; else a call of its form.
 export
-flatForms : {auto c : Ref Ctxt Defs} -> (primitives : List Name) -> List Name ->
+flatForms : {auto c : Ref Ctxt Defs} -> (primitives, staticConstants : List Name) -> List Name ->
             Core (NameMap Exp.FlatDef, List Problem.FlatError)
-flatForms primitives ns
-    = do s <- newRef FlatSt (MkFlatState primitives 0 [] empty empty [] Nothing)
+flatForms primitives staticConstants ns
+    = do s <- newRef FlatSt (MkFlatState primitives staticConstants 0 [] empty empty [] Nothing)
          errs <- catMaybes <$> traverse tryRoot ns
          pure ((forms !(get FlatSt)), errs)
   where
@@ -1633,122 +1802,6 @@ flatForms primitives ns
                                case failure st of
                                     Just e => pure (Just e)
                                     Nothing => throw err)
-
--- The constructor information the ordinary compilation gives `cn`.
-conInfo : {auto c : Ref Ctxt Defs} -> Name -> Core ConInfo
-conInfo cn
-    = do defs <- get Ctxt
-         Just gdef <- lookupCtxtExact cn (gamma defs)
-           | Nothing => pure DATACON
-         pure (fromFlags gdef.flags)
-  where
-    fromFlags : List DefFlag -> ConInfo
-    fromFlags [] = DATACON
-    fromFlags (ConType ci :: _) = ci
-    fromFlags (_ :: fs) = fromFlags fs
-
--- Which of the first `arity` binders of `n`'s type are erased.
-erasure : {auto c : Ref Ctxt Defs} -> Name -> Nat -> Core (List Bool)
-erasure n arity
-    = do defs <- get Ctxt
-         Just gdef <- lookupCtxtExact n (gamma defs)
-           | Nothing => undefinedName EmptyFC n
-         go arity !(nf defs Env.empty (type gdef))
-  where
-    go : Nat -> ClosedNF -> Core (List Bool)
-    go (S k) (NBind fc _ (Pi _ rig _ _) sc)
-        = do defs <- get Ctxt
-             rest <- go k !(sc defs (toClosure defaultOpts Env.empty (Erased fc Placeholder)))
-             pure (isErased rig :: rest)
-    go _ _ = pure []
-
--- The position among a constructor's run-time fields of its argument at
--- `pos`, which the ordinary compilation represents a newtype by.
-newtypeField : {auto c : Ref Ctxt Defs} -> Name -> (arity : Nat) -> (pos : Nat) -> Core Nat
-newtypeField cn arity pos
-    = do es <- erasure cn arity
-         pure (length (filter not (take pos es)))
-
-||| The shape of the type a skeleton stands for (`Flat.Exp`): the
-||| registers its values take and how ordinary code represents them, as
-||| `forget` does. Nothing if the skeleton stands for no flat type, as when
-||| an argument it leaves out (`SOther`) decides a field's type. A code
-||| generator that lowers flat forms reads it at their boundary with
-||| ordinary code, and to build and open sums.
-export
-shape : {auto c : Ref Ctxt Defs} -> Exp.Skeleton -> Core (Maybe Exp.Shape)
-shape sk
-    = do Just tm <- skeletonTerm sk
-           | Nothing => pure Nothing
-         defs <- get Ctxt
-         typeShape !(nf defs Env.empty tm)
-  where
-    skeletonTerm : Exp.Skeleton -> Core (Maybe ClosedTerm)
-    skeletonTerm (Exp.SPrim t) = pure (Just (PrimVal EmptyFC (PrT t)))
-    skeletonTerm (Exp.SCon n as)
-        = do defs <- get Ctxt
-             Just gdef <- lookupCtxtExact n (gamma defs)
-               | Nothing => pure Nothing
-             Just as' <- sequence <$> traverse skeletonTerm as
-               | Nothing => pure Nothing
-             pure $ case definition gdef of
-                         TCon a _ _ _ _ _ _ => Just (apply EmptyFC (Ref EmptyFC (TyCon a) n) as')
-                         DCon t a _ => Just (apply EmptyFC (Ref EmptyFC (DataCon t a) n) as')
-                         _ => Nothing
-    skeletonTerm Exp.SOther = pure (Just (Erased EmptyFC Placeholder))
-
-    -- The id ordinary code gives an intrinsic constructor, as
-    -- `Compiler.Opts.Constructor` names and numbers them.
-    intrinsicTag : ConInfo -> Maybe Int
-    intrinsicTag NIL = Just 0
-    intrinsicTag CONS = Just 1
-    intrinsicTag NOTHING = Just 0
-    intrinsicTag JUST = Just 1
-    intrinsicTag _ = Nothing
-
-    -- The judgement goes first: it rejects the recursive types, whose
-    -- shapes have no end.
-    mutual
-      typeShape : ClosedNF -> Core (Maybe Exp.Shape)
-      typeShape ty@(NPrimVal _ (PrT t))
-          = do Judgement.LaidOut _ <- layout [] ty
-                           | _ => pure Nothing
-               pure (Just (Exp.PrimShape t))
-      typeShape ty@(NTCon _ n _ args)
-          = if !(toFullNames n) == Exp.uniformType then pure (Just Exp.UniformShape) else
-            if !(toFullNames n) == Exp.byteAddrType then pure (Just Exp.ByteAddrShape) else
-            do Judgement.LaidOut _ <- layout [] ty
-                           | _ => pure Nothing
-               defs <- get Ctxt
-               Just gdef <- lookupCtxtExact n (gamma defs)
-                 | Nothing => pure Nothing
-               Just (_, cons) <- pure (Definition.dataDeclaration (definition gdef))
-                 | Nothing => pure Nothing
-               cs <- traverse (conShape args) cons
-               pure (Exp.DataShape <$> the (Maybe (List Exp.ConShape)) (sequence cs))
-      typeShape _ = pure Nothing
-
-      conShape : List (FC, ClosedClosure) -> Name -> Core (Maybe Exp.ConShape)
-      conShape args cn
-          = do defs <- get Ctxt
-               Just cdef <- lookupCtxtExact cn (gamma defs)
-                 | Nothing => pure Nothing
-               let DCon tag arity nt = definition cdef
-                 | _ => pure Nothing
-               fs <- traverse (\t => typeShape !(nf defs Env.empty t))
-                 !(Judgement.fieldTypes args cdef)
-               let Just fs' = the (Maybe (List Exp.Shape)) (sequence fs)
-                 | Nothing => pure Nothing
-               ord <- case nt of
-                           Just (_, pos) => Exp.AsField <$> newtypeField cn arity pos
-                           Nothing => pure (ordinary tag !(conInfo cn))
-               pure (Just (Exp.MkConShape !(toFullNames cn) tag ord fs'))
-
-      -- As `Compiler.Opts.Constructor` represents a constructor that is not
-      -- a newtype's.
-      ordinary : Int -> ConInfo -> Exp.Ordinary
-      ordinary tag (ENUM _) = Exp.AsTag
-      ordinary tag ci = Exp.AsObject (fromMaybe tag (intrinsicTag ci))
 
 ||| Whether a flat form of the name and the number of parameters is a copy at
 ||| static arguments of none left: a copy is of a machine name
@@ -1807,6 +1860,9 @@ forget d
         withErased fc (True :: es) as = (CErased fc ::) <$> withErased fc es as
         withErased fc (False :: es) (a :: as) = (a ::) <$> withErased fc es as
         withErased fc _ as = pure as
+    -- a constant marked static is the constant, which the Scheme code
+    -- generators compute before the program runs
+    forgetExp (Exp.FStatic fc n _ _) = pure (CApp fc (CRef fc n) [])
     forgetExp (Exp.FCon fc cn _ _ _ as)
         = do defs <- get Ctxt
              Just gdef <- lookupCtxtExact cn (gamma defs)
@@ -1903,6 +1959,7 @@ useFlatForms forms = traverse_ use (toList forms)
         go (Exp.FOp _ _ as) = concatMap go (toList as)
         go (Exp.FCall _ n as) = Data.Builder.single n <+> concatMap go as
         go (Exp.FPrim _ n _ _ as) = Data.Builder.single n <+> concatMap go as
+        go (Exp.FStatic _ n _ _) = Data.Builder.single n
         go (Exp.FCon _ n _ _ _ as) = Data.Builder.single n <+> concatMap go as
         go (Exp.FCase _ sc alts def) = go sc <+> concatMap alt alts <+> maybe neutral go def
           where

@@ -28,8 +28,10 @@
 ||| read of it, a call of no arguments in VMCode, is that value, as a
 ||| literal's is: no call and no cell. Its VMCode function, which computes
 ||| it, stays among the program's, but no ordinary code calls it, and the
-||| image leaves it out. Flat code still reads it by a call of its flat
-||| form, which computes it.
+||| image leaves it out. Flat code reads it as its value too
+||| (`LowerFlat.flatRead`), where it holds it in one uniform register or as
+||| a machine scalar, and calls its flat form, which computes it, where it
+||| holds it otherwise.
 |||
 ||| What v0 lowers: integer constants, those outside the fixnum range as
 ||| static objects; every integer type's arithmetic, bitwise operations,
@@ -287,20 +289,15 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
   ------------------------------------------------------------------------------
   -- References
 
-  ||| A static object of the program, as a `Val`.
+  ||| A static object of the program, as a `Val` (`LowerFlat.staticVal`).
   staticVal : Name -> B (TermIR.Opnd v IRCommon.Ty.Val)
-  staticVal name = case lookup name refs.stats of
-    Just (TermIR.MkStaticSig _ _ ** var) => do p <- TermIR.Build.emit1 (TermIR.Instr.StaticAddr var)
-                                               TermIR.Build.emit1 (TermIR.Instr.WidenPtr p)
-    Nothing =>
-      TermIR.Build.unsupported ("the static object " ++ show name ++ ", which no declaration makes")
+  staticVal = LowerFlat.staticVal refs.stats
 
   ||| A word of the program (`ConstantWord.StaticWord`), as a `Val`: a fixnum
-  ||| as an immediate, the erased value, a static object by its address.
+  ||| as an immediate, the erased value, a static object by its address
+  ||| (`LowerFlat.staticWordVal`).
   staticWordVal : ConstantWord.StaticWord -> B (TermIR.Opnd v IRCommon.Ty.Val)
-  staticWordVal (ConstantWord.Fixnum i {ok}) = pure (TermIR.Opnd.Vx {enc} i {ok})
-  staticWordVal ConstantWord.Erased = pure TermIR.Opnd.Erased
-  staticWordVal (ConstantWord.Object n) = staticVal n
+  staticWordVal = LowerFlat.staticWordVal {enc} refs.stats
 
   ||| A runtime routine's variable, with its results and parameters.
   routine : Name -> (rs, ps : List (IRCommon.Ty enc)) ->
@@ -1766,7 +1763,8 @@ program forms shapes realised tables typeCons staticReads constants entry es rs 
                      (defs (programDecls es rs) (declsRefs (programDecls es rs))
                        (LowerFlat.MkForms (LowerFlat.callees (programDecls es rs) forms) shapes
                          realised.services
-                         realised.externs realised.primitives tables constants)
+                         realised.externs realised.primitives tables constants
+                         (staticVars (programDecls es rs)) staticReads)
                            ((mainSig, entry) :: es))
                      (staticDefs (programDecls es rs) rs) (TermIR.Program.MkEntry TermIR.Var.here)
                        (IRCommon.MkConIds
@@ -1778,10 +1776,13 @@ program forms shapes realised tables typeCons staticReads constants entry es rs 
                        []
                        (TermIR.Program.MkEntry TermIR.Var.here) IRCommon.ConIds.noConIds)
   where
+    ||| Each static object of the declarations by name, with its variable.
+    staticVars : (d : TermIR.Decls enc) -> SortedMap Name (s ** TermIR.Var d.statics s)
+    staticVars d = fromList [(s.sym, (s ** v)) | (s ** v) <- TermIR.Var.enumerate d.statics]
+
     declsRefs : (d : TermIR.Decls enc) -> Refs enc d
     declsRefs d = MkRefs (fromList [(s.name, (s ** v)) | (s ** v) <- TermIR.Var.enumerate d.sigs])
-                      (fromList [(s.sym, (s ** v)) | (s ** v) <- TermIR.Var.enumerate d.statics])
-                        realised typeCons staticReads
+                      (staticVars d) realised typeCons staticReads
 
     staticDefs : (d : TermIR.Decls enc) ->
                  (rs : List (s ** ({0 d' : TermIR.Decls enc} -> TermIR.StaticDef d' s))) ->
@@ -1861,10 +1862,12 @@ cfAgrees _ _ = False
 |||
 ||| Each constant the program marks static is given as code reads it
 ||| (`Native.Codegen.StaticRead`), and every read of it in VMCode is its
-||| value, while a flat form's read of it still calls its form; the
-||| `constants`, those evaluated on their first use, are the others. The
-||| static object each is read by is the program's, and must be laid out:
-||| one its header cannot hold is an error, which names the constant.
+||| value, as is every read of it a flat form makes (`Flat.Exp.FStatic`);
+||| the `constants`, those evaluated on their first use, are the others.
+||| The static object each is read by is the program's, and must be laid
+||| out: one its header cannot hold is an error, which names the constant.
+||| A flat form's read must be one flat code holds (`LowerFlat.flatRead`):
+||| one it cannot is an error, which names the form and the constant.
 export
 lowerProgram : (enc : Types.Enc) -> {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Platform ->
                Linkage.Realised -> List Flat.Exp.FlatDef -> Flat.Exp.Shapes ->
@@ -1900,9 +1903,18 @@ lowerProgram enc platform realised forms shapes tables staticReads constants fla
       rs = mapMaybe ready statics
       laid = Data.SortedSet.fromList (map (\(s ** _) => s.sym) rs)
   traverse_ (laidOut laid) markedObjects
+  traverse_ held [(fd.name, r) | fd <- forms, r <- Flat.Exp.formStatics fd]
   pure (program forms shapes realised tables typeCons staticReads (length constants) entryPlan
           others rs)
   where
+    ||| A read of a constant marked static by the flat form of the name,
+    ||| which flat code must hold as it is read at (`LowerFlat.flatRead`):
+    ||| one it cannot is an error, which names the form and the constant.
+    held : (Name, (Name, Flat.Exp.Skeleton, Flat.Exp.Layout)) -> Either String ()
+    held (f, (n, sk, lay)) = case LowerFlat.flatRead enc.bignum staticReads n sk lay of
+      Right _ => Right ()
+      Left why => Left ("the flat form of " ++ show f ++ " reads " ++ why)
+
     ||| The static object a constant names as a value, if it names one
     ||| (`ConstantWord.constantWord`), and what it holds.
     constantObject : Constant -> Maybe (Name, ConstantWord.StaticPlan)

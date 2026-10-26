@@ -54,8 +54,8 @@ echo "$(( $(cells build/copies/unmarked-ir.txt) - $(cells build/ir.txt) )) cells
 # renumbered in order of appearance; under tag0 an object's address
 # carries the pointer tag, 1, which a read through the continuation takes
 # off.
-reader () {
-  awk -v want="# Main.$2" '/^# / { on = ($0 == want) }
+listing () {
+  awk -v want="# $2" '/^# / { on = ($0 == want) }
        on {
          out = ""
          while (match($0, /L[0-9]+/)) {
@@ -65,14 +65,15 @@ reader () {
            $0 = substr($0, RSTART + RLENGTH)
          }
          print out $0
-       }' "$1" > build/reader.s
-  if [ -s build/reader.s ]; then
-    cat build/reader.s
-    if grep -q "call" build/reader.s; then echo "$2 calls"; else echo "$2 calls nothing"; fi
+       }' "$1" > build/listing.s
+  if [ -s build/listing.s ]; then
+    cat build/listing.s
+    if grep -q "call" build/listing.s; then echo "$3 calls"; else echo "$3 calls nothing"; fi
   else
-    echo "no machine code of Main.$2"
+    echo "no machine code of $2"
   fi
 }
+reader () { listing "$1" "Main.$2" "$2"; }
 for f in table word wider; do reader build/asm.s $f; done
 echo "== val-encoding=tag0"
 for f in table word wider; do reader build/asm-tag0.s $f; done
@@ -82,3 +83,66 @@ for f in table word wider; do reader build/asm-tag0.s $f; done
 # each refused when the program is compiled, in one error.
 idris2 --cg native -o unlaid Unlaid.idr
 idris2 --cg native -o differs Differs.idr
+
+# Constants marked static read by flat code: the program `Flat`, whose
+# flat functions read those of the module `Tables`, and of `Squares`, which
+# it does not import, natively, on Chez, by the flat oracle, and natively
+# under tag0, all printing the same. The first build builds the modules,
+# and the check of their flat functions as each is built prints what it
+# finds not flat, here nothing: it reads every mark as a constant, those
+# of `Squares` too, which it loads before it resolves the marks' names.
+idris2 --cg native -p idris2-native-runtime -p idris2-native --directive dump-asm=build/flat.s \
+  -o flat-native Flat.idr
+./build/exec/flat-native
+idris2 --cg chez -p idris2-native-runtime -p idris2-native -o flat-chez Flat.idr > /dev/null
+./build/exec/flat-chez
+idris2 --cg flat-oracle -p idris2-native-runtime -p idris2-native -o flat-oracle Flat.idr \
+  > /dev/null
+./build/exec/flat-oracle
+idris2 --cg native -p idris2-native-runtime -p idris2-native --directive val-encoding=tag0 \
+  --directive dump-asm=build/flat-tag0.s -o flat-tag0 Flat.idr > /dev/null
+./build/exec/flat-tag0
+
+# The image computes none of them, as for ordinary code's reads above, and
+# no flat form computes them either: a flat read that called one would
+# call its form, `_flat.Tables.step` for `step`. `Squares.squares` too,
+# which `Flat` reaches through a module it imports.
+computed () {
+  if grep -q -e "^# $1\.$2\$" -e "^# _flat\.$1\.$2\$" -e "value of $1\.$2)" build/flat.s; then
+    echo "$1.$2 computed by the program"
+  else
+    echo "$1.$2 not computed by the program"
+  fi
+}
+for c in cubes limit step ratio huge small unit; do computed Tables $c; done
+computed Squares squares
+
+# `flag`, a `Bool`, which flat code holds as its tag and ordinary code as
+# an object's address: the image has its flat form, `_flat.Tables.flag`,
+# which computes it, and `flagged` calls it; but no ordinary function of
+# its name, nor one that computes the value, since ordinary code reads its
+# value.
+if grep -q "^# _flat\.Tables\.flag\$" build/flat.s; then echo "the flat form of Tables.flag"; fi
+if grep -q -e "^# Tables\.flag\$" -e "value of Tables\.flag)" build/flat.s; then
+  echo "Tables.flag computed by ordinary code"
+else
+  echo "Tables.flag not computed by ordinary code"
+fi
+
+# The flat readers, as the renderer emits them, after the entry that every
+# flat function has: `cube` the address of the cubes' object (`lea`), under
+# tag0 with its pointer tag, then one load, the index scaled, past the
+# header (8, or under tag0 8 - 1); `pick` in each alternative one
+# instruction, the BIGNUM's address (`lea`) or the fixnum (`mov`: 15 as
+# 31, under tag0 as 30), then the return, the last block the runtime's
+# crash where no alternative matches; `pastLimit`, `stepped` and `scaled`
+# the word an immediate (`mov`: 42 itself, and 0.25 as its bits);
+# `unitAt` the erased value's word (`mov`: 1, under tag0 0); and the form
+# of `Tables.square`, which `squareAt` calls, the squares' address and one
+# load, as `cube`. None of them calls; `flagged`, which calls the form of
+# `flag`, does.
+for f in cube pick pastLimit stepped scaled unitAt; do listing build/flat.s _flat.Main.$f $f; done
+listing build/flat.s _flat.Tables.square square
+listing build/flat.s _flat.Main.flagged flagged | tail -n 1
+echo "== val-encoding=tag0"
+for f in cube pick unitAt; do listing build/flat-tag0.s _flat.Main.$f $f; done

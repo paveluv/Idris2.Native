@@ -27,3 +27,8 @@ sed -e 's/37, 50]/37, 51]/' Static.idr > build/copies/Wrong.idr
 for m in Unknown Function Extern Foreign Itself Inlined Both Every Fuel Maker; do
   idris2 --cg native -p idris2-native-runtime -p idris2-native -o $m $m.idr
 done
+
+# A flat function that applies a constant marked static to an argument,
+# refused as its module is built, in the error of the module's check of
+# its flat functions.
+idris2 --cg native -p idris2-native-runtime -p idris2-native -o Applied Applied.idr

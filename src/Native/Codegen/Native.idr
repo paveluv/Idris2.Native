@@ -74,10 +74,13 @@ import Libraries.Utils.Path
 import Native.Data.Builder as Data
 import Native.Data.WriteBuilder
 import Native.Flat.Exp
-import Native.Flat.Marked
+import Native.Flat.Marked as Flat
 import Native.Flat.Translate
 import Native.HeapObj.ValEnc
 import Native.Intrinsic
+-- lint: allow import-unused: a flat form reads each static constant at a layout, a list of
+-- `Rep`s, and a list of the reads is built only where `Rep` is visible
+import Native.Rep
 import Native.Types.BignumEnc as Types
 import Native.Types.Enc as Types
 import Native.Types.StringEnc as Types
@@ -100,15 +103,17 @@ import System.File.ReadWrite
 |||   often too.
 ||| * `flat <name>...`: the functions the program marks flat (`Flat.Marked`).
 ||| * `static <name>...`: the constants the program marks static
-|||   (`Flat.Marked`), each of which the program reaches computed as the
-|||   program is compiled (`Native.Codegen.Evaluate`): the image holds its
-|||   value, which ordinary code reads with no call
-|||   (`Native.Codegen.StaticRead`); flat code still computes it by its
-|||   form. A mark of what is no constant, of a constant Idris inlines at
-|||   each use or that is marked flat too, or of one the program reaches
-|||   whose value the evaluation does not compute, or computes as a value
-|||   the code generator does not lay out as static data yet, is refused,
-|||   with why (`checkStaticConstants`).
+|||   (`Flat.Marked`), each of which the program reaches, from ordinary
+|||   code or from flat code, computed as the program is compiled
+|||   (`Native.Codegen.Evaluate`): the image holds its value, which
+|||   ordinary code reads with no call (`Native.Codegen.StaticRead`), and
+|||   flat code too where it holds it in one uniform register or as a
+|||   machine scalar (`Flat.Exp.FStatic`); elsewhere flat code computes it
+|||   by its form. A mark of what is no constant, of a constant Idris
+|||   inlines at each use or that is marked flat too, or of one the program
+|||   reaches whose value the evaluation does not compute, or computes as a
+|||   value the code generator does not lay out as static data yet, is
+|||   refused, with why (`checkStaticConstants`).
 ||| * `dump-flat=<file>`: write the flat forms, and the shapes of their data
 |||   types, to the file.
 ||| * `dump-ir=<file>`: write the IR the produce pass makes to the file.
@@ -182,25 +187,13 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
       -- it to every code generator, and the tables' and the static
       -- constants': what they are computed from
       let compiled = mergeLeft (fromList (map (\(n, _, d) => (n, d)) cdata.namedDefs)) earlyForms
-      staticReads <- phase "the static constants evaluated"
-        (checkStaticConstants settings.encodings.bignum (realisedMeanings realised) compiled
-          marked.flatFunctions
-          (filter (\n => any ((== n) . fst) (vmcode cdata)) marked.staticConstants)
-          marked.staticConstants)
-      -- the definitions evaluated once, on their first use: every one of
-      -- no arguments but the entry and those marked static, whose values
-      -- the image holds. The Scheme backends, which evaluate them before
-      -- `main`, leave out those whose evaluation may crash or recur, which
-      -- on first use crash or recur as they would unshared
-      let constants =
-            filter (\n => isNothing (lookup n staticReads)) (mapMaybe kept (vmcode cdata))
       image <- case settings.encodings of
         Types.MkEnc HeapObj.ValEnc.FixnumTag1 b s =>
-          pipeline (Types.MkEnc HeapObj.ValEnc.FixnumTag1 b s) settings realised marked.forms
-            compiled staticReads constants flat bound (vmcode cdata)
+          pipeline (Types.MkEnc HeapObj.ValEnc.FixnumTag1 b s) settings realised marked compiled
+            flat bound (vmcode cdata)
         Types.MkEnc HeapObj.ValEnc.FixnumTag0 b s =>
-          pipeline (Types.MkEnc HeapObj.ValEnc.FixnumTag0 b s) settings realised marked.forms
-            compiled staticReads constants flat bound (vmcode cdata)
+          pipeline (Types.MkEnc HeapObj.ValEnc.FixnumTag0 b s) settings realised marked compiled
+            flat bound (vmcode cdata)
         Types.MkEnc HeapObj.ValEnc.NoFixnums _ _ =>
           throw (GenericMsg EmptyFC "native: the encoding nofixnums is not implemented")
       coreLift_ $ mkdirAll outputDir
@@ -310,8 +303,9 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
         ||| definition of no arguments, which no directive marks flat too,
         ||| and which Idris does not inline at each use: one it inlines has no
         ||| use left for the program's compilation to reach, so every mark is
-        ||| checked, reached or not. Each the compilation reaches is
-        ||| evaluated now too, over the compiled definitions, in at most
+        ||| checked, reached or not. Each the program reaches, from VMCode or
+        ||| from the flat forms it reaches, is evaluated now too, over the
+        ||| compiled definitions, in at most
         ||| `evaluationFuel` steps of its own, whatever the order of the
         ||| marks, and its value must be computed and be one the code
         ||| generator lays out as static data under the bignum encoding
@@ -512,20 +506,34 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
                           ++ pack (replicate (minus 3 (length frac)) '0') ++ frac
 
         ||| From VMCode to the image, under encodings whose value encoding has
-        ||| fixnums: produce the term, allocate its registers, render, link.
+        ||| fixnums: evaluate the constants marked static that the program
+        ||| reaches, produce the term, allocate its registers, render, link.
         pipeline : (enc : Types.Enc) -> {auto 0 _ : HeapObj.ValEnc.HasFixnums enc.val} ->
-                   Settings -> Linkage.Realised -> NameMap Flat.Exp.FlatDef ->
+                   Settings -> Linkage.Realised -> Flat.Marked ->
                    (compiled : SortedMap Name NamedDef) ->
-                   (staticReads : SortedMap Name StaticRead) -> (constants : List Name) ->
                    (flat, bound : List (Name, Name)) -> List (Name, VMDef) -> Core ELF.Image
-        pipeline enc settings realised table compiled staticReads constants flat bound defs = do
+        pipeline enc settings realised marked compiled flat bound defs = do
           (forms, shapes) <- phase "flat inputs" $
-                               flatInputs table (Data.SortedMap.toList realised.services)
+                               flatInputs marked.forms (Data.SortedMap.toList realised.services)
                                           (map fst defs
                                             ++
                                               [r.name
                                                | r <- Linkage.Routine.routines {enc} realised]
                                            ++ map snd flat)
+          -- the constants marked static that the program reaches: those
+          -- VMCode has, and those the flat forms read as values
+          let readByForms = map fst (concatMap Flat.Exp.formStatics forms)
+          let reachedMarks = filter (\n => any ((== n) . fst) defs || elem n readByForms)
+                               marked.staticConstants
+          staticReads <- phase "the static constants evaluated"
+            (checkStaticConstants enc.bignum (realisedMeanings realised) compiled
+              marked.flatFunctions reachedMarks marked.staticConstants)
+          -- the definitions evaluated once, on their first use: every one of
+          -- no arguments but the entry and those marked static, whose values
+          -- the image holds. The Scheme backends, which evaluate them before
+          -- `main`, leave out those whose evaluation may crash or recur, which
+          -- on first use crash or recur as they would unshared
+          let constants = filter (\n => isNothing (lookup n staticReads)) (mapMaybe kept defs)
           -- each table's row, by its first: the lowering's reads of it
           firsts <- phase "table rows"
             (traverse (\(n, (lo, _)) => tabulated (n, (lo, lo))) (reached forms))

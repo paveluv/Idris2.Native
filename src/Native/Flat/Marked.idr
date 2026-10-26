@@ -164,13 +164,14 @@ markedForms primitives load
          staticTheirs <- Translate.markedNames Problem.StaticMark theirs
          prims <- primitives c
          let flat = fst flatOwn ++ fst flatTheirs
-         (forms, errs) <- Translate.flatForms prims (flat ++ prims)
+         let statics = nub (fst staticOwn ++ fst staticTheirs)
+         (forms, errs) <- Translate.flatForms prims statics (flat ++ prims)
          let nameErrs = snd flatOwn ++ snd flatTheirs ++ snd staticOwn ++ snd staticTheirs
          session <- getSession
          if not (null errs) && elem reportedMark session.directives
             then pure Nothing
             else do report (nameErrs ++ errs)
-                    pure (Just (MkMarked forms flat (nub (fst staticOwn ++ fst staticTheirs))))
+                    pure (Just (MkMarked forms flat statics))
 
 ||| Check the flat functions a module defines, as it is built, before its TTC
 ||| is written: what `flat-check` does as an incremental code generator
@@ -178,7 +179,10 @@ markedForms primitives load
 ||| their terms then, which the TTC drops, so an error in a body points at
 ||| the term, as an error of the module's own. A name a directive gives that
 ||| names no function, or more than one, is left to the compilation of a
-||| program, since a directive does not say which module wrote it.
+||| program, since a directive does not say which module wrote it. Every
+||| constant the directives the module sees mark static, its own and its
+||| imports', is a constant to the check, as to the program's compilation,
+||| so that a flat function reads one as its value wherever it is defined.
 |||
 ||| A flat function's body reaches the bodies of what it calls, in other
 ||| modules, and theirs in turn, which name modules the checked one does not
@@ -190,7 +194,10 @@ markedForms primitives load
 ||| context). The definitions it loaded stay in the context until Idris
 ||| clears it for the next module. The backend's primitives are found after
 ||| the loading, as a module loaded may define one (`Mul128`): before it, a
-||| primitive's meaning-body would be translated for it. So a module imports
+||| primitive's meaning-body would be translated for it. The static
+||| constants' names are resolved after it too, as a module loaded may
+||| define one: before it, the constant's body would be translated, and a
+||| maker's, which reaches what flat code cannot hold. So a module imports
 ||| only what it uses.
 |||
 ||| A module that defines no flat function has nothing to check, and the
@@ -208,7 +215,10 @@ checkModule primitives sourceFile
            loadAll before
            -- the backend's primitives, those of the modules loaded too
            prims <- primitives c
-           (_, errs) <- Translate.flatForms prims mine
+           -- every constant marked static that the module sees, its name
+           -- resolved once the modules that may define it are loaded
+           statics <- Translate.markedNames Problem.StaticMark !(getDirectives markingCG)
+           (_, errs) <- Translate.flatForms prims (fst statics) mine
            loaded <- get Ctxt
            put Ctxt ({ gamma := loaded.gamma } before)
            unless (null errs) $ setSession ({ directives $= (reportedMark ::) } !getSession)

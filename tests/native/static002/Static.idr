@@ -2,8 +2,8 @@
 -- it compiles the program (static001 and the modules `Unlaid` and
 -- `Differs` show the marks it refuses), and the image holds its value, so
 -- that ordinary code reads it as the value itself, with no call and no
--- cell. It is as if the program had been written with each value in place
--- of the constant's name, such as
+-- cell (`Flat` shows flat code's reads). It is as if the program had
+-- been written with each value in place of the constant's name, such as
 --
 --   main = do ... printLn (words <the words 0, 1, 4, ..., 49>, ...)
 --

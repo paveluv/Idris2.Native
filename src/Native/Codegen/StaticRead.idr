@@ -2,7 +2,9 @@
 ||| whose value the code generator computed as it compiled the program
 ||| (`Native.Codegen.Evaluate`): with no call and no cell, as the value
 ||| itself, which the image holds. Ordinary code reads each so
-||| (`Native.Codegen.Lower`); flat code still computes it by its form.
+||| (`Native.Codegen.Lower`), and flat code too where it holds the value in
+||| one uniform register or as a machine scalar
+||| (`Native.Codegen.LowerFlat.flatRead`).
 |||
 ||| A number, a string or a double is read as the literal it is, which
 ||| code reads as it reads any literal (`ConstantWord.constantWord`); the

@@ -199,6 +199,20 @@ skeletonShape : Shapes -> Skeleton -> Maybe Shape
 skeletonShape ss (SPrim t) = Just (PrimShape t)
 skeletonShape ss sk = lookup sk ss
 
+||| Whether ordinary code holds a value of the shape as flat code holds it,
+||| in one uniform register: a `Uniform a`, or a newtype whose field is
+||| one, its other run-time fields of no registers. Ordinary code holds a
+||| newtype's value as its field, and any other data type's as an object
+||| that holds its fields, which a value of one register is not.
+export
+heldAsUniform : Shape -> Bool
+heldAsUniform UniformShape = True
+heldAsUniform (DataShape [c]) = case c.ordinary of
+  AsField i => shapeLayout (DataShape [c]) == [Rep.Uniform]
+               && maybe False heldAsUniform (getAt i c.fields)
+  _ => False
+heldAsUniform _ = False
+
 ||| Where the fields of a data type's `i`-th constructor lie among the
 ||| registers that follow its tag: those before them, theirs, and those
 ||| after. Every constructor has registers of its own, so the three make up
@@ -246,6 +260,12 @@ mutual
     ||| A call of an `%extern` or `%foreign` primitive, with the skeleton
     ||| and layout of its result's type, and its run-time arguments.
     FPrim : FC -> Name -> Skeleton -> Layout -> List Exp -> Exp
+    ||| The value of a constant the program marks static, which the code
+    ||| generator computes as it compiles the program, so that flat code
+    ||| reads it with no call: by its name, with the skeleton and layout of
+    ||| its type, one uniform register as ordinary code holds the value
+    ||| (`heldAsUniform`) or a machine scalar.
+    FStatic : FC -> Name -> Skeleton -> Layout -> Exp
     ||| A constructor, with its tag if its type has several, the skeleton
     ||| and layout of its type, and its run-time fields.
     FCon : FC -> (con : Name) -> (tag : Maybe Int) -> Skeleton -> Layout ->
@@ -281,6 +301,7 @@ expPieces i exp = case exp of
   FOp _ op as => Data.Builder.single (show op) <+> argPieces i (toList as)
   FCall _ n as => Data.Builder.single (show n) <+> argPieces i as
   FPrim _ n _ _ as => Data.Builder.single ("%prim " ++ show n) <+> argPieces i as
+  FStatic _ n _ _ => Data.Builder.single ("%static " ++ show n)
   FCon _ c t s l as
      => Data.Builder.single (show c ++ maybe "" (\t => "{" ++ show t ++ "}") t) <+> argPieces i as
   FCase _ sc alts def
@@ -383,6 +404,7 @@ expType var form (FOp _ op _) = opResult op >>= \t => (SPrim t,) <$> primLayout 
     opResult _ = Nothing
 expType var form (FCall _ n _) = form n
 expType var form (FPrim _ _ sk lay _) = Just (sk, lay)
+expType var form (FStatic _ _ sk lay) = Just (sk, lay)
 expType var form (FCon _ _ _ sk lay _) = Just (sk, lay)
 expType var form (FCase _ _ alts def) =
   head' (catMaybes (map alt alts ++ [def >>= expType var form]))
@@ -409,6 +431,7 @@ formCallees fd = toList (go fd.body)
     go (FOp _ _ as) = concatMap go (toList as)
     go (FCall _ f as) = Data.Builder.single f <+> concatMap go as
     go (FPrim _ _ _ _ as) = concatMap go as
+    go (FStatic {}) = neutral
     go (FCon _ _ _ _ _ as) = concatMap go as
     go (FCase _ sc alts def) = go sc <+> concatMap alt alts <+> maybe neutral go def
       where
@@ -430,6 +453,7 @@ formPrims fd = toList (go fd.body)
     go (FOp _ _ as) = concatMap go (toList as)
     go (FCall _ _ as) = concatMap go as
     go (FPrim _ p _ _ as) = Data.Builder.single p <+> concatMap go as
+    go (FStatic {}) = neutral
     go (FCon _ _ _ _ _ as) = concatMap go as
     go (FCase _ sc alts def) = go sc <+> concatMap alt alts <+> maybe neutral go def
       where
@@ -456,11 +480,36 @@ formSkeletons fd =
     go (FOp _ _ as) = concatMap go (toList as)
     go (FCall _ _ as) = concatMap go as
     go (FPrim _ _ sk _ as) = Data.Builder.single sk <+> concatMap go as
+    go (FStatic _ _ sk _) = Data.Builder.single sk
     go (FCon _ _ _ sk _ as) = Data.Builder.single sk <+> concatMap go as
     go (FCase _ sc alts def) = go sc <+> concatMap alt alts <+> maybe neutral go def
       where
         alt : FlatAlt -> Data.Builder Skeleton
         alt (FConAlt _ _ vs b) = Data.Builder.piece (map skeleton vs) <+> go b
+        alt (FConstAlt _ b) = go b
+    go (FCrash _ _) = neutral
+    go (FNone _) = neutral
+
+||| The constants marked static a form reads (`FStatic`), each with the
+||| skeleton and layout it is read at, as often as the form reads it: what
+||| the code generator computes for the form, and how the form holds each.
+export
+formStatics : FlatDef -> List (Name, Skeleton, Layout)
+formStatics fd = toList (go fd.body)
+  where
+    go : Exp -> Data.Builder (Name, Skeleton, Layout)
+    go (FVar _ _) = neutral
+    go (FLet _ _ val sc) = go val <+> go sc
+    go (FConst _ _) = neutral
+    go (FOp _ _ as) = concatMap go (toList as)
+    go (FCall _ _ as) = concatMap go as
+    go (FPrim _ _ _ _ as) = concatMap go as
+    go (FStatic _ n sk lay) = Data.Builder.single (n, sk, lay)
+    go (FCon _ _ _ _ _ as) = concatMap go as
+    go (FCase _ sc alts def) = go sc <+> concatMap alt alts <+> maybe neutral go def
+      where
+        alt : FlatAlt -> Data.Builder (Name, Skeleton, Layout)
+        alt (FConAlt _ _ _ b) = go b
         alt (FConstAlt _ b) = go b
     go (FCrash _ _) = neutral
     go (FNone _) = neutral

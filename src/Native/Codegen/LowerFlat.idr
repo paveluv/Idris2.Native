@@ -18,9 +18,11 @@
 ||| A form becomes a `Direct` function whose parameters are its parameters'
 ||| registers in turn and whose results are its result's, and which never
 ||| collects. It is a function of the program, whose term IR is indexed by
-||| the encoding of uniform values; flat code holds no uniform value, so the
-||| lowering is the same under every encoding but for the inline extern that
-||| names the encoding's pointer tag. The functions of the module that
+||| the encoding of uniform values, one with fixnums; the lowering is the
+||| same under every such encoding but for the inline extern that names the
+||| encoding's pointer tag, since the rendering encodes the uniform values
+||| flat code makes of constants, a static constant's fixnum and a static
+||| object's address. The functions of the module that
 ||| implements the runtime's memory may convert between words and addresses
 ||| (`convertsIn`), which the inline externs between a value and its word
 ||| need; no other may. A `case` on a sum is a switch on the tag, and one that is not
@@ -32,9 +34,14 @@
 ||| implement them on the platform, both as the loaded runtime realises the
 ||| contract (`Forms`); every other `%extern` and `%foreign` primitive
 ||| (`FPrim`), the operations on strings and the double functions of the C
-||| library lower to `Unsupported`.
+||| library lower to `Unsupported`. A read of a constant the program marks
+||| static (`FStatic`) is the value the code generator computed for it, with
+||| no call (`flatRead`): in one uniform register, as ordinary code holds
+||| it, a static object's address, a fixnum or the erased value; a machine
+||| scalar as the constant it is.
 module Native.Codegen.LowerFlat
 
+import Native.Codegen.ConstantWord
 import Native.Codegen.Doubles
 import Native.Codegen.IRCommon.Conv as IRCommon
 import Native.Codegen.IRCommon.Op
@@ -43,6 +50,7 @@ import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.Codegen.Linkage.ConvertsIn
 import Native.Codegen.Linkage.Expansion as Linkage
 import Native.Codegen.Linkage.Routine
+import Native.Codegen.StaticRead
 import Native.Codegen.TermIR.Body
 import Native.Codegen.TermIR.Build as TermIR
 import Native.Codegen.TermIR.Decls as TermIR
@@ -54,6 +62,7 @@ import Native.Codegen.TermIR.IsInt
 import Native.Codegen.TermIR.Mem as TermIR
 import Native.Codegen.TermIR.Opnd as TermIR
 import Native.Codegen.TermIR.Sig as TermIR
+import Native.Codegen.TermIR.StaticSig as TermIR
 import Native.Codegen.TermIR.Var as TermIR
 import Native.Codegen.Words
 
@@ -78,6 +87,7 @@ import Native.Mach
 import Native.Port
 import Native.Primitive
 import Native.Rep
+import Native.Types.BignumEnc as Types
 import Native.Types.Enc as Types
 import Native.Types.Kind
 import Native.Width
@@ -302,6 +312,67 @@ constWord (Ch c) = Just (cast (ord c))
 constWord _ = Nothing
 
 ------------------------------------------------------------------------------
+-- Static constants and objects
+
+||| How flat code holds a constant the program marks static, read at a
+||| type that flat code holds in one uniform register as ordinary code
+||| does, or at a machine scalar's (`Flat.Exp.FStatic`).
+export
+data FlatRead : Type where
+  ||| The uniform value ordinary code holds: a word of the program.
+  HeldUniform : ConstantWord.StaticWord -> FlatRead
+  ||| A machine scalar: the constant it is, as a literal of flat code is.
+  HeldConstant : Constant -> FlatRead
+
+||| How flat code holds the constant of the name, marked static, read at
+||| the skeleton and layout, from how code reads it (`staticReads`); or
+||| why it cannot. In one uniform register the value is what ordinary
+||| code holds, so a literal is the word that ordinary code reads it as,
+||| under the bignum encoding (`ConstantWord.constantWord`); a machine
+||| scalar is the literal it is, of the scalar's type. One read at any
+||| other layout, or of a value of another type, has no flat register to
+||| hold it.
+export
+flatRead : Types.BignumEnc -> (staticReads : SortedMap Name StaticRead) -> Name ->
+           Flat.Exp.Skeleton -> Flat.Exp.Layout -> Either String FlatRead
+flatRead bignum staticReads n sk lay = case (lookup n staticReads, sk, lay) of
+  (Nothing, _, _) =>
+    Left ("the constant " ++ show n ++ ", marked static, whose value is not computed")
+  (Just (StaticRead.Literal k), _, [Rep.Uniform]) =>
+    HeldUniform . fst <$> ConstantWord.constantWord bignum k
+  (Just StaticRead.Erased, _, [Rep.Uniform]) => Right (HeldUniform ConstantWord.Erased)
+  (Just (StaticRead.Object o _), _, [Rep.Uniform]) => Right (HeldUniform (ConstantWord.Object o))
+  (Just (StaticRead.Literal k), Flat.Exp.SPrim t, _) =>
+    if Flat.ConstType.constType k == Just t then Right (HeldConstant k)
+      else Left ("the constant " ++ show n ++ ", marked static, whose value " ++ show k
+                 ++ " is not of its type " ++ show t)
+  _ => Left ("the constant " ++ show n ++ ", marked static, read by flat code as "
+             ++ show sk ++ " " ++ show lay ++ ", which holds no such value")
+
+||| A static object of the program as a `Val`, by its name among the
+||| declarations' statics: its address, a pointer, as a value. Ordinary
+||| code's reads of static objects are these too.
+export
+staticVal : SortedMap Name (s ** TermIR.Var d.statics s) -> Name ->
+            TermIR.Build d c m v l (TermIR.Opnd v IRCommon.Ty.Val)
+staticVal stats name = case lookup name stats of
+  Just (TermIR.MkStaticSig _ _ ** var) => do p <- TermIR.Build.emit1 (TermIR.Instr.StaticAddr var)
+                                             TermIR.Build.emit1 (TermIR.Instr.WidenPtr p)
+  Nothing =>
+    TermIR.Build.unsupported ("the static object " ++ show name ++ ", which no declaration makes")
+
+||| A word of the program (`ConstantWord.StaticWord`) as a `Val`: a fixnum
+||| as an immediate, the erased value, a static object by its address
+||| (`staticVal`). Ordinary code's words of constants are these too.
+export
+staticWordVal : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} ->
+                SortedMap Name (s ** TermIR.Var d.statics s) -> ConstantWord.StaticWord ->
+                TermIR.Build d c m v l (TermIR.Opnd v IRCommon.Ty.Val)
+staticWordVal stats (ConstantWord.Fixnum i {ok}) = pure (TermIR.Opnd.Vx {enc} i {ok})
+staticWordVal stats ConstantWord.Erased = pure TermIR.Opnd.Erased
+staticWordVal stats (ConstantWord.Object n) = staticVal stats n
+
+------------------------------------------------------------------------------
 -- The lowering
 
 ||| What the lowering of a form knows of the program: the forms it may call,
@@ -309,8 +380,10 @@ constWord _ = Nothing
 ||| function that implements it on the platform, the inline externs, each
 ||| with the intrinsic it is, the backend's primitives, each with the
 ||| primitive it is, the tables the code generator computed, each with the
-||| index of its first row and the words of a row, and the number of the
-||| program's top-level constants.
+||| index of its first row and the words of a row, the number of the
+||| program's top-level constants, the static objects of the declarations,
+||| by name, and the constants the program marks static, each as code reads
+||| it (`flatRead` says how flat code holds it).
 public export
 record Forms (enc : Types.Enc) (d : TermIR.Decls enc) where
   constructor MkForms
@@ -321,13 +394,15 @@ record Forms (enc : Types.Enc) (d : TermIR.Decls enc) where
   primitives : SortedMap Name Primitive
   tables : SortedMap Name (Int, Nat)
   constants : Nat
+  statics : SortedMap Name (s ** TermIR.Var d.statics s)
+  staticReads : SortedMap Name StaticRead
 
 ||| Each variable in scope: its type's skeleton and its value.
 Env : (enc : Types.Enc) -> (IRCommon.Ty enc -> Type) -> Type
 Env enc v = SortedMap Name (Flat.Exp.Skeleton, Value enc v)
 
-parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self : Flat.Exp.FlatDef)
-  (m : Bool)
+parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
+  (0 d : TermIR.Decls enc) (pr : Forms enc d) (self : Flat.Exp.FlatDef) (m : Bool)
            {0 v : IRCommon.Ty enc -> Type} {0 l : List (IRCommon.Ty enc) -> Type}
 
   0 B : Type -> Type
@@ -409,6 +484,13 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
                      (TermIR.Build.unsupported
                        ("the inline extern " ++ show n ++ ", whose result is not its type's"))
                          (\rs => pure (sk, MkValue lay rs)) (regsAs lay x)
+      -- a constant marked static: its value, with no call
+      Flat.Exp.FStatic _ n sk lay => case flatRead enc.bignum pr.staticReads n sk lay of
+        Right (HeldUniform w) => do
+          u <- staticWordVal {enc} pr.statics w
+          pure (sk, MkValue [Rep.Uniform] [u])
+        Right (HeldConstant k) => constant k
+        Left why => TermIR.Build.unsupported why
       Flat.Exp.FCon _ c _ sk lay args => do
                  xs <- traverse (\a => snd <$> expr env a) args
                  x <- construct sk c (concatValues xs)
@@ -931,7 +1013,8 @@ parameters {enc : Types.Enc} (0 d : TermIR.Decls enc) (pr : Forms enc d) (self :
 ||| A form as the body of its `Direct` function. A form that calls itself
 ||| is a loop, which a call in tail position jumps back to.
 export
-lowerForm : {enc : Types.Enc} -> (0 d : TermIR.Decls enc) -> Forms enc d ->
+lowerForm : {enc : Types.Enc} -> {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} ->
+            (0 d : TermIR.Decls enc) -> Forms enc d ->
             (fd : Flat.Exp.FlatDef) ->
             TermIR.Build.Closed d (IRCommon.Conv.Direct (tys fd.result) False)
             (Linkage.ConvertsIn.convertsIn fd.name)
@@ -950,6 +1033,7 @@ lowerForm d pr fd = TermIR.Build.build $ \xs =>
     calls n (Flat.Exp.FOp _ _ as) = any (calls n) (toList as)
     calls n (Flat.Exp.FCall _ f as) = f == n || any (calls n) as
     calls n (Flat.Exp.FPrim _ _ _ _ as) = any (calls n) as
+    calls n (Flat.Exp.FStatic {}) = False
     calls n (Flat.Exp.FCon _ _ _ _ _ as) = any (calls n) as
     calls n (Flat.Exp.FCase _ sc alts def) = calls n sc || any alt alts || maybe False (calls n) def
       where

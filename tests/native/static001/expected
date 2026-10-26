@@ -41,3 +41,13 @@ Error: native: refused as static constants:
 
 Error: native: the makers of objects from words: Native.Types.Fake.misplaced makes a type it is not defined with; Native.Types.Fake.fake is a maker Idris inlines at each use, so no call of it is left to mean its object: remove its %inline, or, if it has none, make it export or mark it %noinline
 
+Error: useInc is flat, but A constant marked static, applied to run-time arguments, is not handled in the flat regime.
+
+Applied:19:12--19:15
+ 15 | inc : Int -> Int
+ 16 | inc x = x + 1
+ 17 |
+ 18 | useInc : Int -> Int
+ 19 | useInc x = inc x
+                 ^^^
+

@@ -218,3 +218,261 @@ Error: native: refused as static constants:
   Differs.right is not computable when the program is compiled: the primitive shr Int of [1, -70], a shift by a negative count, which Chez makes the other way, in Differs.right
   Differs.wide is not computable when the program is compiled: the primitive shl Bits64 of [1, 64], a shift by 64 or more, which Chez makes as one of an Integer, so that a large count ends the compilation, in Differs.wide
 
+([0, 1, 8, 27, 64, 125, 216, 343], True)
+(9223372036854775816, True)
+(43, True)
+(0.5, True)
+(1180591620717411303424, (True, (15, True)))
+()
+([0, 1, 4, 9, 16, 25, 36, 49], True)
+(2, (True, (True, True)))
+([0, 1, 8, 27, 64, 125, 216, 343], True)
+(9223372036854775816, True)
+(43, True)
+(0.5, True)
+(1180591620717411303424, (True, (15, True)))
+()
+([0, 1, 4, 9, 16, 25, 36, 49], True)
+(2, (True, (True, True)))
+([0, 1, 8, 27, 64, 125, 216, 343], True)
+(9223372036854775816, True)
+(43, True)
+(0.5, True)
+(1180591620717411303424, (True, (15, True)))
+()
+([0, 1, 4, 9, 16, 25, 36, 49], True)
+(2, (True, (True, True)))
+([0, 1, 8, 27, 64, 125, 216, 343], True)
+(9223372036854775816, True)
+(43, True)
+(0.5, True)
+(1180591620717411303424, (True, (15, True)))
+()
+([0, 1, 4, 9, 16, 25, 36, 49], True)
+(2, (True, (True, True)))
+Tables.cubes not computed by the program
+Tables.limit not computed by the program
+Tables.step not computed by the program
+Tables.ratio not computed by the program
+Tables.huge not computed by the program
+Tables.small not computed by the program
+Tables.unit not computed by the program
+Squares.squares not computed by the program
+the flat form of Tables.flag
+Tables.flag not computed by ordinary code
+# _flat.Main.cube
+L64:
+sub rsp, 8
+mov rax, qword ptr [rip+L17]
+cmp rsp, rax
+jb L18
+lea rbx, [rip+L13]
+mov qword ptr [rbx], rdi
+jmp L65
+L65:
+lea rax, [rip+L66]
+mov qword ptr [rbx+24], rax
+mov rax, qword ptr [rbx+24]
+mov qword ptr [rbx+8], rax
+mov rax, qword ptr [rbx+8]
+mov rdx, qword ptr [rbx]
+shl rdx, 3
+add rax, rdx
+mov rcx, qword ptr [rax+8]
+mov qword ptr [rbx+16], rcx
+mov rdi, qword ptr [rbx+16]
+add rsp, 8
+ret
+cube calls nothing
+# _flat.Main.pick
+L64:
+sub rsp, 8
+mov rax, qword ptr [rip+L17]
+cmp rsp, rax
+jb L18
+lea rbx, [rip+L13]
+mov qword ptr [rbx], rdi
+jmp L65
+L65:
+mov rax, qword ptr [rbx]
+cmp rax, 1
+je L66
+test rax, rax
+je L67
+jmp L68
+L66:
+lea rdi, [rip+L69]
+add rsp, 8
+ret
+L67:
+mov rdi, 31
+add rsp, 8
+ret
+L68:
+lea rdi, [rip+L70]
+mov rsi, 28
+jmp L3
+pick calls nothing
+# _flat.Main.pastLimit
+L64:
+sub rsp, 8
+mov rax, qword ptr [rip+L17]
+cmp rsp, rax
+jb L18
+lea rbx, [rip+L13]
+mov qword ptr [rbx], rdi
+jmp L65
+L65:
+mov rax, -9223372036854775801
+mov rcx, qword ptr [rbx]
+add rax, rcx
+mov qword ptr [rbx+8], rax
+mov rdi, qword ptr [rbx+8]
+add rsp, 8
+ret
+pastLimit calls nothing
+# _flat.Main.stepped
+L64:
+sub rsp, 8
+mov rax, qword ptr [rip+L17]
+cmp rsp, rax
+jb L18
+lea rbx, [rip+L13]
+mov qword ptr [rbx], rdi
+jmp L65
+L65:
+mov rax, qword ptr [rbx]
+mov rcx, 42
+add rax, rcx
+mov qword ptr [rbx+8], rax
+mov rdi, qword ptr [rbx+8]
+add rsp, 8
+ret
+stepped calls nothing
+# _flat.Main.scaled
+L64:
+sub rsp, 8
+mov rax, qword ptr [rip+L17]
+cmp rsp, rax
+jb L18
+lea rbx, [rip+L13]
+movsd qword ptr [rbx], xmm0
+jmp L65
+L65:
+mov rax, 4598175219545276416
+mov qword ptr [rbx+8], rax
+movsd xmm0, qword ptr [rbx]
+movsd xmm1, qword ptr [rbx+8]
+mulsd xmm0, xmm1
+movsd qword ptr [rbx+16], xmm0
+movsd xmm0, qword ptr [rbx+16]
+add rsp, 8
+ret
+scaled calls nothing
+# _flat.Main.unitAt
+L64:
+sub rsp, 8
+mov rax, qword ptr [rip+L17]
+cmp rsp, rax
+jb L18
+lea rbx, [rip+L13]
+mov qword ptr [rbx], rdi
+jmp L65
+L65:
+mov rdi, 1
+add rsp, 8
+ret
+unitAt calls nothing
+# _flat.Tables.square
+L64:
+sub rsp, 8
+mov rax, qword ptr [rip+L17]
+cmp rsp, rax
+jb L18
+lea rbx, [rip+L13]
+mov qword ptr [rbx], rdi
+jmp L65
+L65:
+lea rax, [rip+L66]
+mov qword ptr [rbx+24], rax
+mov rax, qword ptr [rbx+24]
+mov qword ptr [rbx+8], rax
+mov rax, qword ptr [rbx+8]
+mov rdx, qword ptr [rbx]
+shl rdx, 3
+add rax, rdx
+mov rcx, qword ptr [rax+8]
+mov qword ptr [rbx+16], rcx
+mov rdi, qword ptr [rbx+16]
+add rsp, 8
+ret
+square calls nothing
+flagged calls
+== val-encoding=tag0
+# _flat.Main.cube
+L64:
+sub rsp, 8
+mov rax, qword ptr [rip+L17]
+cmp rsp, rax
+jb L18
+lea rbx, [rip+L13]
+mov qword ptr [rbx], rdi
+jmp L65
+L65:
+lea rax, [rip+L66+1]
+mov qword ptr [rbx+24], rax
+mov rax, qword ptr [rbx+24]
+mov qword ptr [rbx+8], rax
+mov rax, qword ptr [rbx+8]
+mov rdx, qword ptr [rbx]
+shl rdx, 3
+add rax, rdx
+mov rcx, qword ptr [rax+7]
+mov qword ptr [rbx+16], rcx
+mov rdi, qword ptr [rbx+16]
+add rsp, 8
+ret
+cube calls nothing
+# _flat.Main.pick
+L64:
+sub rsp, 8
+mov rax, qword ptr [rip+L17]
+cmp rsp, rax
+jb L18
+lea rbx, [rip+L13]
+mov qword ptr [rbx], rdi
+jmp L65
+L65:
+mov rax, qword ptr [rbx]
+cmp rax, 1
+je L66
+test rax, rax
+je L67
+jmp L68
+L66:
+lea rdi, [rip+L69+1]
+add rsp, 8
+ret
+L67:
+mov rdi, 30
+add rsp, 8
+ret
+L68:
+lea rdi, [rip+L70]
+mov rsi, 28
+jmp L3
+pick calls nothing
+# _flat.Main.unitAt
+L64:
+sub rsp, 8
+mov rax, qword ptr [rip+L17]
+cmp rsp, rax
+jb L18
+lea rbx, [rip+L13]
+mov qword ptr [rbx], rdi
+jmp L65
+L65:
+mov rdi, 0
+add rsp, 8
+ret
+unitAt calls nothing
