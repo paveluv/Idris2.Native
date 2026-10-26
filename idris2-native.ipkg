@@ -14,6 +14,7 @@ sourcedir = "src"
 modules =
     Native.Area,
     Native.Carrier,
+    Native.Codegen.ConstantWord,
     Native.Codegen.Doubles,
     Native.Codegen.ELF,
     Native.Codegen.Evaluate,
@@ -22,6 +23,7 @@ modules =
     Native.Codegen.IRCommon.Op,
     Native.Codegen.IRCommon.Pinned,
     Native.Codegen.IRCommon.Ty,
+    Native.Codegen.IntWidth,
     Native.Codegen.Link,
     Native.Codegen.Linkage.Areas,
     Native.Codegen.Linkage.ConvertsIn,

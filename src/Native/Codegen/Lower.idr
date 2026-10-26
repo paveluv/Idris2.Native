@@ -54,7 +54,9 @@
 ||| same static object.
 module Native.Codegen.Lower
 
+import Native.Codegen.ConstantWord
 import Native.Codegen.Doubles
+import Native.Codegen.IntWidth
 import Native.Codegen.IRCommon.ConIds as IRCommon
 import Native.Codegen.IRCommon.Conv
 import Native.Codegen.IRCommon.Op
@@ -103,13 +105,11 @@ import Native.Carrier
 import Native.Data.Builder as Data
 import Native.Data.Distinct
 import Native.Field
-import Native.Flat.ConstType
 import Native.Flat.Exp
 import Native.HeapObj.Shape as HeapObj
 import Native.HeapObj.ValEnc
 import Native.Mach
 import Native.Port
-import Native.Primitive.DoubleBits
 import Native.Rep
 import Native.Types.BignumEnc as Types
 import Native.Types.Enc as Types
@@ -125,15 +125,16 @@ import Native.Width
 ------------------------------------------------------------------------------
 -- Names the lowering introduces
 
-||| The static object for every nullary constructor with this constructor id.
-export
-nullaryCon : Int -> Name
-nullaryCon conId = NS (mkNamespace "_native") (UN (Basic ("con" ++ show conId)))
-
 ||| The function the program starts with.
 export
 mainExpression : Name
 mainExpression = MN "__mainExpression" 0
+
+||| The function that computes a top-level constant's value, which the
+||| constant's own name calls on its first use (`Constant`).
+export
+constantValue : Name -> Name
+constantValue n = NS (mkNamespace "_native") (UN (Basic ("value of " ++ show n)))
 
 ------------------------------------------------------------------------------
 -- Integers
@@ -143,72 +144,15 @@ mainExpression = MN "__mainExpression" 0
 -- bits, is always a fixnum. A 64-bit one is its bit pattern: a fixnum when the
 -- pattern's signed value is in the fixnum range, and an `INT64` box holding
 -- the pattern otherwise, so that the 64-bit types share one form and convert
--- among themselves for free. An `Integer` is a fixnum or a `BIGNUM`.
+-- among themselves for free. An `Integer` is a fixnum or a `BIGNUM`. How a
+-- type is held is its width (`Native.Codegen.IntWidth`), by which a
+-- constant of it is read too.
 --
 -- The locals are uniform, so an operation reads and writes uniform values. On
 -- fixnums it works on the `Fix`es; otherwise, and when the result leaves the
 -- fixnums, a narrow or 64-bit operation works on the words, a 64-bit result
 -- being tagged if it fits and boxed if not, and an `Integer` operation calls
 -- the runtime's routine on the original operands.
-
-||| How an integer type is held, and how it wraps: of a machine type's width
-||| and sign (`Mach.width`), or `Integer`'s, which only ordinary code has. A
-||| narrow integer is always a fixnum; a 64-bit one is a fixnum or an `INT64`
-||| box, by its pattern; an `Integer` a fixnum or a `BIGNUM`.
-data IntWidth = Bounded Width Bool | Unbounded
-
-||| The width of an integer type. A `Char` counts as an unsigned narrow
-||| integer, its code point, except as the target of a cast.
-intWidth : PrimType -> Maybe IntWidth
-intWidth IntegerType = Just Unbounded
-intWidth t = (\(w, s) => Bounded w s) <$> (Flat.Exp.primMach t >>= Mach.width)
-
-||| An integer constant: its type's width and its value.
-intConst : Constant -> Maybe (IntWidth, Integer)
-intConst k = [| (,) (Flat.ConstType.constType k >>= intWidth) (value k) |]
-  where
-    value : Constant -> Maybe Integer
-    value (I n) = Just (cast n)
-    value (I8 n) = Just (cast n)
-    value (I16 n) = Just (cast n)
-    value (I32 n) = Just (cast n)
-    value (I64 n) = Just (cast n)
-    value (BI n) = Just n
-    value (B8 n) = Just (cast n)
-    value (B16 n) = Just (cast n)
-    value (B32 n) = Just (cast n)
-    value (B64 n) = Just (cast n)
-    value (Ch c) = Just (cast (ord c))
-    value _ = Nothing
-
-||| The signed value of a 64-bit pattern, from its value read signed or not.
-patternValue : Integer -> Integer
-patternValue v = if v >= 9223372036854775808 then v - 18446744073709551616 else v
-
-||| The static object of a 64-bit integer constant outside the fixnum range,
-||| by the signed value of its pattern.
-int64Static : Integer -> Name
-int64Static p = NS (mkNamespace "_native") (UN (Basic ("int64_" ++ show p)))
-
-||| The static object of a double constant, by its bits: one per distinct
-||| double, -0.0 apart from 0.0.
-doubleStatic : Double -> Name
-doubleStatic x =
-  NS (mkNamespace "_native") (UN (Basic ("double_" ++ show (Primitive.DoubleBits.doubleBits x))))
-
-||| The static object of an `Integer` constant outside the fixnum range.
-bignumStatic : Integer -> Name
-bignumStatic v = NS (mkNamespace "_native") (UN (Basic ("integer_" ++ show v)))
-
-||| The static object of a string literal: one per distinct literal.
-||| The function that computes a top-level constant's value, which the
-||| constant's own name calls on its first use (`Constant`).
-export
-constantValue : Name -> Name
-constantValue n = NS (mkNamespace "_native") (UN (Basic ("value of " ++ show n)))
-
-stringStatic : String -> Name
-stringStatic s = NS (mkNamespace "_native") (UN (Basic ("string_" ++ show s)))
 
 ||| A cast of an integer constant to an integer type or to `Char`, done while
 ||| compiling, wrapping as the cast does at run time: Idris writes a literal
@@ -242,19 +186,6 @@ key : Reg -> Maybe Int
 key RVal = Just (-1)
 key (Loc i) = Just i
 key Discard = Nothing
-
-||| What a static object of the program holds.
-data StaticPlan
-  = ||| Every nullary constructor with this id.
-    Nullary Int
-  | ||| A 64-bit pattern outside the fixnum range, by its signed value.
-    Boxed Integer
-  | ||| A double, by its bits.
-    BoxedDouble Bits64
-  | ||| An `Integer` outside the fixnum range, and its magnitude's words.
-    Big Integer
-  | ||| A string literal.
-    Text String
 
 ||| Each function and static of the declarations by name, with its variable,
 ||| the contract as the loaded runtime realises it, and the type
@@ -340,13 +271,6 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
   0 E : Type
   E = TermIR.Build.End d IRCommon.Conv.CPS False v l
 
-  ||| A fixnum as an immediate `Val`, its range decided here.
-  fixnum : Integer -> Maybe (TermIR.Opnd v IRCommon.Ty.Val)
-  fixnum i = let w : Int64 = cast i in
-    if cast w /= i then Nothing else case choose (HeapObj.ValEnc.inFixnumRange (cast w)) of
-      Left ok => Just (TermIR.Opnd.Vx {enc} w)
-      Right _ => Nothing
-
   ------------------------------------------------------------------------------
   -- References
 
@@ -357,6 +281,13 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                                                TermIR.Build.emit1 (TermIR.Instr.WidenPtr p)
     Nothing =>
       TermIR.Build.unsupported ("the static object " ++ show name ++ ", which no declaration makes")
+
+  ||| A word of the program (`ConstantWord.StaticWord`), as a `Val`: a fixnum
+  ||| as an immediate, the erased value, a static object by its address.
+  staticWordVal : ConstantWord.StaticWord -> B (TermIR.Opnd v IRCommon.Ty.Val)
+  staticWordVal (ConstantWord.Fixnum i {ok}) = pure (TermIR.Opnd.Vx {enc} i {ok})
+  staticWordVal ConstantWord.Erased = pure TermIR.Opnd.Erased
+  staticWordVal (ConstantWord.Object n) = staticVal n
 
   ||| A runtime routine's variable, with its results and parameters.
   routine : Name -> (rs, ps : List (IRCommon.Ty enc)) ->
@@ -525,14 +456,15 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
   stringIterator : Name -> List (TermIR.Opnd v IRCommon.Ty.Val) -> Maybe E
   stringIterator n args =
     if n == iterator "fromString" then case args of
-      [_] => map TermIR.Build.return (fixnum 0)
+      [_] => map (\w => do x <- staticWordVal w; TermIR.Build.return x)
+                 (ConstantWord.fixnumWord 0)
       _ => Nothing
     else if n == iterator "uncons" then case args of
       [str, it] => Just $ do
         at <- fixValue it
         [next] <- strings Types.StringRoutine.After [str, at]
         TermIR.Build.branch IRCommon.Op.EqR next at
-          (do eof <- staticVal (nullaryCon 0)
+          (do eof <- staticVal (ConstantWord.nullaryCon 0)
               TermIR.Build.return eof) $ do
           [c] <- strings Types.StringRoutine.CharAt [str, at]
           cv <- TermIR.Build.emit1 (TermIR.Instr.Tag c) >>= widen
@@ -578,11 +510,11 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                    f <- valDouble x
                    pure (LowerFlat.MkValue [Rep.Dbl] [f])
         Flat.Exp.PrimShape WorldType => pure LowerFlat.noRegs
-        Flat.Exp.PrimShape t => case intWidth t of
-                   Just (Bounded (Width.Narrow _) _) => do
+        Flat.Exp.PrimShape t => case IntWidth.intWidth t of
+                   Just (IntWidth.Bounded (Width.Narrow _) _) => do
                      w <- fixValue x
                      pure (LowerFlat.MkValue [Rep.Word] [w])
-                   Just (Bounded Width.Whole _) => do
+                   Just (IntWidth.Bounded Width.Whole _) => do
                      w <- wideWord x
                      pure (LowerFlat.MkValue [Rep.Word] [w])
                    _ => TermIR.Build.unsupported ("a value of " ++ show t ++ " passed to flat code")
@@ -655,11 +587,11 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                    Just f => doubleVal f
                    Nothing => TermIR.Build.unsupported "a double of another layout from flat code"
         Flat.Exp.PrimShape WorldType => pure TermIR.Opnd.Erased
-        Flat.Exp.PrimShape t => case (intWidth t, LowerFlat.valueWord x) of
-                   (Just (Bounded (Width.Narrow _) _), Just w) => do
+        Flat.Exp.PrimShape t => case (IntWidth.intWidth t, LowerFlat.valueWord x) of
+                   (Just (IntWidth.Bounded (Width.Narrow _) _), Just w) => do
                      f <- TermIR.Build.emit1 (TermIR.Instr.Tag w)
                      widen f
-                   (Just (Bounded Width.Whole _), Just w) => wideVal w
+                   (Just (IntWidth.Bounded Width.Whole _), Just w) => wideVal w
                    _ =>
                      TermIR.Build.unsupported ("a value of " ++ show t ++ " returned by flat code")
         Flat.Exp.UniformShape => case x of
@@ -696,15 +628,15 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
               TermIR.Build.unsupported ("the fields of " ++ show c.name ++ ", of another layout")
             Just xs => case c.ordinary of
               Flat.Exp.AsTag =>
-                maybe (TermIR.Build.unsupported "a tag outside the fixnum range") pure
-                  (fixnum (cast c.tag))
+                maybe (TermIR.Build.unsupported "a tag outside the fixnum range") staticWordVal
+                  (ConstantWord.fixnumWord (cast c.tag))
               Flat.Exp.AsField k => case getAt k (zip c.fields xs) of
                          Just (s, f) => box s f
                          Nothing =>
                            TermIR.Build.unsupported
                              ("the newtype " ++ show c.name ++ " without its field")
               Flat.Exp.AsObject cid => case c.fields of
-                         [] => staticVal (nullaryCon cid)
+                         [] => staticVal (ConstantWord.nullaryCon cid)
                          _ => do ys <- traverse (uncurry box) (zip c.fields xs); constructor cid ys
 
   ------------------------------------------------------------------------------
@@ -727,7 +659,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
         x <- constant c
         lower (setKnown env r x c) t is k
       (MKCON r (Left conId) [], _) :: is => do
-        x <- staticVal (nullaryCon conId)
+        x <- staticVal (ConstantWord.nullaryCon conId)
         lower (set env r x) t is k
       (MKCON r (Left conId) args, _) :: is => do
         x <- constructor conId (map (get env) args)
@@ -737,7 +669,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
           TermIR.Build.unsupported ("the type constructor " ++ show n ++ ", which has no id")
         Just tid => do
           x <- case args of
-                 [] => staticVal (nullaryCon tid)
+                 [] => staticVal (ConstantWord.nullaryCon tid)
                  _ => constructor tid (map (get env) args)
           lower (set env r x) t is k
       (MKCLOSURE r f missing args, _) :: is =>
@@ -781,7 +713,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
               (fromMaybe [ERROR "no case alternative matched"] dflt) $
               \codes, other => onKeys i (zip (map cast ids) codes) other
       (CONSTCASE s alts dflt, after) :: is =>
-        case (traverse (intConst . fst) alts, traverse (text . fst) alts) of
+        case (traverse (ConstantWord.intConst . fst) alts, traverse (text . fst) alts) of
           (Just ks, _) =>
             cases env after t is k (map snd alts)
               (fromMaybe [ERROR "no case alternative matched"] dflt) $
@@ -842,7 +774,8 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
           if p == arrayPrim "prim__newArray" then case list of
             [_, x, y, _] => do count <- wideWord (get env x)
                                a <- TermIR.Build.emit1
-                                 (TermIR.Instr.AllocSized Types.Header.ArrayElemsP count (get env y))
+                                 (TermIR.Instr.AllocSized Types.Header.ArrayElemsP count
+                                   (get env y))
                                set env r <$> TermIR.Build.emit1 (TermIR.Instr.WidenPtr a)
             _ => notLowered
           else if p == arrayPrim "prim__arrayGet" then case list of
@@ -982,11 +915,11 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
         ||| the fixnum range.
         constCase : TermIR.Opnd v IRCommon.Ty.Val -> List (Integer, E) -> Maybe IntWidth -> E -> E
         constCase x cs y other = case y of
-          Just (Bounded Width.Whole _) => do
+          Just (IntWidth.Bounded Width.Whole _) => do
             -- each alternative is reached from both switches, so it is a block
             alts <- traverse
               (\(n, code) => do j <- TermIR.Build.block [] (\[] => code)
-                                pure (patternValue n, j)) cs
+                                pure (ConstantWord.patternValue n, j)) cs
             dflt <- TermIR.Build.block [] (\[] => other)
             TermIR.Build.ifFixnums [x]
               (\[f] =>
@@ -995,7 +928,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
               (case [(cast p, j []) | (p, j) <- alts, not (HeapObj.ValEnc.inFixnumRange p)] of
                  [] => dflt []
                  big => do w <- boxWord x; onKeys w big (dflt []))
-          Just Unbounded => do
+          Just IntWidth.Unbounded => do
             dflt <- TermIR.Build.block [] (\[] => other)
             TermIR.Build.ifFixnums [x]
               (\[f] =>
@@ -1021,27 +954,13 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
         setKnown : Env v -> Reg -> TermIR.Opnd v IRCommon.Ty.Val -> Constant -> Env v
         setKnown env r x c = maybe env (\k => insert k (x, Just c) env) (key r)
 
-        ||| A constant: an integer is an immediate when it is a fixnum, and the
-        ||| static object that holds it otherwise.
+        ||| A constant as the value it is, by its word
+        ||| (`ConstantWord.constantWord`); one that is no value under the
+        ||| encoding is the abort stub, with the reason.
         constant : Constant -> B (TermIR.Opnd v IRCommon.Ty.Val)
-        constant WorldVal = pure TermIR.Opnd.Erased
-        constant (PrT _) = pure TermIR.Opnd.Erased
-        constant (Str s) = staticVal (stringStatic s)
-        constant (Db x) = staticVal (doubleStatic x)
-        constant k = case intConst k of
-          Just (Bounded Width.Whole _, n) =>
-            let p = patternValue n in maybe (staticVal (int64Static p)) pure (fixnum p)
-          Just (Unbounded, n) =>
-            maybe (if Types.BignumEnc.headed enc.bignum
-                     then staticVal (bignumStatic n)
-                     else
-                       TermIR.Build.unsupported
-                         ("an Integer constant outside the fixnum range, under bignums in two's " ++
-                          "complement"))
-                  pure (fixnum n)
-          Just (Bounded (Width.Narrow _) _, n) =>
-            maybe (TermIR.Build.unsupported ("the constant " ++ show k)) pure (fixnum n)
-          Nothing => TermIR.Build.unsupported ("the constant " ++ show k)
+        constant k =
+          either TermIR.Build.unsupported (staticWordVal . fst)
+            (ConstantWord.constantWord enc.bignum k)
 
         ||| A string constant's text.
         text : Constant -> Maybe String
@@ -1060,8 +979,9 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
         ||| A primitive operation, and the environment after it.
         op : Env v -> Reg -> PrimFn n -> Vect n Reg -> B (Env v)
         op env r fn' vect = case (fn', vect) of
-          (Cast from to, [x]) => case (intWidth from, intWidth to) of
-            (Just wf, Just wt) => case known env x >>= intConst >>= (castConstant to . snd) of
+          (Cast from to, [x]) => case (IntWidth.intWidth from, IntWidth.intWidth to) of
+            (Just wf, Just wt) =>
+              case known env x >>= ConstantWord.intConst >>= (castConstant to . snd) of
               Just folded => do c <- constant folded; pure (setKnown env r c folded)
               Nothing => do
                 c <- if to == CharType then toChar wf (get env x) else retype wf wt (get env x)
@@ -1088,13 +1008,13 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                  then TermIR.Build.unsupported ("the cast from " ++ show from ++ " to " ++ show to)
                  else do
                    c <- case wt of
-                     Bounded (Width.Narrow n) s => do
+                     IntWidth.Bounded (Width.Narrow n) s => do
                        [w] <- strings Types.StringRoutine.ReadWord [get env x]
                        narrowVal n s w
-                     Bounded Width.Whole _ => do
+                     IntWidth.Bounded Width.Whole _ => do
                        [w] <- strings Types.StringRoutine.ReadWord [get env x]
                        wideVal w
-                     Unbounded => do
+                     IntWidth.Unbounded => do
                        [i] <- integers Types.IntegerRoutine.FromDecimal [get env x]
                        pure i
                    pure (set env r c)
@@ -1118,9 +1038,9 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
             toChar : IntWidth -> TermIR.Opnd v IRCommon.Ty.Val -> B (TermIR.Opnd v IRCommon.Ty.Val)
             toChar wf x = do
               w <- case wf of
-                Bounded (Width.Narrow _) _ => fixValue x
-                Bounded Width.Whole _ => wideWord x
-                Unbounded => do
+                IntWidth.Bounded (Width.Narrow _) _ => fixValue x
+                IntWidth.Bounded Width.Whole _ => wideWord x
+                IntWidth.Unbounded => do
                   [w] <- TermIR.Build.joinPoint [IRCommon.Ty.W64] $ \done =>
                     TermIR.Build.ifFixnums [x] (\[f] => do w <- untag (f); done [w])
                       (done [TermIR.Opnd.W (-1)])
@@ -1150,13 +1070,13 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
             ||| An integer of the width as the nearest double, ties to even.
             toDouble : IntWidth -> TermIR.Opnd v IRCommon.Ty.Val ->
                        B (TermIR.Opnd v IRCommon.Ty.Val)
-            toDouble (Bounded (Width.Narrow n) s) x = do
+            toDouble (IntWidth.Bounded (Width.Narrow n) s) x = do
               w <- fixValue x
               Doubles.fromWord (Width.Narrow n, s) w >>= doubleVal
-            toDouble (Bounded Width.Whole s) x = do
+            toDouble (IntWidth.Bounded Width.Whole s) x = do
               w <- wideWord x
               Doubles.fromWord (Width.Whole, s) w >>= doubleVal
-            toDouble Unbounded x = do
+            toDouble IntWidth.Unbounded x = do
               [f] <- TermIR.Build.joinPoint [IRCommon.Ty.F64] $ \done =>
                 TermIR.Build.ifFixnums [x]
                   (\[a] => do w <- untag a
@@ -1170,15 +1090,15 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
             ||| (`Native.Codegen.Doubles`).
             fromDouble : IntWidth -> TermIR.Opnd v IRCommon.Ty.Val ->
                          B (TermIR.Opnd v IRCommon.Ty.Val)
-            fromDouble (Bounded (Width.Narrow n) s) x = do
+            fromDouble (IntWidth.Bounded (Width.Narrow n) s) x = do
               f <- valDouble x
               w <- Doubles.toWord (Width.Narrow n, s) f
               narrowVal n s w
-            fromDouble (Bounded Width.Whole s) x = do
+            fromDouble (IntWidth.Bounded Width.Whole s) x = do
               f <- valDouble x
               w <- Doubles.toWord (Width.Whole, s) f
               wideVal w
-            fromDouble Unbounded x = do
+            fromDouble IntWidth.Unbounded x = do
               f <- valDouble x
               [i] <- integers Types.IntegerRoutine.FromDouble [f]
               pure i
@@ -1189,23 +1109,25 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                      B (TermIR.Opnd v IRCommon.Ty.Val)
             retype wf wt x =
               if keeps wf wt then pure x else case (wf, wt) of
-                (Bounded (Width.Narrow _) _, Bounded (Width.Narrow n) s) => fixValue x
-                  >>= narrowVal n s
-                (Bounded Width.Whole _, Bounded (Width.Narrow n) s) => wideWord x >>= narrowVal n s
-                (Unbounded, Bounded (Width.Narrow n) s) => integerBits x >>= narrowVal n s
-                (Unbounded, Bounded Width.Whole _) => do
+                (IntWidth.Bounded (Width.Narrow _) _,
+                  IntWidth.Bounded (Width.Narrow n) s) => fixValue x >>= narrowVal n s
+                (IntWidth.Bounded Width.Whole _, IntWidth.Bounded (Width.Narrow n) s) =>
+                  wideWord x >>= narrowVal n s
+                (IntWidth.Unbounded, IntWidth.Bounded (Width.Narrow n) s) =>
+                  integerBits x >>= narrowVal n s
+                (IntWidth.Unbounded, IntWidth.Bounded Width.Whole _) => do
                   [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done =>
                     TermIR.Build.ifFixnums [x] (\_ => done [x])
                       (do a <- integerBits x; r <- wideVal a; done [r])
                   pure r
-                (Bounded Width.Whole True, Unbounded) => do
+                (IntWidth.Bounded Width.Whole True, IntWidth.Unbounded) => do
                   [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done =>
                     TermIR.Build.ifFixnums [x] (\_ => done [x])
                       (do a <- boxWord x
                           [r] <- integers Types.IntegerRoutine.FromInt64 [a]
                           done [r])
                   pure r
-                (Bounded Width.Whole False, Unbounded) => do
+                (IntWidth.Bounded Width.Whole False, IntWidth.Unbounded) => do
                   a <- wideWord x
                   [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done =>
                     TermIR.Build.branch IRCommon.Op.LtU a (TermIR.Opnd.W 4611686018427387904)
@@ -1218,11 +1140,11 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                 ||| Whether every value of the first width is a value of the second, held the
                 ||| same way, so that a cast between them is a move.
                 keeps : IntWidth -> IntWidth -> Bool
-                keeps (Bounded Width.Whole _) (Bounded Width.Whole _) = True
-                keeps (Bounded (Width.Narrow _) _) (Bounded Width.Whole _) = True
-                keeps (Bounded (Width.Narrow _) _) Unbounded = True
-                keeps Unbounded Unbounded = True
-                keeps (Bounded (Width.Narrow n) s) (Bounded (Width.Narrow m) t) =
+                keeps (IntWidth.Bounded Width.Whole _) (IntWidth.Bounded Width.Whole _) = True
+                keeps (IntWidth.Bounded (Width.Narrow _) _) (IntWidth.Bounded Width.Whole _) = True
+                keeps (IntWidth.Bounded (Width.Narrow _) _) IntWidth.Unbounded = True
+                keeps IntWidth.Unbounded IntWidth.Unbounded = True
+                keeps (IntWidth.Bounded (Width.Narrow n) s) (IntWidth.Bounded (Width.Narrow m) t) =
                   let a = Width.subWordBytes n
                       b = Width.subWordBytes m
                   in if s == t then b >= a else not s && t && b > a
@@ -1251,13 +1173,13 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
             ||| A number of the width in decimal, by its word; an `Integer` outside
             ||| the fixnums by the bignum encoding's routine.
             decimal : IntWidth -> TermIR.Opnd v IRCommon.Ty.Val -> B (TermIR.Opnd v IRCommon.Ty.Val)
-            decimal (Bounded (Width.Narrow _) signed) x = do
+            decimal (IntWidth.Bounded (Width.Narrow _) signed) x = do
               w <- fixValue x
               decimalWord signed w
-            decimal (Bounded Width.Whole signed) x = do
+            decimal (IntWidth.Bounded Width.Whole signed) x = do
               w <- wideWord x
               decimalWord signed w
-            decimal Unbounded x = do
+            decimal IntWidth.Unbounded x = do
               [t] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done =>
                 TermIR.Build.ifFixnums [x] (\[f] => do w <- untag f
                                                        t <- decimalWord True w
@@ -1309,11 +1231,11 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
 
             negation : IntWidth -> TermIR.Opnd v IRCommon.Ty.Val ->
                        B (TermIR.Opnd v IRCommon.Ty.Val)
-            negation (Bounded (Width.Narrow n) s) x = do
+            negation (IntWidth.Bounded (Width.Narrow n) s) x = do
               a <- fixValue x
               w <- TermIR.Build.emit1 (TermIR.Instr.Unary IRCommon.Op.Negate a)
               narrowVal n s w
-            negation (Bounded Width.Whole _) x = do
+            negation (IntWidth.Bounded Width.Whole _) x = do
               [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done => do
                 word <- TermIR.Build.block [IRCommon.Ty.W64] $ \[wa] => do
                   w <- TermIR.Build.emit1 (TermIR.Instr.Unary IRCommon.Op.Negate wa)
@@ -1326,7 +1248,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                              (do wa <- untag (a); word [wa]))
                   (do wa <- wideWord x; word [wa])
               pure r
-            negation Unbounded x = do
+            negation IntWidth.Unbounded x = do
               [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done => do
                 slow <- TermIR.Build.block [] $ \[] => do r <- integerCall Types.IntegerRoutine.Neg
                                                             [x]
@@ -1342,19 +1264,19 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
             ||| `div` or `mod`.
             division : IntWidth -> (remainder : Bool) -> (x, y : TermIR.Opnd v IRCommon.Ty.Val) ->
                        B (TermIR.Opnd v IRCommon.Ty.Val)
-            division (Bounded (Width.Narrow n) s) m x y = do
+            division (IntWidth.Bounded (Width.Narrow n) s) m x y = do
               a <- fixValue x
               b <- fixValue y
               Words.nonZero b
               w <- Words.divide s m a b
               narrowVal n s w
-            division (Bounded Width.Whole s) m x y = do
+            division (IntWidth.Bounded Width.Whole s) m x y = do
               a <- wideWord x
               b <- wideWord y
               Words.nonZero b
               w <- Words.divide s m a b
               wideVal w
-            division Unbounded m x y = do
+            division IntWidth.Unbounded m x y = do
               [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done => do
                 slow <- TermIR.Build.block [] $ \[] => do r <- integerCall
                                                             (if m then Types.IntegerRoutine.Mod
@@ -1374,21 +1296,21 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
             ||| `shiftL` or `shiftR`: arithmetic on signed types, logical on unsigned.
             shifting : IntWidth -> (left : Bool) -> (x, y : TermIR.Opnd v IRCommon.Ty.Val) ->
                        B (TermIR.Opnd v IRCommon.Ty.Val)
-            shifting (Bounded (Width.Narrow n) s) left x y = do
+            shifting (IntWidth.Bounded (Width.Narrow n) s) left x y = do
               a <- fixValue x
               k <- fixValue y
               w <- Words.shiftBy
                 (if left then IRCommon.Op.Shl else if s then IRCommon.Op.Sar else IRCommon.Op.Shr) a
                   k
               narrowVal n s w
-            shifting (Bounded Width.Whole s) left x y = do
+            shifting (IntWidth.Bounded Width.Whole s) left x y = do
               a <- wideWord x
               k <- wideWord y
               w <- Words.shiftBy
                 (if left then IRCommon.Op.Shl else if s then IRCommon.Op.Sar else IRCommon.Op.Shr) a
                   k
               wideVal w
-            shifting Unbounded left x y = do
+            shifting IntWidth.Unbounded left x y = do
               [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done => do
                 slow <- TermIR.Build.block [] $ \[] => do r <- integerCall
                                                             (if left then Types.IntegerRoutine.Shl
@@ -1418,7 +1340,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
               pure r
 
             withWidth : PrimType -> String -> (IntWidth -> B a) -> B a
-            withWidth ty what k = case intWidth ty of
+            withWidth ty what k = case IntWidth.intWidth ty of
               Just w => k w
               Nothing => TermIR.Build.unsupported (what ++ " on " ++ show ty)
 
@@ -1427,12 +1349,12 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
             arithmetic : IntWidth -> IRCommon.Op.ArithOp -> (routine : Types.IntegerRoutine) ->
                          (x, y : TermIR.Opnd v IRCommon.Ty.Val) -> B (TermIR.Opnd v IRCommon.Ty.Val)
             arithmetic width o routine x y = case width of
-              Bounded (Width.Narrow n) s => do
+              IntWidth.Bounded (Width.Narrow n) s => do
                 a <- fixValue x
                 b <- fixValue y
                 w <- TermIR.Build.emit1 (TermIR.Instr.Arith o a b)
                 narrowVal n s w
-              Bounded Width.Whole _ => do
+              IntWidth.Bounded Width.Whole _ => do
                 [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done => do
                   words <- TermIR.Build.block [IRCommon.Ty.W64, IRCommon.Ty.W64] $ \[wa, wb] => do
                     w <- TermIR.Build.emit1 (TermIR.Instr.Arith o wa wb)
@@ -1447,7 +1369,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                                      done [r])
                     (do wa <- wideWord x; wb <- wideWord y; words [wa, wb])
                 pure r
-              Unbounded => do
+              IntWidth.Unbounded => do
                 [r] <- TermIR.Build.joinPoint [IRCommon.Ty.Val] $ \done => do
                   slow <- TermIR.Build.block [] $ \[] => do r <- integerCall routine [x, y]
                                                             done [r]
@@ -1472,12 +1394,12 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
             comparison : IntWidth -> IRCommon.Op.Rel -> (x, y : TermIR.Opnd v IRCommon.Ty.Val) ->
                          B (TermIR.Opnd v IRCommon.Ty.Val)
             comparison width rel x y = case width of
-              Bounded (Width.Narrow _) _ => do
+              IntWidth.Bounded (Width.Narrow _) _ => do
                 a <- asFix x
                 b <- asFix y
                 c <- TermIR.Build.emit1 (TermIR.Instr.Cmp rel a b)
                 boolVal c
-              Bounded Width.Whole s => do
+              IntWidth.Bounded Width.Whole s => do
                 let rel' = if s then rel else unsignedRel rel
                 [c] <- TermIR.Build.joinPoint [IRCommon.Ty.W64] $ \done =>
                   TermIR.Build.ifFixnums [x, y]
@@ -1487,7 +1409,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                         c <- TermIR.Build.emit1 (TermIR.Instr.Cmp rel' a b)
                         done [c])
                 boolVal c
-              Unbounded => do
+              IntWidth.Unbounded => do
                 [c] <- TermIR.Build.joinPoint [IRCommon.Ty.W64] $ \done =>
                   TermIR.Build.ifFixnums [x, y]
                     (\[a, b] => do c <- TermIR.Build.emit1 (TermIR.Instr.Cmp rel a b); done [c])
@@ -1925,8 +1847,10 @@ lowerProgram enc platform realised forms shapes tables constants flat implemente
                  ++ [(LowerFlat.formSig fd, Form fd) | fd <- forms]
       -- with constructor 0's, which a string iterator's end is
       boxing = fromList
-        ((nullaryCon 0, Nullary 0)
-           :: [(nullaryCon c, Nullary c) | c <- toList (concatMap (boxed . snd) planned)])
+        ((ConstantWord.nullaryCon 0, ConstantWord.Nullary 0)
+           ::
+             [(ConstantWord.nullaryCon c, ConstantWord.Nullary c)
+              | c <- toList (concatMap (boxed . snd) planned)])
       statics = Data.SortedMap.toList (foldl mergeLeft boxing (mapMaybe bodyStatics vmdefs))
   pure
     (program forms shapes realised tables typeCons (length constants) entryPlan others
@@ -2083,54 +2007,50 @@ lowerProgram enc platform realised forms shapes tables constants flat implemente
     kept sp = [sp]
 
     ||| The constants a function's locals may hold, and the static objects its
-    ||| constants need. A cast of a local holding a constant is folded while
-    ||| compiling, so every constant a local may hold is followed through casts;
-    ||| the result may name statics the lowering does not use, which costs only
-    ||| their bytes.
-    instructionStatics : List VMInst -> SortedMap Name StaticPlan
+    ||| constants need, the empty string's among them whether the body names
+    ||| it or not: the lowering makes a character's string from it (`Cons`
+    ||| onto it), and an image leaves out a static nothing reaches. A cast of a
+    ||| local holding a constant is folded while compiling, so every constant
+    ||| a local may hold is followed through casts; the result may name
+    ||| statics the lowering does not use, which costs only their bytes.
+    instructionStatics : List VMInst -> SortedMap Name ConstantWord.StaticPlan
     instructionStatics body = snd (go body (empty, note (Str "") empty))
       where
-        -- the empty string, which the lowering makes a character's string
-        -- from (`Cons` onto it), whether the body names it or not; an image
-        -- leaves out a static nothing reaches
-        plan : Constant -> Maybe (Name, StaticPlan)
-        plan k = case intConst k of
-          Just (Bounded Width.Whole _, v) => let p = patternValue v in
-                              if HeapObj.ValEnc.inFixnumRange p then Nothing
-                                else Just (int64Static p, Boxed p)
-          Just (Unbounded, v) => if HeapObj.ValEnc.inFixnumRange v then Nothing
-            else Just (bignumStatic v, Big v)
-          _ => case k of
-            Str s => Just (stringStatic s, Text s)
-            Db x => Just (doubleStatic x, BoxedDouble (Primitive.DoubleBits.doubleBits x))
-            _ => Nothing
+        ||| The static object a constant names as a value, if it names one
+        ||| (`ConstantWord.constantWord`), and what it holds.
+        plan : Constant -> Maybe (Name, ConstantWord.StaticPlan)
+        plan k = either (const Nothing) snd (ConstantWord.constantWord enc.bignum k)
 
-        note : Constant -> SortedMap Name StaticPlan -> SortedMap Name StaticPlan
+        note : Constant -> SortedMap Name ConstantWord.StaticPlan ->
+               SortedMap Name ConstantWord.StaticPlan
         note k ss = case plan k of
           Just (n, p) => insert n p ss
           Nothing => ss
 
-        add : Int -> Constant -> (SortedMap Int (List Constant), SortedMap Name StaticPlan) ->
-              (SortedMap Int (List Constant), SortedMap Name StaticPlan)
+        add : Int -> Constant ->
+              (SortedMap Int (List Constant), SortedMap Name ConstantWord.StaticPlan) ->
+              (SortedMap Int (List Constant), SortedMap Name ConstantWord.StaticPlan)
         add i k (known, ss) = (insert i (k :: fromMaybe [] (lookup i known)) known, note k ss)
 
         mutual
-          go : List VMInst -> (SortedMap Int (List Constant), SortedMap Name StaticPlan) ->
-               (SortedMap Int (List Constant), SortedMap Name StaticPlan)
+          go : List VMInst ->
+               (SortedMap Int (List Constant), SortedMap Name ConstantWord.StaticPlan) ->
+               (SortedMap Int (List Constant), SortedMap Name ConstantWord.StaticPlan)
           go [] acc = acc
           go (i :: is) acc = go is (one i acc)
 
-          one : VMInst -> (SortedMap Int (List Constant), SortedMap Name StaticPlan) ->
-                (SortedMap Int (List Constant), SortedMap Name StaticPlan)
+          one : VMInst -> (SortedMap Int (List Constant), SortedMap Name ConstantWord.StaticPlan) ->
+                (SortedMap Int (List Constant), SortedMap Name ConstantWord.StaticPlan)
           one (MKCONSTANT r k) acc@(known, ss) = case key r of
             Just i => add i k acc
             Nothing => (known, note k ss)
-          one (MKCON _ (Left c) []) (known, ss) = (known, insert (nullaryCon c) (Nullary c) ss)
+          one (MKCON _ (Left c) []) (known, ss) =
+            (known, insert (ConstantWord.nullaryCon c) (ConstantWord.Nullary c) ss)
           one (MKCON _ (Right n) []) (known, ss) = case lookup n typeCons of
-            Just c => (known, insert (nullaryCon c) (Nullary c) ss)
+            Just c => (known, insert (ConstantWord.nullaryCon c) (ConstantWord.Nullary c) ss)
             Nothing => (known, ss)
           one (OP r (Cast _ to) [x]) acc@(known, ss) =
-            let folded = mapMaybe (\k => intConst k >>= (castConstant to . snd))
+            let folded = mapMaybe (\k => ConstantWord.intConst k >>= (castConstant to . snd))
                                   (fromMaybe [] (key x >>= \i => lookup i known))
             in case key r of
                  Just i => foldl (\a, f => add i f a) acc folded
@@ -2147,27 +2067,28 @@ lowerProgram enc platform realised forms shapes tables constants flat implemente
                (foldl (\(known, ss), alt => go (snd alt) (known, note (fst alt) ss)) acc alts))
           one _ acc = acc
 
-    bodyStatics : (Name, VMDef) -> Maybe (SortedMap Name StaticPlan)
+    bodyStatics : (Name, VMDef) -> Maybe (SortedMap Name ConstantWord.StaticPlan)
     bodyStatics (_, MkVMFun _ body) = Just (instructionStatics body)
     bodyStatics _ = Nothing
 
-    ready : (Name, StaticPlan) -> Maybe (s ** ({0 d : TermIR.Decls enc} -> TermIR.StaticDef d s))
-    ready (n, Nullary c) =
+    ready : (Name, ConstantWord.StaticPlan) ->
+            Maybe (s ** ({0 d : TermIR.Decls enc} -> TermIR.StaticDef d s))
+    ready (n, ConstantWord.Nullary c) =
       case choose (TermIR.FieldTys.wellFormed (Types.Header.ConH {enc} (cast c) 0)) of
       Left ok =>
         Just
           (TermIR.MkStaticSig n Types.Kind.CON ** TermIR.MkStaticDef
            (Types.Header.ConH (cast c) 0) [])
       Right _ => Nothing
-    ready (n, Boxed p) =
+    ready (n, ConstantWord.Boxed p) =
       Just
         (TermIR.MkStaticSig n Types.Kind.INT64 ** TermIR.MkStaticDef Types.Header.Int64H
          [TermIR.StaticDef.SWord (cast p)])
-    ready (n, BoxedDouble b) =
+    ready (n, ConstantWord.BoxedDouble b) =
       Just
         (TermIR.MkStaticSig n Types.Kind.DOUBLE ** TermIR.MkStaticDef Types.Header.DoubleH
          [TermIR.StaticDef.SWord (cast b)])
-    ready (n, Big v) = bigStatic enc (Types.BignumEnc.magnitudeWords (abs v))
+    ready (n, ConstantWord.Big v) = bigStatic enc (Types.BignumEnc.magnitudeWords (abs v))
       where
         ||| A big constant's static, a header of its sign and words, if the
         ||| encoding has a header for it and the header can hold it, matched on
@@ -2187,7 +2108,7 @@ lowerProgram enc platform realised forms shapes tables constants flat implemente
                  (map TermIR.StaticDef.SWord ws'))
             Right _ => Nothing
         bigStatic _ _ = Nothing
-    ready (n, Text s) = do
+    ready (n, ConstantWord.Text s) = do
       (h ** ws) <- Strings.literal enc s
       case choose (TermIR.FieldTys.wellFormed h) of
         Left ok =>
