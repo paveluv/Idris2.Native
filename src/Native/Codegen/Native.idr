@@ -98,6 +98,13 @@ import System.File.ReadWrite
 |||   takes the slow path often and, once the runtime can collect, collects
 |||   often too.
 ||| * `flat <name>...`: the functions the program marks flat (`Flat.Marked`).
+||| * `static <name>...`: the constants the program marks static
+|||   (`Flat.Marked`). A mark of what is no constant, of a constant Idris
+|||   inlines at each use or that is marked flat too, or of one the program
+|||   reaches whose value the evaluation as the program is compiled does not
+|||   compute (`Native.Codegen.Evaluate`), is refused, with why
+|||   (`checkStaticConstants`). The program computes each on its first use
+|||   still, as any constant.
 ||| * `dump-flat=<file>`: write the flat forms, and the shapes of their data
 |||   types, to the file.
 ||| * `dump-ir=<file>`: write the IR the produce pass makes to the file.
@@ -130,34 +137,51 @@ export
 codegenNative : Codegen
 codegenNative = MkCG compileExpr executeExpr Nothing Nothing
   where
+    ||| The most steps an evaluation when the program is compiled takes to
+    ||| compute one value, a table's row or a constant, one marked static or
+    ||| one either reads, which is computed once, in steps of its own
+    ||| (`Native.Codegen.Evaluate`). Each step is a call, a case, an
+    ||| operation or a word made: a bound on the work of each value, but for
+    ||| what one step costs as its values grow, such as an operation on a
+    ||| long string. A value that needs more is not computed, an error, and
+    ||| never computed some other way.
+    evaluationFuel : Nat
+    evaluationFuel = 100000000
+
     compileExpr : Ref Ctxt Defs -> Ref Syn SyntaxInfo ->
                   (tmpDir : String) -> (outputDir : String) ->
                   ClosedTerm -> (outfile : String) -> Core (Maybe String)
     compileExpr c s _ outputDir tm outfile = do
       Right settings <- parseSettings <$> getDirectives Flat.Marked.markingCG
         | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
-      Just table <- phase "the runtime loaded"
+      Just marked <- phase "the runtime loaded"
         (Flat.Marked.markedForms Linkage.Realised.flatPrimitives
           (loadRuntime settings.platform settings.encodings settings.system))
         | Nothing => pure Nothing
       Right realised <- phase "the contract realised"
         (Linkage.Realised.realise settings.platform settings.encodings)
         | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
-      whenJust settings.dumpFlat $ \f => dumpFlat f table
+      whenJust settings.dumpFlat $ \f => dumpFlat f marked.forms
       whenJust settings.dumpForeign $ \f => dumpForeign settings realised f
-      -- the tables' compiled forms, and of all they call, for those that
-      -- only the runtime's flat code reads, which Idris's passes, from
-      -- `main`, do not reach
-      tableForms <- phase "the tables compiled" (Evaluate.compileFor (keys realised.tables))
+      -- the compiled forms of the tables and of the constants marked
+      -- static, and of all they call, which Idris's passes, from `main`,
+      -- may not reach: a table only the runtime's flat code reads, and a
+      -- mark the program does not reach, which is checked all the same
+      earlyForms <- phase "the tables and static constants compiled"
+        (Evaluate.compileFor (keys realised.tables ++ marked.staticConstants))
       -- the foreign functions the program reaches, each with the runtime's
       -- function that implements it: the flat ones, and the ordinary ones,
       -- which Idris compiles with the program
-      (flat, bound) <- phase "the foreign functions bound" (bindForeign settings table tm)
+      (flat, bound) <- phase "the foreign functions bound" (bindForeign settings marked.forms tm)
       cdata <- phase "Idris's passes" (withSystem bound tm)
       -- the compiled form of each definition of the program, as Idris gives
-      -- it to every code generator, and the tables': what the tables are
-      -- computed from
-      let compiled = mergeLeft (fromList (map (\(n, _, d) => (n, d)) cdata.namedDefs)) tableForms
+      -- it to every code generator, and the tables' and the static
+      -- constants': what they are computed from
+      let compiled = mergeLeft (fromList (map (\(n, _, d) => (n, d)) cdata.namedDefs)) earlyForms
+      phase "the static constants evaluated"
+        (checkStaticConstants (realisedMeanings realised) compiled marked.flatFunctions
+          (filter (\n => any ((== n) . fst) (vmcode cdata)) marked.staticConstants)
+          marked.staticConstants)
       -- the definitions evaluated once, on their first use: every one of
       -- no arguments but the entry. The Scheme backends, which evaluate
       -- them before `main`, leave out those whose evaluation may crash or
@@ -165,11 +189,11 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
       let constants = mapMaybe kept (vmcode cdata)
       image <- case settings.encodings of
         Types.MkEnc HeapObj.ValEnc.FixnumTag1 b s =>
-          pipeline (Types.MkEnc HeapObj.ValEnc.FixnumTag1 b s) settings realised table compiled
-            constants flat bound (vmcode cdata)
+          pipeline (Types.MkEnc HeapObj.ValEnc.FixnumTag1 b s) settings realised marked.forms
+            compiled constants flat bound (vmcode cdata)
         Types.MkEnc HeapObj.ValEnc.FixnumTag0 b s =>
-          pipeline (Types.MkEnc HeapObj.ValEnc.FixnumTag0 b s) settings realised table compiled
-            constants flat bound (vmcode cdata)
+          pipeline (Types.MkEnc HeapObj.ValEnc.FixnumTag0 b s) settings realised marked.forms
+            compiled constants flat bound (vmcode cdata)
         Types.MkEnc HeapObj.ValEnc.NoFixnums _ _ =>
           throw (GenericMsg EmptyFC "native: the encoding nofixnums is not implemented")
       coreLift_ $ mkdirAll outputDir
@@ -269,6 +293,59 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
             -- the backend the implementations are exported for
             systemExports : String
             systemExports = "native-system"
+
+        ||| What the evaluation takes the realised makers and primitives to
+        ||| mean (`Evaluate.Meanings`).
+        realisedMeanings : Linkage.Realised -> Evaluate.Meanings
+        realisedMeanings realised = Evaluate.MkMeanings realised.makers realised.primitives
+
+        ||| The constants the program marks static, each checked now to be a
+        ||| definition of no arguments, which no directive marks flat too,
+        ||| and which Idris does not inline at each use: one it inlines has no
+        ||| use left for the program's compilation to reach, so every mark is
+        ||| checked, reached or not. Each the compilation reaches is
+        ||| evaluated now too, over the compiled definitions, in at most
+        ||| `evaluationFuel` steps of its own, whatever the order of the
+        ||| marks, and its value must be computed. Every one that fails ends
+        ||| the compilation, in one error that says why of each, in the order
+        ||| of the marks.
+        checkStaticConstants : Evaluate.Meanings -> (compiled : SortedMap Name NamedDef) ->
+                               (flatFunctions, reached, marks : List Name) -> Core ()
+        checkStaticConstants meanings compiled flatFunctions reached marks = do
+          defs <- get Ctxt
+          refused <- catMaybes <$> traverse (refusal defs) marks
+          values <- Evaluate.constants meanings compiled evaluationFuel
+                      (filter (\n => isNothing (lookup n refused)) reached)
+          let failures = refused ++ mapMaybe (\(n, v) => (n,) <$> either Just (const Nothing) v)
+                                               values
+          let [] = mapMaybe (\n => (n,) <$> lookup n failures) marks
+            | failed =>
+              throw (GenericMsg EmptyFC
+                ("native: refused as static constants:"
+                 ++ concatMap (\(n, why) => "\n  " ++ show n ++ " is " ++ why) failed))
+          pure ()
+          where
+            -- why a constant marked static is refused before it is
+            -- evaluated, if it is
+            refusal : Defs -> Name -> Core (Maybe (Name, String))
+            refusal defs n = do
+              g <- lookupCtxtExact n (gamma defs)
+              -- what stops Idris inlining it, if Idris does
+              let fix = g >>= \g' => toMaybe (Evaluate.inlined g') (Evaluate.inliningFix g')
+              pure $ (n,) <$>
+                if elem n flatFunctions
+                  then Just "marked flat too: a function is flat, or a constant static, not both"
+                else case fix of
+                  Just f => Just ("inlined by Idris at each use, so no use would read it: " ++ f)
+                  Nothing => case lookup n compiled of
+                    Just (MkNmFun [] _) => Nothing
+                    Just (MkNmFun [_] _) => Just "a function of 1 argument, not a constant"
+                    Just (MkNmFun ps _) =>
+                      Just ("a function of " ++ show (length ps) ++ " arguments, not a constant")
+                    Just (MkNmError _) => Nothing
+                    Just (MkNmCon {}) => Just "a constructor, not a constant"
+                    Just (MkNmForeign {}) => Just "a foreign function, not a constant"
+                    Nothing => Just "a definition the program does not compile"
 
         -- a function of no arguments, but the entry, which runs once
         kept : (Name, VMDef) -> Maybe Name
@@ -522,7 +599,8 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
             ||| A table's rows, computed now (`Native.Codegen.Tabulate`).
             tabulated : (Name, (Int, Int)) -> Core Tabulate.Tabulated
             tabulated (n, (lo, hi)) = do
-              Right t <- Tabulate.tabulate compiled 100000000 n lo hi
+              Right t <-
+                Tabulate.tabulate (realisedMeanings realised) compiled evaluationFuel n lo hi
                 | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
               pure t
 

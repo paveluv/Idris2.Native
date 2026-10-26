@@ -14,6 +14,13 @@
 ||| immutable (`Repr.Immutable`): no maker of a mutable type may be one,
 ||| since a static object is never written.
 |||
+||| The native code generator takes a definition of this type for a maker
+||| only in the module of `Native.Types` that defines `a`, which answers for
+||| the type's statements, and refuses one in another module of
+||| `Native.Types`, or one Idris inlines at each use, whose calls are then
+||| its body; outside them, a definition of this type is an ordinary
+||| function, whose body is its meaning everywhere.
+|||
 ||| Part of the type layer, the modules of `Types` (`Types.Kind` says what
 ||| it is).
 module Native.Types.FromWords
@@ -29,3 +36,9 @@ public export
 FromWords : (a : Type) -> {auto 0 only : Repr.Only Kind.BYTES a} ->
             {auto 0 imm : Repr.Immutable a} -> Type
 FromWords a = (words : Int) -> (Int -> Bits64) -> a
+
+||| A maker's arguments, as its type has them: the count of words, then the
+||| function of each index.
+public export
+arity : Nat
+arity = 2

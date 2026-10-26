@@ -8,7 +8,6 @@
 ||| the flat forms and the shapes of their data types to the file.
 module Native.Flat.Oracle
 
-import Native.Flat.Exp
 import Native.Flat.Marked
 import Native.Flat.Translate
 
@@ -23,7 +22,6 @@ import Core.TT.Term
 import Data.List1
 import Data.String
 import Idris.Syntax
-import Libraries.Data.NameMap
 
 %default covering
 
@@ -43,11 +41,11 @@ codegenFlatOracle primitives = MkCG compileExpr executeExpr Nothing Nothing
     -- forms: whether there are, or errors have been reported already.
     useForms : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} -> Core Bool
     useForms
-        = do Just forms <- Marked.markedForms primitives (pure ())
+        = do Just marked <- Marked.markedForms primitives (pure ())
                | Nothing => pure False
              whenJust (dumpFlatFile !(getDirectives (Other "flat-oracle"))) $ \f =>
-               Translate.dumpFlat f forms
-             Translate.useFlatForms forms
+               Translate.dumpFlat f marked.forms
+             Translate.useFlatForms marked.forms
              pure True
 
     compileExpr : Ref Ctxt Defs -> Ref Syn SyntaxInfo ->

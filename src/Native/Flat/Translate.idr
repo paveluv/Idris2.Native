@@ -53,7 +53,7 @@
 ||| function it started from to it.
 |||
 ||| The flat functions are the ones a code generator's directive names
-||| (`flatNames`), and everything they call is translated in turn. The
+||| (`markedNames`), and everything they call is translated in turn. The
 ||| translation runs on the whole context, the imported modules' case trees
 ||| included, and keeps the forms it makes for the one compilation or check
 ||| that asked for them.
@@ -1553,22 +1553,22 @@ root n
                 constAlt k (DefaultCase sc :: _) = trTree tr env sc ps
                 constAlt k (_ :: as) = constAlt k as
 
-||| The flat functions a code generator's directives name: each directive
-||| `flat` followed by names, each as written in the program, qualified as
-||| far as it takes to name one function. A name that names none, or more
-||| than one, is an error.
+||| The definitions a code generator's directives of a mark name
+||| (`Problem.Mark`): each directive of the mark's word followed by names,
+||| each as written in the program, qualified as far as it takes to name one
+||| definition. A name that names none, or more than one, is an error.
 export
-flatNames : {auto c : Ref Ctxt Defs} -> (directives : List String) ->
-            Core (List Name, List Problem.FlatError)
-flatNames directives
+markedNames : {auto c : Ref Ctxt Defs} -> Problem.Mark -> (directives : List String) ->
+              Core (List Name, List Problem.FlatError)
+markedNames mark directives
     = do -- Idris gives a module's directives last first
          found <- traverse one (nub (Data.Builder.joinMap names (reverse directives)))
          pure (nub (mapMaybe ok found), mapMaybe bad found)
   where
     names : String -> List String
     names d = case words d of
-                   ("flat" :: ns) => ns
-                   _ => []
+                   (w :: ns) => if w == Problem.directive mark then ns else []
+                   [] => []
 
     -- An operator is written in parentheses, as in a program; its name has
     -- none.
@@ -1593,7 +1593,8 @@ flatNames directives
                   ms =>
                     pure
                       (Left
-                       (Problem.UnknownFlatName str !(traverse (\(n, _, _) => toFullNames n) ms)))
+                       (Problem.UnknownMarkedName mark str
+                         !(traverse (\(n, _, _) => toFullNames n) ms)))
 
     ok : Either Problem.FlatError Name -> Maybe Name
     ok (Right n) = Just n

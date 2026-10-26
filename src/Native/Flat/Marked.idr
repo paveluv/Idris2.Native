@@ -1,4 +1,5 @@
-||| The flat functions a program marks, and their flat forms.
+||| The flat functions a program marks, and their flat forms; and the
+||| constants it marks static.
 |||
 ||| A program marks a function flat with a directive of the native code
 ||| generator, which Idris keeps with the module and passes on to every
@@ -6,8 +7,14 @@
 |||
 |||     %cg native flat sumTo Main.classify
 |||
+||| and a constant static, which the native code generator evaluates as it
+||| compiles the program (`Native.Codegen.Native` says what of it), with
+||| another:
+|||
+|||     %cg native static Main.squares
+|||
 ||| Each name is written as in the program, qualified as far as it takes to
-||| name one function. The backend's primitives (`Native.Primitive` says what
+||| name one definition. The backend's primitives (`Native.Primitive` says what
 ||| they are) are the code generator's to name, by their types: a call of one
 ||| is the primitive's, and its form applies it. The translation
 ||| (`Flat.Translate`) runs twice: as each module is built, by the incremental
@@ -50,7 +57,8 @@ import System.File
 
 %default covering
 
-||| The code generator whose directives mark flat functions.
+||| The code generator whose directives mark flat functions and static
+||| constants.
 export
 markingCG : CG
 markingCG = Other "native"
@@ -109,7 +117,7 @@ report errs
 
     -- Where an error is, to report errors in the order of the source.
     place : Problem.FlatError -> (Int, Int)
-    place (Problem.UnknownFlatName _ _) = (0, 0)
+    place (Problem.UnknownMarkedName _ _ _) = (0, 0)
     place (Problem.NotFlat fc _ _ _ _) = maybe (0, 0) startPos (isNonEmptyFC fc)
     place (Problem.NotFlatBody fc _ _ _) = maybe (0, 0) startPos (isNonEmptyFC fc)
 
@@ -118,34 +126,51 @@ report errs
 reportedMark : String
 reportedMark = "flat-errors-reported"
 
-||| The flat forms of the functions the program marks, and of the ground
-||| functions they call. Any function marked that cannot be in the flat
-||| regime is an error, and every such error is reported. Idris compiles a
-||| program after a module of it failed to build, so errors that a module's
-||| check has reported already are not reported again: there are no forms
-||| then, `Nothing`, and the program is not compiled.
+||| What a program's directives mark (`markedForms`): the flat forms of the
+||| functions marked flat and of the ground functions they call, the
+||| functions marked flat, and the constants marked static, each a
+||| definition's full name.
+public export
+record Marked where
+  constructor MkMarked
+  forms : NameMap Exp.FlatDef
+  flatFunctions : List Name
+  staticConstants : List Name
+
+||| What the program marks: the flat forms of the functions it marks flat,
+||| and of the ground functions they call, and the constants it marks
+||| static. Any function marked flat that cannot be in the flat regime is an
+||| error, as is a name either directive gives that names no one
+||| definition, and every such error is reported. Idris compiles a program
+||| after a module of it failed to build, so errors that a module's check
+||| has reported already are not reported again: there are no forms then,
+||| `Nothing`, and the program is not compiled.
 |||
 ||| `load` brings in modules the program does not import, such as the
-||| runtime's, whose directives mark functions too. The program's marks are
-||| resolved before it, so that a name the program gives cannot become
+||| runtime's, whose directives mark definitions too. The program's marks
+||| are resolved before it, so that a name the program gives cannot become
 ||| ambiguous with one of theirs.
 export
 markedForms : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} ->
               (primitives : Ref Ctxt Defs -> Core (List Name)) -> (load : Core ()) ->
-              Core (Maybe (NameMap Exp.FlatDef))
+              Core (Maybe Marked)
 markedForms primitives load
     = do own <- getDirectives markingCG
-         marked <- Translate.flatNames own
+         flatOwn <- Translate.markedNames Problem.FlatMark own
+         staticOwn <- Translate.markedNames Problem.StaticMark own
          load
-         loaded <- Translate.flatNames (filter (\d => not (elem d own)) !(getDirectives markingCG))
+         let theirs = filter (\d => not (elem d own)) !(getDirectives markingCG)
+         flatTheirs <- Translate.markedNames Problem.FlatMark theirs
+         staticTheirs <- Translate.markedNames Problem.StaticMark theirs
          prims <- primitives c
-         (forms, errs) <- Translate.flatForms prims (fst marked ++ fst loaded ++ prims)
-         let nameErrs = snd marked ++ snd loaded
+         let flat = fst flatOwn ++ fst flatTheirs
+         (forms, errs) <- Translate.flatForms prims (flat ++ prims)
+         let nameErrs = snd flatOwn ++ snd flatTheirs ++ snd staticOwn ++ snd staticTheirs
          session <- getSession
          if not (null errs) && elem reportedMark session.directives
             then pure Nothing
             else do report (nameErrs ++ errs)
-                    pure (Just forms)
+                    pure (Just (MkMarked forms flat (nub (fst staticOwn ++ fst staticTheirs))))
 
 ||| Check the flat functions a module defines, as it is built, before its TTC
 ||| is written: what `flat-check` does as an incremental code generator
@@ -176,7 +201,7 @@ checkModule : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} ->
               (primitives : Ref Ctxt Defs -> Core (List Name)) -> (sourceFile : String) -> Core ()
 checkModule primitives sourceFile
     = do here <- ctxtPathToNS sourceFile
-         marked <- Translate.flatNames !(getDirectives markingCG)
+         marked <- Translate.markedNames Problem.FlatMark !(getDirectives markingCG)
          mine <- filterM (definedIn here) (fst marked)
          if null mine then pure () else do
            before <- get Ctxt

@@ -30,6 +30,7 @@ import Core.Name
 import Core.TT
 import Data.List
 import Data.SortedMap
+import Data.SortedSet
 import Data.Vect
 import Native.Codegen.IRCommon.Ty
 import Native.Codegen.Linkage.Realised
@@ -68,7 +69,7 @@ realised =
   MkRealised [(runtimeStart, Start),
               (runtimeAllocSlow, AllocSlow), (runtimeAllocMutable, AllocMutable),
               (runtimeCrash, Crash)]
-             Nothing Nothing empty empty empty empty
+             Nothing Nothing empty empty empty empty empty
 
 word : String -> FlatVar
 word s = MkFlatVar (UN (Basic s)) (SPrim Bits64Type) [Word]

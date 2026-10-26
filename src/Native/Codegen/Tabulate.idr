@@ -31,15 +31,16 @@ record Tabulated where
 ||| The table of the function, over its range: each row the words of its
 ||| value at an index, in the order of the fields of the value, each a
 ||| constant, by the evaluation of the function's compiled form among the
-||| program's (`Native.Codegen.Evaluate`), each of at most `fuel` steps. Fails if a
-||| value is not computed, is not constants, or has a row not as long as
-||| the first.
+||| program's, with the meanings (`Native.Codegen.Evaluate`), each of at most
+||| `fuel` steps. Fails if a value is not computed, is not constants, or has
+||| a row not as long as the first.
 export
-tabulate : (compiled : SortedMap Name NamedDef) -> (fuel : Nat) -> Name -> (lo, hi : Int) ->
-           Core (Either String Tabulated)
-tabulate compiled fuel n lo hi = do
+tabulate : Evaluate.Meanings -> (compiled : SortedMap Name NamedDef) -> (fuel : Nat) -> Name ->
+           (lo, hi : Int) -> Core (Either String Tabulated)
+tabulate meanings compiled fuel n lo hi = do
   -- the index alone: its proof of the range is erased, as compiled code has it
-  Right vs <- Evaluate.evaluate compiled fuel n [ [Evaluate.VConst (I k)] | k <- [lo .. hi] ]
+  Right vs <- Evaluate.evaluate meanings compiled fuel n
+                [ [Evaluate.VConst (I k)] | k <- [lo .. hi] ]
     | Left err => pure (Left ("the table " ++ show n ++ ": " ++ err))
   pure (rows vs [<] Nothing)
   where

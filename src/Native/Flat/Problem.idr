@@ -1,6 +1,7 @@
 ||| What keeps a function out of the flat regime: the reasons a type is not
 ||| flat, the problems the translation of a body meets, and the errors that
-||| report them. `Flat.Report` renders them as Idris renders its own.
+||| report them, with a name a marking directive gives that names no one
+||| definition. `Flat.Report` renders them as Idris renders its own.
 module Native.Flat.Problem
 
 import Core.FC
@@ -56,12 +57,26 @@ data FlatProblem : Type where
   ||| a construct the translation does not handle
   Unhandled : String -> FlatProblem
 
-||| Why a function marked flat cannot be in the flat regime.
+||| A directive of the native code generator that marks definitions by
+||| name (`Flat.Marked`): `flat`, the functions the flat regime compiles, or
+||| `static`, the constants the code generator computes as it compiles the
+||| program.
+public export
+data Mark = FlatMark | StaticMark
+
+||| The directive's first word, which the names it marks follow.
+export
+directive : Mark -> String
+directive FlatMark = "flat"
+directive StaticMark = "static"
+
+||| Why a function marked flat cannot be in the flat regime, or why a name a
+||| directive marks is no definition.
 public export
 data FlatError : Type where
-  ||| A name the `flat` directive gives that names no function, or more
-  ||| than one.
-  UnknownFlatName : String -> List Name -> FlatError
+  ||| A name a directive of the mark gives that names no definition, or
+  ||| more than one: the name as written, and those it names.
+  UnknownMarkedName : Mark -> String -> List Name -> FlatError
   ||| An argument (its position among the explicit arguments, from 1, and
   ||| its name) or the result (`Nothing`) of the function has a type that is
   ||| not flat.

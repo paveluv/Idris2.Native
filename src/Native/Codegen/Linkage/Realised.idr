@@ -25,9 +25,14 @@
 ||| each a definition `FunctionTy (signature c)` of a module of
 ||| `Native.Primitive`, or, for one that reads an object, `PureLoad a
 ||| (signature c)` of the module of `Native.Types` that defines `a`; at
-||| most one of each: a program that imports none uses none. The tables
-||| (`Native.Table`) are found by their type too, `Table lo hi r`, wherever
-||| they are, with their ranges.
+||| most one of each. Outside the modules of the two groups, a definition
+||| of either type is an ordinary function, not looked at. The makers of an
+||| object from words are found by their type too, `FromWords a`, each in
+||| the module of `Native.Types` that defines `a`; outside the modules of
+||| `Native.Types`, in those of `Native.Primitive` too, a definition of the
+||| type is an ordinary function, not looked at. A program that imports
+||| none of these uses none. The tables (`Native.Table`) are found by their
+||| type too, `Table lo hi r`, wherever they are, with their ranges.
 |||
 ||| Part of what generated code, the runtime and the linker agree on
 ||| (`Native.Codegen.Linkage.Routine` says what it is).
@@ -52,7 +57,9 @@ import Core.Value
 import Data.List
 import Data.Maybe
 import Data.SortedMap
+import Data.SortedSet
 import Data.Zippable
+import Native.Codegen.Evaluate
 import Native.Codegen.Platform
 import Native.Intrinsic
 import Native.Primitive
@@ -85,6 +92,9 @@ record Realised where
   ||| Each of the backend's primitives the context defines, with the
   ||| primitive it is.
   primitives : SortedMap Name Primitive
+  ||| Each maker of an object from words the context defines
+  ||| (`Types.FromWords`).
+  makers : SortedSet Name
   ||| Each table the context defines, with its range, `lo` to `hi`.
   tables : SortedMap Name (Int, Int)
 
@@ -156,13 +166,26 @@ entries required contract listName own heads keep = do
           i <- lookup c byConstructor
           pure (n', c, i)
 
+||| Strictly under a group of modules.
+under : String -> Namespace -> Bool
+under g ns = ns /= mkNamespace g && isParentOf (mkNamespace g) ns
+
+||| Whether a type's head is defined in the module: `Bytes` of `PureLoad
+||| Bytes ...` in `Native.Types.Bytes`. A primitive that reads an object of
+||| a type, or a maker of one, is defined in the type's module, which
+||| answers for the type's statements.
+definesType : Namespace -> Term vars -> Bool
+definesType ns t = case getFnArgs t of
+  (Ref _ _ (NS ns' _), _) => ns' == ns
+  _ => False
+
 ||| The backend's primitives the context defines (`Native.Primitive`), at
 ||| most one of each: a function of words, by its type `FunctionTy
 ||| (signature c)`, in a module of `Native.Primitive`; or one that reads an
 ||| object of a type `a`, by its type `PureLoad a (signature c)`, in the
-||| module of `Native.Types` that defines `a`, which answers for the type's
-||| statements. A definition of either head elsewhere is a problem, as two
-||| of one primitive are.
+||| module of `Native.Types` that defines `a`. A definition of either head
+||| elsewhere in the modules of the two groups is a problem, as two of one
+||| primitive are; outside them, it is an ordinary function, not looked at.
 primitives : {auto c : Ref Ctxt Defs} -> Core (Either String (List (Name, Name, Primitive)))
 primitives = do
   Right found <- entries False "Native.Primitive" "allPrimitives" Primitive.allPrimitives
@@ -177,21 +200,11 @@ primitives = do
     pureLoad : Name
     pureLoad = in' (mkNamespace "Native.Types.PureLoad") "PureLoad"
 
-    -- strictly under a group of modules
-    under : String -> Namespace -> Bool
-    under g ns = ns /= mkNamespace g && isParentOf (mkNamespace g) ns
-
     -- in a module of either group, by the name alone; where each head may
     -- be, `place` says
     inGroups : Name -> GlobalDef -> Bool
     inGroups (NS ns _) _ = under "Native.Primitive" ns || under "Native.Types" ns
     inGroups _ _ = False
-
-    -- the module of a type's head, `Bytes` of `PureLoad Bytes ...`
-    typeModule : Term vars -> Maybe Namespace
-    typeModule t = case getFnArgs t of
-      (Ref _ _ (NS ns _), _) => Just ns
-      _ => Nothing
 
     -- what is wrong with where a primitive is defined, if anything
     place : Name -> Core (Maybe String)
@@ -206,7 +219,7 @@ primitives = do
             then if under "Native.Primitive" ns then Nothing
                  else Just (show n ++ " is a primitive outside the modules of Native.Primitive")
             else case args of
-              (a :: _) => if typeModule a == Just ns then Nothing
+              (a :: _) => if definesType ns a then Nothing
                           else Just (show n ++ " reads a type it is not defined with")
               [] => Just (show n ++ " reads no type")
         _ => Nothing
@@ -235,9 +248,9 @@ tables = do
 
 ||| The definitions the flat translation takes a call of as a primitive's:
 ||| the backend's primitives and the tables the context defines. Two of one
-||| primitive, or one defined where it may not be, end the compilation here,
-||| with what is wrong, before any translation would take its calls for
-||| calls of functions.
+||| primitive, or one defined in the modules of its groups where it may not
+||| be, end the compilation here, with what is wrong, before any translation
+||| would take its calls for calls of functions.
 export
 flatPrimitives : Ref Ctxt Defs -> Core (List Name)
 flatPrimitives c = do
@@ -281,6 +294,8 @@ realise platform enc = do
     | Left e => pure (Left ("the runtime's externs of the string encoding: " ++ e))
   Right prims <- primitives
     | Left e => pure (Left ("the backend's primitives: " ++ e))
+  Right ms <- makers
+    | Left e => pure (Left ("the makers of objects from words: " ++ e))
   ts <- tables
   let [] = mapMaybe (\(n, r) => maybe (Just n) (const Nothing) r) ts
     | (n :: _) =>
@@ -293,7 +308,7 @@ realise platform enc = do
   pure
     (Right
       (MkRealised (pairs rs) (map pairs ss') (map pairs is') externs services
-       (fromList (pairs prims))
+       (fromList (pairs prims)) (fromList ms)
                            (fromList (mapMaybe (\(n, r) => (n,) <$> r) ts))))
   where
     portTy : Name
@@ -315,3 +330,43 @@ realise platform enc = do
     -- each entry's definition, with the code generator's constructor
     pairs : List (Name, Name, a) -> List (Name, a)
     pairs es = [ (n, x) | (n, _, x) <- es ]
+
+    ||| The makers of an object from words the context defines
+    ||| (`Types.FromWords`): each a definition of a type `FromWords a`, in the
+    ||| module of `Native.Types` that defines `a`, which answers for the mark's
+    ||| statement. One in another module of `Native.Types` is a problem, as is
+    ||| one Idris inlines at each use, whose calls are then its body, where the
+    ||| evaluation would take the maker's call to mean its object. Outside the
+    ||| modules of `Native.Types`, a definition of the type is an ordinary
+    ||| function, not looked at.
+    makers : Core (Either String (List Name))
+    makers = do
+      defs <- get Ctxt
+      -- the mark's name, made once for the walk over every name
+      let fromWords = in' (mkNamespace "Native.Types.FromWords") "FromWords"
+      found <- catMaybes <$> traverse (maker defs fromWords) !(allNames (gamma defs))
+      let problems = mapMaybe snd found
+      pure (if null problems then Right (map fst found)
+            else Left (concat (intersperse "; " problems)))
+      where
+        -- a maker the context defines, by the mark's name, with what is
+        -- wrong with it, if anything
+        maker : Defs -> (fromWords : Name) -> Name -> Core (Maybe (Name, Maybe String))
+        maker defs fromWords n = do
+          n'@(NS ns _) <- toFullNames n
+            | _ => pure Nothing
+          if not (under "Native.Types" ns) then pure Nothing else do
+            Just g <- lookupCtxtExact n (gamma defs)
+              | Nothing => pure Nothing
+            ty <- toFullNames (type g)
+            pure $ case getFnArgs ty of
+              (Ref _ _ f, a :: _) =>
+                if f /= fromWords then Nothing
+                else Just (n', if not (definesType ns a)
+                                 then Just (show n' ++ " makes a type it is not defined with")
+                               else if Evaluate.inlined g
+                                 then Just (show n' ++ " is a maker Idris inlines at each use,"
+                                            ++ " so no call of it is left to mean its object: "
+                                            ++ Evaluate.inliningFix g)
+                               else Nothing)
+              _ => Nothing

@@ -14,10 +14,13 @@
 ||| the one type it reads, in that type's module of `Native.Types`, by a
 ||| type that asks the representation contract for the type's leave
 ||| (`Types.PureLoad`), its signature's arrow after the object. The code
-||| generator finds the definition by its mark, checks there is at most one
-||| of each and that it is where its head says, and has the flat
-||| translation take a call of it as a call of a primitive, leaving the
-||| body alone.
+||| generator finds the definition by its mark among the modules of
+||| `Native.Primitive` and `Native.Types` (outside them, a definition of
+||| either type is an ordinary function), checks there is at most one of
+||| each and that it is where its head says, and has the flat translation
+||| take a call of it as a call of a primitive, leaving the body alone, as
+||| the evaluation of constants (`Native.Codegen.Evaluate`) does a call of
+||| one that reads an object.
 |||
 ||| Unlike the contract's other entries (`Native.Port` says what they are),
 ||| a primitive takes no token, since it reads nothing that changes, may

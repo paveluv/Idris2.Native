@@ -24,6 +24,7 @@ import Data.List
 import Data.List.Quantifiers
 import Data.So
 import Data.SortedMap
+import Data.SortedSet
 import Data.Vect
 import Native.Codegen.ELF
 import Native.Codegen.IRCommon.ConIds
@@ -119,7 +120,7 @@ realised =
   MkRealised [(runtimeStart, Start),
               (runtimeAllocSlow, AllocSlow), (runtimeAllocMutable, AllocMutable),
               (runtimeCrash, Crash)]
-             Nothing Nothing empty empty empty empty
+             Nothing Nothing empty empty empty empty empty
 
 D : Decls TestEnc
 D = MkDecls [ MkSig (nm "main") CPS [] False

@@ -32,3 +32,9 @@ public export
 PureLoad : (a : Type) -> {auto 0 only : Repr.Only Kind.BYTES a} ->
            {auto 0 imm : Repr.Immutable a} -> Primitive.Signature -> Type
 PureLoad a sig = a -> Primitive.FunctionTy sig
+
+||| A pure load's arguments, as its type has them: the object, then the
+||| signature's.
+public export
+arity : Primitive.Signature -> Nat
+arity sig = 1 + length sig.takes

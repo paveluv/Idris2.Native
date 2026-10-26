@@ -24,6 +24,7 @@ import Data.List
 import Data.List.Quantifiers
 import Data.So
 import Data.SortedMap
+import Data.SortedSet
 import Data.Vect
 import Native.Area
 import Native.Codegen.ELF
@@ -111,7 +112,7 @@ realised =
   MkRealised [(runtimeStart, Start),
               (runtimeAllocSlow, AllocSlow), (runtimeAllocMutable, AllocMutable),
               (runtimeCrash, Crash)]
-             Nothing Nothing empty empty empty empty
+             Nothing Nothing empty empty empty empty empty
 
 Run : Decls TestEnc
 Run = MkDecls

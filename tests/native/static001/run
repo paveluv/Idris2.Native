@@ -1,0 +1,28 @@
+. ../../testutils.sh
+
+# A program that marks constants static, on both code generators: the
+# native one evaluates each as it compiles the program, and the program
+# computes each on its first use still, so all three print the same:
+# native, Chez, and native under the encoding whose pointers carry a tag.
+idris2 --cg native -p idris2-native-runtime -p idris2-native -o static-native Static.idr > /dev/null
+./build/exec/static-native
+idris2 --cg chez -p idris2-native-runtime -p idris2-native -o static-chez Static.idr > /dev/null
+./build/exec/static-chez
+idris2 --cg native -p idris2-native-runtime -p idris2-native --directive val-encoding=tag0 -o static-tag0 Static.idr > /dev/null
+./build/exec/static-tag0
+
+# The check `agreed` makes is the evaluation's: a copy of the program that
+# expects 51 for the last word, where the evaluation computes 50, crashes
+# as it is compiled, and is refused. The copy is made under build/, where
+# the linter, which may run beside the tests, does not look.
+mkdir -p build/copies
+sed -e 's/37, 50]/37, 51]/' Static.idr > build/copies/Wrong.idr
+(cd build/copies && idris2 --cg native -p idris2-native-runtime -p idris2-native -o wrong Wrong.idr)
+
+# Marks refused, a module for each reason, some with more than one mark:
+# each is refused when the program is compiled, in one error that says
+# why of each mark refused. The last, `Maker`, marks nothing: the makers
+# of a module it imports are refused.
+for m in Unknown Function Extern Foreign Itself Inlined Both Every Fuel Maker; do
+  idris2 --cg native -p idris2-native-runtime -p idris2-native -o $m $m.idr
+done

@@ -1,0 +1,43 @@
+[0, 1, 4, 9, 16, 25, 36, 49]
+[1, 2, 5, 10, 17, 26, 37, 50]
+the words agree
+[0, 1, 4, 9, 16, 25, 36, 49]
+[1, 2, 5, 10, 17, 26, 37, 50]
+the words agree
+[0, 1, 4, 9, 16, 25, 36, 49]
+[1, 2, 5, 10, 17, 26, 37, 50]
+the words agree
+Error: native: refused as static constants:
+  Main.agreed is not computable when the program is compiled: a crash, in Builtin.idris_crash
+
+Error: The static directive names Unknown.missing, which is no definition
+
+Error: native: refused as static constants:
+  Function.twice is a function of 1 argument, not a constant
+
+Error: native: refused as static constants:
+  Extern.cell is not computable when the program is compiled: the external primitive Data.IORef.prim__newIORef, in PrimIO.unsafeCreateWorld
+
+Error: native: refused as static constants:
+  Foreign.buffer is not computable when the program is compiled: the foreign function Data.Buffer.prim__newBuffer, in PrimIO.unsafeCreateWorld
+
+Error: native: refused as static constants:
+  Itself.ones is not computable when the program is compiled: the constant Itself.ones, which needs its own value, in Itself.ones
+
+Error: native: refused as static constants:
+  Inlined.alias is inlined by Idris at each use, so no use would read it: remove its %inline, or, if it has none, make it export or mark it %noinline
+  Inlined.five is inlined by Idris at each use, so no use would read it: remove its %inline
+
+Error: native: refused as static constants:
+  Both.both is marked flat too: a function is flat, or a constant static, not both
+
+Error: native: refused as static constants:
+  Every.beyond is not computable when the program is compiled: a read of word 4 of an object of 4 words, in Every.beyond
+  Every.later is not computable when the program is compiled: a read of word 4 of an object of 4 words, in Every.beyond
+  Every.square is a function of 1 argument, not a constant
+
+Error: native: refused as static constants:
+  Fuel.huge is not computable when the program is compiled: it takes more steps than the evaluation allows, in Fuel.huge
+
+Error: native: the makers of objects from words: Native.Types.Fake.misplaced makes a type it is not defined with; Native.Types.Fake.fake is a maker Idris inlines at each use, so no call of it is left to mean its object: remove its %inline, or, if it has none, make it export or mark it %noinline
+

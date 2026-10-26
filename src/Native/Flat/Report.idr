@@ -32,17 +32,19 @@ export
 asError : {auto c : Ref Ctxt Defs} -> {auto s : Ref Syn SyntaxInfo} -> Problem.FlatError ->
           Core Error
 asError error = case error of
-  Problem.UnknownFlatName str []
+  Problem.UnknownMarkedName m str []
              =>
                pure
                  (GenericMsg EmptyFC
-                  ("The flat directive names " ++ str ++ ", which is no function"))
-  Problem.UnknownFlatName str ns
+                  ("The " ++ Problem.directive m ++ " directive names " ++ str ++ ", which is no "
+                   ++ marked m))
+  Problem.UnknownMarkedName m str ns
              =>
                pure
-                 (GenericMsg EmptyFC ("The flat directive names " ++ str ++ ", which is ambiguous: "
-                                            ++ concat (intersperse ", " (map show ns))
-                                            ++ ". Qualify it with its namespace."))
+                 (GenericMsg EmptyFC
+                  ("The " ++ Problem.directive m ++ " directive names " ++ str
+                   ++ ", which is ambiguous: " ++ concat (intersperse ", " (map show ns))
+                   ++ ". Qualify it with its namespace."))
   Problem.NotFlat fc n arg ty why
              =>
                message fc
@@ -54,6 +56,12 @@ asError error = case error of
                      (!(name n) <++> reflow "is flat, but" <++> hsep calls <++> !(problemDoc p)
                       <+> dot)
   where
+    -- What a directive of the mark names: a flat function, or the
+    -- definition of a static constant, which is checked to be one later.
+    marked : Problem.Mark -> String
+    marked Problem.FlatMark = "function"
+    marked Problem.StaticMark = "definition"
+
     -- The chain with each run of calls of one function as one entry, with
     -- how many calls deep it goes.
     runs : List Name -> List (Name, Nat)
