@@ -113,6 +113,7 @@ modules =
     Native.Types.Bytes,
     Native.Types.ConId,
     Native.Types.Enc,
+    Native.Types.FromWords,
     Native.Types.Header,
     Native.Types.IntegerRoutine,
     Native.Types.Kind,

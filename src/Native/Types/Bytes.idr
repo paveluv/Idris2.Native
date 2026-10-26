@@ -17,10 +17,12 @@
 ||| it is).
 module Native.Types.Bytes
 
--- lint: allow public-import: `uncheckedWord`'s type, written by its
--- signature and the pure load's type, reduces only where they are visible,
--- so they are wherever this module is
+-- lint: allow public-import: `uncheckedWord`'s and `generate`'s types,
+-- written by the pure load's and the maker's types and a primitive's
+-- signature, reduce only where they are visible, so they are wherever
+-- this module is
 import public Native.Primitive
+import public Native.Types.FromWords
 import public Native.Types.PureLoad
 
 import Native.Types.Kind
@@ -45,12 +47,13 @@ Only Kind.BYTES Bytes where
 public export
 Immutable Bytes where
 
-||| The words `f 0`, `f 1`, ..., `f (n - 1)`, none if `n` is not positive. A
-||| function of ordinary code makes each word, before the `Bytes` exists, so
-||| none of them can write it after. The program ends for more words than
-||| fit in memory.
+||| The words `f 0`, `f 1`, ..., `f (n - 1)`, none if `n` is not positive: the
+||| maker of a `Bytes` (`Types.FromWords`), which states that its result is
+||| the object of exactly those words. A function of ordinary code makes
+||| each word, before the `Bytes` exists, so none of them can write it
+||| after. The program ends for more words than fit in memory.
 export %noinline
-generate : (words : Int) -> (Int -> Bits64) -> Bytes
+generate : FromWords Bytes
 generate n f =
   let m = max 0 n in
   -- lint: allow trust-escape: so many words do not fit in memory, and ending the program is
