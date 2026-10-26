@@ -190,10 +190,11 @@ failing "Mismatch between: Direct [W64] False and CPS"
     return x
 
 ------------------------------------------------------------------------------
--- Objects: what is allocated or read fits the object's kind and header:
--- a constructor's fields are uniform values, a closure's first field is its
--- code and it has fewer arguments than its arity, an array has a fill and a
--- string none, and a field is loaded as its kind has it.
+-- Objects: what is allocated, laid out as a static or read fits the
+-- object's kind and header: a constructor's fields are uniform values, a
+-- closure's first field is its code and it has fewer arguments than its
+-- arity, an array has a fill and a string none, and a field is loaded as
+-- its kind has it.
 
 -- A constructor's field that is not a `Val`.
 failing "Mismatch between: W64 and Val"
@@ -247,6 +248,31 @@ failing "Can't find an implementation for Sizes ConIdP"
   sizedById = build $ \[x] => do
     p <- emit1 (AllocSized ConIdP (W 2) ())
     return x
+
+-- A static's words are of the types its header gives its fields, as an
+-- allocated object's operands are. A constructor's field that is a
+-- function's entry: as if `Just f` held `f`'s code, not a closure of it.
+failing "Mismatch between: CodeAddr and Val"
+  codeInCon : StaticDef D (MkStaticSig (nm "justF") CON)
+  codeInCon = MkStaticDef (ConH 1 1) [SCode cps]
+
+-- A static closure laid out with its two words swapped: `addTo 30`, a
+-- closure of `addTo` with 30 filled, its code where its argument goes.
+failing "Mismatch between: CodeAddr and Val"
+  swappedClosure : StaticDef D (MkStaticSig (nm "plus30") CLOSURE)
+  swappedClosure = MkStaticDef (ClosureH 2 1) [SVal 30, SCode cps]
+
+-- A box whose word is a fixnum: an `Int` outside the fixnum range is boxed
+-- as its word, and a box holds no uniform value.
+failing "Mismatch between: Val and W64"
+  valInBox : StaticDef D (MkStaticSig (nm "big") INT64)
+  valInBox = MkStaticDef Int64H [SVal 7]
+
+-- A constructor's field that is a raw word: a field of `Just 7` is the
+-- uniform value of 7, a fixnum, not the word 7.
+failing "Can't find an implementation for IsBits Val"
+  wordInCon : StaticDef D (MkStaticSig (nm "just7") CON)
+  wordInCon = MkStaticDef (ConH 1 1) [SWord 7]
 
 -- A static used as an object of another kind.
 failing "Mismatch between: CON and STRING"

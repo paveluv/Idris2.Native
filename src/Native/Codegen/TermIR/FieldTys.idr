@@ -1,6 +1,6 @@
-||| The types of an object's fields, from its header (`fieldTys`) or, where
-||| its kind says, from the kind (`cellTy`), and the headers the IR may
-||| allocate.
+||| The types of an object's fields, from its header (`fieldTys`) or its
+||| counts (`countsTys`), or, where its kind says, from the kind (`cellTy`),
+||| and the headers the IR may allocate.
 |||
 ||| Part of the term IR (`Native.Codegen.TermIR.Program` says what it is).
 module Native.Codegen.TermIR.FieldTys
@@ -14,6 +14,16 @@ import Native.Types.Kind as Types
 
 %default total
 
+||| The types of the fields the counts give, each raw one of the type:
+||| what `fieldTys` gives of a header, by its counts alone, so that the
+||| types are known from the counts where the header is not.
+public export
+countsTys : IRCommon.Ty enc -> HeapObj.Shape.Counts s -> List (IRCommon.Ty enc)
+countsTys _ (HeapObj.Shape.ValuesOf n) = replicate n IRCommon.Ty.Val
+countsTys r (HeapObj.Shape.MixedOf raws n) = replicate raws r ++ replicate n IRCommon.Ty.Val
+countsTys r (HeapObj.Shape.WordsOf n) = replicate n r
+countsTys r c@(HeapObj.Shape.BytesOf _) = replicate (HeapObj.Shape.fieldWords c) r
+
 ||| The types of an object's fields, from its header's counts: the values
 ||| `Val`s, the raw words of the kind's raw rep (`Kind.rawRep`), a double's
 ||| bits, a closure's code, a word. So the fields the collector scans
@@ -21,13 +31,7 @@ import Native.Types.Kind as Types
 ||| by construction.
 public export
 fieldTys : {enc : Types.Enc} -> {k : Types.Kind} -> Types.Header enc k -> List (IRCommon.Ty enc)
-fieldTys h = fields (IRCommon.Ty.plain (Types.Kind.rawRep k)) (Types.Header.counts h)
-  where
-    fields : IRCommon.Ty enc -> HeapObj.Shape.Counts s -> List (IRCommon.Ty enc)
-    fields _ (HeapObj.Shape.ValuesOf n) = replicate n IRCommon.Ty.Val
-    fields r (HeapObj.Shape.MixedOf raws n) = replicate raws r ++ replicate n IRCommon.Ty.Val
-    fields r (HeapObj.Shape.WordsOf n) = replicate n r
-    fields r c@(HeapObj.Shape.BytesOf _) = replicate (HeapObj.Shape.fieldWords c) r
+fieldTys h = countsTys (IRCommon.Ty.plain (Types.Kind.rawRep k)) (Types.Header.counts h)
 
 ||| The type of the word at a byte offset of an object of the kind, moved by
 ||| an index or not, where the kind alone says, as `fieldTys` gives it: every

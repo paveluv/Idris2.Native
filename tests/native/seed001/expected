@@ -1,6 +1,7 @@
 exit42: 8584 bytes
 unsupported: 8632 bytes
 alloc: 8584 bytes
+missing: unresolved labels [missing label 65]
 exit42 status: 42
 unsupported status: 70
 unsupported stderr: idris: unsupported: a construct, in Main.main

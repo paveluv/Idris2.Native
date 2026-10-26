@@ -46,3 +46,4 @@ function Main.Memory.roundTrip Direct [slot0:W64] -> [W64] entry 0
     Ret slot2:W64
 
 exit status: 42
+exit status under fixnum tag 0: 42

@@ -21,6 +21,10 @@
 |||   callee's convention, parameters and results; a static's address its
 |||   kind. A routine outside the program is Direct, and a CPS function is
 |||   always of the program.
+||| * An object's fields, an allocated object's operands and a static's
+|||   words alike, are of the types its header gives them (`fieldTys`): a
+|||   value only where the collector scans, a code address only in a
+|||   closure's code word.
 ||| * The convention indexes the body: `Ret` exists only in a Direct body
 |||   and returns its declared results; `Return`, `Call`, `TailCall`, `Apply`
 |||   and `TailApply` only in a CPS one. A second index, whether the function

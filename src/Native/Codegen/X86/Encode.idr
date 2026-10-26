@@ -218,10 +218,11 @@ fieldsFit instr = case instr of
     memFits (Asm.MBase _ d) = fitsInt32 (cast d)
     memFits (Asm.MRip _ d) = fitsInt32 (cast d)
 
-||| What `assembleWith` could not encode faithfully.
-export
+||| What `assembleWith` could not encode faithfully, and what the link could
+||| not write (`Native.Codegen.Link`).
+public export
 data AsmProblem
-  = ||| A reference to a label that nothing defines. It encodes as
+  = ||| A reference to a label that nothing defines. In code it encodes as
     ||| displacement 0.
     MissingLabel Asm.Label
   | ||| An instruction with a field that does not fit its bits, a displacement

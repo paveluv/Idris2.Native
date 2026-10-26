@@ -11,6 +11,7 @@ import Native.Codegen.LittleEndian
 import Native.Codegen.Platform
 import Native.Codegen.Seed
 import Native.Codegen.X86.Asm
+import Native.Codegen.X86.Datum as X86
 import Native.Codegen.X86.Encode
 
 import Data.Maybe
@@ -29,37 +30,60 @@ import Native.Types.Enc as Types
 ||| defines `label SymMain`, which is entered with `k = HALT`, `hp`/`hplim`
 ||| set and the stack 16-aligned, and numbers its other labels from
 ||| `reservedLabels`. Each item of read-only data follows the seed's,
-||| 8-aligned, at its label. Fails with what it could not assemble: labels it
-||| could not resolve, and fields that do not fit.
+||| 8-aligned, at its label. A word of the data that is a label's address
+||| is written once the image is laid out, from the addresses the code is
+||| assembled with: its own labels, as the assembler places them at the
+||| text's base, and the data's. Fails with what it could not assemble:
+||| labels it could not resolve, in the code or in the data, and fields
+||| that do not fit.
 export
 linkProgram : (enc : Types.Enc) -> {auto 0 _ : HeapObj.ValEnc.HasFixnums enc.val} ->
               (window : Int) -> (areas : Linkage.Areas) -> (program : List X86.Asm.Instr) ->
-              (rodata : List (X86.Asm.Label, List Bits8)) ->
+              (rodata : List (X86.Asm.Label, List X86.Datum)) ->
               Either (List X86.Encode.AsmProblem) ELF.Image
 linkProgram enc window areas program items =
   let text = Seed.seedText enc window ++ program
-      tl = X86.Encode.layout ELF.textBase text
       ts = X86.Encode.codeSize ELF.textBase text
-      (seedData, rsyms) = Seed.seedRodata tl
-      rodata = foldl (\b, (_, item) => b <>< LittleEndian.pad8 item) ([<] <>< seedData) items
-      offsets = offsetsFrom (cast (length seedData)) items
+      (seedData, rsyms) = Seed.seedRodata
+      offsets = offsetsFrom (itemSize seedData) items
       as = Linkage.Areas.maxAreas Seed.seedAreas areas
-      lay = ELF.planLayout ts (LittleEndian.byteCount rodata) (Seed.seedBssSize as)
+      rodataSize = foldl (\n, (_, item) => n + itemSize item) (itemSize seedData) items
+      lay = ELF.planLayout ts rodataSize (Seed.seedBssSize as)
       env = fromList (map (\(s, off) => (Linkage.Sym.label s, rodataBase lay + off)) rsyms
                    ++ map (\(s, off) => (Linkage.Sym.label s, bssBase lay + off))
                      (Seed.seedBss as)
                    ++ map (\(l, off) => (l, rodataBase lay + off)) offsets)
       (bytes, labels, problems) = X86.Encode.assembleWith env ELF.textBase text
+      (rodata, missing) =
+        foldl (\acc, (_, item) => place labels acc item) (place labels ([<], [<]) seedData) items
+      unwritten = map X86.Encode.MissingLabel (missing <>> [])
       entry = fromMaybe ELF.textBase (lookup (Linkage.Sym.label Linkage.Sym.SymStart) labels)
-  in if null problems
+  in if null problems && null unwritten
     then Right (ELF.elfImage Platform.X86_64 lay bytes rodata (Seed.seedBssSize as) entry)
-                      else Left problems
+    else Left (problems ++ unwritten)
   where
+    -- the bytes an item takes, padded to a multiple of 8
+    itemSize : List X86.Datum -> Int
+    itemSize item = LittleEndian.alignUp (X86.Datum.size item) 8
+
     -- each item's label at its offset, the items laid end to end from `at`
-    offsetsFrom : Int -> List (X86.Asm.Label, List Bits8) -> List (X86.Asm.Label, Int)
+    offsetsFrom : Int -> List (X86.Asm.Label, List X86.Datum) -> List (X86.Asm.Label, Int)
     offsetsFrom _ [] = []
-    offsetsFrom at ((l, item) :: rest) = (l, at)
-      :: offsetsFrom (at + cast (length (LittleEndian.pad8 item))) rest
+    offsetsFrom at ((l, item) :: rest) = (l, at) :: offsetsFrom (at + itemSize item) rest
+
+    -- an item's bytes after the data so far, padded, each address read from
+    -- the labels; a label that is not there is collected, and the link fails
+    place : SortedMap X86.Asm.Label Int -> (SnocList Bits8, SnocList X86.Asm.Label) ->
+            List X86.Datum -> (SnocList Bits8, SnocList X86.Asm.Label)
+    place labels acc item =
+      let (bs, ms) = foldl piece acc item
+      in (bs <>< LittleEndian.zeros (cast (itemSize item - X86.Datum.size item)), ms)
+      where
+        piece : (SnocList Bits8, SnocList X86.Asm.Label) -> X86.Datum ->
+                (SnocList Bits8, SnocList X86.Asm.Label)
+        piece (bs, ms) d = case X86.Datum.bytes labels d of
+          Right b => (bs <>< b, ms)
+          Left l => (bs, ms :< l)
 
 ||| The default allocation window: 4 MiB, the bytes the inline bump may
 ||| allocate before the runtime's slow path runs, which extends the window

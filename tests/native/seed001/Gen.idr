@@ -1,6 +1,7 @@
 ||| Three binaries on the runtime seed alone: a result delivered
 ||| through HALT, the abort stub, and the grow-only allocator exercised
-||| through two slow paths and one fast-path sequence.
+||| through two slow paths and one fast-path sequence; and a link that
+||| writes no binary, its data naming a label nothing defines.
 |||
 ||| The seed is the handful of machine routines every program links with
 ||| until the runtime is written in Idris: start-up, which maps the first
@@ -18,6 +19,7 @@ import Native.Codegen.Link
 import Native.Codegen.Linkage.Sym
 import Native.Codegen.Seed
 import Native.Codegen.X86.Asm
+import Native.Codegen.X86.Datum
 import Native.Codegen.X86.Encode
 import Native.HeapObj.Shape
 import Native.HeapObj.ValEnc
@@ -121,7 +123,16 @@ allocSlowByHand =
   , MovRR RDI RAX
   , Ret ]
 
-emit : String -> List Instr -> List (Label, List Bits8) -> IO ()
+-- 4. The first program again, with an item of read-only data whose word
+-- is the address of a label nothing defines, as a static holding the
+-- address of a function the program lacks would be. The link writes such
+-- a word only once the image is laid out, from the labels the code and
+-- the data are placed at; with no address for it, the link fails, naming
+-- the label, as it does for code.
+undefinedRef : List (Label, List Datum)
+undefinedRef = [(reservedLabels, [AddressOf (reservedLabels + 1) 0])]
+
+emit : String -> List Instr -> List (Label, List Datum) -> IO ()
 emit name prog rodata =
   case linkProgram SeedEnc windowBytes seedAreas
     (prog ++ startByHand ++ allocSlowByHand ++ crashByHand) rodata of
@@ -134,5 +145,6 @@ emit name prog rodata =
 main : IO ()
 main = do
   emit "exit42" exitProg []
-  emit "unsupported" unsupportedProg [(reservedLabels, unsupportedMsg)]
+  emit "unsupported" unsupportedProg [(reservedLabels, [Raw unsupportedMsg])]
   emit "alloc" allocProg []
+  emit "missing" exitProg undefinedRef

@@ -78,6 +78,7 @@ modules =
     Native.Codegen.TermIR.Var,
     Native.Codegen.Words,
     Native.Codegen.X86.Asm,
+    Native.Codegen.X86.Datum,
     Native.Codegen.X86.Encode,
     Native.Codegen.X86.Render,
     Native.Codegen.X86.Target,

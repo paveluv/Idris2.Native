@@ -2188,7 +2188,7 @@ lowerProgram enc platform realised forms shapes tables staticReads constants fla
               ws' <- toVect _ ws
               Just
                 (TermIR.MkStaticSig n Types.Kind.BIGNUM ** TermIR.MkStaticDef h
-                 (map TermIR.StaticDef.SWord ws'))
+                 (TermIR.StaticDef.wordFields (Types.Header.counts h) ws'))
             Right _ => Nothing
         bigStatic _ _ = Nothing
     ready (n, ConstantWord.Text s) = do
@@ -2197,7 +2197,7 @@ lowerProgram enc platform realised forms shapes tables staticReads constants fla
         Left ok =>
           Just
             (TermIR.MkStaticSig n Types.Kind.STRING ** TermIR.MkStaticDef h
-             (map TermIR.StaticDef.SWord ws))
+             (TermIR.StaticDef.wordFields (Types.Header.counts h) ws))
         Right _ => Nothing
     -- a maker's object: its words after a header of their bytes, each
     -- word's pattern as is
@@ -2208,5 +2208,5 @@ lowerProgram enc platform realised forms shapes tables staticReads constants fla
           ws' <- toVect _ (map (cast {to = Int64}) ws)
           Just
             (TermIR.MkStaticSig n Types.Kind.BYTES ** TermIR.MkStaticDef h
-             (map TermIR.StaticDef.SWord ws'))
+             (TermIR.StaticDef.wordFields (Types.Header.counts h) ws'))
         Right _ => Nothing

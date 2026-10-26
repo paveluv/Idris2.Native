@@ -15,11 +15,10 @@ import Native.Codegen.Linkage.Sym as Linkage
 import Native.Codegen.LittleEndian
 import Native.Codegen.Target
 import Native.Codegen.X86.Asm
+import Native.Codegen.X86.Datum as X86
 import Native.Codegen.X86.Target
 
 import Data.List
-import Data.Maybe
-import Data.SortedMap
 import Data.Zippable
 import Native.Area
 import Native.HeapObj.LayoutWord
@@ -264,18 +263,17 @@ seedText enc window = startText enc.val window ++ haltText enc.val ++ unsupporte
 ------------------------------------------------------------------------------
 -- Data: rodata (HALT and the messages) and the bss areas
 
-||| The seed's read-only data, given the text labels (HALT's code word is the
-||| address of `idris_halt`), with each symbol's offset. HALT comes first, at
-||| offset 0 of the 16-aligned section.
+||| The seed's read-only data, the first item of the image's, with each
+||| symbol's offset. HALT comes first, at offset 0 of the 16-aligned
+||| section; its code word is the address of `idris_halt`, which the link
+||| writes.
 export
-seedRodata : (textLabels : SortedMap X86.Asm.Label Int) -> (List Bits8, List (Linkage.Sym, Int))
-seedRodata tl =
-  let haltCode = fromMaybe 0 (lookup (Linkage.Sym.label Linkage.Sym.SymHalt) tl)
-      halt = LittleEndian.le64 (cast haltCode) ++ LittleEndian.le64 0            -- code, parent
-      m = LittleEndian.pad8 msgStackOverflow
-  in ( halt ++ m
-     , [ (Linkage.Sym.SymHALT, 0)
-       , (Linkage.Sym.SymMsgStackOverflow, cast (length halt)) ] )
+seedRodata : (List X86.Datum, List (Linkage.Sym, Int))
+seedRodata =
+  let halt = [ X86.Datum.AddressOf (Linkage.Sym.label Linkage.Sym.SymHalt) 0      -- code
+             , X86.Datum.Raw (LittleEndian.le64 0) ]                                -- parent
+  in ( halt ++ [X86.Datum.Raw msgStackOverflow]
+     , [(Linkage.Sym.SymHALT, 0), (Linkage.Sym.SymMsgStackOverflow, X86.Datum.size halt)] )
 
 ||| What the seed's own code needs: `idris_apply`'s slow path roots the
 ||| closure and its argument. What it stages for a closure is the program's

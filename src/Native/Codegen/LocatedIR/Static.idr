@@ -11,17 +11,21 @@ import Native.Types.Kind as Types
 
 %default total
 
-||| A word of a static object.
+||| A word of a static object. A word that is another static's address or a
+||| function's is an absolute address, which the link writes once the image
+||| is laid out, and which a position-independent image would relocate.
 public export
 data SField
-  = ||| A raw word or an immediate value.
+  = ||| A raw word, as it is.
     SWord Int64
-  | ||| The address of another static. Reserved for constant data built from
-    ||| statics; nothing makes one yet.
+  | ||| A uniform value that is this integer, a fixnum, whose word the
+    ||| value encoding gives; the erased value is 0.
+    SVal Int64
+  | ||| The address of another static, as a pointer word: the value
+    ||| encoding's pointer tag added, as code's pointers to it have it.
     SRef Name
-  | ||| The entry address of a function of the program, such as `HALT`'s code
-    ||| or a static closure's: the only absolute addresses in an image, and
-    ||| so the only words a position-independent image would relocate.
+  | ||| The entry address of a function of the program, such as a static
+    ||| closure's code, untagged.
     SCode Name
 
 ||| A static object: an object the compiler creates in the image's read-only

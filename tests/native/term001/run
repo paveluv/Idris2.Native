@@ -2,11 +2,13 @@
 
 # The term IR (Native.Codegen.TermIR), built through the builder and
 # allocated into the located IR (Native.Codegen.RegAlloc): a program that runs, with
-# every construct the rendering supports, and the IR of a program with every
-# other construct. It uses the code
+# every construct the rendering supports, under fixnum tag 1 and fixnum tag 0,
+# and the IR of a program with every other construct. It uses the code
 # generator's modules, installed as the package `idris2-native`.
 idris2 -p idris2-native -p idris2 Gen.idr -o gen > /dev/null
 ./build/exec/gen
-./term
+./term 2>&1
 echo "exit status: $?"
-rm -f term
+./term0 2>&1
+echo "exit status under fixnum tag 0: $?"
+rm -f term term0

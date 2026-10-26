@@ -55,6 +55,7 @@
 module Native.Codegen.X86.Render
 
 import Native.Codegen.X86.Asm
+import Native.Codegen.X86.Datum
 import Native.Codegen.X86.Target
 
 import Control.Monad.State.Interface
@@ -100,13 +101,13 @@ import Native.Width
 %default covering
 
 ||| What the rendering gives the linker: the program's code, which defines the
-||| seed's `main` label, its read-only data, and the per-thread areas its code
-||| uses.
+||| seed's `main` label, its read-only data, each item at its label, and the
+||| per-thread areas its code uses.
 public export
 record Rendered where
   constructor MkRendered
   text : List Asm.Instr
-  rodata : List (Asm.Label, List Bits8)
+  rodata : List (Asm.Label, List Datum)
   areas : Linkage.Areas
 
 record RS (enc : Types.Enc) where
@@ -123,7 +124,7 @@ record RS (enc : Types.Enc) where
   text : SnocList Asm.Instr
   ||| Slow paths, placed after the function being rendered.
   cold : SnocList Asm.Instr
-  rodata : SnocList (Asm.Label, List Bits8)
+  rodata : SnocList (Asm.Label, List Datum)
   ||| The most of each per-thread area the code so far uses.
   areas : Linkage.Areas
 
@@ -178,10 +179,10 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
       emits [Asm.Lbl (sym Linkage.Sym.SymMain), Asm.Jmp entry]
       traverse_ function p.functions
       traverse_ (\st => do l <- staticLabel st.sym
-                           bytes <- staticBytes st
-                           modify { rodata $= (:< (l, bytes)) })
+                           pieces <- staticData st
+                           modify { rodata $= (:< (l, pieces)) })
                 p.statics
-      traverse_ (\((_, bytes), l) => modify { rodata $= (:< (l, bytes)) })
+      traverse_ (\((_, bytes), l) => modify { rodata $= (:< (l, [Datum.Raw bytes])) })
         (zip tables (map snd tableLabels))
     pure (MkRendered (s.text <>> []) (s.rodata <>> []) s.areas)
     where
@@ -191,18 +192,11 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
       failWith : String -> Render enc a
       failWith = lift . Left
 
-      staticBytes : LocatedIR.Static enc -> Render enc (List Bits8)
-      staticBytes s = do
-        fields <- traverse field s.fields
-        pure
-          (toList
-            (Data.Builder.piece (LittleEndian.le64 (cast (Types.Header.encodeHeader s.header)))
-             <+> concatMap Data.Builder.piece fields))
-        where
-          field : LocatedIR.Static.SField -> Render enc (List Bits8)
-          field (LocatedIR.Static.SWord w) = pure (LittleEndian.le64 (cast w))
-          field _ =
-            failWith ("the rendering does not support code or static references in statics yet")
+      ||| The pointer tag of the value encoding: a pointer word is the object's
+      ||| address plus it, so every load and store through a pointer folds its
+      ||| negation into the displacement.
+      ptag : Int
+      ptag = cast (HeapObj.ValEnc.pointerTag enc.val)
 
       emit : Asm.Instr -> Render enc' ()
       emit i = modify { text $= (:< i) }
@@ -229,6 +223,26 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
         case lookup n s.funs of
           Just l => pure l
           Nothing => failWith ("no function " ++ show n)
+
+      ||| A static's data: its header word, then a word for each field. A
+      ||| uniform value's word is the value encoding's; another static's
+      ||| address is a pointer word, tagged as the code's pointers to it are;
+      ||| a function's entry address is untagged, as a closure's code word is.
+      staticData : LocatedIR.Static enc -> Render enc (List Datum)
+      staticData s = do
+        fields <- traverse field s.fields
+        pure (Datum.Raw (LittleEndian.le64 (cast (Types.Header.encodeHeader s.header))) :: fields)
+        where
+          field : LocatedIR.Static.SField -> Render enc Datum
+          field (LocatedIR.Static.SWord w) = pure (Datum.Raw (LittleEndian.le64 (cast w)))
+          field (LocatedIR.Static.SVal i) = case HeapObj.ValEnc.valWord enc.val (cast i) of
+            Just w => pure (Datum.Raw (LittleEndian.le64 (cast w)))
+            Nothing => failWith ("the integer " ++ show i ++ ", in the static " ++ show s.sym ++
+                                 ", which the value encoding has no word for")
+          field (LocatedIR.Static.SRef t) = do l <- staticLabel t
+                                               pure (Datum.AddressOf l ptag)
+          field (LocatedIR.Static.SCode f) = do l <- funLabel f
+                                                pure (Datum.AddressOf l 0)
 
       function : LocatedIR.Function enc -> Render enc ()
       function f = do
@@ -326,12 +340,6 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                                           store d Asm.RCX
                                     _ => pure ())
                       items
-
-          ||| The pointer tag of the value encoding: a pointer word is the object's address
-          ||| plus it, so every load and store through a pointer folds its negation
-          ||| into the displacement.
-          ptag : Int
-          ptag = cast (HeapObj.ValEnc.pointerTag enc.val)
 
           ||| Turn the object address in `s` into its pointer word in `d`.
           tagPointer : (d, s : Asm.Reg64) -> List Asm.Instr
@@ -620,7 +628,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
             LocatedIR.Terminator.Crash msg => do
                                    l <- fresh
                                    let bytes = map (cast . ord) (unpack (msg ++ "\n"))
-                                   modify { rodata $= (:< (l, bytes)) }
+                                   modify { rodata $= (:< (l, [Datum.Raw bytes])) }
                                    emits [Asm.Lea Asm.RDI (Asm.MRip l 0),
                                           Asm.MovRI Asm.RSI (cast (length bytes)),
                                             Asm.Jmp (sym Linkage.Sym.SymCrash)]
@@ -632,7 +640,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                            (unpack
                                              ("idris: unsupported: " ++ what ++ ", in "
                                               ++ show f.name ++ "\n"))
-                                   modify { rodata $= (:< (l, bytes)) }
+                                   modify { rodata $= (:< (l, [Datum.Raw bytes])) }
                                    emits [Asm.Lea Asm.RDI (Asm.MRip l 0),
                                           Asm.MovRI Asm.RSI (cast (length bytes)),
                                             Asm.Jmp (sym Linkage.Sym.SymUnsupported)]
@@ -817,7 +825,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                   big <- fresh
                                   msg <- fresh
                                   let bytes = map (cast . ord) (unpack "object size out of range\n")
-                                  modify { rodata $= (:< (msg, bytes)) }
+                                  modify { rodata $= (:< (msg, [Datum.Raw bytes])) }
                                   traverse_ coldEmit
                                     [ Asm.Lbl big, Asm.Lea Asm.RDI (Asm.MRip msg 0),
                                      Asm.MovRI Asm.RSI (cast (length bytes))

@@ -727,12 +727,18 @@ parameters (d : TermIR.Decls enc)
             List (LocatedIR.Static enc)
   statics [] [] = []
   statics (TermIR.MkStaticSig sym k :: ss) (TermIR.MkStaticDef h fs :: ds) =
-    LocatedIR.MkStatic sym k h (map field (toList fs)) :: statics ss ds
+    LocatedIR.MkStatic sym k h (fields fs) :: statics ss ds
     where
-      field : TermIR.StaticDef.SField d -> LocatedIR.Static.SField
+      field : TermIR.StaticDef.SField d t -> LocatedIR.Static.SField
       field (TermIR.StaticDef.SWord w) = LocatedIR.Static.SWord w
+      field (TermIR.StaticDef.SVal i) = LocatedIR.Static.SVal i
       field (TermIR.StaticDef.SRef s) = LocatedIR.Static.SRef (varSym s)
       field (TermIR.StaticDef.SCode f) = LocatedIR.Static.SCode (varName f)
+
+      -- each field's located word, in order
+      fields : All (TermIR.StaticDef.SField d) ts -> List LocatedIR.Static.SField
+      fields [] = []
+      fields (f :: fs') = field f :: fields fs'
 
   entryName : TermIR.Program.Entry d -> Name
   entryName (TermIR.Program.MkEntry f) = varName f

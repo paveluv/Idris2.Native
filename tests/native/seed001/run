@@ -1,11 +1,12 @@
 . ../../testutils.sh
 
 # Three static binaries on the runtime seed alone (no assembler, no linker):
-# a result through HALT, the abort stub, and the grow-only allocator.
+# a result through HALT, the abort stub, and the grow-only allocator; and a
+# link that fails, its data naming a label nothing defines.
 idris2 -p idris2-native -p idris2 Gen.idr -o gen > /dev/null
 ./build/exec/gen
 ./exit42; echo "exit42 status: $?"
 ./unsupported 2> unsupported.err; echo "unsupported status: $?"
 echo "unsupported stderr: $(cat unsupported.err)"
 ./alloc; echo "alloc status: $?"
-rm -f exit42 unsupported alloc unsupported.err
+rm -f exit42 unsupported alloc unsupported.err missing
