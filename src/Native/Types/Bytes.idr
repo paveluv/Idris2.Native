@@ -52,19 +52,31 @@ Immutable Bytes where
 ||| the object of exactly those words. A function of ordinary code makes
 ||| each word, before the `Bytes` exists, so none of them can write it
 ||| after. The program ends for more words than fit in memory.
+|||
+||| It ends the program by the crash primitive in place, never by calling
+||| `idris_crash`. Idris's Scheme backends, compiling a whole program,
+||| keep a constant's value only if nothing it calls, directly or through
+||| other functions, is a function whose whole body is a crash, as
+||| `idris_crash`'s is; any other constant they compute again at each use.
+||| So nothing in `generate` has a constant it makes, such as a table,
+||| computed at each use: such a constant is made once, before `main`,
+||| unless something else it calls, its words' function among them, calls
+||| such a function. Chez's incremental code generator, which compiles a
+||| program module by module, keeps no constant at all: each is computed
+||| at each use.
 export %noinline
 generate : FromWords Bytes
 generate n f =
   let m = max 0 n in
   -- lint: allow trust-escape: so many words do not fit in memory, and ending the program is
   -- all there is to do
-  if m > maxWords then assert_total (idris_crash "idris: too many words for bytes") else
+  if m > maxWords then assert_total (prim__crash _ "idris: too many words for bytes") else
     -- lint: allow trust-escape: the buffer is made here, written only here, and given out only as
     -- the immutable record, after its last write
     unsafePerformIO $ do
       Just b <- newBuffer (8 * m)
         -- lint: allow trust-escape: a buffer of a size that is not negative is always made
-        | Nothing => assert_total (idris_crash "idris: no buffer for bytes")
+        | Nothing => assert_total (prim__crash _ "idris: no buffer for bytes")
       fill b 0 (cast m)
       pure (MkBytes (Flat.MkUniform b))
   where

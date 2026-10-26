@@ -854,7 +854,8 @@ fileRules f ms ds =
         ||| it is sound.
         escapes : List String
         escapes =
-          ["assert_total", "assert_smaller", "idris_crash", "unsafePerformIO", "uncheckedWord"]
+          [ "assert_total", "assert_smaller", "idris_crash", "prim__crash", "unsafePerformIO"
+          , "uncheckedWord" ]
 
 ||| The rules no suppression lifts: what they report is to be changed.
 export

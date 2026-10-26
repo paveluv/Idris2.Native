@@ -1,7 +1,8 @@
 ||| Leaving what the typechecker proves, with and without a reason. The first
 ||| `assert_total` has none and is reported; the second's paragraph starts
 ||| with its reason and it is not. A suppression without a reason, one of no
-||| rule, and one that suppresses nothing are each reported themselves.
+||| rule, and one that suppresses nothing are each reported themselves. The
+||| crash primitive, called in place, has no reason either and is reported.
 module Escapes
 
 %default total
@@ -24,3 +25,6 @@ two = 2
 -- lint: allow trust-escape: nothing in this paragraph escapes
 three : Nat
 three = 3
+
+stop : Nat -> Nat
+stop n = prim__crash _ "stopped"

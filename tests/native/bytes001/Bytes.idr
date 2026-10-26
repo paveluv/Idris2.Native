@@ -9,8 +9,15 @@
 -- A `Bytes` is a record of one field, a buffer, which every code generator
 -- holds as the buffer itself; nothing writes it once `generate` gives it.
 -- So a read needs no token: it may be done at any time.
+--
+-- A constant made by `generate`, of words whose function calls nothing
+-- that crashes, is made once, however often it is read, on every code
+-- generator compiling the whole program, as this test's do: `counted`
+-- counts the words made, and its three reads leave the count at its four
+-- words.
 module Main
 
+import Data.IORef
 import Native.Types.Bytes
 
 %default covering
@@ -58,6 +65,25 @@ sumWords b n = go 0 0
     go : Int -> Bits64 -> Bits64
     go i acc = if i >= n then acc else go (i + 1) (acc + uncheckedWord b i 0)
 
+-- How many words `counted`'s function has made.
+made : IORef Int
+made = unsafePerformIO (newIORef 0)
+
+-- Four words, 0, 10, 20, 30, each counted as it is made: a constant no
+-- mark names and no flat code reads. In surface Idris,
+--
+--   counted = generate 4 (\i => do made := made + 1; 10 * i)
+--
+-- Idris keeps a constant's value once made: natively from its first read,
+-- on Chez from before `main`. Its Scheme backends, compiling the whole
+-- program, keep one only if nothing it calls, directly or not, is a
+-- function whose whole body is a crash, as `idris_crash`'s is. So
+-- `generate` ends the program by the crash primitive itself: were it, or
+-- the words' function below, to call `idris_crash`, Chez would make the
+-- four words again at each read, a count of 12.
+counted : Bytes
+counted = generate 4 (\i => unsafePerformIO (do modifyIORef made (+ 1); pure (cast i * 10)))
+
 main : IO ()
 main = do
   -- six words, 7, 1007, ..., 5007, made by a function of ordinary code
@@ -79,3 +105,6 @@ main = do
   let under = generate (-5) (\i => 1)
   printLn (sumWords none 0, sumWords under 0)
   printLn (uncheckedWord (choose True b big) 3 0, uncheckedWord (choose False b big) 1 0)
+  -- `counted` read three times, its words made once: a count of 4, not 12
+  printLn (uncheckedWord counted 0 0, uncheckedWord counted 1 0, uncheckedWord counted 3 0)
+  printLn !(readIORef made)
