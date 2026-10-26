@@ -4,12 +4,12 @@
 --
 -- names constants whose values the code generator computes as it compiles
 -- the program, by evaluating Idris's compiled form of each, as the
--- program would compute it at run time. So far it does so only to check
--- that it can, and refuses a mark it cannot compute (the other modules of
--- this test): the program still computes each constant on its first use,
--- as any constant. Every code generator prints the same, so the expected
--- output holds the same lines three times: native, Chez, and native under
--- the encoding whose pointers carry a tag.
+-- program would compute it at run time, and refuses a mark it cannot
+-- compute (the other modules of this test). The image holds each value it
+-- computes, which the program reads with no call (static002 shows how).
+-- Every code generator prints the same, so the expected output holds the
+-- same lines three times: native, Chez, and native under the encoding
+-- whose pointers carry a tag.
 module Main
 
 import Data.IORef

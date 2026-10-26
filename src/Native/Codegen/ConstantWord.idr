@@ -1,14 +1,14 @@
 ||| What a constant is as a uniform value of ordinary code (`constantWord`),
-||| and what the static objects that hold such values hold (`StaticPlan`):
-||| the one rule the lowering (`Native.Codegen.Lower`) reads each constant
-||| by and collects the static objects of a program's constants by, so that
-||| the two agree. A static object is named after what it holds, so that
-||| every use of one value shares one object: a nullary constructor's by its
-||| id, a 64-bit integer's outside the fixnum range by its pattern's signed
-||| value, an `Integer`'s by its value, a double's by its bits, a string's
-||| by its text. An integer constant is read by its type's width
-||| (`Native.Codegen.IntWidth`), which the lowering's integer operations
-||| wrap to as well.
+||| and what the program's static objects hold (`StaticPlan`): the one rule
+||| the lowering (`Native.Codegen.Lower`) reads each constant by and
+||| collects the static objects of a program's constants by, so that the
+||| two agree. A static object a constant's word names is named after what
+||| it holds, so that every use of one value shares one object: a nullary
+||| constructor's by its id, a 64-bit integer's outside the fixnum range by
+||| its pattern's signed value, an `Integer`'s by its value, a double's by
+||| its bits, a string's by its text. An integer constant is read by its
+||| type's width (`Native.Codegen.IntWidth`), which the lowering's integer
+||| operations wrap to as well.
 module Native.Codegen.ConstantWord
 
 import Native.Codegen.IntWidth
@@ -67,6 +67,9 @@ data StaticPlan
     Big Integer
   | ||| A string literal.
     Text String
+  | ||| The object a maker made (`Types.FromWords`): a `BYTES` of these
+    ||| words, in order, eight bytes each.
+    Words (List Bits64)
 
 ||| A uniform value as a word of the program before the rendering encodes
 ||| it: a fixnum, the erased value, or the address of a static object.

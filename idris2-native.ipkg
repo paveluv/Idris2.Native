@@ -56,6 +56,7 @@ modules =
     Native.Codegen.Platform,
     Native.Codegen.RegAlloc,
     Native.Codegen.Seed,
+    Native.Codegen.StaticRead,
     Native.Codegen.Strings,
     Native.Codegen.Tabulate,
     Native.Codegen.Target,

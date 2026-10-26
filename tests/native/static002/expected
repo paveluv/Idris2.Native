@@ -1,0 +1,220 @@
+([0, 1, 4, 9, 16, 25, 36, 49], True)
+([1, 2, 5, 10, 17, 26, 37, 50], True)
+(True, True)
+(9223372036854775813, True)
+café, -12345678901 and -590295810358705651712
+True
+(0.3333333333333333, True)
+(Nothing, True)
+((), (42, True))
+(1180591620717411303424, True)
+(9223372036854775813, 42)
+(4611686018427387904, True)
+(4611686018427387904, (True, 0))
+([0, 1, 4, 9, 16, 25, 36, 49], True)
+([1, 2, 5, 10, 17, 26, 37, 50], True)
+(True, True)
+(9223372036854775813, True)
+café, -12345678901 and -590295810358705651712
+True
+(0.3333333333333333, True)
+(Nothing, True)
+((), (42, True))
+(1180591620717411303424, True)
+(9223372036854775813, 42)
+(4611686018427387904, True)
+(4611686018427387904, (True, 0))
+([0, 1, 4, 9, 16, 25, 36, 49], True)
+([1, 2, 5, 10, 17, 26, 37, 50], True)
+(True, True)
+(9223372036854775813, True)
+café, -12345678901 and -590295810358705651712
+True
+(0.3333333333333333, True)
+(Nothing, True)
+((), (42, True))
+(1180591620717411303424, True)
+(9223372036854775813, 42)
+(4611686018427387904, True)
+(4611686018427387904, (True, 0))
+Main.squares not computed by the program
+Main.successors not computed by the program
+Main.big not computed by the program
+Main.greeting not computed by the program
+Main.third not computed by the program
+Main.none not computed by the program
+Main.unit not computed by the program
+Main.answer not computed by the program
+Main.power not computed by the program
+Main.edge not computed by the program
+static _native.(static Main.squares) BYTES BytesLengthP=64
+static _native.(static Main.successors) BYTES BytesLengthP=64
+10 cells fewer with the marks
+# Main.table
+L64:
+lea rbx, [rip+L13]
+mov qword ptr [rbx], rdi
+jmp L65
+L65:
+mov rax, qword ptr [rbx]
+mov qword ptr [rbx+8], rax
+mov rax, qword ptr [rbx+8]
+cmp rax, 3
+je L66
+cmp rax, 1
+je L67
+jmp L68
+L66:
+lea rax, [rip+L69]
+jmp qword ptr [r12]
+L67:
+lea rax, [rip+L70]
+jmp qword ptr [r12]
+L68:
+lea rdi, [rip+L71]
+mov rsi, 28
+jmp L3
+table calls nothing
+# Main.word
+L64:
+lea rbx, [rip+L13]
+mov qword ptr [rbx], rdi
+jmp L65
+L65:
+mov rax, qword ptr [rbx]
+mov qword ptr [rbx+8], rax
+mov rax, qword ptr [rbx+8]
+cmp rax, 3
+je L66
+cmp rax, 1
+je L67
+jmp L68
+L66:
+lea rax, [rip+L69]
+jmp qword ptr [r12]
+L67:
+mov rax, 85
+jmp qword ptr [r12]
+L68:
+lea rdi, [rip+L70]
+mov rsi, 28
+jmp L3
+word calls nothing
+# Main.wider
+L64:
+lea rbx, [rip+L13]
+mov qword ptr [rbx], rdi
+jmp L65
+L65:
+mov rax, qword ptr [rbx]
+mov qword ptr [rbx+8], rax
+mov rax, qword ptr [rbx+8]
+cmp rax, 3
+je L66
+cmp rax, 1
+je L67
+jmp L68
+L66:
+lea rax, [rip+L69]
+jmp qword ptr [r12]
+L67:
+mov rax, 1
+jmp qword ptr [r12]
+L68:
+lea rdi, [rip+L70]
+mov rsi, 28
+jmp L3
+wider calls nothing
+== val-encoding=tag0
+# Main.table
+L64:
+lea rbx, [rip+L13]
+mov qword ptr [rbx], rdi
+jmp L65
+L65:
+mov rax, qword ptr [rbx]
+mov qword ptr [rbx+8], rax
+mov rax, qword ptr [rbx+8]
+cmp rax, 2
+je L66
+test rax, rax
+je L67
+jmp L68
+L66:
+lea rax, [rip+L69+1]
+jmp qword ptr [r12-1]
+L67:
+lea rax, [rip+L70+1]
+jmp qword ptr [r12-1]
+L68:
+lea rdi, [rip+L71]
+mov rsi, 28
+jmp L3
+table calls nothing
+# Main.word
+L64:
+lea rbx, [rip+L13]
+mov qword ptr [rbx], rdi
+jmp L65
+L65:
+mov rax, qword ptr [rbx]
+mov qword ptr [rbx+8], rax
+mov rax, qword ptr [rbx+8]
+cmp rax, 2
+je L66
+test rax, rax
+je L67
+jmp L68
+L66:
+lea rax, [rip+L69+1]
+jmp qword ptr [r12-1]
+L67:
+mov rax, 84
+jmp qword ptr [r12-1]
+L68:
+lea rdi, [rip+L70]
+mov rsi, 28
+jmp L3
+word calls nothing
+# Main.wider
+L64:
+lea rbx, [rip+L13]
+mov qword ptr [rbx], rdi
+jmp L65
+L65:
+mov rax, qword ptr [rbx]
+mov qword ptr [rbx+8], rax
+mov rax, qword ptr [rbx+8]
+cmp rax, 2
+je L66
+test rax, rax
+je L67
+jmp L68
+L66:
+lea rax, [rip+L69+1]
+jmp qword ptr [r12-1]
+L67:
+mov rax, 0
+jmp qword ptr [r12-1]
+L68:
+lea rdi, [rip+L70]
+mov rsi, 28
+jmp L3
+wider calls nothing
+Error: native: refused as static constants:
+  Unlaid.pair is a constructor with fields, which the code generator does not lay out as static data yet
+  Unlaid.later is a delayed value, whose closure the code generator does not lay out as static data yet
+  Unlaid.kind is a type, which the code generator does not lay out as static data yet
+
+Error: native: refused as static constants:
+  Differs.reading is not computable when the program is compiled: the primitive cast-String-Int of ["1e3"], which the compilation reads as Chez does, more texts than the program reads, in Differs.reading
+  Differs.integer is not computable when the program is compiled: the primitive cast-String-Integer of ["1e3"], which the compilation reads as Chez does, more texts than the program reads, in Differs.integer
+  Differs.real is not computable when the program is compiled: the primitive cast-String-Double of ["1/2"], which the compilation reads as Chez does, more texts than the program reads, in Differs.real
+  Differs.shown is not computable when the program is compiled: the primitive cast-Double-String of [1.5e-310|45], which the compilation writes as Chez does, and the program writes some otherwise, in Prelude.Show.primNumShow
+  Differs.infinite is not computable when the program is compiled: the primitive cast-Double-Int of [+inf.0], NaN or an infinity, at which Chez's cast ends the compilation; the program's gives 0, in Differs.infinite
+  Differs.notANumber is not computable when the program is compiled: the primitive cast-Double-Integer of [+nan.0], NaN or an infinity, at which Chez's cast ends the compilation; the program's gives 0, in Differs.notANumber
+  Differs.growth is not computable when the program is compiled: the primitive op_doubleExp of [1.0], which the compilation takes from Chez's C library, and the program does not compute, in Differs.growth
+  Differs.back is not computable when the program is compiled: the primitive shl Integer of [4, -1], a shift by a negative count, which Chez makes the other way, in Differs.back
+  Differs.right is not computable when the program is compiled: the primitive shr Int of [1, -70], a shift by a negative count, which Chez makes the other way, in Differs.right
+  Differs.wide is not computable when the program is compiled: the primitive shl Bits64 of [1, 64], a shift by 64 or more, which Chez makes as one of an Integer, so that a large count ends the compilation, in Differs.wide
+

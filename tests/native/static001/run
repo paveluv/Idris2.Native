@@ -1,9 +1,10 @@
 . ../../testutils.sh
 
 # A program that marks constants static, on both code generators: the
-# native one evaluates each as it compiles the program, and the program
-# computes each on its first use still, so all three print the same:
-# native, Chez, and native under the encoding whose pointers carry a tag.
+# native one evaluates each as it compiles the program, and the image
+# holds the values, which Chez computes as the program runs, so all three
+# print the same: native, Chez, and native under the encoding whose
+# pointers carry a tag.
 idris2 --cg native -p idris2-native-runtime -p idris2-native -o static-native Static.idr > /dev/null
 ./build/exec/static-native
 idris2 --cg chez -p idris2-native-runtime -p idris2-native -o static-chez Static.idr > /dev/null

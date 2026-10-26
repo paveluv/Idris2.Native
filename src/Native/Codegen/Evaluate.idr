@@ -9,17 +9,23 @@
 ||| the compiled code is, but for what the code delays (`NmDelay`), which is
 ||| evaluated where it is forced, and a constant is evaluated once, as the
 ||| compiled code shares it, in steps of its own. A primitive operation
-||| means what Idris says it does (`getOp`). A maker of an object from
-||| words, and the primitive that reads one, mean what their marks say
-||| (`Meanings`), not what their bodies do. An expression that only the
-||| running program can compute, a foreign function, a crash, a constant
-||| that needs its own value, or one that takes more steps than the fuel,
-||| is not computed, and says why.
+||| means what Idris says it does (`getOp`), but where the compilation
+||| would compute that otherwise than the running program does
+||| (`divergence`), where it is not computed; and a cast of a character to
+||| a string, which `getOp` escapes, is the string of the character. A
+||| maker of an object from words, and the primitive that reads one, mean
+||| what their marks say (`Meanings`), not what their bodies do. An
+||| expression that only the running program can compute, a foreign
+||| function, a crash, a constant that needs its own value, or one that
+||| takes more steps than the fuel, is not computed, and says why.
 |||
 ||| Part of the code generator, which uses it for the tables
 ||| (`Native.Codegen.Tabulate`) and the constants a program marks static
 ||| (`constants`).
 module Native.Codegen.Evaluate
+
+import Native.Codegen.ConstantWord
+import Native.Codegen.IntWidth
 
 import Compiler.CompileExpr
 import Core.CompileExpr
@@ -223,6 +229,65 @@ evaluation meanings compiled fuel = do
         wordCount ws' = maybe 0 (\last => cast {to = Integer} (fst last) + 1) (rightMost ws')
     payloadWord fc _ = stuck fc "a read of a word of an object no maker made"
 
+    ||| Why the compilation would compute a primitive at these constants
+    ||| otherwise than the running program does, if it would. The evaluation
+    ||| computes a primitive by Idris's meaning of it (`getOp`), which the
+    ||| compiler, an Idris program the Chez code generator compiled, computes
+    ||| by Chez's operations; the program, by the code the lowering makes
+    ||| (`Native.Codegen.Lower`) and the runtime's routines, which mean
+    ||| otherwise where Idris leaves the meaning open. They differ, or Chez's
+    ||| ends the compilation, at
+    |||
+    ||| * a cast from a string: Chez reads more texts as numbers, 1e3 as 1000
+    |||   and 1/2 as 0.5, reads -0 as 0.0, and ends at +inf.0 cast to an
+    |||   integer;
+    ||| * a cast from a double to a string, which Chez writes otherwise for a
+    |||   subnormal double and where two last digits are as close to it;
+    ||| * a cast of NaN or an infinity, at which Chez's casts to an integer
+    |||   end, where the program's give 0;
+    ||| * a double's exponential, logarithm, power and trigonometric functions,
+    |||   which Chez takes from the C library and the program does not compute;
+    ||| * a shift by a negative count, which Chez makes the other way, where
+    |||   the program gives 0 or the sign, or ends, for an `Integer` shifted
+    |||   left; and a shift of a fixed-width integer by 64 or more, which Chez
+    |||   makes of an `Integer` first, so that a large count ends the
+    |||   compilation.
+    divergence : PrimFn arity -> Vect arity Constant -> Maybe String
+    divergence op ks = case (op, ks) of
+      (Cast StringType _, _) =>
+        Just "which the compilation reads as Chez does, more texts than the program reads"
+      (Cast DoubleType StringType, _) =>
+        Just "which the compilation writes as Chez does, and the program writes some otherwise"
+      (Cast DoubleType _, [Db x]) =>
+        toMaybe (x /= x || x == 1.0 / 0.0 || x == -1.0 / 0.0)
+          "NaN or an infinity, at which Chez's cast ends the compilation; the program's gives 0"
+      (DoubleExp, _) => Just library
+      (DoubleLog, _) => Just library
+      (DoublePow, _) => Just library
+      (DoubleSin, _) => Just library
+      (DoubleCos, _) => Just library
+      (DoubleTan, _) => Just library
+      (DoubleASin, _) => Just library
+      (DoubleACos, _) => Just library
+      (DoubleATan, _) => Just library
+      (ShiftL ty, [_, k]) => shift ty k
+      (ShiftR ty, [_, k]) => shift ty k
+      _ => Nothing
+      where
+        library : String
+        library =
+          "which the compilation takes from Chez's C library, and the program does not compute"
+
+        -- why a shift of the type by the count diverges, if it does
+        shift : PrimType -> Constant -> Maybe String
+        shift ty k = case snd <$> ConstantWord.intConst k of
+          Just c =>
+            if c < 0 then Just "a shift by a negative count, which Chez makes the other way"
+              else toMaybe (ty /= IntegerType && c >= 64)
+                     ("a shift by 64 or more, which Chez makes as one of an Integer, so that a "
+                      ++ "large count ends the compilation")
+          Nothing => Nothing
+
     mutual
       eval : Ref Steps Nat => Ref Memo (SortedMap Name Memoised) =>
              List (Name, Value) -> NamedCExp -> Core Value
@@ -353,11 +418,19 @@ evaluation meanings compiled fuel = do
       prim : FC -> PrimFn arity -> Vect arity Value -> Core Value
       prim fc BelieveMe [_, _, x] = pure x
       prim fc Crash _ = stuck fc "a crash"
+      -- a character as the string of it, as the lowering makes it, the
+      -- character before the empty string: Idris's meaning of the cast
+      -- writes the character as `show` does, escaped, so that 'é' is \233
+      prim fc (Cast CharType StringType) [c] = prim fc StrCons [c, VConst (Str "")]
       prim fc op vs = case asConstants vs of
         Nothing => stuck fc ("the primitive " ++ show op ++ " of a value that is no constant")
-        Just ks => case getOp {vars = Scope.empty} op (map (NPrimVal fc) ks) of
-          Just (NPrimVal _ k) => pure (VConst k)
-          _ => stuck fc ("the primitive " ++ show op ++ " of " ++ show (toList ks))
+        Just ks =>
+          let at = "the primitive " ++ show op ++ " of " ++ show (toList ks) in
+          case divergence op ks of
+            Just why => stuck fc (at ++ ", " ++ why)
+            Nothing => case getOp {vars = Scope.empty} op (map (NPrimVal fc) ks) of
+              Just (NPrimVal _ k) => pure (VConst k)
+              _ => stuck fc at
         where
           asConstants : Vect len Value -> Maybe (Vect len Constant)
           asConstants [] = Just []

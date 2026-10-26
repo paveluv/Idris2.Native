@@ -16,10 +16,20 @@
 |||
 ||| The program's declarations are fixed before any body is lowered: a
 ||| signature for each function and foreign function, one for each runtime
-||| routine the lowering calls, and the static objects, which a pass over the
-||| bodies collects first: the nullary constructors, and the integer
+||| routine the lowering calls, and the static objects: those a pass over
+||| the bodies collects first, the nullary constructors and the integer
 ||| constants outside the fixnum range, those that casts of constants make
-||| included.
+||| included, of the constants marked static read as literals too; and
+||| those the constants the program marks static are read by, which their
+||| reads name.
+|||
+||| A constant the program marks static has its value computed as the
+||| program is compiled (`Native.Codegen.StaticRead`), so ordinary code's
+||| read of it, a call of no arguments in VMCode, is that value, as a
+||| literal's is: no call and no cell. Its VMCode function, which computes
+||| it, stays among the program's, but no ordinary code calls it, and the
+||| image leaves it out. Flat code still reads it by a call of its flat
+||| form, which computes it.
 |||
 ||| What v0 lowers: integer constants, those outside the fixnum range as
 ||| static objects; every integer type's arithmetic, bitwise operations,
@@ -66,6 +76,7 @@ import Native.Codegen.Linkage.Realised as Linkage
 import Native.Codegen.Linkage.Routine
 import Native.Codegen.LowerFlat
 import Native.Codegen.Platform
+import Native.Codegen.StaticRead
 import Native.Codegen.Strings
 import Native.Codegen.TermIR.Body as TermIR
 import Native.Codegen.TermIR.Build as TermIR
@@ -188,14 +199,16 @@ key (Loc i) = Just i
 key Discard = Nothing
 
 ||| Each function and static of the declarations by name, with its variable,
-||| the contract as the loaded runtime realises it, and the type
-||| constructors' ids (`IRCommon.ConIds`).
+||| the contract as the loaded runtime realises it, the type constructors'
+||| ids (`IRCommon.ConIds`), and the constants the program marks static,
+||| each as code reads it.
 record Refs (enc : Types.Enc) (d : TermIR.Decls enc) where
   constructor MkRefs
   funs : SortedMap Name (s ** TermIR.Var d.sigs s)
   stats : SortedMap Name (s ** TermIR.Var d.statics s)
   realised : Linkage.Realised
   typeCons : SortedMap Name Int
+  staticReads : SortedMap Name StaticRead
 
 ------------------------------------------------------------------------------
 -- Locals
@@ -686,8 +699,13 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
            else do
              x <- TermIR.Build.apply (get env f) (get env a)
              lower (set env r x) t is k
-      (CALL r tl f args, _) :: is =>
-        case cpsFunction f (length (map (get env) args)) of
+      (CALL r tl f args, _) :: is => case (args, lookup f refs.staticReads) of
+        -- a read of a constant marked static is its value, in tail position
+        -- too: a tail call is the last instruction, and the rest returns it
+        ([], Just rd) => do
+          env' <- readStatic env r rd
+          lower env' t is k
+        _ => case cpsFunction f (length (map (get env) args)) of
           Nothing =>
             TermIR.Build.unsupported
               ("a call to " ++ show f ++ ", which is not a function of the program")
@@ -961,6 +979,15 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
         constant k =
           either TermIR.Build.unsupported (staticWordVal . fst)
             (ConstantWord.constantWord enc.bignum k)
+
+        ||| A read of a constant the program marks static into the register,
+        ||| and the environment after it: a literal as the constant it is,
+        ||| which a cast of it folds, as a `MKCONSTANT`'s; the erased value;
+        ||| or a static object's address. Nothing is called.
+        readStatic : Env v -> Reg -> StaticRead -> B (Env v)
+        readStatic env r (StaticRead.Literal c) = do x <- constant c; pure (setKnown env r x c)
+        readStatic env r StaticRead.Erased = pure (set env r TermIR.Opnd.Erased)
+        readStatic env r (StaticRead.Object n _) = set env r <$> staticVal n
 
         ||| A string constant's text.
         text : Constant -> Maybe String
@@ -1725,11 +1752,12 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
 program : {enc : Types.Enc} -> {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} ->
           List Flat.Exp.FlatDef ->
           Flat.Exp.Shapes -> Linkage.Realised -> (tables : SortedMap Name (Int, Nat)) ->
-          (typeCons : SortedMap Name Int) -> (constants : Nat) -> Plan ->
+          (typeCons : SortedMap Name Int) ->
+          (staticReads : SortedMap Name StaticRead) -> (constants : Nat) -> Plan ->
           (es : List (TermIR.Sig enc, Plan)) ->
           (rs : List (s ** ({0 d : TermIR.Decls enc} -> TermIR.StaticDef d s))) ->
           TermIR.Program.TermProgram enc
-program forms shapes realised tables typeCons constants entry es rs =
+program forms shapes realised tables typeCons staticReads constants entry es rs =
   case choose
     (Data.Distinct.distinct (map (.name) (mainSig :: map Builtin.fst es))
      && Data.Distinct.distinct (map (.sym) (map DPair.fst rs))) of
@@ -1753,7 +1781,7 @@ program forms shapes realised tables typeCons constants entry es rs =
     declsRefs : (d : TermIR.Decls enc) -> Refs enc d
     declsRefs d = MkRefs (fromList [(s.name, (s ** v)) | (s ** v) <- TermIR.Var.enumerate d.sigs])
                       (fromList [(s.sym, (s ** v)) | (s ** v) <- TermIR.Var.enumerate d.statics])
-                        realised typeCons
+                        realised typeCons staticReads
 
     staticDefs : (d : TermIR.Decls enc) ->
                  (rs : List (s ** ({0 d' : TermIR.Decls enc} -> TermIR.StaticDef d' s))) ->
@@ -1805,8 +1833,9 @@ cfAgrees (CFUser t _) (Flat.Exp.SCon n [Flat.Exp.SCon t' _]) = n == Flat.Exp.uni
 cfAgrees _ _ = False
 
 ||| A whole program, as a term: every function and foreign function, the
-||| runtime's routines, the statics of the nullary constructors and of the
-||| big constants, and `__mainExpression` as the entry, first.
+||| runtime's routines, the statics of the nullary constructors, of the
+||| big constants and of the constants marked static, and
+||| `__mainExpression` as the entry, first.
 |||
 ||| The flat forms given are those of the program's functions and of what
 ||| they call, with the shapes of the data types they handle. A function
@@ -1829,13 +1858,22 @@ cfAgrees _ _ = False
 ||| `Unsupported` does. The OS services' externs lower to calls
 ||| of the platform's functions for them, and the inline externs to the
 ||| instructions they stand for.
+|||
+||| Each constant the program marks static is given as code reads it
+||| (`Native.Codegen.StaticRead`), and every read of it in VMCode is its
+||| value, while a flat form's read of it still calls its form; the
+||| `constants`, those evaluated on their first use, are the others. The
+||| static object each is read by is the program's, and must be laid out:
+||| one its header cannot hold is an error, which names the constant.
 export
 lowerProgram : (enc : Types.Enc) -> {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Platform ->
                Linkage.Realised -> List Flat.Exp.FlatDef -> Flat.Exp.Shapes ->
                (tables : SortedMap Name (Int, Nat)) ->
+               (staticReads : SortedMap Name StaticRead) ->
                (constants : List Name) -> (flat, implemented : List (Name, Name)) ->
                List (Name, VMDef) -> Either String (TermIR.Program.TermProgram enc)
-lowerProgram enc platform realised forms shapes tables constants flat implemented vmdefs0 = do
+lowerProgram enc platform realised forms shapes tables staticReads constants flat implemented
+             vmdefs0 = do
   let vmdefs = map (\(n, d) => (n, answered d)) vmdefs0
   traverse_ provided (Linkage.Routine.routines {enc} realised)
   traverse_ agrees (mapMaybe boundForeign vmdefs)
@@ -1845,17 +1883,47 @@ lowerProgram enc platform realised forms shapes tables constants flat implemente
       planned = concatMap kept (mapMaybe plan (filter ((/= mainExpression) . fst) vmdefs))
       others = planned
                  ++ [(LowerFlat.formSig fd, Form fd) | fd <- forms]
-      -- with constructor 0's, which a string iterator's end is
+      -- the nullary constructors the boundaries may box, with constructor
+      -- 0's, which a string iterator's end is
       boxing = fromList
         ((ConstantWord.nullaryCon 0, ConstantWord.Nullary 0)
            ::
              [(ConstantWord.nullaryCon c, ConstantWord.Nullary c)
               | c <- toList (concatMap (boxed . snd) planned)])
-      statics = Data.SortedMap.toList (foldl mergeLeft boxing (mapMaybe bodyStatics vmdefs))
-  pure
-    (program forms shapes realised tables typeCons (length constants) entryPlan others
-       (mapMaybe ready statics))
+      -- the static object each constant marked static is read by, if it is
+      -- read by one
+      markedObjects =
+        mapMaybe (\(n, rd) => (n,) <$> readObject rd) (Data.SortedMap.toList staticReads)
+      statics = Data.SortedMap.toList
+                  (foldl mergeLeft boxing
+                     (fromList (map snd markedObjects) :: mapMaybe bodyStatics vmdefs))
+      rs = mapMaybe ready statics
+      laid = Data.SortedSet.fromList (map (\(s ** _) => s.sym) rs)
+  traverse_ (laidOut laid) markedObjects
+  pure (program forms shapes realised tables typeCons staticReads (length constants) entryPlan
+          others rs)
   where
+    ||| The static object a constant names as a value, if it names one
+    ||| (`ConstantWord.constantWord`), and what it holds.
+    constantObject : Constant -> Maybe (Name, ConstantWord.StaticPlan)
+    constantObject k = either (const Nothing) snd (ConstantWord.constantWord enc.bignum k)
+
+    ||| The static object a read of a constant marked static names, if it
+    ||| names one, and what it holds: a literal's, as any literal's
+    ||| (`constantObject`), or its own.
+    readObject : StaticRead -> Maybe (Name, ConstantWord.StaticPlan)
+    readObject (StaticRead.Literal k) = constantObject k
+    readObject StaticRead.Erased = Nothing
+    readObject (StaticRead.Object o p) = Just (o, p)
+
+    ||| A constant marked static, with the static object it is read by,
+    ||| which must be among those laid out: one that is not is an error.
+    laidOut : SortedSet Name -> (Name, (Name, ConstantWord.StaticPlan)) -> Either String ()
+    laidOut laid (n, (o, _)) =
+      if contains o laid then Right ()
+        else Left ("the constant " ++ show n ++ ", marked static, has a value whose static "
+                   ++ "object its header cannot hold")
+
     -- `System.Info`'s externs, which every program of the platform answers
     -- alike, made the constants they are: the operating system's name and
     -- the code generator's.
@@ -2016,14 +2084,9 @@ lowerProgram enc platform realised forms shapes tables constants flat implemente
     instructionStatics : List VMInst -> SortedMap Name ConstantWord.StaticPlan
     instructionStatics body = snd (go body (empty, note (Str "") empty))
       where
-        ||| The static object a constant names as a value, if it names one
-        ||| (`ConstantWord.constantWord`), and what it holds.
-        plan : Constant -> Maybe (Name, ConstantWord.StaticPlan)
-        plan k = either (const Nothing) snd (ConstantWord.constantWord enc.bignum k)
-
         note : Constant -> SortedMap Name ConstantWord.StaticPlan ->
                SortedMap Name ConstantWord.StaticPlan
-        note k ss = case plan k of
+        note k ss = case constantObject k of
           Just (n, p) => insert n p ss
           Nothing => ss
 
@@ -2044,6 +2107,11 @@ lowerProgram enc platform realised forms shapes tables constants flat implemente
           one (MKCONSTANT r k) acc@(known, ss) = case key r of
             Just i => add i k acc
             Nothing => (known, note k ss)
+          -- a read of a constant marked static as a literal holds the
+          -- literal, as a `MKCONSTANT` does (`lower`)
+          one (CALL r _ f []) acc = case lookup f staticReads of
+            Just (StaticRead.Literal k) => one (MKCONSTANT r k) acc
+            _ => acc
           one (MKCON _ (Left c) []) (known, ss) =
             (known, insert (ConstantWord.nullaryCon c) (ConstantWord.Nullary c) ss)
           one (MKCON _ (Right n) []) (known, ss) = case lookup n typeCons of
@@ -2071,6 +2139,9 @@ lowerProgram enc platform realised forms shapes tables constants flat implemente
     bodyStatics (_, MkVMFun _ body) = Just (instructionStatics body)
     bodyStatics _ = Nothing
 
+    ||| A static object of the program, defined, if its header can hold what
+    ||| it holds; one it cannot is left out, and a read of it is the abort
+    ||| stub, which for a constant marked static is an error (`laidOut`).
     ready : (Name, ConstantWord.StaticPlan) ->
             Maybe (s ** ({0 d : TermIR.Decls enc} -> TermIR.StaticDef d s))
     ready (n, ConstantWord.Nullary c) =
@@ -2115,4 +2186,15 @@ lowerProgram enc platform realised forms shapes tables constants flat implemente
           Just
             (TermIR.MkStaticSig n Types.Kind.STRING ** TermIR.MkStaticDef h
              (map TermIR.StaticDef.SWord ws))
+        Right _ => Nothing
+    -- a maker's object: its words after a header of their bytes, each
+    -- word's pattern as is
+    ready (n, ConstantWord.Words ws) =
+      let h = Types.Header.BytesH {enc} (8 * length ws) in
+      case choose (TermIR.FieldTys.wellFormed h) of
+        Left ok => do
+          ws' <- toVect _ (map (cast {to = Int64}) ws)
+          Just
+            (TermIR.MkStaticSig n Types.Kind.BYTES ** TermIR.MkStaticDef h
+             (map TermIR.StaticDef.SWord ws'))
         Right _ => Nothing

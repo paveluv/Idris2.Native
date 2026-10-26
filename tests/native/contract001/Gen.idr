@@ -38,6 +38,7 @@ import Native.Codegen.Linkage.Routine
 import Native.Codegen.Linkage.RuntimeModule
 import Native.Codegen.Lower
 import Native.Codegen.Platform
+import Native.Codegen.StaticRead
 import Native.Codegen.TermIR.Decls
 import Native.Codegen.TermIR.Program
 import Native.Flat.Exp
@@ -120,7 +121,8 @@ exitBinding =
 
 checkWith : String -> List FlatDef -> List (Name, VMDef) -> IO ()
 checkWith what forms vmdefs = putStrLn $ what ++ ": " ++
-  case lowerProgram TestEnc defaultPlatform realised forms [] empty [] [exitBinding] [] vmdefs of
+  case lowerProgram TestEnc defaultPlatform realised forms [] empty empty [] [exitBinding] []
+         vmdefs of
     Left err => err
     Right _ => "lowered"
 

@@ -1,0 +1,84 @@
+. ../../testutils.sh
+
+# Constants marked static, on both code generators: natively each is the
+# value the code generator computed as it compiled the program, and on
+# Chez the value the program computes before `main`; each is compared
+# with the same made as the program runs. All three print the same:
+# native, Chez, and native under the encoding whose pointers carry a tag.
+idris2 --cg native -p idris2-native-runtime -p idris2-native --directive dump-asm=build/asm.s \
+  --directive dump-ir=build/ir.txt -o static-native Static.idr > /dev/null
+./build/exec/static-native
+idris2 --cg chez -p idris2-native-runtime -p idris2-native -o static-chez Static.idr > /dev/null
+./build/exec/static-chez
+idris2 --cg native -p idris2-native-runtime -p idris2-native --directive val-encoding=tag0 \
+  --directive dump-asm=build/asm-tag0.s -o static-tag0 Static.idr > /dev/null
+./build/exec/static-tag0
+
+# The image computes none of them: no function of a marked constant's
+# name, which would give its value from its cell, and no function that
+# computes the value, `_native.(value of ...)`, which an unmarked
+# constant has (constant001).
+for c in squares successors big greeting third none unit answer power edge; do
+  if grep -q -e "^# Main\.$c\$" -e "value of Main\.$c)" build/asm.s; then
+    echo "Main.$c computed by the program"
+  else
+    echo "Main.$c not computed by the program"
+  fi
+done
+
+# The maker's objects, as the image holds them: each a BYTES of 64 bytes,
+# its eight words.
+grep "^static _native.(static Main\." build/ir.txt
+
+# No cell for any of them either. Each constant the program evaluates
+# once, on its first use, has a cell in the image, which the collector
+# walks, so many as the runtime's `constantCount` gives; the same program
+# without its marks, made under build/, where the linter does not look,
+# has one more for each of the ten marked.
+mkdir -p build/copies
+grep -v "^%cg native static" Static.idr > build/copies/Unmarked.idr
+(cd build/copies && idris2 --cg native -p idris2-native-runtime -p idris2-native \
+   --directive dump-ir=unmarked-ir.txt -o unmarked Unmarked.idr > /dev/null)
+cells () {
+  awk '$1 == "function" && $2 == "_flat.Native.Runtime.Space.constantCount" { on = 1 }
+       on && /Ret #/ { sub(/.*Ret #/, ""); print; exit }' "$1"
+}
+echo "$(( $(cells build/copies/unmarked-ir.txt) - $(cells build/ir.txt) )) cells fewer with the marks"
+
+# The readers, as the renderer emits them: each alternative one
+# instruction, the address of a static object (`lea`) or an immediate
+# (`mov`: 42 as the fixnum 2 * 42 + 1, or under tag0 2 * 42, and 0 as 1,
+# or under tag0 0), then the return through the continuation (`jmp qword
+# ptr [r12]`); the last block is the runtime's crash where no alternative
+# matches (`jmp L3`). None of them calls. Program labels (64 and up) are
+# renumbered in order of appearance; under tag0 an object's address
+# carries the pointer tag, 1, which a read through the continuation takes
+# off.
+reader () {
+  awk -v want="# Main.$2" '/^# / { on = ($0 == want) }
+       on {
+         out = ""
+         while (match($0, /L[0-9]+/)) {
+           l = substr($0, RSTART, RLENGTH)
+           if (substr(l, 2) + 0 >= 64 && !(l in name)) name[l] = "L" (64 + n++)
+           out = out substr($0, 1, RSTART - 1) (l in name ? name[l] : l)
+           $0 = substr($0, RSTART + RLENGTH)
+         }
+         print out $0
+       }' "$1" > build/reader.s
+  if [ -s build/reader.s ]; then
+    cat build/reader.s
+    if grep -q "call" build/reader.s; then echo "$2 calls"; else echo "$2 calls nothing"; fi
+  else
+    echo "no machine code of Main.$2"
+  fi
+}
+for f in table word wider; do reader build/asm.s $f; done
+echo "== val-encoding=tag0"
+for f in table word wider; do reader build/asm-tag0.s $f; done
+
+# Values the code generator does not lay out as static data, and values
+# of primitives the evaluation would compute otherwise than the program,
+# each refused when the program is compiled, in one error.
+idris2 --cg native -o unlaid Unlaid.idr
+idris2 --cg native -o differs Differs.idr

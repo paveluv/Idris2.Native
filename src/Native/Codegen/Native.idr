@@ -33,6 +33,7 @@ import Native.Codegen.LocatedIR.Reach
 import Native.Codegen.Lower
 import Native.Codegen.Platform
 import Native.Codegen.RegAlloc
+import Native.Codegen.StaticRead
 import Native.Codegen.Tabulate
 import Native.Codegen.TermIR.Decls as TermIR
 import Native.Codegen.TermIR.Program as TermIR
@@ -99,12 +100,15 @@ import System.File.ReadWrite
 |||   often too.
 ||| * `flat <name>...`: the functions the program marks flat (`Flat.Marked`).
 ||| * `static <name>...`: the constants the program marks static
-|||   (`Flat.Marked`). A mark of what is no constant, of a constant Idris
-|||   inlines at each use or that is marked flat too, or of one the program
-|||   reaches whose value the evaluation as the program is compiled does not
-|||   compute (`Native.Codegen.Evaluate`), is refused, with why
-|||   (`checkStaticConstants`). The program computes each on its first use
-|||   still, as any constant.
+|||   (`Flat.Marked`), each of which the program reaches computed as the
+|||   program is compiled (`Native.Codegen.Evaluate`): the image holds its
+|||   value, which ordinary code reads with no call
+|||   (`Native.Codegen.StaticRead`); flat code still computes it by its
+|||   form. A mark of what is no constant, of a constant Idris inlines at
+|||   each use or that is marked flat too, or of one the program reaches
+|||   whose value the evaluation does not compute, or computes as a value
+|||   the code generator does not lay out as static data yet, is refused,
+|||   with why (`checkStaticConstants`).
 ||| * `dump-flat=<file>`: write the flat forms, and the shapes of their data
 |||   types, to the file.
 ||| * `dump-ir=<file>`: write the IR the produce pass makes to the file.
@@ -178,22 +182,25 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
       -- it to every code generator, and the tables' and the static
       -- constants': what they are computed from
       let compiled = mergeLeft (fromList (map (\(n, _, d) => (n, d)) cdata.namedDefs)) earlyForms
-      phase "the static constants evaluated"
-        (checkStaticConstants (realisedMeanings realised) compiled marked.flatFunctions
+      staticReads <- phase "the static constants evaluated"
+        (checkStaticConstants settings.encodings.bignum (realisedMeanings realised) compiled
+          marked.flatFunctions
           (filter (\n => any ((== n) . fst) (vmcode cdata)) marked.staticConstants)
           marked.staticConstants)
       -- the definitions evaluated once, on their first use: every one of
-      -- no arguments but the entry. The Scheme backends, which evaluate
-      -- them before `main`, leave out those whose evaluation may crash or
-      -- recur, which on first use crash or recur as they would unshared
-      let constants = mapMaybe kept (vmcode cdata)
+      -- no arguments but the entry and those marked static, whose values
+      -- the image holds. The Scheme backends, which evaluate them before
+      -- `main`, leave out those whose evaluation may crash or recur, which
+      -- on first use crash or recur as they would unshared
+      let constants =
+            filter (\n => isNothing (lookup n staticReads)) (mapMaybe kept (vmcode cdata))
       image <- case settings.encodings of
         Types.MkEnc HeapObj.ValEnc.FixnumTag1 b s =>
           pipeline (Types.MkEnc HeapObj.ValEnc.FixnumTag1 b s) settings realised marked.forms
-            compiled constants flat bound (vmcode cdata)
+            compiled staticReads constants flat bound (vmcode cdata)
         Types.MkEnc HeapObj.ValEnc.FixnumTag0 b s =>
           pipeline (Types.MkEnc HeapObj.ValEnc.FixnumTag0 b s) settings realised marked.forms
-            compiled constants flat bound (vmcode cdata)
+            compiled staticReads constants flat bound (vmcode cdata)
         Types.MkEnc HeapObj.ValEnc.NoFixnums _ _ =>
           throw (GenericMsg EmptyFC "native: the encoding nofixnums is not implemented")
       coreLift_ $ mkdirAll outputDir
@@ -306,24 +313,29 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
         ||| checked, reached or not. Each the compilation reaches is
         ||| evaluated now too, over the compiled definitions, in at most
         ||| `evaluationFuel` steps of its own, whatever the order of the
-        ||| marks, and its value must be computed. Every one that fails ends
-        ||| the compilation, in one error that says why of each, in the order
-        ||| of the marks.
-        checkStaticConstants : Evaluate.Meanings -> (compiled : SortedMap Name NamedDef) ->
-                               (flatFunctions, reached, marks : List Name) -> Core ()
-        checkStaticConstants meanings compiled flatFunctions reached marks = do
+        ||| marks, and its value must be computed and be one the code
+        ||| generator lays out as static data under the bignum encoding
+        ||| (`StaticRead.staticRead`). Every one that fails ends the
+        ||| compilation, in one error that says why of each, in the order of
+        ||| the marks; else each reached is given as code reads it.
+        checkStaticConstants : Types.BignumEnc -> Evaluate.Meanings ->
+                               (compiled : SortedMap Name NamedDef) ->
+                               (flatFunctions, reached, marks : List Name) ->
+                               Core (SortedMap Name StaticRead)
+        checkStaticConstants bignum meanings compiled flatFunctions reached marks = do
           defs <- get Ctxt
           refused <- catMaybes <$> traverse (refusal defs) marks
           values <- Evaluate.constants meanings compiled evaluationFuel
                       (filter (\n => isNothing (lookup n refused)) reached)
-          let failures = refused ++ mapMaybe (\(n, v) => (n,) <$> either Just (const Nothing) v)
-                                               values
+          let reads = map (\(n, v) => (n, v >>= StaticRead.staticRead bignum n)) values
+          let failures = refused ++ mapMaybe (\(n, r) => (n,) <$> either Just (const Nothing) r)
+                                               reads
           let [] = mapMaybe (\n => (n,) <$> lookup n failures) marks
             | failed =>
               throw (GenericMsg EmptyFC
                 ("native: refused as static constants:"
                  ++ concatMap (\(n, why) => "\n  " ++ show n ++ " is " ++ why) failed))
-          pure ()
+          pure (fromList (mapMaybe (\(n, r) => (n,) <$> either (const Nothing) Just r) reads))
           where
             -- why a constant marked static is refused before it is
             -- evaluated, if it is
@@ -503,9 +515,10 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
         ||| fixnums: produce the term, allocate its registers, render, link.
         pipeline : (enc : Types.Enc) -> {auto 0 _ : HeapObj.ValEnc.HasFixnums enc.val} ->
                    Settings -> Linkage.Realised -> NameMap Flat.Exp.FlatDef ->
-                   (compiled : SortedMap Name NamedDef) -> (constants : List Name) ->
+                   (compiled : SortedMap Name NamedDef) ->
+                   (staticReads : SortedMap Name StaticRead) -> (constants : List Name) ->
                    (flat, bound : List (Name, Name)) -> List (Name, VMDef) -> Core ELF.Image
-        pipeline enc settings realised table compiled constants flat bound defs = do
+        pipeline enc settings realised table compiled staticReads constants flat bound defs = do
           (forms, shapes) <- phase "flat inputs" $
                                flatInputs table (Data.SortedMap.toList realised.services)
                                           (map fst defs
@@ -519,8 +532,8 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
           let tables = fromList [ (t.name, (t.lo, t.rowWords)) | t <- firsts ]
           Right (_ ** term) <- phase "lowering"
             (later
-              (Lower.lowerProgram enc settings.platform realised forms shapes tables constants
-                 flat bound defs))
+              (Lower.lowerProgram enc settings.platform realised forms shapes tables staticReads
+                 constants flat bound defs))
             | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
           allocated <- phase "register allocation"
             (later (RegAlloc.allocRegs X86.Target.x86_64 term))
