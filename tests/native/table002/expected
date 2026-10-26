@@ -1,0 +1,236 @@
+[0, 116964, 342, 342, 106292, 106944, 0]
+[0, 1, 4, 2809, 2812, 0]
+[-1, 4194304, 2097152, 2, 1, -1]
+((0, 116964), ((342, 0), (668, 106276)))
+(1, 2812)
+(1.0, (0.125, 2.384185791015625e-7))
+((0, 116964), (668, 106276))
+((0, 116964), (668, 106276))
+(0.5, 2.384185791015625e-7)
+((0, 0), (0, 0))
+(0, (1, 2))
+a table made
+((0, 0), ((1, 10), (2, 20)))
+6
+[0, 116964, 342, 342, 106292, 106944, 0]
+[0, 1, 4, 2809, 2812, 0]
+[-1, 4194304, 2097152, 2, 1, -1]
+((0, 116964), ((342, 0), (668, 106276)))
+(1, 2812)
+(1.0, (0.125, 2.384185791015625e-7))
+((0, 116964), (668, 106276))
+((0, 116964), (668, 106276))
+(0.5, 2.384185791015625e-7)
+((0, 0), (0, 0))
+(0, (1, 2))
+a table made
+((0, 0), ((1, 10), (2, 20)))
+6
+[0, 116964, 342, 342, 106292, 106944, 0]
+[0, 1, 4, 2809, 2812, 0]
+[-1, 4194304, 2097152, 2, 1, -1]
+((0, 116964), ((342, 0), (668, 106276)))
+(1, 2812)
+(1.0, (0.125, 2.384185791015625e-7))
+((0, 116964), (668, 106276))
+((0, 116964), (668, 106276))
+(0.5, 2.384185791015625e-7)
+((0, 0), (0, 0))
+(0, (1, 2))
+a table made
+((0, 0), ((1, 10), (2, 20)))
+6
+Main.pairs not computed by the program
+Main.singles not computed by the program
+Main.halves not computed by the program
+Main.arounds not computed by the program
+Main.fromLeast not computed by the program
+Main.counted computed by the program
+# _flat.Main.pairAt
+L64:
+sub rsp, 8
+mov rax, qword ptr [rip+L17]
+cmp rsp, rax
+jb L18
+lea rbx, [rip+L13]
+mov qword ptr [rbx], rdi
+jmp L65
+L65:
+lea rax, [rip+L66]
+mov qword ptr [rbx+8], rax
+jmp L67
+L67:
+mov rax, qword ptr [rbx]
+mov rcx, 2
+imul rax, rcx
+mov qword ptr [rbx+16], rax
+mov rax, qword ptr [rbx+8]
+mov qword ptr [rbx+24], rax
+mov rax, qword ptr [rbx+24]
+mov rdx, qword ptr [rbx+16]
+shl rdx, 3
+add rax, rdx
+mov rcx, qword ptr [rax+5480]
+mov qword ptr [rbx+32], rcx
+mov rax, qword ptr [rbx+8]
+mov qword ptr [rbx+40], rax
+mov rax, qword ptr [rbx+40]
+mov rdx, qword ptr [rbx+16]
+shl rdx, 3
+add rax, rdx
+mov rcx, qword ptr [rax+5488]
+mov qword ptr [rbx+48], rcx
+mov rdi, qword ptr [rbx+32]
+mov rsi, qword ptr [rbx+48]
+add rsp, 8
+ret
+pairAt calls nothing
+# _flat.Main.singleAt
+L64:
+sub rsp, 8
+mov rax, qword ptr [rip+L17]
+cmp rsp, rax
+jb L18
+lea rbx, [rip+L13]
+mov qword ptr [rbx], rdi
+jmp L65
+L65:
+lea rax, [rip+L66]
+mov qword ptr [rbx+8], rax
+jmp L67
+L67:
+mov rax, qword ptr [rbx]
+mov rcx, 1
+imul rax, rcx
+mov qword ptr [rbx+16], rax
+mov rax, qword ptr [rbx+8]
+mov qword ptr [rbx+24], rax
+mov rax, qword ptr [rbx+24]
+mov rdx, qword ptr [rbx+16]
+shl rdx, 3
+add rax, rdx
+mov rcx, qword ptr [rax+8]
+mov qword ptr [rbx+32], rcx
+mov rdi, qword ptr [rbx+32]
+add rsp, 8
+ret
+singleAt calls nothing
+# _flat.Main.halfAt
+L64:
+sub rsp, 8
+mov rax, qword ptr [rip+L17]
+cmp rsp, rax
+jb L18
+lea rbx, [rip+L13]
+mov qword ptr [rbx], rdi
+jmp L65
+L65:
+lea rax, [rip+L66]
+mov qword ptr [rbx+8], rax
+jmp L67
+L67:
+mov rax, qword ptr [rbx]
+mov rcx, 1
+imul rax, rcx
+mov qword ptr [rbx+16], rax
+mov rax, qword ptr [rbx+8]
+mov qword ptr [rbx+24], rax
+mov rax, qword ptr [rbx+24]
+mov rdx, qword ptr [rbx+16]
+shl rdx, 3
+add rax, rdx
+mov rcx, qword ptr [rax+8]
+mov qword ptr [rbx+32], rcx
+mov rax, qword ptr [rbx+32]
+mov qword ptr [rbx+40], rax
+movsd xmm0, qword ptr [rbx+40]
+add rsp, 8
+ret
+halfAt calls nothing
+# _flat.Main.passedAt
+L64:
+sub rsp, 8
+mov rax, qword ptr [rip+L17]
+cmp rsp, rax
+jb L18
+lea rbx, [rip+L13]
+mov qword ptr [rbx], rdi
+mov qword ptr [rbx+8], rsi
+jmp L65
+L65:
+mov rax, qword ptr [rbx]
+mov qword ptr [rbx+16], rax
+jmp L66
+L66:
+mov rax, qword ptr [rbx+8]
+mov rcx, 2
+imul rax, rcx
+mov qword ptr [rbx+24], rax
+mov rax, qword ptr [rbx+16]
+mov qword ptr [rbx+32], rax
+mov rax, qword ptr [rbx+32]
+mov rdx, qword ptr [rbx+24]
+shl rdx, 3
+add rax, rdx
+mov rcx, qword ptr [rax+5480]
+mov qword ptr [rbx+40], rcx
+mov rax, qword ptr [rbx+16]
+mov qword ptr [rbx+48], rax
+mov rax, qword ptr [rbx+48]
+mov rdx, qword ptr [rbx+24]
+shl rdx, 3
+add rax, rdx
+mov rcx, qword ptr [rax+5488]
+mov qword ptr [rbx+56], rcx
+mov rdi, qword ptr [rbx+40]
+mov rsi, qword ptr [rbx+56]
+add rsp, 8
+ret
+passedAt calls nothing
+== val-encoding=tag0
+# _flat.Main.pairAt
+L64:
+sub rsp, 8
+mov rax, qword ptr [rip+L17]
+cmp rsp, rax
+jb L18
+lea rbx, [rip+L13]
+mov qword ptr [rbx], rdi
+jmp L65
+L65:
+lea rax, [rip+L66+1]
+mov qword ptr [rbx+8], rax
+jmp L67
+L67:
+mov rax, qword ptr [rbx]
+mov rcx, 2
+imul rax, rcx
+mov qword ptr [rbx+16], rax
+mov rax, qword ptr [rbx+8]
+mov qword ptr [rbx+24], rax
+mov rax, qword ptr [rbx+24]
+mov rdx, qword ptr [rbx+16]
+shl rdx, 3
+add rax, rdx
+mov rcx, qword ptr [rax+5479]
+mov qword ptr [rbx+32], rcx
+mov rax, qword ptr [rbx+8]
+mov qword ptr [rbx+40], rax
+mov rax, qword ptr [rbx+40]
+mov rdx, qword ptr [rbx+16]
+shl rdx, 3
+add rax, rdx
+mov rcx, qword ptr [rax+5487]
+mov qword ptr [rbx+48], rcx
+mov rdi, qword ptr [rbx+32]
+mov rsi, qword ptr [rbx+48]
+add rsp, 8
+ret
+pairAt calls nothing
+reading everyInt
+idris: unsupported: the primitive crash, in Native.Support.Table.tabulate
+exit 70
+reading wordless
+idris: unsupported: the primitive crash, in Native.Support.Table.tabulate
+exit 70
+Forged.idr checked

@@ -236,11 +236,12 @@ evaluation meanings compiled fuel = do
                            (lookup n' compiled)
 
     -- the word of a maker's object at an index and a displacement, in
-    -- words: the word at their sum, which the machine's load gives too;
+    -- words: the word at their sum, summed as `Int`s, which wrap around,
+    -- as the load's body sums them and the machine's load its address;
     -- outside the words, where the load gives any word, not computed
     payloadWord : FC -> List Value -> Core Value
     payloadWord fc [VBytes ws _, VConst (I i), VConst (I d)] =
-      let k = cast {to = Integer} i + cast d
+      let k = cast {to = Integer} (i + d)
           count = wordCount ws in
       case (if k < 0 || k >= count then Nothing else lookup (cast k) ws) of
         Just w => pure (VConst (B64 w))

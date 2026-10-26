@@ -1,0 +1,9 @@
+. ../../testutils.sh
+
+# The messages of the numbers from -1 to 140, and of 200, natively, and
+# natively under the encoding whose pointers carry a tag.
+idris2 --cg native -p idris2-native-runtime -p idris2-native -o errno-native Errno.idr > /dev/null
+./build/exec/errno-native
+idris2 --cg native -p idris2-native-runtime -p idris2-native --directive val-encoding=tag0 \
+  -o errno-tag0 Errno.idr > /dev/null
+./build/exec/errno-tag0

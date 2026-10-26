@@ -16,12 +16,15 @@
 ||| ordinary code calls it through the boundary, which converts its
 ||| arguments and its result as their types say.
 |||
-||| A program does not import it; the code generator loads it, by this
+||| A program need not import it; the code generator loads it, by this
 ||| module, which imports the generic ones, and the string encoding's
 ||| module, which nothing generic imports. What it may hold is bounded: the
 ||| operations of Idris's primitive types, and those of the libraries'
 ||| foreign functions that are about the language's values, each listed by
-||| the code generator's `dump-foreign` with how this backend implements it.
+||| the code generator's `dump-foreign` with how this backend implements
+||| it; and the structures of ordinary Idris they may be built of, which a
+||| program may import as well: tables (`Native.Support.Table`), functions
+||| of a range of integers made once as words.
 module Native.Support
 
 import public Native.Support.Foreign.Data.Buffer

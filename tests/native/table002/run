@@ -1,0 +1,76 @@
+. ../../testutils.sh
+
+# Tables on both code generators: the same program, compiled by the native
+# one, which makes the marked tables as it compiles the program, and by
+# Chez, which makes them before `main`, prints the same, and so does the
+# native one under the encoding whose pointers carry a tag.
+idris2 --cg native -p idris2-native-runtime -p idris2-native --directive dump-asm=build/asm.s \
+  -o tables-native Tables.idr > /dev/null
+./build/exec/tables-native
+idris2 --cg chez -p idris2-native-runtime -p idris2-native -o tables-chez Tables.idr > /dev/null
+./build/exec/tables-chez
+idris2 --cg native -p idris2-native-runtime -p idris2-native --directive val-encoding=tag0 \
+  --directive dump-asm=build/asm-tag0.s -o tables-tag0 Tables.idr > /dev/null
+./build/exec/tables-tag0
+
+# The image computes none of the marked tables: no function of a marked
+# table's name, which would give it from its cell, and no function that
+# computes it, `_native.(value of ...)`, which `counted`, unmarked, has.
+for c in pairs singles halves arounds fromLeast counted; do
+  if grep -q -e "^# Main\.$c\$" -e "value of Main\.$c)" build/asm.s; then
+    echo "Main.$c computed by the program"
+  else
+    echo "Main.$c not computed by the program"
+  fi
+done
+
+# The reads, as the renderer emits them, after the entry that every flat
+# function has: the table's address (`lea`, or the argument for
+# `passedAt`), the index `k * rowWords`, then for each word the index
+# scaled and one load at a constant displacement, the header and
+# `- lo * rowWords` words and the word's number folded in, under tag0 the
+# pointer tag taken off too; the double's word then moved to its register.
+# None of them calls. Program labels (64 and up) are renumbered in order
+# of appearance.
+form () {
+  awk -v want="# _flat.Main.$2" '/^# / { on = ($0 == want) }
+       on {
+         out = ""
+         while (match($0, /L[0-9]+/)) {
+           l = substr($0, RSTART, RLENGTH)
+           if (substr(l, 2) + 0 >= 64 && !(l in name)) name[l] = "L" (64 + n++)
+           out = out substr($0, 1, RSTART - 1) (l in name ? name[l] : l)
+           $0 = substr($0, RSTART + RLENGTH)
+         }
+         print out $0
+       }' "$1" > build/form.s
+  if [ -s build/form.s ]; then
+    cat build/form.s
+    if grep -q "call" build/form.s; then echo "$2 calls"; else echo "$2 calls nothing"; fi
+  else
+    echo "no machine code of the flat Main.$2"
+  fi
+}
+for f in pairAt singleAt halfAt passedAt; do form build/asm.s $f; done
+echo "== val-encoding=tag0"
+form build/asm-tag0.s pairAt
+
+# Tables `tabulate` does not make, natively: each run ends in `tabulate`,
+# at the read of the table it names. The native code generator has no
+# crash primitive yet: it ends the program there as unsupported, naming
+# the function, with the status 70.
+idris2 --cg native -p idris2-native-runtime -p idris2-native -o refused-native Refused.idr \
+  > /dev/null
+for t in everyInt wordless; do
+  ./build/exec/refused-native $t 2>&1
+  echo "exit $?"
+done
+
+# A table made otherwise than by `tabulate` is refused where it is made.
+# `idris2 --check` can report an error and still exit with 0, so its
+# output says: nothing but the line of the module built when the blocks
+# were refused as they should.
+idris2 -p idris2-native-runtime -p idris2-native --check Forged.idr > check.out 2>&1
+grep -v "Building Forged" check.out
+echo "Forged.idr checked"
+rm -f check.out

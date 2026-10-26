@@ -49,6 +49,8 @@ modules =
     Native.Support.Ptr,
     Native.Support.String.Utf8,
     Native.Support.StructObj,
+    Native.Support.Table,
+    Native.Support.Table.Row,
     Native.Support.Text,
     Native.System,
     Native.System.Call,
