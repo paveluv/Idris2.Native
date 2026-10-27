@@ -8,3 +8,34 @@
 # `idris2-native`.
 idris2 -p idris2-native -p idris2 Gen.idr -o gen > /dev/null
 ./build/exec/gen
+
+# Last, what a whole compile computes of the runtime's constants marked
+# static, its two tables of powers of ten: `powerOfTen`, which both the
+# showing of a double and the reading of one read, and
+# `exactPowerOfTen`, which only the reading reads. Each program marks one
+# constant of its own, `squares`: `NoDouble` shows no double,
+# `ShowsDouble` shows one, `ReadsDouble` reads one. The code generator
+# computes the marks the program reaches, and only those, and lays out
+# each value it computes, or refuses the mark, which ends the
+# compilation. It lays the values out in the order of the marks'
+# names, base name first, whatever the order it computed them in:
+# `exactPowerOfTen`, `powerOfTen`, then `squares`; and it names each
+# object of words by how many it laid out before it, `_native.static 0`
+# the first. So the number of `squares`' object counts the runtime's
+# tables laid out, which are those computed: 0 for `NoDouble`, 1 for
+# `ShowsDouble` (`powerOfTen` is 0), and 2 for `ReadsDouble`
+# (`exactPowerOfTen` is 0 and `powerOfTen` 1). Each line gives the
+# objects of words the image holds, those its code reaches, by name and
+# length in bytes: 64 the eight words of `squares`, 10704 the 669 rows of
+# two words of `powerOfTen`, 184 the 23 rows of one of `exactPowerOfTen`.
+objects () {
+  awk '$1 == "static" && $4 == "BYTES" {
+         sub(/:$/, "", $5); out = out sep $2 " " $3 " " $5; sep = ", "
+       }
+       END { print out }' "$1"
+}
+for p in NoDouble ShowsDouble ReadsDouble; do
+  idris2 --cg native -p idris2-native-runtime -p idris2-native --directive dump-ir=build/$p-ir.txt \
+    -o $p $p.idr > /dev/null
+  echo "$p: $(objects build/$p-ir.txt)"
+done

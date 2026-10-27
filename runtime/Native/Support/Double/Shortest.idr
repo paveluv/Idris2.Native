@@ -10,6 +10,8 @@ import Native.Support.Double.PowerOfTen
 
 import Native.Primitive.Mul128
 import Native.Runtime.Bits
+import Native.Support.Table
+import Native.Support.Table.Row
 
 %default total
 
@@ -43,7 +45,7 @@ shortest f be =
     covering
     cache : Int -> (Bits64, Bits64)
     cache k with (-342 <= k && k <= 326) proof inside
-      _ | True = case PowerOfTen.powerOfTen k inside of
+      _ | True = case Table.index PowerOfTen.powerOfTen k inside of
         (h, l) => if 0 <= k && k <= 55 then (h, l)
           else (if l == 0xFFFFFFFFFFFFFFFF then h + 1 else h, l + 1)
       -- lint: allow trust-escape: unreached, as Dragonbox's indices for binary64 are from -292 to

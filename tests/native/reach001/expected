@@ -57,3 +57,6 @@ reads a double: forms Str.readDouble, Dbl.halves, Dbl.half; marks Dbl.exact
 says something: forms Main.say, Linux.write; marks none
 exits: forms Sys.exit, Linux.exit; marks none
 says, appends and exits: forms Main.say, Linux.write, Str.copy, Str.append, Sys.exit, Linux.exit; marks none
+NoDouble: _native.static 0 BytesLengthP=64
+ShowsDouble: _native.static 0 BytesLengthP=10704, _native.static 1 BytesLengthP=64
+ReadsDouble: _native.static 0 BytesLengthP=184, _native.static 1 BytesLengthP=10704, _native.static 2 BytesLengthP=64

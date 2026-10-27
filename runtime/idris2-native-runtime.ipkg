@@ -38,6 +38,7 @@ modules =
     Native.Support.BufferObj,
     Native.Support.CodePoint,
     Native.Support.Double.Between,
+    Native.Support.Double.ExactPowerOfTen,
     Native.Support.Double.Limbs,
     Native.Support.Double.Nearest,
     Native.Support.Double.PowerOfTen,

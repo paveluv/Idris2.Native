@@ -7,23 +7,16 @@
 ||| the primitive `mul128`.
 module Native.Support.Double.Nearest
 
+import Native.Support.Double.ExactPowerOfTen
 import Native.Support.Double.PowerOfTen
 
 import Native.Primitive.DoubleBits
 import Native.Primitive.Mul128
 import Native.Runtime.Bits
-import Native.Table
+import Native.Support.Table
+import Native.Support.Table.Row
 
 %default total
-
-||| 10^k as a double, k from 0 to 22, every one of them a double exactly.
-export covering
-exactPowerOfTen : Table 0 22 Double
-exactPowerOfTen k _ = cast (power k)
-  where
-    power : Int -> Integer
-    power 0 = 1
-    power j = 10 * power (j - 1)
 
 ||| The bits of the double nearest `w * 10^q`, `w` from 1 below 2^64, by
 ||| Eisel and Lemire: the top bits of `w` times the 128-bit significand of
@@ -55,7 +48,7 @@ eiselLemire w q =
     covering
     fiveTo : Int -> (Bits64, Bits64)
     fiveTo k with (-342 <= k && k <= 326) proof inside
-      _ | True = case PowerOfTen.powerOfTen k inside of
+      _ | True = case Table.index PowerOfTen.powerOfTen k inside of
         (h, l) => if -27 <= k && k <= -1 then (if l == 0xFFFFFFFFFFFFFFFF then h + 1 else h, l + 1)
           else (h, l)
       -- lint: allow trust-escape: unreached, as q is from -342 to 308 here
@@ -125,9 +118,9 @@ nearest w q =
     covering
     clinger : Double -> Int -> Double
     clinger x k with (0 <= k && k <= 22) proof inside
-      _ | True = x * exactPowerOfTen k inside
+      _ | True = x * Table.index ExactPowerOfTen.exactPowerOfTen k inside
       _ | False with (0 <= negate k && negate k <= 22) proof inside'
-        _ | True = x / exactPowerOfTen (negate k) inside'
+        _ | True = x / Table.index ExactPowerOfTen.exactPowerOfTen (negate k) inside'
         -- lint: allow trust-escape: unreached, as q is from -22 to 22 here
         _ | False =
           assert_total

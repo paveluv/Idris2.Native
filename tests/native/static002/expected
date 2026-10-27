@@ -47,8 +47,8 @@ Main.unit not computed by the program
 Main.answer not computed by the program
 Main.power not computed by the program
 Main.edge not computed by the program
-static _native.static 0 BYTES BytesLengthP=64: 0, 1, 4, 9, 16, 25, 36, 49
-static _native.static 1 BYTES BytesLengthP=64: 1, 2, 5, 10, 17, 26, 37, 50
+static _native.static 1 BYTES BytesLengthP=64: 0, 1, 4, 9, 16, 25, 36, 49
+static _native.static 2 BYTES BytesLengthP=64: 1, 2, 5, 10, 17, 26, 37, 50
 10 cells fewer with the marks
 # Main.table
 L64:

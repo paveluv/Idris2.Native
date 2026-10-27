@@ -1,9 +1,13 @@
 . ../../testutils.sh
 
 # Tables on both code generators: the same program, compiled by the native
-# one, which computes the tables as it compiles, and by Chez, prints the
-# same.
+# one, which computes the tables marked static as it compiles, by Chez,
+# which makes them before they are read, and by the native one under the
+# encoding whose pointers carry a tag, prints the same.
 idris2 --cg native -p idris2-native-runtime -p idris2-native -o table-native Table.idr > /dev/null
 ./build/exec/table-native
 idris2 --cg chez -p idris2-native-runtime -p idris2-native -o table-chez Table.idr > /dev/null
 ./build/exec/table-chez
+idris2 --cg native -p idris2-native-runtime -p idris2-native --directive val-encoding=tag0 \
+  -o table-tag0 Table.idr > /dev/null
+./build/exec/table-tag0

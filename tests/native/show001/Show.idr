@@ -1,9 +1,10 @@
 -- `show` of a double, natively: the shortest digits that read back to it
--- (Dragonbox, in the runtime's flat code, its powers of ten a table the
--- compiler computed), laid out as Chez lays them out. The output differs
--- from Chez's in two ways only, which dragonbox001 checks: an exact tie
--- between two shortest decimals is printed with the even digit, and a
--- subnormal without Chez's `|n` after it.
+-- (Dragonbox, in the runtime's flat code, which loads its powers of ten
+-- from a table marked static, made as the program is compiled), laid out
+-- as Chez lays them out. The output differs from Chez's in two ways only,
+-- which dragonbox001 checks: an exact tie between two shortest decimals is
+-- printed with the even digit, and a subnormal without Chez's `|n` after
+-- it.
 module Main
 
 import Native.Primitive.DoubleBits

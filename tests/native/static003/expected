@@ -24,7 +24,7 @@ primes: 2 :: 3 :: 5 :: 7 :: 2305843009213693951 :: _native.integer_6189700196426
 counted: 0 :: 2 :: 3 :: 5 :: 7 :: 2305843009213693951 :: _native.integer_618970019642690137449562111 :: Nil (_native.con0)
 counted: the cell 0 :: <the first cell of primes>
 grid: object 1 :: _native.con0 :: object 1 :: Nil (_native.con0)
-sample: CON ConIdP=0 ConArityP=10: _native.double_4598175219545276416, _native.string_"static", #-42, _native.(int64_-9223372036854775801), _native.integer_1180591620717411303424, #120, #1, _native.static 12, #7, #0
+sample: CON ConIdP=0 ConArityP=10: _native.double_4598175219545276416, _native.string_"static", #-42, _native.(int64_-9223372036854775801), _native.integer_1180591620717411303424, #120, #1, _native.static 13, #7, #0
 its found: CON ConIdP=1 ConArityP=1: #9
 # Main.primesFrom
 L64:
