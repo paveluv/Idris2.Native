@@ -1,10 +1,12 @@
 . ../../testutils.sh
 
-# What the lowering checks of the runtime contract: a routine the runtime
-# has must have a flat form of its port's registers, and a foreign function
-# the runtime implements must agree with `base`'s declaration; and of the
-# static objects it is given: one that holds another must hold one the
-# program has. What does not stops the lowering, with the reason. It uses
-# the code generator's modules, installed as the package `idris2-native`.
+# What the code generator checks of the runtime contract: a routine the
+# runtime has must have a flat form of its port's registers, whichever
+# routines the program calls, a check whose evidence the lowering takes,
+# and a foreign function the runtime implements must agree with `base`'s
+# declaration; and of the static objects the lowering is given: one that
+# holds another must hold one the program has. What does not stops the
+# compile, with the reason. It uses the code generator's modules,
+# installed as the package `idris2-native`.
 idris2 -p idris2-native -p idris2 Gen.idr -o gen > /dev/null
 ./build/exec/gen

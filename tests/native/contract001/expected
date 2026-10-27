@@ -2,6 +2,7 @@ as given: lowered
 no crash: the runtime has no routine Native.Runtime.System.crash, which generated code calls
 allocSlow of two words: the runtime's Native.Runtime.Space.allocSlow has the form [W64, W64] -> [W64], but its port is [W64] -> [ByteAddr]
 crash with a result: the runtime's Native.Runtime.System.crash has the form [W64, W64] -> [W64], but its port is [ByteAddr, W64] -> []
+no routine's form given: lowered
 prim__exit as declared: lowered
 prim__exit of a Bits64: Native.System.Foreign.System.prim__exit takes [Bits64, %World] and returns (PrimIO.IORes Builtin.Unit), but System.prim__exit is declared with [Int, %World] -> IORes Unit
 a pair and the string it holds: lowered

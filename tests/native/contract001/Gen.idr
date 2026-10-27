@@ -1,9 +1,15 @@
--- What the lowering still checks of the runtime contract. Idris checks
--- each routine the runtime gives against its port where the runtime is
--- built (contract002); the lowering checks that a routine the runtime has
--- has a flat form, of the registers its port says. A routine is a flat
+-- What the code generator still checks of the runtime contract. Idris
+-- checks each routine the runtime gives against its port where the
+-- runtime is built (contract002); the code generator checks, before it
+-- lowers a program, that a routine the runtime has has a flat form, of
+-- the registers its port says (`checkRoutines`), among the runtime's
+-- forms, whichever routines the program calls: in the routines' cases
+-- here, a program of no functions, which calls none. A routine is a flat
 -- function of the runtime library, so its form's registers are its
--- parameters' and its result's.
+-- parameters' and its result's. The lowering takes the check's evidence
+-- (`RoutinesChecked`), so no program is lowered unchecked, and checks no
+-- routine itself: a program that calls none is lowered with none of the
+-- routines' forms.
 --
 -- The contract's port for `crash` takes two words, the message's address
 -- and its length, and gives nothing, as if written
@@ -16,19 +22,20 @@
 -- made from the routines themselves, one for each routine the runtime
 -- has, of its port's registers, and each case changes or leaves out one.
 --
--- So are the foreign functions the runtime implements, against `base`'s
--- declarations: `System.prim__exit : Int -> PrimIO ()`, whose C types are
--- an `Int` and the world, returning `IORes ()`, is implemented by
--- `Support.Foreign.System.prim__exit` of the same type, position by
--- position; one taking a `Bits64` where `base` says `Int` is refused.
+-- The lowering checks the foreign functions the runtime implements
+-- against `base`'s declarations: `System.prim__exit : Int -> PrimIO ()`,
+-- whose C types are an `Int` and the world, returning `IORes ()`, is
+-- implemented by `Support.Foreign.System.prim__exit` of the same type,
+-- position by position; one taking a `Bits64` where `base` says `Int` is
+-- refused.
 --
--- And what it checks of the static objects it is given, which the values
--- of constants marked static are laid out as: an object that holds
--- another holds that one's address, which the lowering finds among the
--- program's statics, and one it does not find stops it, with the error
--- naming the holder. As if a constant were written `pair = (7, "seven")`,
--- its object holds the fixnum 7 and the address of the string's object;
--- given without the string's object, it is refused.
+-- And it checks the static objects it is given, which the values of
+-- constants marked static are laid out as: an object that holds another
+-- holds that one's address, which the lowering finds among the program's
+-- statics, and one it does not find stops it, with the error naming the
+-- holder. As if a constant were written `pair = (7, "seven")`, its object
+-- holds the fixnum 7 and the address of the string's object; given
+-- without the string's object, it is refused.
 module Main
 
 import Compiler.VMCode
@@ -128,12 +135,27 @@ exitBinding =
   (NS (mkNamespace "System") (UN (Basic "prim__exit")),
    NS (mkNamespace "Native.System.Foreign.System") (UN (Basic "prim__exit")))
 
-checkWith : String -> List FlatDef -> List (Name, VMDef) -> IO ()
-checkWith what forms vmdefs = putStrLn $ what ++ ": " ++
-  case lowerProgram TestEnc defaultPlatform realised forms [] empty empty empty [] [exitBinding] []
-         vmdefs of
+||| What the code generator makes of a program, as it compiles one: the
+||| routines checked against their ports among the runtime's forms
+||| (`runtime`), then the program lowered with the check's evidence and
+||| with the forms it is given (`program`), the static objects, the foreign
+||| functions the runtime implements by flat functions, and its VMCode.
+compile : (runtime, program : List FlatDef) -> SortedMap Name StaticPlan -> List (Name, Name) ->
+          List (Name, VMDef) -> String
+compile runtime program objects flat vmdefs =
+  case checkRoutines TestEnc realised (\n => find (\fd => fd.name == n) runtime) of
     Left err => err
-    Right _ => "lowered"
+    Right checked =>
+      case lowerProgram TestEnc defaultPlatform realised checked program [] empty empty objects []
+             flat [] vmdefs of
+        Left err => err
+        Right _ => "lowered"
+
+||| The program compiled with these forms as the runtime's, every one of
+||| them given to the lowering.
+checkWith : String -> List FlatDef -> List (Name, VMDef) -> IO ()
+checkWith what forms vmdefs =
+  putStrLn $ what ++ ": " ++ compile forms forms empty [exitBinding] vmdefs
 
 check : String -> List FlatDef -> IO ()
 check what forms = checkWith what forms []
@@ -146,12 +168,9 @@ pairObject, sevenObject : Name
 pairObject = NS (mkNamespace "_native") (UN (Basic "static 0"))
 sevenObject = NS (mkNamespace "_native") (UN (Basic ("string_" ++ show "seven")))
 
-||| The lowering of no function, with the stand-ins and these static objects.
+||| The compile of no function, with the stand-ins and these static objects.
 checkObjects : String -> SortedMap Name StaticPlan -> IO ()
-checkObjects what objects = putStrLn $ what ++ ": " ++
-  case lowerProgram TestEnc defaultPlatform realised standIns [] empty empty objects [] [] [] [] of
-    Left err => err
-    Right _ => "lowered"
+checkObjects what objects = putStrLn $ what ++ ": " ++ compile standIns standIns objects [] []
 
 ||| `base`'s `System.prim__exit : Int -> PrimIO ()`, as VMCode has it.
 exitForeign : (Name, VMDef)
@@ -176,6 +195,10 @@ main = do
   -- crash (message, length : Bits64) : Bits64
   check "crash with a result"
     (replacing (form runtimeCrash [word "message", word "length"] (SPrim Bits64Type) [Word]))
+  -- the check reads the runtime's forms, the lowering only those it is
+  -- given: the runtime has every routine, and a program of no functions,
+  -- which calls none, is lowered with none of their forms
+  putStrLn ("no routine's form given: " ++ compile standIns [] empty [] [])
   -- prim__exit (status : Int) : PrimIO (), as base declares it
   checkWith "prim__exit as declared" (exitImplementation (SPrim IntType) :: standIns) [exitForeign]
   -- prim__exit (status : Bits64) : PrimIO ()

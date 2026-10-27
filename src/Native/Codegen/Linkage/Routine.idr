@@ -18,9 +18,10 @@
 ||| provides by the ports, which Idris checks where it is defined, and the
 ||| code generator finds the function or extern of each entry by its type
 ||| (`Realised`) and takes the registers of each call from the port. A
-||| routine the runtime gives must also have a flat form, which the lowering
-||| checks. Code compiled to join a runtime
-||| that is already built depends on the contract alone.
+||| routine the runtime gives must also have a flat form of its port's
+||| registers, which `Native.Codegen.Lower.checkRoutines` checks at every
+||| compile. Code compiled to join a runtime that is already built depends
+||| on the contract alone.
 module Native.Codegen.Linkage.Routine
 
 import Native.Codegen.Linkage.Realised

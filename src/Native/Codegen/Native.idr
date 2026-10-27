@@ -516,7 +516,8 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
 
         ||| From VMCode to the image, under encodings whose value encoding has
         ||| fixnums: evaluate the constants marked static that the program
-        ||| reaches, produce the term, allocate its registers, render, link.
+        ||| reaches, check the runtime's routines against their ports, produce
+        ||| the term, allocate its registers, render, link.
         pipeline : (enc : Types.Enc) -> {auto 0 _ : HeapObj.ValEnc.HasFixnums enc.val} ->
                    Settings -> Linkage.Realised -> Flat.Marked ->
                    (compiled : SortedMap Name NamedDef) ->
@@ -547,10 +548,14 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
           firsts <- phase "table rows"
             (traverse (\(n, (lo, _)) => tabulated (n, (lo, lo))) (reached forms))
           let tables = fromList [ (t.name, (t.lo, t.rowWords)) | t <- firsts ]
+          -- every routine the runtime has, of its port's registers, whichever
+          -- of them the program calls: the lowering takes the evidence
+          checked <- either (\err => throw (GenericMsg EmptyFC ("native: " ++ err))) pure
+                       (Lower.checkRoutines enc realised (\n => lookup n marked.forms))
           Right (_ ** term) <- phase "lowering"
             (later
-              (Lower.lowerProgram enc settings.platform realised forms shapes tables staticReads
-                 staticObjects constants flat bound defs))
+              (Lower.lowerProgram enc settings.platform realised checked forms shapes tables
+                 staticReads staticObjects constants flat bound defs))
             | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
           allocated <- phase "register allocation"
             (later (RegAlloc.allocRegs X86.Target.x86_64 term))

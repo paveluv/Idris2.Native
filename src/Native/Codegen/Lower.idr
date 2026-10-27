@@ -331,18 +331,6 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
       TermIR.Build.unsupported
         "a string operation, which the runtime has no module for under the encoding"
 
-  ||| A call of an `Integer` routine of the program's encoding, of its port's
-  ||| registers.
-  integers : (c : Types.IntegerRoutine) ->
-             All (TermIR.Opnd v) (Linkage.Routine.portParams (Types.IntegerRoutine.port c)) ->
-             B (All (TermIR.Opnd v)
-                (Linkage.Routine.portResults (Types.IntegerRoutine.port c)))
-  integers c xs = case Linkage.Routine.integerRoutine refs.realised c of
-    Just n => callRoutine n xs
-    Nothing =>
-      TermIR.Build.unsupported
-        "an Integer operation beyond the fixnums, which the runtime has none of yet"
-
   ||| A double's value, from its box, a `DOUBLE` of one double, and the box of
   ||| one, which the program allocates: how ordinary code holds a double.
   valDouble : TermIR.Opnd v IRCommon.Ty.Val -> B (TermIR.Opnd v IRCommon.Ty.F64)
@@ -1001,6 +989,18 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
           l <- constant (Str lit)
           [o] <- strings Types.StringRoutine.Compare [x, l]
           TermIR.Build.branch IRCommon.Op.EqR o (TermIR.Opnd.W 0) code (stringCase x cs other)
+
+        ||| A call of an `Integer` routine of the program's encoding, of its port's
+        ||| registers.
+        integers : (c : Types.IntegerRoutine) ->
+                   All (TermIR.Opnd v) (Linkage.Routine.portParams (Types.IntegerRoutine.port c)) ->
+                   B (All (TermIR.Opnd v)
+                      (Linkage.Routine.portResults (Types.IntegerRoutine.port c)))
+        integers c xs = case Linkage.Routine.integerRoutine refs.realised c of
+          Just n => callRoutine n xs
+          Nothing =>
+            TermIR.Build.unsupported
+              "an Integer operation beyond the fixnums, which the runtime has none of yet"
 
         ||| A primitive operation, and the environment after it.
         op : Env v -> Reg -> PrimFn n -> Vect n Reg -> B (Env v)
@@ -1851,6 +1851,47 @@ cfAgrees CFBuffer (Flat.Exp.SCon n [Flat.Exp.SCon b _]) =
 cfAgrees (CFUser t _) (Flat.Exp.SCon n [Flat.Exp.SCon t' _]) = n == Flat.Exp.uniformType && t == t'
 cfAgrees _ _ = False
 
+||| That every routine the runtime has, as the loaded runtime realises the
+||| contract under the encoding, has a flat form of its port's registers
+||| among the runtime's forms: what `checkRoutines` gives when they do.
+||| Nothing else makes one, and `lowerProgram` takes one, so that no program
+||| is lowered against a runtime whose routines were not checked.
+export
+data RoutinesChecked : Types.Enc -> Linkage.Realised -> Type where
+  ||| The routines of the contract as realised, checked.
+  MkRoutinesChecked : {0 enc : Types.Enc} -> {0 realised : Linkage.Realised} ->
+                      RoutinesChecked enc realised
+
+||| Check that every routine the runtime has, as the loaded runtime realises
+||| the contract, has a flat form of the registers its port says: its
+||| parameters' and its result's are those generated code calls it with.
+||| The form of each is looked up by its name among the runtime's (`form`),
+||| not among those a program is lowered with, so that a runtime that does
+||| not meet the contract is refused at every compile, whichever routines
+||| the program calls. The error names the routine, with the form's
+||| registers and the port's where they differ.
+export
+checkRoutines : (enc : Types.Enc) -> (realised : Linkage.Realised) ->
+                (form : Name -> Maybe Flat.Exp.FlatDef) ->
+                Either String (RoutinesChecked enc realised)
+checkRoutines enc realised form =
+  MkRoutinesChecked <$ traverse_ provided (Linkage.Routine.routines {enc} realised)
+  where
+    ||| The routine's form, of its port's registers.
+    provided : Linkage.Routine.RoutineCall enc -> Either String ()
+    provided r =
+      case form r.name of
+        Nothing =>
+          Left ("the runtime has no routine " ++ show r.name ++ ", which generated code calls")
+        Just fd =>
+          let rs = LowerFlat.tys {enc} fd.result
+              ps = LowerFlat.tys {enc} (LowerFlat.paramsLayout fd.params)
+          in if rs == r.results && ps == r.params then Right ()
+             else Left ("the runtime's " ++ show r.name ++ " has the form "
+                        ++ show ps ++ " -> " ++ show rs
+                        ++ ", but its port is "
+                        ++ show r.params ++ " -> " ++ show r.results)
+
 ||| A whole program, as a term: every function and foreign function, the
 ||| runtime's routines, the statics of the nullary constructors, of the
 ||| big constants and of the constants marked static, and
@@ -1870,13 +1911,18 @@ cfAgrees _ _ = False
 ||| it.
 |||
 ||| The runtime's routines, as the loaded runtime realises the contract
-||| (`Native.Codegen.Linkage.Realised`), are forms among them: a routine the
-||| runtime has must have a form, of its port's registers, or the program
-||| is not lowered, and the error says which. A call of one it does not have
-||| yet, of an encoding it has no module for, ends the program as
-||| `Unsupported` does. The OS services' externs lower to calls
-||| of the platform's functions for them, and the inline externs to the
-||| instructions they stand for.
+||| (`Native.Codegen.Linkage.Realised`), are called as the forms of their
+||| names among those given, which must be the runtime's own. The lowering
+||| checks no routine itself: it takes the evidence (`RoutinesChecked`) that
+||| `checkRoutines` found, among the runtime's forms, one of its port's
+||| registers for each. So the forms given must include every routine the
+||| program calls: a call the lowering makes of a string or `Integer`
+||| routine whose form is not given, or is not of the port's registers,
+||| lowers to a crash of the program, which names the routine. A call of
+||| one the runtime does not have yet, of an encoding it has no module for,
+||| ends the program as `Unsupported` does. The OS services' externs lower
+||| to calls of the platform's functions for them, and the inline externs
+||| to the instructions they stand for.
 |||
 ||| Each constant the program marks static is given as code reads it
 ||| (`Native.Codegen.StaticRead`), and every read of it in VMCode is its
@@ -1892,16 +1938,16 @@ cfAgrees _ _ = False
 ||| names the form and the constant.
 export
 lowerProgram : (enc : Types.Enc) -> {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Platform ->
-               Linkage.Realised -> List Flat.Exp.FlatDef -> Flat.Exp.Shapes ->
+               (realised : Linkage.Realised) -> (0 checked : RoutinesChecked enc realised) ->
+               List Flat.Exp.FlatDef -> Flat.Exp.Shapes ->
                (tables : SortedMap Name (Int, Nat)) ->
                (staticReads : SortedMap Name StaticRead) ->
                (staticObjects : SortedMap Name ConstantWord.StaticPlan) ->
                (constants : List Name) -> (flat, implemented : List (Name, Name)) ->
                List (Name, VMDef) -> Either String (TermIR.Program.TermProgram enc)
-lowerProgram enc platform realised forms shapes tables staticReads staticObjects constants flat
+lowerProgram enc platform realised _ forms shapes tables staticReads staticObjects constants flat
              implemented vmdefs0 = do
   let vmdefs = map (\(n, d) => (n, answered d)) vmdefs0
-  traverse_ provided (Linkage.Routine.routines {enc} realised)
   traverse_ agrees (mapMaybe boundForeign vmdefs)
   let entryPlan = case Data.List.lookup mainExpression vmdefs of
                     Just (MkVMFun [] body) => FromVM [] body
@@ -2003,21 +2049,6 @@ lowerProgram enc platform realised forms shapes tables staticReads staticObjects
         defNames : SortedSet Name -> (Name, VMDef) -> SortedSet Name
         defNames s (_, MkVMFun _ body) = names s body
         defNames s _ = s
-
-    -- A routine the runtime has: its form, of its port's registers.
-    provided : Linkage.Routine.RoutineCall enc -> Either String ()
-    provided r =
-      case find (\fd => fd.name == r.name) forms of
-        Nothing =>
-          Left ("the runtime has no routine " ++ show r.name ++ ", which generated code calls")
-        Just fd =>
-          let rs = LowerFlat.tys {enc} fd.result
-              ps = LowerFlat.tys {enc} (LowerFlat.paramsLayout fd.params)
-          in if rs == r.results && ps == r.params then Right ()
-             else Left ("the runtime's " ++ show r.name ++ " has the form "
-                        ++ show ps ++ " -> " ++ show rs
-                        ++ ", but its port is "
-                        ++ show r.params ++ " -> " ++ show r.results)
 
     byName : SortedMap Name Flat.Exp.FlatDef
     byName = fromList [(fd.name, fd) | fd <- forms]
