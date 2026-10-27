@@ -78,6 +78,7 @@ import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.Codegen.Linkage.ConvertsIn
 import Native.Codegen.Linkage.Realised as Linkage
 import Native.Codegen.Linkage.Routine
+import Native.Codegen.Linkage.Sym
 import Native.Codegen.LowerFlat
 import Native.Codegen.Platform
 import Native.Codegen.StaticRead
@@ -1567,7 +1568,9 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
 ------------------------------------------------------------------------------
 -- The program
 
-||| What a function of the program is lowered from.
+||| What a declaration of the program is made from: what a function of the
+||| program is lowered from, or a routine of the runtime declared outside
+||| it (`Outside`).
 data Plan
   = ||| A VMCode function.
     FromVM (List Int) (List VMInst)
@@ -1589,6 +1592,11 @@ data Plan
     Constant Nat Name
   | ||| The entry, when the program has none.
     NoEntry
+  | ||| A routine of the runtime that the lowering calls by its name, whose
+    ||| form the program is not lowered with: declared outside the program,
+    ||| of its port's registers, so that a call of it stops the rendering,
+    ||| which names it.
+    Outside
 
 parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
 
@@ -1736,6 +1744,8 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
           cell : TermIR.Opnd v' IRCommon.Ty.ByteAddr -> (word : Int) ->
                  TermIR.Mem v' (TermIR.Mem.MkCell Nothing False (at word))
           cell a w = TermIR.MkMem (TermIR.Mem.AtBytes a) Nothing (at w)
+  planDef d refs fs (TermIR.MkSig n (IRCommon.Conv.Direct rs False) ps False) Outside =
+    TermIR.Def.External
   planDef d refs fs s NoEntry =
     TermIR.Def.Defined (TermIR.Body.Unsupported "a program without __mainExpression")
   planDef d refs fs s _ =
@@ -1912,17 +1922,27 @@ checkRoutines enc realised form =
 |||
 ||| The runtime's routines, as the loaded runtime realises the contract
 ||| (`Native.Codegen.Linkage.Realised`), are called as the forms of their
-||| names among those given, which must be the runtime's own. The lowering
-||| checks no routine itself: it takes the evidence (`RoutinesChecked`) that
-||| `checkRoutines` found, among the runtime's forms, one of its port's
-||| registers for each. So the forms given must include every routine the
-||| program calls: a call the lowering makes of a string or `Integer`
-||| routine whose form is not given, or is not of the port's registers,
-||| lowers to a crash of the program, which names the routine. A call of
-||| one the runtime does not have yet, of an encoding it has no module for,
-||| ends the program as `Unsupported` does. The OS services' externs lower
-||| to calls of the platform's functions for them, and the inline externs
-||| to the instructions they stand for.
+||| names among those given, which must be the runtime's own, and those
+||| forms are compiled with the program. The lowering checks no routine
+||| itself: it takes the evidence (`RoutinesChecked`) that `checkRoutines`
+||| found, among the runtime's forms, one of its port's registers for
+||| each. The rendering and the seed reach some routines by their symbols
+||| (`Linkage.Routine.RoutineCall.symbol`), which the rendering defines at
+||| their forms, so the forms given must include those: one whose symbol
+||| the image uses and whose form is not given is a label the link finds
+||| missing. Each other routine, which the lowering calls by its name (a
+||| string or `Integer` routine), is declared outside the program when
+||| its form is not given, of its port's registers (`Outside`): a call of
+||| one is left to the rendering, which refuses it with an error that
+||| names the routine (`X86.Render.render`). A call of a routine whose
+||| form is given but not as its port says, of other registers (which
+||| `checkRoutines` refuses of the runtime's forms) or of a function that
+||| may convert between words and addresses (`Linkage.ConvertsIn`), lowers
+||| to a crash of the program, which names the routine. A call of one the
+||| runtime does not have yet, of an encoding it has no module for, ends
+||| the program as `Unsupported` does. The OS services' externs lower to
+||| calls of the platform's functions for them, and the inline externs to
+||| the instructions they stand for.
 |||
 ||| Each constant the program marks static is given as code reads it
 ||| (`Native.Codegen.StaticRead`), and every read of it in VMCode is its
@@ -1955,6 +1975,7 @@ lowerProgram enc platform realised _ forms shapes tables staticReads staticObjec
       planned = concatMap kept (mapMaybe plan (filter ((/= mainExpression) . fst) vmdefs))
       others = planned
                  ++ [(LowerFlat.formSig fd, Form fd) | fd <- forms]
+                 ++ outside (Data.SortedSet.fromList [fd.name | fd <- forms])
       -- the nullary constructors the boundaries may box, with constructor
       -- 0's, which a string iterator's end is
       boxing = fromList
@@ -2049,6 +2070,20 @@ lowerProgram enc platform realised _ forms shapes tables staticReads staticObjec
         defNames : SortedSet Name -> (Name, VMDef) -> SortedSet Name
         defNames s (_, MkVMFun _ body) = names s body
         defNames s _ = s
+
+    ||| The routines of the runtime that the lowering calls by their names,
+    ||| those reached by no symbol, whose forms are not given (`given` holds
+    ||| the names of those that are), each declared outside the program by
+    ||| the signature generated code calls it by (`routine`): its form's
+    ||| name, `Direct`, of its port's registers, converting nothing. One
+    ||| reached by its symbol is not declared: no call names it, and its
+    ||| symbol is defined at its form.
+    outside : (given : SortedSet Name) -> List (TermIR.Sig enc, Plan)
+    outside given =
+      [ (TermIR.MkSig (Linkage.Routine.flatName r.name) (IRCommon.Conv.Direct r.results False)
+           r.params False, Outside)
+      | r <- Linkage.Routine.routines {enc} realised, isNothing r.symbol
+      , not (contains r.name given) ]
 
     byName : SortedMap Name Flat.Exp.FlatDef
     byName = fromList [(fd.name, fd) | fd <- forms]

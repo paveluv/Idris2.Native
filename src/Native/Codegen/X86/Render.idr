@@ -554,18 +554,13 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                        _ => pure ())
                       items
 
-          ||| A callee's parameter types, or, for a routine outside the program, the
-          ||| arguments' own.
-          paramTys : Name -> List (LocatedIR.Opnd enc) -> Render enc (List (IRCommon.Ty enc))
-          paramTys f args = do
+          ||| A callee's parameter types, as its function in the program has them.
+          ||| A callee that is no function of the program is an error, which each
+          ||| call meets first, looking up its label (`funLabel`, `runtimeRoutine`).
+          paramTys : Name -> Render enc (List (IRCommon.Ty enc))
+          paramTys f = do
             s <- get
-            pure (fromMaybe (map opTy args) (lookup f s.params))
-            where
-              ||| The type of an operand: its register's, or a word for an immediate.
-              opTy : LocatedIR.Opnd enc -> IRCommon.Ty enc
-              opTy (LocatedIR.Opnd.R r) = LocatedIR.Reg.ty r
-              opTy (LocatedIR.Opnd.Imm _) = IRCommon.Ty.W64
-              opTy (LocatedIR.Opnd.StaticRef _) = IRCommon.Ty.Val
+            maybe (failWith ("no function " ++ show f)) pure (lookup f s.params)
 
           term : (LocatedIR.Label -> Asm.Label) -> (results : List (IRCommon.Ty enc)) ->
                  LocatedIR.Terminator enc ->
@@ -607,11 +602,11 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
             LocatedIR.Terminator.Call f args c => do
               l <- funLabel f
               pushCont blk c (argRegs args)
-              putValues !(paramTys f args) args
+              putValues !(paramTys f) args
               emit (Asm.Jmp l)
             LocatedIR.Terminator.TailCall f args => do
                                    l <- funLabel f
-                                   putValues !(paramTys f args) args
+                                   putValues !(paramTys f) args
                                    emit (Asm.Jmp l)
             LocatedIR.Terminator.Apply f x c => do
                                    pushCont blk c [f, x]
@@ -868,7 +863,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                 LocatedIR.Instr.DirectCall f args ds collects live => do
                                   s <- get
                                   callee <- maybe (runtimeRoutine f) pure (lookup f s.funs)
-                                  tys <- paramTys f args
+                                  tys <- paramTys f
                                   saveLive collects emit live
                                   putValues tys args
                                   emit (Asm.Call callee)
@@ -1047,8 +1042,11 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                     restoreLive True coldEmit live
                     coldEmit (Asm.Jmp done)
 
-                  ||| A callee that is no function of the program: an error, since every
-                  ||| routine generated code calls is compiled into it.
+                  ||| A callee of a direct call that is no function of the program: an
+                  ||| error, which names it. The lowering declares outside the program
+                  ||| each routine of the runtime it calls by name whose form it is not
+                  ||| given (`Lower.lowerProgram`), so a call of one ends here, and the
+                  ||| compile with it.
                   runtimeRoutine : Name -> Render enc Asm.Label
                   runtimeRoutine n = failWith ("no runtime routine " ++ show n)
 
