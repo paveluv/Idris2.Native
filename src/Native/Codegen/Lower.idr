@@ -37,17 +37,17 @@
 |||
 ||| What v0 lowers: integer constants, those outside the fixnum range as
 ||| static objects; every integer type's arithmetic, bitwise operations,
-||| shifts, division and comparisons, each wrapping to the type's width, and
-||| the casts among the integer types and characters ("Integers", below);
-||| the casts of integers and characters to strings, an `Integer` in the
-||| fixnum range; constructors, nullary ones as shared statics; closures;
-||| application; calls and tail calls; cases on constructors, on integer and
-||| character constants and on string constants; projection; the arrays
-||| behind `Data.IOArray` ("Arrays", below) and the references behind
-||| `Data.IORef` ("References"); the string primitives; and the
-||| foreign functions the runtime implements. Everything else lowers to
-||| `Unsupported`, the abort stub, so a program always links and fails only
-||| on the paths it reaches.
+||| shifts, division and comparisons, each wrapping to the type's width
+||| ("Integers", below); double constants, as static objects, and doubles'
+||| arithmetic, negation, square root, floor, ceiling and comparisons; the
+||| casts Idris defines between primitive types (`Native.Codegen.CastWay`);
+||| constructors, nullary ones as shared statics; closures; application;
+||| calls and tail calls; cases on constructors, on integer and character
+||| constants and on string constants; projection; the arrays behind
+||| `Data.IOArray` ("Arrays", below) and the references behind `Data.IORef`
+||| ("References"); the string primitives; and the foreign functions the
+||| runtime implements. Everything else lowers to `Unsupported`, the abort
+||| stub, so a program always links and fails only on the paths it reaches.
 |||
 ||| A function that has a flat form (`Flat.Exp`) is not lowered from its
 ||| VMCode: the form becomes a `Direct` function (`Native.Codegen.LowerFlat`),
@@ -68,6 +68,7 @@
 ||| same static object.
 module Native.Codegen.Lower
 
+import Native.Codegen.CastWay
 import Native.Codegen.ConstantWord
 import Native.Codegen.Doubles
 import Native.Codegen.IntWidth
@@ -1006,61 +1007,54 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
         ||| A primitive operation, and the environment after it.
         op : Env v -> Reg -> PrimFn n -> Vect n Reg -> B (Env v)
         op env r fn' vect = case (fn', vect) of
-          (Cast from to, [x]) => case (IntWidth.intWidth from, IntWidth.intWidth to) of
-            (Just wf, Just wt) =>
-              case known env x >>= ConstantWord.intConst >>= (castConstant to . snd) of
-              Just folded => do c <- constant folded; pure (setKnown env r c folded)
-              Nothing => do
-                c <- if to == CharType then toChar wf (get env x) else retype wf wt (get env x)
-                pure (set env r c)
-            -- a character as a string of it, a number as its decimal text, an
-            -- integer as the nearest double
-            (Just wf, Nothing) =>
-              if to == DoubleType && from /= CharType then set env r <$> toDouble wf (get env x)
-              else if to /= StringType
-                then TermIR.Build.unsupported ("the cast from " ++ show from ++ " to " ++ show to)
-              else if from == CharType then do
-                w <- fixValue (get env x)
-                empty <- constant (Str "")
-                [c] <- strings Types.StringRoutine.Cons [w, empty]
-                pure (set env r c)
-              else set env r <$> decimal wf (get env x)
-            -- a string as the integer it reads as, wrapped to the width as a cast
-            -- from Integer is
-            -- a double as the integer type, and a string as the integer it reads
-            -- as, wrapped to the width as a cast from Integer is
-            (Nothing, Just wt) =>
-              if from == DoubleType && to /= CharType then set env r <$> fromDouble wt (get env x)
-              else if from /= StringType || to == CharType
-                 then TermIR.Build.unsupported ("the cast from " ++ show from ++ " to " ++ show to)
-                 else do
-                   c <- case wt of
-                     IntWidth.Bounded (Width.Narrow n) s => do
-                       [w] <- strings Types.StringRoutine.ReadWord [get env x]
-                       narrowVal n s w
-                     IntWidth.Bounded Width.Whole _ => do
-                       [w] <- strings Types.StringRoutine.ReadWord [get env x]
-                       wideVal w
-                     IntWidth.Unbounded => do
-                       [i] <- integers Types.IntegerRoutine.FromDecimal [get env x]
-                       pure i
-                   pure (set env r c)
-            -- a double as its shortest decimal text, and a string as a double
-            (Nothing, Nothing) =>
-              if from == DoubleType && to == StringType then do
-                f <- valDouble (get env x)
-                [t] <- strings Types.StringRoutine.ShowDouble [f]
-                pure (set env r t)
-              -- a string as the double it reads as
-              else if from == StringType && to == DoubleType then do
-                [f] <- strings Types.StringRoutine.ReadDouble [get env x]
-                d <- doubleVal f
-                pure (set env r d)
-              else TermIR.Build.unsupported ("the cast from " ++ show from ++ " to " ++ show to)
-            _ => TermIR.Build.unsupported ("the cast from " ++ show from ++ " to " ++ show to)
+          (Cast from to, [x]) => case CastWay.castWay from to of
+            CastWay.Retype wf wt => foldedCast to x (retype wf wt)
+            CastWay.ToChar wf => foldedCast to x (toChar wf)
+            CastWay.IntToDouble wf => set env r <$> toDouble wf (get env x)
+            CastWay.DoubleToInt wt => set env r <$> fromDouble wt (get env x)
+            CastWay.CharString => do
+              w <- fixValue (get env x)
+              empty <- constant (Str "")
+              [c] <- strings Types.StringRoutine.Cons [w, empty]
+              pure (set env r c)
+            CastWay.Decimal wf => set env r <$> decimal wf (get env x)
+            CastWay.ReadInteger wt => do
+              c <- case wt of
+                IntWidth.Bounded (Width.Narrow n) s => do
+                  [w] <- strings Types.StringRoutine.ReadWord [get env x]
+                  narrowVal n s w
+                IntWidth.Bounded Width.Whole _ => do
+                  [w] <- strings Types.StringRoutine.ReadWord [get env x]
+                  wideVal w
+                IntWidth.Unbounded => do
+                  [i] <- integers Types.IntegerRoutine.FromDecimal [get env x]
+                  pure i
+              pure (set env r c)
+            CastWay.ShowDouble => do
+              f <- valDouble (get env x)
+              [t] <- strings Types.StringRoutine.ShowDouble [f]
+              pure (set env r t)
+            CastWay.ReadDouble => do
+              [f] <- strings Types.StringRoutine.ReadDouble [get env x]
+              d <- doubleVal f
+              pure (set env r d)
+            CastWay.NoCast =>
+              TermIR.Build.unsupported ("the cast from " ++ show from ++ " to " ++ show to)
           (BelieveMe, [_, _, x]) => pure (set env r (get env x))
           (fn, args) => set env r <$> value fn args
           where
+            ||| A cast to an integer type or to `Char` of the value in the
+            ||| register, and the environment after it: the constant the cast
+            ||| gives, made while compiling, when the value is a known integer
+            ||| constant (`castConstant`); otherwise the code given, of the value.
+            foldedCast : PrimType -> Reg ->
+                         (TermIR.Opnd v IRCommon.Ty.Val -> B (TermIR.Opnd v IRCommon.Ty.Val)) ->
+                         B (Env v)
+            foldedCast to x code =
+              case known env x >>= ConstantWord.intConst >>= (castConstant to . snd) of
+                Just folded => do c <- constant folded; pure (setKnown env r c folded)
+                Nothing => do c <- code (get env x); pure (set env r c)
+
             ||| A cast to `Char`: the value if it is a Unicode scalar value, 0 if not.
             toChar : IntWidth -> TermIR.Opnd v IRCommon.Ty.Val -> B (TermIR.Opnd v IRCommon.Ty.Val)
             toChar wf x = do
