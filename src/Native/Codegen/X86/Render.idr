@@ -118,8 +118,6 @@ record RS (enc : Types.Enc) where
   ||| `Fix` parameter is an integer, whose word the value encoding gives.
   params : SortedMap Name (List (IRCommon.Ty enc))
   statics : SortedMap Name Asm.Label
-  ||| Each table's label, at its rows in the read-only data.
-  tables : SortedMap Name Asm.Label
   ||| The code so far, accumulating at its end.
   text : SnocList Asm.Instr
   ||| Slow paths, placed after the function being rendered.
@@ -153,19 +151,16 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
   -- Functions and the program
 
   ||| The whole program: `main`, which the seed enters, jumps to the entry
-  ||| function; every function follows; the statics, the tables' rows the
-  ||| code generator computed, each a run of bytes, and crash messages are
+  ||| function; every function follows; the statics and crash messages are
   ||| read-only data.
   export
-  render : (tables : List (Name, List Bits8)) -> LocatedIR.Program enc -> Either String Rendered
-  render tables p = do
+  render : LocatedIR.Program enc -> Either String Rendered
+  render p = do
     let start = Linkage.Sym.reservedLabels
         funs = fromList (zip (map (.name) p.functions) [start .. start + length p.functions])
         next1 = start + length p.functions
         statics = fromList (zip (map (.sym) p.statics) [next1 .. next1 + length p.statics])
-        next1' = next1 + length p.statics
-        tableLabels = zip (map fst tables) [next1' .. next1' + length tables]
-        next2 = next1' + length tables
+        next2 = next1 + length p.statics
     let params = fromList (map (\f => (f.name, map LocatedIR.Reg.ty f.params)) p.functions)
         -- `idris_apply` stages a saturated closure's arguments in SCRATCH,
         -- and passes them as a call does, all `Val`s; a closure's arity is
@@ -174,7 +169,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
         applyAreas =
           Linkage.MkAreas (Target.argsWords abi (replicate arity Rep.WordClass)) 0 arity 0
     (s, _) <- runStateT
-      (MkRS next2 funs params statics (fromList tableLabels) [<] [<] [<] applyAreas) $ do
+      (MkRS next2 funs params statics [<] [<] [<] applyAreas) $ do
       entry <- funLabel p.entry
       emits [Asm.Lbl (sym Linkage.Sym.SymMain), Asm.Jmp entry]
       traverse_ function p.functions
@@ -182,8 +177,6 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                            pieces <- staticData st
                            modify { rodata $= (:< (l, pieces)) })
                 p.statics
-      traverse_ (\((_, bytes), l) => modify { rodata $= (:< (l, [Datum.Raw bytes])) })
-        (zip tables (map snd tableLabels))
     pure (MkRendered (s.text <>> []) (s.rodata <>> []) s.areas)
     where
       Render : Types.Enc -> Type -> Type
@@ -959,14 +952,6 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                   emit
                                     (Asm.Store (width sw)
                                      (Asm.MBase Asm.RAX (m.offset - baseTag m.base)) Asm.RCX)
-                -- The number in rax and the arguments where Linux takes them. The kernel
-                -- keeps every register but rcx and r11, and the result is in rax.
-                LocatedIR.Instr.TableAddr d n => do
-                                  s <- get
-                                  case lookup n s.tables of
-                                    Just l => do emit (Asm.Lea Asm.RAX (Asm.MRip l 0))
-                                                 store d Asm.RAX
-                                    Nothing => failWith ("no table " ++ show n)
                 LocatedIR.Instr.AreaAddr d a => do
                                   emit (Asm.Lea Asm.RAX (Asm.MRip (sym (Linkage.Sym.areaSym a)) 0))
                                   store d Asm.RAX
@@ -974,7 +959,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                 LocatedIR.Instr.GetPinned r d => store d (pinnedReg r)
                 LocatedIR.Instr.SetPinned r x => load (pinnedReg r) x
                 -- Linux's system call on x86-64: the number in rax, the arguments in rdi,
-                -- rsi, rdx, r10, r8 and r9, the result in rax
+                -- rsi, rdx, r10, r8 and r9, the result in rax; the kernel keeps every
+                -- register but rcx and r11
                 LocatedIR.Instr.SystemCall d (n :: args) =>
                   if length args > 6 then failWith "a system call of more than six arguments"
                     else do

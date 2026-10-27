@@ -106,7 +106,7 @@ integers =
 ||| The contract as a loaded runtime realises it, of the string and
 ||| bignum encodings' routines alone.
 realised : Realised
-realised = MkRealised [] (Just strings) (Just integers) empty empty empty empty empty
+realised = MkRealised [] (Just strings) (Just integers) empty empty empty empty
 
 ||| Each routine by the name generated code calls it by, as printed here:
 ||| its encoding's word, then its function's name.

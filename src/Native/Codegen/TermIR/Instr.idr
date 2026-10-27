@@ -59,9 +59,6 @@ data Instr : Decls enc -> Bool -> (var : IRCommon.Ty enc -> Type) -> List (IRCom
   ||| The address of a static object, as a pointer to its kind.
   StaticAddr : Var d.statics (MkStaticSig s k) -> Instr d m var [IRCommon.Ty.PtrTo k]
   AreaAddr : Area -> Instr d m var [IRCommon.Ty.ByteAddr]
-  ||| The address of a table's rows, which the code generator computed
-  ||| (`Native.Table`).
-  TableAddr : Name -> Instr d m var [IRCommon.Ty.ByteAddr]
   ||| A byte address moved by a count of bytes.
   Offset : Opnd var IRCommon.Ty.ByteAddr -> Opnd var IRCommon.Ty.W64 ->
            Instr d m var [IRCommon.Ty.ByteAddr]
@@ -168,7 +165,6 @@ traverseInstr g (FConst x) = pure (FConst x)
 traverseInstr g (CodeOf r) = pure (CodeOf r)
 traverseInstr g (StaticAddr r) = pure (StaticAddr r)
 traverseInstr g (AreaAddr a) = pure (AreaAddr a)
-traverseInstr g (TableAddr n) = pure (TableAddr n)
 traverseInstr g (Offset a n) = [| Offset (g a) (g n) |]
 traverseInstr g (Arith {int} o x y) = [| (\x', y' => Arith {int} o x' y') (g x) (g y) |]
 traverseInstr g (Mul128 x y) = [| Mul128 (g x) (g y) |]

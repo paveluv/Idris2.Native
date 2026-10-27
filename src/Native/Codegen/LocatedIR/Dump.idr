@@ -70,7 +70,6 @@ functionPieces f =
           Instr.CodeOf d f => show d ++ " := CodeOf " ++ show f
           Instr.StaticAddr d s => show d ++ " := StaticAddr " ++ show s
           Instr.AreaAddr d _ => show d ++ " := AreaAddr"
-          Instr.TableAddr d n => show d ++ " := TableAddr " ++ show n
           Instr.Arith o d x y => show d ++ " := " ++ show o ++ " " ++ ops [x, y]
           Instr.Mul128 h l x y => show h ++ ", " ++ show l ++ " := Mul128 " ++ ops [x, y]
           Instr.Div128 q r h l x => show q ++ ", " ++ show r ++ " := Div128 " ++ ops [h, l, x]

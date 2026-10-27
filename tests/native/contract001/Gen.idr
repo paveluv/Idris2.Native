@@ -111,7 +111,7 @@ realised =
   MkRealised [(runtimeStart, Start),
               (runtimeAllocSlow, AllocSlow), (runtimeAllocMutable, AllocMutable),
               (runtimeCrash, Crash)]
-             (Just [(utf8Length, Length)]) Nothing empty empty empty empty empty
+             (Just [(utf8Length, Length)]) Nothing empty empty empty empty
 
 word : String -> FlatVar
 word s = MkFlatVar (UN (Basic s)) (SPrim Bits64Type) [Word]
@@ -173,7 +173,7 @@ lowered : (runtime, program : List FlatDef) -> SortedMap Name StaticPlan -> List
           List (Name, VMDef) -> Either String (TermProgram TestEnc)
 lowered runtime program objects flat vmdefs = do
   checked <- checkRoutines TestEnc realised (\n => find (\fd => fd.name == n) runtime)
-  lowerProgram TestEnc defaultPlatform realised checked program [] empty empty objects [] flat []
+  lowerProgram TestEnc defaultPlatform realised checked program [] empty objects [] flat []
     vmdefs
 
 ||| The program lowered (`lowered`), or why it is not.
@@ -189,9 +189,8 @@ compile runtime program objects flat vmdefs =
 rendered : (runtime, program : List FlatDef) -> List (Name, VMDef) -> String
 rendered runtime program vmdefs = either id (const "rendered") $ do
   (_ ** term) <- lowered runtime program empty [] vmdefs
-  let (ir, _) = reach (\n => isJust (routineSymbol {enc = TestEnc} realised n))
-                  (allocRegs x86_64 term)
-  ignore (render TestEnc realised [] ir)
+  let ir = reach (\n => isJust (routineSymbol {enc = TestEnc} realised n)) (allocRegs x86_64 term)
+  ignore (render TestEnc realised ir)
 
 ||| The program compiled with these forms as the runtime's, every one of
 ||| them given to the lowering.

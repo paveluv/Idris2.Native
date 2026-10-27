@@ -42,7 +42,6 @@ import Native.Codegen.Platform
 import Native.Codegen.ProgramReach
 import Native.Codegen.RegAlloc
 import Native.Codegen.StaticRead
-import Native.Codegen.Tabulate
 import Native.Codegen.TermIR.Decls as TermIR
 import Native.Codegen.TermIR.Program as TermIR
 import Native.Codegen.X86.Asm
@@ -157,14 +156,14 @@ codegenNative : Codegen
 codegenNative = MkCG compileExpr executeExpr Nothing Nothing
   where
     ||| The most steps an evaluation when the program is compiled takes to
-    ||| compute one value, a table's row or a constant, one marked static or
-    ||| one either reads, which is computed once, in steps of its own
-    ||| (`Native.Codegen.Evaluate`). Each step is a let, a call, a case, an
-    ||| operation, a word made, or a cell of a list that a prelude function
-    ||| between strings and lists reads or makes: a bound on the work of each
-    ||| value, but for what one step costs as its values grow, such as an
-    ||| operation on a long string. A value that needs more is not computed,
-    ||| an error, and never computed some other way.
+    ||| compute one value: a constant marked static, or one it reads, which
+    ||| is computed once, in steps of its own (`Native.Codegen.Evaluate`).
+    ||| Each step is a let, a call, a case, an operation, a word made, or a
+    ||| cell of a list that a prelude function between strings and lists
+    ||| reads or makes: a bound on the work of each value, but for what one
+    ||| step costs as its values grow, such as an operation on a long
+    ||| string. A value that needs more is not computed, an error, and never
+    ||| computed some other way.
     evaluationFuel : Nat
     evaluationFuel = 100000000
 
@@ -183,20 +182,20 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
         | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
       whenJust settings.dumpFlat $ \f => dumpFlat f marked.forms
       whenJust settings.dumpForeign $ \f => dumpForeign settings realised f
-      -- the compiled forms of the tables and of the constants marked
-      -- static, and of all they call, which Idris's passes, from `main`,
-      -- may not reach: a table only the runtime's flat code reads, and a
-      -- mark the program does not reach, which is checked all the same
-      earlyForms <- phase "the tables and static constants compiled"
-        (Evaluate.compileFor (keys realised.tables ++ marked.staticConstants))
+      -- the compiled forms of the constants marked static, and of all they
+      -- call, which Idris's passes, from `main`, may not reach: a mark only
+      -- the runtime's flat code reads, and a mark the program does not
+      -- reach, which is checked all the same
+      earlyForms <- phase "the static constants compiled"
+        (Evaluate.compileFor marked.staticConstants)
       -- the foreign functions the program reaches, each with the runtime's
       -- function that implements it: the flat ones, and the ordinary ones,
       -- which Idris compiles with the program
       (flat, bound) <- phase "the foreign functions bound" (bindForeign settings marked.forms tm)
       cdata <- phase "Idris's passes" (withSystem bound tm)
       -- the compiled form of each definition of the program, as Idris gives
-      -- it to every code generator, and the tables' and the static
-      -- constants': what they are computed from
+      -- it to every code generator, and the static constants': what they
+      -- are computed from
       let compiled = mergeLeft (fromList (map (\(n, _, d) => (n, d)) cdata.namedDefs)) earlyForms
       image <- case settings.encodings of
         Types.MkEnc HeapObj.ValEnc.FixnumTag1 b s =>
@@ -553,28 +552,21 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
           -- `main`, leave out those whose evaluation may crash or recur, which
           -- on first use crash or recur as they would unshared
           let constants = filter (\n => isNothing (lookup n staticReads)) (mapMaybe kept defs)
-          -- each table's row, by its first: the lowering's reads of it
-          firsts <- phase "table rows"
-            (traverse (\(n, (lo, _)) => tabulated (n, (lo, lo))) (reached reach.forms))
-          let tables = fromList [ (t.name, (t.lo, t.rowWords)) | t <- firsts ]
           -- every routine the runtime has, of its port's registers, whichever
           -- of them the program calls: the lowering takes the evidence
           checked <- either (\err => throw (GenericMsg EmptyFC ("native: " ++ err))) pure
                        (Lower.checkRoutines enc realised (\n => lookup n marked.forms))
           Right (_ ** term) <- phase "lowering"
             (later
-              (Lower.lowerProgram enc settings.platform realised checked reach.forms shapes tables
+              (Lower.lowerProgram enc settings.platform realised checked reach.forms shapes
                  staticReads staticObjects constants flat bound defs))
             | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
           allocated <- phase "register allocation"
             (later (RegAlloc.allocRegs X86.Target.x86_64 term))
           -- the image holds what the entry and the routines the seed reaches
-          -- by symbol reach, and the tables of that alone
-          let (ir, readTables) =
-                LocatedIR.Reach.reach
-                  (\n => isJust (Linkage.Routine.routineSymbol {enc} realised n)) allocated
-          rows <- phase "tables"
-            (traverse tabulated (mapMaybe (\n => (n,) <$> lookup n realised.tables) readTables))
+          -- by symbol reach
+          let ir = LocatedIR.Reach.reach
+                     (\n => isJust (Linkage.Routine.routineSymbol {enc} realised n)) allocated
           case settings.dumpIr of
             Just path => do
               Right () <- coreLift
@@ -583,7 +575,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
               pure ()
             Nothing => pure ()
           Right rendered <- phase "rendering"
-            (later (X86.Render.render enc realised (map (\t => (t.name, t.bytes)) rows) ir))
+            (later (X86.Render.render enc realised ir))
             | Left err => throw (InternalError ("native: " ++ err))
           case settings.dumpAsm of
             Just path => do
@@ -628,21 +620,6 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
                 isData : Flat.Exp.Skeleton -> Bool
                 isData (Flat.Exp.SCon _ _) = True
                 isData _ = False
-
-            ||| The tables the forms reach, with their ranges.
-            reached : List Flat.Exp.FlatDef -> List (Name, (Int, Int))
-            reached fs =
-              nub
-                (mapMaybe (\n => (n,) <$> lookup n realised.tables)
-                 (concatMap Flat.Exp.formPrims fs))
-
-            ||| A table's rows, computed now (`Native.Codegen.Tabulate`).
-            tabulated : (Name, (Int, Int)) -> Core Tabulate.Tabulated
-            tabulated (n, (lo, hi)) = do
-              Right t <-
-                Tabulate.tabulate (realisedMeanings enc realised) compiled evaluationFuel n lo hi
-                | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
-              pure t
 
             ||| A pure computation as an action, so that it runs where the action runs:
             ||| inside `phase`.

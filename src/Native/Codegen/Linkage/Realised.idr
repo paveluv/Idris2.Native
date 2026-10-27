@@ -31,8 +31,7 @@
 ||| the module of `Native.Types` that defines `a`; outside the modules of
 ||| `Native.Types`, in those of `Native.Primitive` too, a definition of the
 ||| type is an ordinary function, not looked at. A program that imports
-||| none of these uses none. The tables (`Native.Table`) are found by their
-||| type too, `Table lo hi r`, wherever they are, with their ranges.
+||| none of these uses none.
 |||
 ||| Part of what generated code, the runtime and the linker agree on
 ||| (`Native.Codegen.Linkage.Routine` says what it is).
@@ -45,15 +44,11 @@ import Core.Case.CaseTree
 import Core.Context
 import Core.Context.Context
 import Core.Core
-import Core.Env
 import Core.FC
 import Core.Name
 import Core.Name.Namespace
 import Core.Name.Scoped
-import Core.Normalise
-import Core.TT.Primitive
 import Core.TT.Term
-import Core.Value
 import Data.List
 import Data.Maybe
 import Data.SortedMap
@@ -95,8 +90,6 @@ record Realised where
   ||| Each maker of an object from words the context defines
   ||| (`Types.FromWords`).
   makers : SortedSet Name
-  ||| Each table the context defines, with its range, `lo` to `hi`.
-  tables : SortedMap Name (Int, Int)
 
 ||| A definition of the root of a module.
 in' : Namespace -> String -> Name
@@ -225,39 +218,17 @@ primitives = do
         _ => Nothing
     place _ = pure Nothing
 
-||| The tables the context defines (`Native.Table`), each by its type,
-||| `Table lo hi r`, with its range if `lo` and `hi` reduce to `Int`s.
-tables : {auto c : Ref Ctxt Defs} -> Core (List (Name, Maybe (Int, Int)))
-tables = do
-  defs <- get Ctxt
-  catMaybes <$> traverse (table defs) !(allNames (gamma defs))
-  where
-    table : Defs -> Name -> Core (Maybe (Name, Maybe (Int, Int)))
-    table defs n = do
-      Just g <- lookupCtxtExact n (gamma defs)
-        | Nothing => pure Nothing
-      let (Ref _ _ f, [lo, hi, _]) = getFnArgs (type g)
-        | _ => pure Nothing
-      if !(toFullNames f) /= in' (mkNamespace "Native.Table") "Table" then pure Nothing else do
-        lo' <- normaliseOpts withAll defs Env.empty lo
-        hi' <- normaliseOpts withAll defs Env.empty hi
-        n' <- toFullNames n
-        pure $ Just $ case (lo', hi') of
-          (PrimVal _ (I l), PrimVal _ (I h)) => (n', Just (l, h))
-          _ => (n', Nothing)
-
 ||| The definitions the flat translation takes a call of as a primitive's:
-||| the backend's primitives and the tables the context defines. Two of one
-||| primitive, or one defined in the modules of its groups where it may not
-||| be, end the compilation here, with what is wrong, before any translation
-||| would take its calls for calls of functions.
+||| the backend's primitives the context defines. Two of one primitive, or
+||| one defined in the modules of its groups where it may not be, end the
+||| compilation here, with what is wrong, before any translation would take
+||| its calls for calls of functions.
 export
 flatPrimitives : Ref Ctxt Defs -> Core (List Name)
 flatPrimitives c = do
   Right ps <- primitives
     | Left e => throw (GenericMsg EmptyFC ("the backend's primitives: " ++ e))
-  ts <- map fst <$> tables
-  pure (map (\(n, _, _) => n) ps ++ ts)
+  pure (map (\(n, _, _) => n) ps)
 
 ||| The contract as the loaded runtime realises it, for the platform and the
 ||| encodings, or what is missing.
@@ -296,10 +267,6 @@ realise platform enc = do
     | Left e => pure (Left ("the backend's primitives: " ++ e))
   Right ms <- makers
     | Left e => pure (Left ("the makers of objects from words: " ++ e))
-  ts <- tables
-  let [] = mapMaybe (\(n, r) => maybe (Just n) (const Nothing) r) ts
-    | (n :: _) =>
-      pure (Left ("the table " ++ show n ++ " has a range that does not reduce to two Ints"))
   let externs = fromList [ (n, i) | (n, _, i) <- intrinsics ]
       services =
         fromList ([ (x, f) | (x, c, _) <- serviceExterns, (f, c', _) <- serviceFunctions, c == c' ]
@@ -308,8 +275,7 @@ realise platform enc = do
   pure
     (Right
       (MkRealised (pairs rs) (map pairs ss') (map pairs is') externs services
-       (fromList (pairs prims)) (fromList ms)
-                           (fromList (mapMaybe (\(n, r) => (n,) <$> r) ts))))
+       (fromList (pairs prims)) (fromList ms)))
   where
     portTy : Name
     portTy = in' (RuntimeModule.runtimeModule "PortTy") "PortTy"

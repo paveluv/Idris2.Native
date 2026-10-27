@@ -112,7 +112,7 @@ realised =
   MkRealised [(runtimeStart, Start),
               (runtimeAllocSlow, AllocSlow), (runtimeAllocMutable, AllocMutable),
               (runtimeCrash, Crash)]
-             Nothing Nothing empty empty empty empty empty
+             Nothing Nothing empty empty empty empty
 
 -- The program, under any value encoding with fixnums: `writeRun` builds it
 -- once for each.
@@ -621,7 +621,7 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
               , MkStaticDef Int64H [SWord 4611686018427387909]
               , MkStaticDef (ClosureH 2 1) [SCode (addToRef {enc}), SVal 30] ]
               (MkEntry here) noConIds)
-    let Right rendered = render enc realised [] run
+    let Right rendered = render enc realised run
       | Left err => putStrLn ("render: " ++ err)
     let Right image = linkProgram enc windowBytes rendered.areas rendered.text rendered.rodata
       | Left problems => putStrLn ("link: " ++ show problems)

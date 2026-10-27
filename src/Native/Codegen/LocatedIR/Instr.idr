@@ -45,8 +45,6 @@ data Instr : Types.Enc -> Type where
   StaticAddr : Reg enc -> Name -> Instr enc
   ||| The address of a per-thread area, into a `ByteAddr`.
   AreaAddr   : Reg enc -> Area -> Instr enc
-  ||| The address of a table's rows, into a `ByteAddr`.
-  TableAddr  : Reg enc -> Name -> Instr enc
   ||| Integer arithmetic: the operands and the result are all `W64`s, or all
   ||| `Fix`es; or a byte address moved by a `W64`, an `Add` into a
   ||| `ByteAddr`. On `Fix`es it is the operation on the fixnums' values, which
@@ -197,7 +195,6 @@ instrName (FConst _ _) = "FConst"
 instrName (CodeOf _ _) = "CodeOf"
 instrName (StaticAddr _ _) = "StaticAddr"
 instrName (AreaAddr _ _) = "AreaAddr"
-instrName (TableAddr _ _) = "TableAddr"
 instrName (Arith op _ _ _) = show op
 instrName (Unary IRCommon.Op.Negate _ _) = "Negate"
 instrName (Unary IRCommon.Op.Complement _ _) = "Complement"

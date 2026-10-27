@@ -296,7 +296,6 @@ callees d fds = fromList (mapMaybe one (TermIR.Var.enumerate d.sigs))
 -- Primitive types and operations
 
 ||| The word of an integer or character constant, extended as its type is.
-export
 constWord : Constant -> Maybe Int64
 constWord (I n) = Just (cast n)
 constWord (I8 n) = Just (cast n)
@@ -379,11 +378,10 @@ staticWordVal stats (ConstantWord.Object n) = staticVal stats n
 ||| the shapes of the data types, the OS services' externs, each bound to the
 ||| function that implements it on the platform, the inline externs, each
 ||| with the intrinsic it is, the backend's primitives, each with the
-||| primitive it is, the tables the code generator computed, each with the
-||| index of its first row and the words of a row, the number of the
-||| program's top-level constants, the static objects of the declarations,
-||| by name, and the constants the program marks static, each as code reads
-||| it (`flatRead` says how flat code holds it).
+||| primitive it is, the number of the program's top-level constants, the
+||| static objects of the declarations, by name, and the constants the
+||| program marks static, each as code reads it (`flatRead` says how flat
+||| code holds it).
 public export
 record Forms (enc : Types.Enc) (d : TermIR.Decls enc) where
   constructor MkForms
@@ -392,7 +390,6 @@ record Forms (enc : Types.Enc) (d : TermIR.Decls enc) where
   services : SortedMap Name Name
   externs : SortedMap Name Intrinsic
   primitives : SortedMap Name Primitive
-  tables : SortedMap Name (Int, Nat)
   constants : Nat
   statics : SortedMap Name (s ** TermIR.Var d.statics s)
   staticReads : SortedMap Name StaticRead
@@ -470,13 +467,8 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                          (TermIR.Build.unsupported
                            ("the primitive " ++ show n ++ ", whose result is not its type's"))
                              (\rs => pure (sk, MkValue lay rs)) (regsAs lay x)
-                     Nothing => case lookup n pr.tables of
-                       -- a table: a load of the row at the index
-                       Just (lo, width) => do
-                         xs <- traverse (\a => snd <$> expr env a) args
-                         row n lo width lay (concatValues xs) >>= \rs => pure (sk, MkValue lay rs)
-                       Nothing =>
-                         TermIR.Build.unsupported ("the primitive " ++ show n ++ " in a flat form")
+                     Nothing =>
+                       TermIR.Build.unsupported ("the primitive " ++ show n ++ " in a flat form")
                  Just i => do
                    xs <- traverse (\a => snd <$> expr env a) args
                    x <- inlineExtern n i (concatValues xs)
@@ -530,42 +522,6 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
         constant k = case (Flat.ConstType.constType k, constWord k) of
           (Just t, Just w) => pure (wordVal t (TermIR.Opnd.W w))
           _ => TermIR.Build.unsupported ("the constant " ++ show k ++ " in a flat form")
-
-        ||| The row of a table at an index, as the registers of the layout: the
-        ||| table's address plus the index's row, from `lo`, `width` words a row,
-        ||| each register its word of the row.
-        row : Name -> (lo : Int) -> (width : Nat) -> (lay : Flat.Exp.Layout) -> Value enc v ->
-              B (All (TermIR.Opnd v) (tys lay))
-        row n lo width lay (MkValue [Rep.Word] [k]) =
-          if length lay /= width
-             then TermIR.Build.unsupported ("the table " ++ show n ++ " of rows of another layout")
-             else do
-               base <- TermIR.Build.emit1 (TermIR.Instr.TableAddr n)
-               i <- TermIR.Build.emit1
-                 (TermIR.Instr.Arith IRCommon.Op.Sub k (TermIR.Opnd.W (cast lo)))
-               off <- TermIR.Build.emit1
-                 (TermIR.Instr.Arith IRCommon.Op.Mul i (TermIR.Opnd.W (cast (8 * width))))
-               a <- TermIR.Build.emit1 (TermIR.Instr.Offset base off)
-               words a 0 lay
-          where
-            words : TermIR.Opnd v IRCommon.Ty.ByteAddr -> Int -> (l : Flat.Exp.Layout) ->
-                    B (All (TermIR.Opnd v) (tys l))
-            words a j [] = pure []
-            words a j (Rep.Word :: l) = do
-              w <- TermIR.Build.emit1
-                (TermIR.Instr.Load IRCommon.Ty.W64 (TermIR.MkMem (TermIR.Mem.AtBytes a) Nothing j))
-              (w ::) <$> words a (j + 8) l
-            words a j (Rep.Dbl :: l) = do
-              f <- TermIR.Build.emit1
-                (TermIR.Instr.Load IRCommon.Ty.F64 (TermIR.MkMem (TermIR.Mem.AtBytes a) Nothing j))
-              (f ::) <$> words a (j + 8) l
-            words a j (Rep.Uniform :: _) =
-              TermIR.Build.unsupported
-                ("the table " ++ show n ++ " of a value as ordinary code holds it")
-            words a j (_ :: _) =
-              TermIR.Build.unsupported ("the table " ++ show n ++ " of an address")
-        row n _ _ _ _ =
-          TermIR.Build.unsupported ("the table " ++ show n ++ " at an index of another layout")
 
         ||| A primitive's instructions, from its arguments' registers, which are
         ||| its signature's, after the object's one for a primitive that reads

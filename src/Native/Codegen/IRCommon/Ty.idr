@@ -63,8 +63,8 @@ data Ty : Types.Enc -> Type where
   ||| A pointer to an object of the kind: the same word as a `Val` that
   ||| points to it.
   PtrTo : Types.Kind -> Ty enc
-  ||| The address of memory that holds no object: an area, a table, the
-  ||| allocation window, a run of bytes. A memory base, which `Offset` moves.
+  ||| The address of memory that holds no object: an area, the allocation
+  ||| window, a run of bytes. A memory base, which `Offset` moves.
   ByteAddr : Ty enc
   ||| The address of code: a function's entry, a closure's first field.
   CodeAddr : Ty enc

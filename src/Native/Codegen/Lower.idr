@@ -1769,12 +1769,11 @@ DeferredStatic enc s =
 ||| error that names it.
 program : {enc : Types.Enc} -> {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} ->
           List Flat.Exp.FlatDef ->
-          Flat.Exp.Shapes -> Linkage.Realised -> (tables : SortedMap Name (Int, Nat)) ->
-          (typeCons : SortedMap Name Int) ->
+          Flat.Exp.Shapes -> Linkage.Realised -> (typeCons : SortedMap Name Int) ->
           (staticReads : SortedMap Name StaticRead) -> (constants : Nat) -> Plan ->
           (es : List (TermIR.Sig enc, Plan)) -> (rs : List (s ** DeferredStatic enc s)) ->
           Either String (TermIR.Program.TermProgram enc)
-program forms shapes realised tables typeCons staticReads constants entry es rs =
+program forms shapes realised typeCons staticReads constants entry es rs =
   case choose
     (Data.Distinct.distinct (map (.name) (mainSig :: map Builtin.fst es))
      && Data.Distinct.distinct (map (.sym) (map DPair.fst rs))) of
@@ -1785,7 +1784,7 @@ program forms shapes realised tables typeCons staticReads constants entry es rs 
                      (defs (programDecls es rs) (declsRefs (programDecls es rs))
                        (LowerFlat.MkForms (LowerFlat.callees (programDecls es rs) forms) shapes
                          realised.services
-                         realised.externs realised.primitives tables constants
+                         realised.externs realised.primitives constants
                          (staticVars (programDecls es rs)) staticReads)
                            ((mainSig, entry) :: es))
                      statics (TermIR.Program.MkEntry TermIR.Var.here)
@@ -2123,12 +2122,11 @@ export
 lowerProgram : (enc : Types.Enc) -> {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Platform ->
                (realised : Linkage.Realised) -> (0 checked : RoutinesChecked enc realised) ->
                List Flat.Exp.FlatDef -> Flat.Exp.Shapes ->
-               (tables : SortedMap Name (Int, Nat)) ->
                (staticReads : SortedMap Name StaticRead) ->
                (staticObjects : SortedMap Name ConstantWord.StaticPlan) ->
                (constants : List Name) -> (flat, implemented : List (Name, Name)) ->
                List (Name, VMDef) -> Either String (TermIR.Program.TermProgram enc)
-lowerProgram enc platform realised _ forms shapes tables staticReads staticObjects constants flat
+lowerProgram enc platform realised _ forms shapes staticReads staticObjects constants flat
              implemented vmdefs0 = do
   let vmdefs = map (\(n, d) => (n, answered d)) vmdefs0
   traverse_ agrees (mapMaybe boundForeign vmdefs)
@@ -2155,7 +2153,7 @@ lowerProgram enc platform realised _ forms shapes tables staticReads staticObjec
   traverse_ (laidOut laid)
     (mapMaybe (\(n, rd) => (n,) <$> readObject rd) (Data.SortedMap.toList staticReads))
   traverse_ held [(fd.name, r) | fd <- forms, r <- Flat.Exp.formStatics fd]
-  program forms shapes realised tables typeCons staticReads (length constants) entryPlan others rs
+  program forms shapes realised typeCons staticReads (length constants) entryPlan others rs
   where
     ||| A read of a constant marked static by the flat form of the name,
     ||| which flat code must hold as it is read at (`LowerFlat.flatRead`):
