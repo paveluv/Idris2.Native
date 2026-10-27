@@ -1,246 +1,152 @@
 ||| The C library's messages for its error numbers (`errorMessage`), which
 ||| `strerror` gives: glibc's, for Linux's numbers, as `System.Errno`
-||| gives them, a table computed when a program that uses it is compiled.
+||| gives them. Each is a string literal, which the native code generator
+||| lays out as a static string: the message of a number that has one is
+||| found by a case on the number, and is that string, nothing allocated
+||| or copied.
 module Native.System.ErrorMessage
-
--- lint: allow public-import: the table's type reduces only where its
--- reading is visible, so it is wherever this module is
-import public Native.Table
-
-import Native.Flat.Uniform as Flat
-import Native.Runtime.Alloc.Block as Runtime.Alloc
-import Native.Runtime.ByteAddr as Runtime
-import Native.Runtime.Memory
-import Native.Runtime.Ordo as Runtime
-import Native.Support.Text
-
-%hide Prelude.Interfaces.(>>=)
-%hide Prelude.Interfaces.(>>)
-%hide Prelude.Interfaces.pure
 
 %default total
 
-||| The words of a message: so many each, its bytes in them from the first
-||| word's low byte, zero after; seven, for the longest message's 49 bytes.
-rowWords : Int
-rowWords = 7
-
-||| Word `k mod 7` of the message for the error number `k div 7`; zero
-||| words for a number of no message.
-export covering
-errorText : Table 0 937 Bits64
-errorText k _ = messageWord (cast (8 * (k `mod` rowWords))) 8 (message (k `div` rowWords))
-  where
-    -- `n` bytes of the message from its character `skip`, the first the
-    -- low one, zero past its end
-    messageWord : (skip, n : Nat) -> String -> Bits64
-    messageWord _ Z _ = 0
-    messageWord skip (S j) s = case strUncons s of
-      Nothing => 0
-      Just (c, rest) => case skip of
-        S skip' => messageWord skip' (S j) rest
-        Z => cast (ord c) + prim__shl_Bits64 (messageWord Z j rest) 8
-
-    message : Int -> String
-    message 0 = "Success"
-    message 1 = "Operation not permitted"
-    message 2 = "No such file or directory"
-    message 3 = "No such process"
-    message 4 = "Interrupted system call"
-    message 5 = "Input/output error"
-    message 6 = "No such device or address"
-    message 7 = "Argument list too long"
-    message 8 = "Exec format error"
-    message 9 = "Bad file descriptor"
-    message 10 = "No child processes"
-    message 11 = "Resource temporarily unavailable"
-    message 12 = "Cannot allocate memory"
-    message 13 = "Permission denied"
-    message 14 = "Bad address"
-    message 15 = "Block device required"
-    message 16 = "Device or resource busy"
-    message 17 = "File exists"
-    message 18 = "Invalid cross-device link"
-    message 19 = "No such device"
-    message 20 = "Not a directory"
-    message 21 = "Is a directory"
-    message 22 = "Invalid argument"
-    message 23 = "Too many open files in system"
-    message 24 = "Too many open files"
-    message 25 = "Inappropriate ioctl for device"
-    message 26 = "Text file busy"
-    message 27 = "File too large"
-    message 28 = "No space left on device"
-    message 29 = "Illegal seek"
-    message 30 = "Read-only file system"
-    message 31 = "Too many links"
-    message 32 = "Broken pipe"
-    message 33 = "Numerical argument out of domain"
-    message 34 = "Numerical result out of range"
-    message 35 = "Resource deadlock avoided"
-    message 36 = "File name too long"
-    message 37 = "No locks available"
-    message 38 = "Function not implemented"
-    message 39 = "Directory not empty"
-    message 40 = "Too many levels of symbolic links"
-    message 42 = "No message of desired type"
-    message 43 = "Identifier removed"
-    message 44 = "Channel number out of range"
-    message 45 = "Level 2 not synchronized"
-    message 46 = "Level 3 halted"
-    message 47 = "Level 3 reset"
-    message 48 = "Link number out of range"
-    message 49 = "Protocol driver not attached"
-    message 50 = "No CSI structure available"
-    message 51 = "Level 2 halted"
-    message 52 = "Invalid exchange"
-    message 53 = "Invalid request descriptor"
-    message 54 = "Exchange full"
-    message 55 = "No anode"
-    message 56 = "Invalid request code"
-    message 57 = "Invalid slot"
-    message 59 = "Bad font file format"
-    message 60 = "Device not a stream"
-    message 61 = "No data available"
-    message 62 = "Timer expired"
-    message 63 = "Out of streams resources"
-    message 64 = "Machine is not on the network"
-    message 65 = "Package not installed"
-    message 66 = "Object is remote"
-    message 67 = "Link has been severed"
-    message 68 = "Advertise error"
-    message 69 = "Srmount error"
-    message 70 = "Communication error on send"
-    message 71 = "Protocol error"
-    message 72 = "Multihop attempted"
-    message 73 = "RFS specific error"
-    message 74 = "Bad message"
-    message 75 = "Value too large for defined data type"
-    message 76 = "Name not unique on network"
-    message 77 = "File descriptor in bad state"
-    message 78 = "Remote address changed"
-    message 79 = "Can not access a needed shared library"
-    message 80 = "Accessing a corrupted shared library"
-    message 81 = ".lib section in a.out corrupted"
-    message 82 = "Attempting to link in too many shared libraries"
-    message 83 = "Cannot exec a shared library directly"
-    message 84 = "Invalid or incomplete multibyte or wide character"
-    message 85 = "Interrupted system call should be restarted"
-    message 86 = "Streams pipe error"
-    message 87 = "Too many users"
-    message 88 = "Socket operation on non-socket"
-    message 89 = "Destination address required"
-    message 90 = "Message too long"
-    message 91 = "Protocol wrong type for socket"
-    message 92 = "Protocol not available"
-    message 93 = "Protocol not supported"
-    message 94 = "Socket type not supported"
-    message 95 = "Operation not supported"
-    message 96 = "Protocol family not supported"
-    message 97 = "Address family not supported by protocol"
-    message 98 = "Address already in use"
-    message 99 = "Cannot assign requested address"
-    message 100 = "Network is down"
-    message 101 = "Network is unreachable"
-    message 102 = "Network dropped connection on reset"
-    message 103 = "Software caused connection abort"
-    message 104 = "Connection reset by peer"
-    message 105 = "No buffer space available"
-    message 106 = "Transport endpoint is already connected"
-    message 107 = "Transport endpoint is not connected"
-    message 108 = "Cannot send after transport endpoint shutdown"
-    message 109 = "Too many references: cannot splice"
-    message 110 = "Connection timed out"
-    message 111 = "Connection refused"
-    message 112 = "Host is down"
-    message 113 = "No route to host"
-    message 114 = "Operation already in progress"
-    message 115 = "Operation now in progress"
-    message 116 = "Stale file handle"
-    message 117 = "Structure needs cleaning"
-    message 118 = "Not a XENIX named type file"
-    message 119 = "No XENIX semaphores available"
-    message 120 = "Is a named type file"
-    message 121 = "Remote I/O error"
-    message 122 = "Disk quota exceeded"
-    message 123 = "No medium found"
-    message 124 = "Wrong medium type"
-    message 125 = "Operation canceled"
-    message 126 = "Required key not available"
-    message 127 = "Key has expired"
-    message 128 = "Key has been revoked"
-    message 129 = "Key was rejected by service"
-    message 130 = "Owner died"
-    message 131 = "State not recoverable"
-    message 132 = "Operation not possible due to RF-kill"
-    message 133 = "Memory page has hardware error"
-    message _ = ""
-
 ||| The message for the error number, as glibc's `strerror` gives it:
-||| "Unknown error" and the number for one it has none for.
-export covering
-errorMessage : (errno : Int) -> Runtime.Ordo.Op Runtime.Ordo (Flat.Uniform String)
-errorMessage n =
-  Runtime.Alloc.Block.allocate blockBytes Support.Text.emptyText (\b => do
-    let Runtime.Alloc.Block.MkAddressed p b' = Runtime.Alloc.Block.address b
-    len <- written p
-    s <- Support.Text.ofText p len
-    Runtime.Alloc.Block.free b'
-    Runtime.Ordo.pure s)
-  where
-    -- the message's bytes, in a row's words, or "Unknown error " and the
-    -- number's at most 20 bytes at the end
-    blockBytes : Bits64
-    blockBytes = 8 * cast rowWords + 32
-
-    -- the row's words from the table's word `i`, the row's first `r`
-    covering
-    row : Runtime.ByteAddr -> (r, i : Int) -> Runtime.Ordo.Op Runtime.Ordo ()
-    row p r i with (0 <= i && i <= 937) proof inside
-      _ | True = if i >= r + rowWords then Runtime.Ordo.pure () else do
-        Runtime.Memory.storeAt p (cast (8 * (i - r))) (errorText i inside)
-        row p r (i + 1)
-      _ | False = Runtime.Ordo.pure ()
-
-    -- the bytes up to the first zero byte from `i`
-    covering
-    textBytes : Runtime.ByteAddr -> Bits64 -> Runtime.Ordo.Op Runtime.Ordo Bits64
-    textBytes p i = if i >= cast (8 * rowWords) then Runtime.Ordo.pure i else do
-      c <- Runtime.Memory.loadByteAt p i
-      if c == 0 then Runtime.Ordo.pure i else textBytes p (i + 1)
-
-    -- the decimal digits of `v` written backwards from `i` down; where the
-    -- first digit is
-    covering
-    digits : Runtime.ByteAddr -> (i, v : Bits64) -> Runtime.Ordo.Op Runtime.Ordo Bits64
-    digits p i v = do
-      Runtime.Memory.storeByteAt p i (0x30 + v `mod` 10)
-      if v < 10 then Runtime.Ordo.pure i else digits p (i - 1) (v `div` 10)
-
-    -- "Unknown error " and the number, written at the start; their bytes
-    covering
-    unknown : Runtime.ByteAddr -> Runtime.Ordo.Op Runtime.Ordo Bits64
-    unknown p = do
-      -- "Unknown " and "error ", eight bytes and six
-      Runtime.Memory.storeAt p 0 0x206E776F6E6B6E55
-      Runtime.Memory.storeAt p 8 0x20726F727265
-      if n < 0 then Runtime.Memory.storeByteAt p 14 0x2D else Runtime.Ordo.pure ()
-      let at : Bits64 = if n < 0 then 15 else 14
-          magnitude : Bits64 = if n < 0 then 0 - cast n else cast n
-      first <- digits p (blockBytes - 1) magnitude
-      Runtime.Memory.copyBytes (Runtime.ByteAddr.offset p first) (Runtime.ByteAddr.offset p at)
-        (blockBytes - first)
-      Runtime.Ordo.pure (at + blockBytes - first)
-
-    ||| The last error number of a message, Linux's: the table is of 134
-    ||| rows, 0 to 133, of `rowWords` each, its words 0 to 937.
-    lastNumber : Int
-    lastNumber = 133
-
-    covering
-    written : Runtime.ByteAddr -> Runtime.Ordo.Op Runtime.Ordo Bits64
-    written p =
-      if n < 0 || n > lastNumber then unknown p else do
-        row p (rowWords * n) (rowWords * n)
-        len <- textBytes p 0
-        if len == 0 then unknown p else Runtime.Ordo.pure len
+||| "Unknown error" and the number for one it has none for, as 41 and 58
+||| have none, nor a number below 0 or above the last, 133. The number is
+||| written by the primitive that `show` of an `Int` calls, to the same
+||| text, its sign included: `show` itself would bring `Show`'s
+||| precedences, and the comparisons they are tested by, into every
+||| program that reaches a message, though it shows no number of its own.
+export
+errorMessage : (errno : Int) -> String
+errorMessage 0 = "Success"
+errorMessage 1 = "Operation not permitted"
+errorMessage 2 = "No such file or directory"
+errorMessage 3 = "No such process"
+errorMessage 4 = "Interrupted system call"
+errorMessage 5 = "Input/output error"
+errorMessage 6 = "No such device or address"
+errorMessage 7 = "Argument list too long"
+errorMessage 8 = "Exec format error"
+errorMessage 9 = "Bad file descriptor"
+errorMessage 10 = "No child processes"
+errorMessage 11 = "Resource temporarily unavailable"
+errorMessage 12 = "Cannot allocate memory"
+errorMessage 13 = "Permission denied"
+errorMessage 14 = "Bad address"
+errorMessage 15 = "Block device required"
+errorMessage 16 = "Device or resource busy"
+errorMessage 17 = "File exists"
+errorMessage 18 = "Invalid cross-device link"
+errorMessage 19 = "No such device"
+errorMessage 20 = "Not a directory"
+errorMessage 21 = "Is a directory"
+errorMessage 22 = "Invalid argument"
+errorMessage 23 = "Too many open files in system"
+errorMessage 24 = "Too many open files"
+errorMessage 25 = "Inappropriate ioctl for device"
+errorMessage 26 = "Text file busy"
+errorMessage 27 = "File too large"
+errorMessage 28 = "No space left on device"
+errorMessage 29 = "Illegal seek"
+errorMessage 30 = "Read-only file system"
+errorMessage 31 = "Too many links"
+errorMessage 32 = "Broken pipe"
+errorMessage 33 = "Numerical argument out of domain"
+errorMessage 34 = "Numerical result out of range"
+errorMessage 35 = "Resource deadlock avoided"
+errorMessage 36 = "File name too long"
+errorMessage 37 = "No locks available"
+errorMessage 38 = "Function not implemented"
+errorMessage 39 = "Directory not empty"
+errorMessage 40 = "Too many levels of symbolic links"
+errorMessage 42 = "No message of desired type"
+errorMessage 43 = "Identifier removed"
+errorMessage 44 = "Channel number out of range"
+errorMessage 45 = "Level 2 not synchronized"
+errorMessage 46 = "Level 3 halted"
+errorMessage 47 = "Level 3 reset"
+errorMessage 48 = "Link number out of range"
+errorMessage 49 = "Protocol driver not attached"
+errorMessage 50 = "No CSI structure available"
+errorMessage 51 = "Level 2 halted"
+errorMessage 52 = "Invalid exchange"
+errorMessage 53 = "Invalid request descriptor"
+errorMessage 54 = "Exchange full"
+errorMessage 55 = "No anode"
+errorMessage 56 = "Invalid request code"
+errorMessage 57 = "Invalid slot"
+errorMessage 59 = "Bad font file format"
+errorMessage 60 = "Device not a stream"
+errorMessage 61 = "No data available"
+errorMessage 62 = "Timer expired"
+errorMessage 63 = "Out of streams resources"
+errorMessage 64 = "Machine is not on the network"
+errorMessage 65 = "Package not installed"
+errorMessage 66 = "Object is remote"
+errorMessage 67 = "Link has been severed"
+errorMessage 68 = "Advertise error"
+errorMessage 69 = "Srmount error"
+errorMessage 70 = "Communication error on send"
+errorMessage 71 = "Protocol error"
+errorMessage 72 = "Multihop attempted"
+errorMessage 73 = "RFS specific error"
+errorMessage 74 = "Bad message"
+errorMessage 75 = "Value too large for defined data type"
+errorMessage 76 = "Name not unique on network"
+errorMessage 77 = "File descriptor in bad state"
+errorMessage 78 = "Remote address changed"
+errorMessage 79 = "Can not access a needed shared library"
+errorMessage 80 = "Accessing a corrupted shared library"
+errorMessage 81 = ".lib section in a.out corrupted"
+errorMessage 82 = "Attempting to link in too many shared libraries"
+errorMessage 83 = "Cannot exec a shared library directly"
+errorMessage 84 = "Invalid or incomplete multibyte or wide character"
+errorMessage 85 = "Interrupted system call should be restarted"
+errorMessage 86 = "Streams pipe error"
+errorMessage 87 = "Too many users"
+errorMessage 88 = "Socket operation on non-socket"
+errorMessage 89 = "Destination address required"
+errorMessage 90 = "Message too long"
+errorMessage 91 = "Protocol wrong type for socket"
+errorMessage 92 = "Protocol not available"
+errorMessage 93 = "Protocol not supported"
+errorMessage 94 = "Socket type not supported"
+errorMessage 95 = "Operation not supported"
+errorMessage 96 = "Protocol family not supported"
+errorMessage 97 = "Address family not supported by protocol"
+errorMessage 98 = "Address already in use"
+errorMessage 99 = "Cannot assign requested address"
+errorMessage 100 = "Network is down"
+errorMessage 101 = "Network is unreachable"
+errorMessage 102 = "Network dropped connection on reset"
+errorMessage 103 = "Software caused connection abort"
+errorMessage 104 = "Connection reset by peer"
+errorMessage 105 = "No buffer space available"
+errorMessage 106 = "Transport endpoint is already connected"
+errorMessage 107 = "Transport endpoint is not connected"
+errorMessage 108 = "Cannot send after transport endpoint shutdown"
+errorMessage 109 = "Too many references: cannot splice"
+errorMessage 110 = "Connection timed out"
+errorMessage 111 = "Connection refused"
+errorMessage 112 = "Host is down"
+errorMessage 113 = "No route to host"
+errorMessage 114 = "Operation already in progress"
+errorMessage 115 = "Operation now in progress"
+errorMessage 116 = "Stale file handle"
+errorMessage 117 = "Structure needs cleaning"
+errorMessage 118 = "Not a XENIX named type file"
+errorMessage 119 = "No XENIX semaphores available"
+errorMessage 120 = "Is a named type file"
+errorMessage 121 = "Remote I/O error"
+errorMessage 122 = "Disk quota exceeded"
+errorMessage 123 = "No medium found"
+errorMessage 124 = "Wrong medium type"
+errorMessage 125 = "Operation canceled"
+errorMessage 126 = "Required key not available"
+errorMessage 127 = "Key has expired"
+errorMessage 128 = "Key has been revoked"
+errorMessage 129 = "Key was rejected by service"
+errorMessage 130 = "Owner died"
+errorMessage 131 = "State not recoverable"
+errorMessage 132 = "Operation not possible due to RF-kill"
+errorMessage 133 = "Memory page has hardware error"
+errorMessage n = "Unknown error " ++ prim__cast_IntString n

@@ -1,9 +1,9 @@
 ||| The foreign functions of `base`'s `System.Errno`, as the system tier
-||| implements them, each a flat function of the foreign one's name and type
-||| (`Native.System` says how they are bound).
+||| implements them, each a function of the foreign one's name and type
+||| (`Native.System` says how they are bound): `getErrno` a flat one, which
+||| reads the runtime's last failure, and `strerror` an ordinary one.
 module Native.System.Foreign.System.Errno
 
-import Native.Flat.Uniform as Flat
 import Native.Runtime.Ordo as Runtime
 import Native.System.Errno
 import Native.System.ErrorMessage
@@ -17,10 +17,9 @@ export
 prim__getErrno : PrimIO Int
 prim__getErrno w = let (Runtime.MkOrdo # n) = Errno.lastErrno Runtime.MkOrdo in MkIORes (cast n) w
 
-%cg native flat System.Foreign.System.Errno.prim__strerror
 ||| `strerror`: the C library's message for the error number
-||| (`System.ErrorMessage`).
-export covering
-prim__strerror : Int -> PrimIO (Flat.Uniform String)
-prim__strerror n w = let (Runtime.MkOrdo # s) =
-                           ErrorMessage.errorMessage n Runtime.MkOrdo in MkIORes s w
+||| (`System.ErrorMessage`), compiled with the program, as its messages are
+||| string literals, which ordinary code holds as static strings.
+export
+prim__strerror : Int -> PrimIO String
+prim__strerror n w = MkIORes (ErrorMessage.errorMessage n) w

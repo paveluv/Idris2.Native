@@ -8,10 +8,10 @@
 -- expected output holds the same lines three times: native, Chez, and
 -- native under the encoding whose pointers carry a tag.
 --
--- Three of the tables have the row types and the ranges of the runtime's
+-- Two of the tables have the row types and the ranges of the runtime's
 -- tables, not their rows: those of its powers of ten, pairs of words from
--- 10^-342 to 10^326; of its exact powers of ten, doubles from 10^0 to
--- 10^22; and of its error messages' text, one word a row from 0 to 937.
+-- 10^-342 to 10^326, and of its exact powers of ten, doubles from 10^0 to
+-- 10^22. A third, one word a row from 0 to 937, is the test's own.
 module Main
 
 import Data.IORef
