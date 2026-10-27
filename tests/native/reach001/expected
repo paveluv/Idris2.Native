@@ -1,0 +1,59 @@
+main = putStrLn "hello": none
+show (x : Int): string showSigned
+show (x : Bits8): string showUnsigned
+show (x : Integer): Integer toDecimal, string showSigned
+show (x : Double): string showDouble
+cast {to = Double} s: string readDouble
+cast {to = Int} s: string readWord
+cast {to = Integer} s: Integer fromDecimal
+x + y at Int: none
+x + y at Integer: Integer add
+x + y at Double: none
+x - y at Integer: Integer sub
+x * y at Integer: Integer mul
+prim__div_Integer x y: Integer div
+prim__mod_Integer x y: Integer mod
+prim__negate_Integer n: Integer neg
+prim__negate_Int x: none
+prim__shl_Integer n i: Integer shl
+prim__shr_Integer n i: Integer shr
+n .&. m at Integer: Integer and
+n .|. m at Integer: Integer or
+xor n m at Integer: Integer xor
+s < t at String: string compare
+s == t at String: string compare
+n < m at Integer: Integer compare
+n <= m at Integer: Integer compare
+n == m at Integer: Integer compare
+n >= m at Integer: Integer compare
+n > m at Integer: Integer compare
+x < y at Int: none
+x < y at Double: none
+case s of "a" => 1; _ => 0: string compare
+if b then s ++ t else s: string append
+case n of 0 => s; _ => s ++ t: string append
+strLength s: string length
+prim__strHead s: string head
+strTail s: string tail
+strIndex s i: string index
+reverse s: string reverse
+strSubstr i n s: string substr
+strCons c s: string cons
+cast {to = String} c: string cons
+cast {to = Int} (n : Integer): Integer toBits64
+cast {to = Integer} (i : Int): Integer fromInt64
+cast {to = Integer} (b : Bits64): Integer fromBits64
+cast {to = Integer} (b : Bits8): none
+cast {to = Double} (n : Integer): Integer toDouble
+cast {to = Integer} d: Integer fromDouble
+the iterator's uncons: string after, string charAt
+the iterator's withIteratorString: string from
+an error: none
+appends strings: forms Str.copy, Str.append; marks none
+shows a double: forms Str.showDouble, Str.digits, Str.copy; marks Dbl.powers
+appends strings and reads a double: forms Str.copy, Str.append, Str.readDouble, Dbl.halves, Dbl.half; marks Dbl.exact
+reads squares: forms none; marks Main.squares
+reads a double: forms Str.readDouble, Dbl.halves, Dbl.half; marks Dbl.exact
+says something: forms Main.say, Linux.write; marks none
+exits: forms Sys.exit, Linux.exit; marks none
+says, appends and exits: forms Main.say, Linux.write, Str.copy, Str.append, Sys.exit, Linux.exit; marks none

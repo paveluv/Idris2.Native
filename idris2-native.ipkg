@@ -55,6 +55,7 @@ modules =
     Native.Codegen.LowerFlat,
     Native.Codegen.Native,
     Native.Codegen.Platform,
+    Native.Codegen.ProgramReach,
     Native.Codegen.RegAlloc,
     Native.Codegen.Seed,
     Native.Codegen.StaticRead,

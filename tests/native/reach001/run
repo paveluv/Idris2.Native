@@ -1,0 +1,10 @@
+. ../../testutils.sh
+
+# What a program reaches of the runtime, which the code generator lowers
+# with it: the routines the lowering of its VMCode may call, read off the
+# VMCode construct by construct, and the flat forms and the constants
+# marked static reached from its roots, in the order they are lowered.
+# It uses the code generator's modules, installed as the package
+# `idris2-native`.
+idris2 -p idris2-native -p idris2 Gen.idr -o gen > /dev/null
+./build/exec/gen

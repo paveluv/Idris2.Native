@@ -280,6 +280,13 @@ allVals : {n : Nat} -> All (TermIR.Opnd v) (replicate n IRCommon.Ty.Val) ->
 allVals {n = Z} [] = []
 allVals {n = S n} (x :: xs) = x :: allVals xs
 
+||| A function of the compiler's own library that walks a string
+||| (`Libraries.Data.String.Iterator`), by its name. The lowering makes
+||| these itself, of calls of string routines (`stringIterator`), so they
+||| are among what may call routines (`calledRoutines`).
+iterator : String -> Name
+iterator s = NS (mkNamespace "Libraries.Data.String.Iterator") (UN (Basic s))
+
 parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
            (0 d : TermIR.Decls enc) (refs : Refs enc d)
            {0 v : IRCommon.Ty enc -> Type} {0 l : List (IRCommon.Ty enc) -> Type}
@@ -481,9 +488,6 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
         TermIR.Build.tailApply f rest
       _ => Nothing
     else Nothing
-    where
-      iterator : String -> Name
-      iterator s = NS (mkNamespace "Libraries.Data.String.Iterator") (UN (Basic s))
 
   ||| A function that has a flat form: its arguments taken apart, the form
   ||| called, its result built.
@@ -1855,6 +1859,168 @@ cfAgrees CFBuffer (Flat.Exp.SCon n [Flat.Exp.SCon b _]) =
 cfAgrees (CFUser t _) (Flat.Exp.SCon n [Flat.Exp.SCon t' _]) = n == Flat.Exp.uniformType && t == t'
 cfAgrees _ _ = False
 
+------------------------------------------------------------------------------
+-- The runtime's routines
+
+||| The routines of the runtime that the lowering of the VMCode may call,
+||| by the names generated code calls them by: the string and `Integer`
+||| routines of its primitive operations (`op`), of its cases on strings
+||| (`stringCase`) and of the functions of the string iterator
+||| (`stringIterator`), as the loaded runtime realises the contract. Each
+||| construct counts the routines its code calls, whatever the values, so
+||| this is a superset of those the lowering calls: a cast it folds while
+||| compiling counts too, and so does a function's body when the function
+||| has a flat form, whose boundary is lowered instead. The program's reach
+||| of the runtime is found from these (`Native.Codegen.ProgramReach`), so
+||| a routine called that this misses is outside the program, and its call
+||| stops the compile (`Outside`).
+export
+calledRoutines : Linkage.Realised -> List (Name, VMDef) -> SortedSet Name
+calledRoutines realised = foldl definition empty
+  where
+    ||| A string routine, by the name the lowering calls it by (`strings`).
+    string : Types.StringRoutine -> SortedSet Name -> SortedSet Name
+    string c s = maybe s (\n => insert n s) (Linkage.Routine.stringRoutine realised c)
+
+    ||| An `Integer` routine, by the name the lowering calls it by
+    ||| (`integers`, `integerCall`).
+    integer : Types.IntegerRoutine -> SortedSet Name -> SortedSet Name
+    integer c s = maybe s (\n => insert n s) (Linkage.Routine.integerRoutine realised c)
+
+    ||| An integer operation's `Integer` routine, which the lowering calls at
+    ||| `Integer`'s width, unbounded, and at no other (`withWidth`).
+    unbounded : PrimType -> Types.IntegerRoutine -> SortedSet Name -> SortedSet Name
+    unbounded ty c s = case IntWidth.intWidth ty of
+      Just IntWidth.Unbounded => integer c s
+      _ => s
+
+    ||| A comparison's routine: strings by the string routines' order
+    ||| (`stringOrder`), an `Integer` by its own (`comparison`).
+    order : PrimType -> SortedSet Name -> SortedSet Name
+    order StringType = string Types.StringRoutine.Compare
+    order ty = unbounded ty Types.IntegerRoutine.Compare
+
+    ||| The routines a cast's code calls, by the cast's way (`CastWay`). The
+    ||| `Integer` routines make an `Integer` beyond the fixnums a bounded
+    ||| integer, and a 64-bit integer beyond them an `Integer` (`retype`);
+    ||| an `Integer` a double and back; and one beyond the fixnums its
+    ||| decimal text, and text an `Integer`. The string routines make a
+    ||| character a string, a word its decimal text, text a word, and a
+    ||| double its text and back.
+    way : CastWay -> SortedSet Name -> SortedSet Name
+    way (CastWay.Retype IntWidth.Unbounded (IntWidth.Bounded _ _)) =
+      integer Types.IntegerRoutine.ToBits64
+    way (CastWay.Retype (IntWidth.Bounded Width.Whole True) IntWidth.Unbounded) =
+      integer Types.IntegerRoutine.FromInt64
+    way (CastWay.Retype (IntWidth.Bounded Width.Whole False) IntWidth.Unbounded) =
+      integer Types.IntegerRoutine.FromBits64
+    way (CastWay.Retype _ _) = id
+    way (CastWay.ToChar _) = id
+    way (CastWay.IntToDouble IntWidth.Unbounded) = integer Types.IntegerRoutine.ToDouble
+    way (CastWay.IntToDouble (IntWidth.Bounded _ _)) = id
+    way (CastWay.DoubleToInt IntWidth.Unbounded) = integer Types.IntegerRoutine.FromDouble
+    way (CastWay.DoubleToInt (IntWidth.Bounded _ _)) = id
+    way CastWay.CharString = string Types.StringRoutine.Cons
+    way (CastWay.Decimal IntWidth.Unbounded) =
+      string Types.StringRoutine.ShowSigned . integer Types.IntegerRoutine.ToDecimal
+    way (CastWay.Decimal (IntWidth.Bounded _ True)) = string Types.StringRoutine.ShowSigned
+    way (CastWay.Decimal (IntWidth.Bounded _ False)) = string Types.StringRoutine.ShowUnsigned
+    way (CastWay.ReadInteger IntWidth.Unbounded) = integer Types.IntegerRoutine.FromDecimal
+    way (CastWay.ReadInteger (IntWidth.Bounded _ _)) = string Types.StringRoutine.ReadWord
+    way CastWay.ShowDouble = string Types.StringRoutine.ShowDouble
+    way CastWay.ReadDouble = string Types.StringRoutine.ReadDouble
+    way CastWay.NoCast = id
+
+    ||| The routines a primitive operation's code calls (`op`). Each
+    ||| primitive is named, so that one Idris adds stops the build here.
+    primitive : PrimFn n -> SortedSet Name -> SortedSet Name
+    primitive (Add ty) = unbounded ty Types.IntegerRoutine.Add
+    primitive (Sub ty) = unbounded ty Types.IntegerRoutine.Sub
+    primitive (Mul ty) = unbounded ty Types.IntegerRoutine.Mul
+    primitive (Div ty) = unbounded ty Types.IntegerRoutine.Div
+    primitive (Mod ty) = unbounded ty Types.IntegerRoutine.Mod
+    primitive (Neg ty) = unbounded ty Types.IntegerRoutine.Neg
+    primitive (ShiftL ty) = unbounded ty Types.IntegerRoutine.Shl
+    primitive (ShiftR ty) = unbounded ty Types.IntegerRoutine.Shr
+    primitive (BAnd ty) = unbounded ty Types.IntegerRoutine.And
+    primitive (BOr ty) = unbounded ty Types.IntegerRoutine.Or
+    primitive (BXOr ty) = unbounded ty Types.IntegerRoutine.Xor
+    primitive (LT ty) = order ty
+    primitive (LTE ty) = order ty
+    primitive (EQ ty) = order ty
+    primitive (GTE ty) = order ty
+    primitive (GT ty) = order ty
+    primitive StrLength = string Types.StringRoutine.Length
+    primitive StrHead = string Types.StringRoutine.Head
+    primitive StrTail = string Types.StringRoutine.Tail
+    primitive StrIndex = string Types.StringRoutine.Index
+    primitive StrCons = string Types.StringRoutine.Cons
+    primitive StrAppend = string Types.StringRoutine.Append
+    primitive StrReverse = string Types.StringRoutine.Reverse
+    primitive StrSubstr = string Types.StringRoutine.Substr
+    primitive DoubleExp = id
+    primitive DoubleLog = id
+    primitive DoublePow = id
+    primitive DoubleSin = id
+    primitive DoubleCos = id
+    primitive DoubleTan = id
+    primitive DoubleASin = id
+    primitive DoubleACos = id
+    primitive DoubleATan = id
+    primitive DoubleSqrt = id
+    primitive DoubleFloor = id
+    primitive DoubleCeiling = id
+    primitive (Cast from to) = way (CastWay.castWay from to)
+    primitive BelieveMe = id
+    primitive Crash = id
+
+    ||| Whether a case's constant is a string's, which the lowering compares
+    ||| with the value by the string routines' order (`stringCase`).
+    isText : Constant -> Bool
+    isText (Str _) = True
+    isText _ = False
+
+    mutual
+      ||| The routines the instructions' code calls.
+      instructions : SortedSet Name -> List VMInst -> SortedSet Name
+      instructions = foldl instruction
+
+      ||| The routines an instruction's code calls, its alternatives' among
+      ||| them. Each instruction is named, as each primitive is.
+      instruction : SortedSet Name -> VMInst -> SortedSet Name
+      instruction s (DECLARE _) = s
+      instruction s START = s
+      instruction s (ASSIGN _ _) = s
+      instruction s (MKCON {}) = s
+      instruction s (MKCLOSURE {}) = s
+      instruction s (MKCONSTANT _ _) = s
+      instruction s (APPLY {}) = s
+      instruction s (CALL {}) = s
+      instruction s (OP _ fn _) = primitive fn s
+      instruction s (EXTPRIM {}) = s
+      instruction s (CASE _ alts d) = alternatives (map snd alts) d s
+      instruction s (CONSTCASE _ alts d) =
+        alternatives (map snd alts) d
+          (if any (isText . fst) alts then string Types.StringRoutine.Compare s else s)
+      instruction s (PROJECT {}) = s
+      instruction s (NULL _) = s
+      instruction s (ERROR _) = s
+
+      ||| The routines the alternatives' code and the default's call.
+      alternatives : List (List VMInst) -> Maybe (List VMInst) -> SortedSet Name -> SortedSet Name
+      alternatives alts d s = maybe id (flip instructions) d (foldl instructions s alts)
+
+    ||| The routines a definition's code calls: a function's body's, and
+    ||| those of a function of the string iterator. An error is not lowered.
+    definition : SortedSet Name -> (Name, VMDef) -> SortedSet Name
+    definition s (_, MkVMFun _ body) = instructions s body
+    definition s (n, MkVMForeign {}) =
+      if n == iterator "uncons"
+        then string Types.StringRoutine.CharAt (string Types.StringRoutine.After s)
+      else if n == iterator "withIteratorString" then string Types.StringRoutine.From s
+      else s
+    definition s (_, MkVMError _) = s
+
 ||| That every routine the runtime has, as the loaded runtime realises the
 ||| contract under the encoding, has a flat form of its port's registers
 ||| among the runtime's forms: what `checkRoutines` gives when they do.
@@ -1895,6 +2061,9 @@ checkRoutines enc realised form =
                         ++ show ps ++ " -> " ++ show rs
                         ++ ", but its port is "
                         ++ show r.params ++ " -> " ++ show r.results)
+
+------------------------------------------------------------------------------
+-- A whole program
 
 ||| A whole program, as a term: every function and foreign function, the
 ||| runtime's routines, the statics of the nullary constructors, of the

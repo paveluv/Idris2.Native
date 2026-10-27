@@ -11,9 +11,15 @@
 |||
 ||| The runtime is a library of flat functions, the package
 ||| `idris2-native-runtime`, which a program does not import: the backend
-||| loads its modules into the context itself, and its routines, those the
-||| runtime contract names (`routines` in `Native.Codegen.Linkage.Routine`), are
-||| compiled into every program with the program's own forms.
+||| loads its modules into the context itself. Of its forms, those the
+||| program reaches (`Native.Codegen.ProgramReach`) are compiled with the
+||| program's own: the forms of the routines the runtime contract names
+||| (`routines` in `Native.Codegen.Linkage.Routine`) that the seed reaches
+||| or the program's code may call, those of the flat functions that
+||| implement its foreign functions, and the forms that these and the
+||| program's own forms call, the functions their primitives are bound to
+||| among them. Every other routine is declared outside the program, so
+||| that a call of one stops the compile.
 module Native.Codegen.Native
 
 import Native.Codegen.ConstantWord
@@ -33,6 +39,7 @@ import Native.Codegen.LocatedIR.Program as LocatedIR
 import Native.Codegen.LocatedIR.Reach
 import Native.Codegen.Lower
 import Native.Codegen.Platform
+import Native.Codegen.ProgramReach
 import Native.Codegen.RegAlloc
 import Native.Codegen.StaticRead
 import Native.Codegen.Tabulate
@@ -65,6 +72,7 @@ import Data.List
 import Data.List1
 import Data.Maybe
 import Data.SortedMap
+import Data.SortedSet
 import Data.String
 import Idris.Package.Types
 import Idris.ProcessIdr
@@ -105,7 +113,8 @@ import System.File.ReadWrite
 ||| * `flat <name>...`: the functions the program marks flat (`Flat.Marked`).
 ||| * `static <name>...`: the constants the program marks static
 |||   (`Flat.Marked`), each of which the program reaches, from ordinary
-|||   code or from flat code, computed as the program is compiled
+|||   code or from the flat forms the program reaches
+|||   (`Native.Codegen.ProgramReach`), computed as the program is compiled
 |||   (`Native.Codegen.Evaluate`): the image holds its value, which
 |||   ordinary code reads with no call (`Native.Codegen.StaticRead`), and
 |||   flat code too where it holds it in one uniform register or as a
@@ -308,16 +317,17 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
         ||| definition of no arguments, which no directive marks flat too,
         ||| and which Idris does not inline at each use: one it inlines has no
         ||| use left for the program's compilation to reach, so every mark is
-        ||| checked, reached or not. Each the program reaches, from VMCode or
-        ||| from the flat forms it reaches, is evaluated now too, over the
-        ||| compiled definitions, in at most
-        ||| `evaluationFuel` steps of its own, whatever the order of the
-        ||| marks, and its value must be computed and be one the code
-        ||| generator lays out as static data under the bignum encoding
-        ||| (`StaticRead.staticReads`). Every one that fails ends the
-        ||| compilation, in one error that says why of each, in the order of
-        ||| the marks; else each reached is given as code reads it, with the
-        ||| static objects the reads name, and those they hold, by name.
+        ||| checked, reached or not. Each the program reaches (`reached`, as
+        ||| `Native.Codegen.ProgramReach` finds them: VMCode has it, or a flat
+        ||| form the program reaches reads it) is evaluated now too, over the
+        ||| compiled definitions, in at most `evaluationFuel` steps of its
+        ||| own, whatever the order of the marks, and its value must be
+        ||| computed and be one the code generator lays out as static data
+        ||| under the bignum encoding (`StaticRead.staticReads`). Every one
+        ||| that fails ends the compilation, in one error that says why of
+        ||| each, in the order of the marks; else each reached is given as
+        ||| code reads it, with the static objects the reads name, and those
+        ||| they hold, by name.
         checkStaticConstants : Types.BignumEnc -> Evaluate.Meanings ->
                                (compiled : SortedMap Name NamedDef) ->
                                (flatFunctions, reached, marks : List Name) ->
@@ -515,29 +525,28 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
                           ++ pack (replicate (minus 3 (length frac)) '0') ++ frac
 
         ||| From VMCode to the image, under encodings whose value encoding has
-        ||| fixnums: evaluate the constants marked static that the program
-        ||| reaches, check the runtime's routines against their ports, produce
-        ||| the term, allocate its registers, render, link.
+        ||| fixnums: find what the program reaches of the flat forms and of
+        ||| the constants marked static, evaluate those constants, check the
+        ||| runtime's routines against their ports, produce the term from
+        ||| the forms reached, allocate its registers, render, link.
         pipeline : (enc : Types.Enc) -> {auto 0 _ : HeapObj.ValEnc.HasFixnums enc.val} ->
                    Settings -> Linkage.Realised -> Flat.Marked ->
                    (compiled : SortedMap Name NamedDef) ->
                    (flat, bound : List (Name, Name)) -> List (Name, VMDef) -> Core ELF.Image
         pipeline enc settings realised marked compiled flat bound defs = do
-          (forms, shapes) <- phase "flat inputs" $
-                               flatInputs marked.forms (Data.SortedMap.toList realised.services)
-                                          (map fst defs
-                                            ++
-                                              [r.name
-                                               | r <- Linkage.Routine.routines {enc} realised]
-                                           ++ map snd flat)
-          -- the constants marked static that the program reaches: those
-          -- VMCode has, and those the flat forms read as values
-          let readByForms = map fst (concatMap Flat.Exp.formStatics forms)
-          let reachedMarks = filter (\n => any ((== n) . fst) defs || elem n readByForms)
-                               marked.staticConstants
+          -- the flat forms and the marks the program reaches, from its
+          -- VMCode, the routines that are roots, and the implementations of
+          -- its foreign functions, with the shapes of the forms' data types
+          (reach, shapes) <- phase "flat inputs" $ do
+            reach <- later
+              (ProgramReach.programReach marked.forms realised.services (map fst defs)
+                 (routineRoots (Lower.calledRoutines realised defs)) (map snd flat)
+                 marked.staticConstants)
+            shapes <- formShapes reach.forms
+            pure (reach, shapes)
           (staticReads, staticObjects) <- phase "the static constants evaluated"
             (checkStaticConstants enc.bignum (realisedMeanings enc realised) compiled
-              marked.flatFunctions reachedMarks marked.staticConstants)
+              marked.flatFunctions reach.marks marked.staticConstants)
           -- the definitions evaluated once, on their first use: every one of
           -- no arguments but the entry and those marked static, whose values
           -- the image holds. The Scheme backends, which evaluate them before
@@ -546,7 +555,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
           let constants = filter (\n => isNothing (lookup n staticReads)) (mapMaybe kept defs)
           -- each table's row, by its first: the lowering's reads of it
           firsts <- phase "table rows"
-            (traverse (\(n, (lo, _)) => tabulated (n, (lo, lo))) (reached forms))
+            (traverse (\(n, (lo, _)) => tabulated (n, (lo, lo))) (reached reach.forms))
           let tables = fromList [ (t.name, (t.lo, t.rowWords)) | t <- firsts ]
           -- every routine the runtime has, of its port's registers, whichever
           -- of them the program calls: the lowering takes the evidence
@@ -554,7 +563,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
                        (Lower.checkRoutines enc realised (\n => lookup n marked.forms))
           Right (_ ** term) <- phase "lowering"
             (later
-              (Lower.lowerProgram enc settings.platform realised checked forms shapes tables
+              (Lower.lowerProgram enc settings.platform realised checked reach.forms shapes tables
                  staticReads staticObjects constants flat bound defs))
             | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
           allocated <- phase "register allocation"
@@ -593,36 +602,32 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
               throw (InternalError ("native: the image cannot be assembled: " ++ show problems))
           pure image
           where
-            ||| Of the flat forms, those of the functions named and of the forms they
-            ||| call, the functions of the OS services they call among them, and the
-            ||| shapes of the data types among their types.
-            flatInputs : NameMap Flat.Exp.FlatDef -> List (Name, Name) -> List Name ->
-                         Core (List Flat.Exp.FlatDef, Flat.Exp.Shapes)
-            flatInputs table services roots = do
-              forms <- reach empty [<] roots
+            ||| Each routine of the runtime, in the contract's order, with whether
+            ||| it is a root of what the program reaches: the seed and the
+            ||| rendering reach those of a symbol
+            ||| (`Linkage.Routine.RoutineCall.symbol`), and the lowering of
+            ||| VMCode may call those `called` names (`Lower.calledRoutines`).
+            ||| A routine that is not one is reached all the same when a form
+            ||| reached calls it (`ProgramReach.programReach`).
+            routineRoots : SortedSet Name -> List (Name, Bool)
+            routineRoots called =
+              [ (r.name, isJust r.symbol || contains (Linkage.Routine.flatName r.name) called)
+              | r <- Linkage.Routine.routines {enc} realised ]
+
+            ||| The shapes of the data types among the forms' types, which their
+            ||| lowering needs.
+            formShapes : List Flat.Exp.FlatDef -> Core Flat.Exp.Shapes
+            formShapes forms = do
               let skeletons =
                     nub
                       (filter isData
                        (toList (concatMap (Data.Builder.piece . Flat.Exp.formSkeletons) forms)))
               shapes <- traverse (\sk => map (sk,) <$> Flat.Translate.shape sk) skeletons
-              pure (forms, catMaybes shapes)
+              pure (catMaybes shapes)
               where
                 isData : Flat.Exp.Skeleton -> Bool
                 isData (Flat.Exp.SCon _ _) = True
                 isData _ = False
-
-                -- the forms reached so far accumulate at their end, in the order reached
-                reach : SortedMap Name () -> SnocList Flat.Exp.FlatDef -> List Name ->
-                        Core (List Flat.Exp.FlatDef)
-                reach seen acc [] = pure (acc <>> [])
-                reach seen acc (n :: ns) =
-                  if isJust (Data.SortedMap.lookup n seen) then reach seen acc ns else do
-                    Just fd <- pure (lookup n table)
-                      | Nothing => reach (insert n () seen) acc ns
-                    reach (insert n () seen) (acc :< fd)
-                          (Flat.Exp.formCallees fd
-                            ++ mapMaybe (\p => Data.List.lookup p services) (Flat.Exp.formPrims fd)
-                              ++ ns)
 
             ||| The tables the forms reach, with their ranges.
             reached : List Flat.Exp.FlatDef -> List (Name, (Int, Int))
