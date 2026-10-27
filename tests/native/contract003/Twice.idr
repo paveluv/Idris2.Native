@@ -1,17 +1,14 @@
--- A program that declares an inline extern of its own, by the port of an
--- intrinsic the runtime declares already: `Load64` then has two externs,
--- and the code generator, which binds each intrinsic to the one extern of
--- its port, refuses the program, saying which.
+-- A program that brings a module of the runtime's core of its own,
+-- `Native.Runtime.SecondLoad` (beside this file, under Native/Runtime/),
+-- which declares an inline extern by the port of an intrinsic the runtime
+-- declares already: `Load64` then has two externs among the core's
+-- modules, where the code generator looks for the intrinsics, and the code
+-- generator, which binds each intrinsic to the one extern of its port,
+-- refuses the program, saying which. Importing the module is enough: what
+-- the program imports is loaded with it, used or not.
 module Main
 
-import Native.HeapObj.Shape
-import Native.Intrinsic
-import Native.Port
-import Native.Runtime.ByteAddr
-import Native.Runtime.Ordo
-import Native.Runtime.PortTy
-
-%extern intrinsic__again : PortTy (Intrinsic.port Intrinsic.Load64)
+import Native.Runtime.SecondLoad
 
 main : IO ()
 main = putStrLn "not reached"

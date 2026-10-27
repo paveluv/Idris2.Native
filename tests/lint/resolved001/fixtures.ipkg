@@ -1,9 +1,10 @@
 package fixtures
 
-depends = idris2-native, idris2-native-runtime
+depends = idris2, idris2-native, idris2-native-runtime
 
 modules =
     Canvas,
+    Census,
     Frame,
     Gallery,
     JoinAll,
@@ -16,8 +17,10 @@ modules =
     Page,
     Plain,
     Report,
+    Roster,
     Shape,
     Shapes,
     Spare,
     Values,
-    Viewer
+    Viewer,
+    Walk

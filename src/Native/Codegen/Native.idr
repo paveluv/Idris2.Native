@@ -85,7 +85,6 @@ import Native.Flat.Exp
 import Native.Flat.Marked as Flat
 import Native.Flat.Translate
 import Native.HeapObj.ValEnc
-import Native.Intrinsic
 -- lint: allow import-unused: a flat form reads each static constant at a layout, a list of
 -- `Rep`s, and a list of the reads is built only where `Rep` is visible
 import Native.Rep
@@ -181,7 +180,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
         (Linkage.Realised.realise settings.platform settings.encodings)
         | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
       whenJust settings.dumpFlat $ \f => dumpFlat f marked.forms
-      whenJust settings.dumpForeign $ \f => dumpForeign settings realised f
+      whenJust settings.dumpForeign $ \f => dumpForeign settings f
       -- the compiled forms of the constants marked static, and of all they
       -- call, which Idris's passes, from `main`, may not reach: a mark only
       -- the runtime's flat code reads, and a mark the program does not
@@ -217,7 +216,10 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
         ||| defines (`ForeignFunctions.candidates`): those a flat function
         ||| implements, and those an ordinary one does, each checked to be of
         ||| its foreign function's type. A foreign function an ordinary
-        ||| implementation reaches is reached too.
+        ||| implementation reaches is reached too. The reach looks up every
+        ||| definition the term reaches, which decodes it in full, most for
+        ||| the first time in the compile, though it reads only what each
+        ||| refers to and whether it is foreign.
         bindForeign : Settings -> NameMap Flat.Exp.FlatDef -> ClosedTerm ->
                       Core (List (Name, Name), List (Name, Name))
         bindForeign settings table tm = do
@@ -438,12 +440,14 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
 
         ||| The foreign functions and externs of the libraries in the context, each
         ||| with how this backend implements it: by the runtime (`runtime`), by the
-        ||| lowering inline (`lowered`), or not yet (`missing`). The contract's
-        ||| externs, the inline externs and the services' (`realised`), are not
-        ||| the libraries', and are left out, as is anything of the runtime's.
-        dumpForeign : Settings -> Linkage.Realised -> String -> Core ()
-        dumpForeign settings realised path = do
+        ||| lowering inline (`lowered`), or not yet (`missing`). Anything of the
+        ||| runtime's is left out, and with it the contract's externs, which the
+        ||| runtime declares (`RuntimeModule.declaresExterns`).
+        dumpForeign : Settings -> String -> Core ()
+        dumpForeign settings path = do
           defs <- get Ctxt
+          -- lint: allow decoding-walk: the foreign functions and externs of every library, wherever
+          -- each is, which no rule of the module finds; a diagnostic, run on demand
           all <- traverse (\n => (n,) <$> lookupCtxtExact n (gamma defs)) !(allNames (gamma defs))
           entries <- traverse (entry defs) (mapMaybe library all)
           Right () <- coreLift
@@ -462,12 +466,8 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
             inRuntime (NS ns _) = Linkage.RuntimeModule.inRuntime ns
             inRuntime _ = False
 
-            contract : Name -> Bool
-            contract n = isJust (lookup n realised.externs) || isJust (lookup n realised.services)
-
             library : (Name, Maybe GlobalDef) -> Maybe (Name, GlobalDef)
-            library (n, Just g) = if isForeign g && not (inRuntime n || contract n) then Just (n, g)
-              else Nothing
+            library (n, Just g) = if isForeign g && not (inRuntime n) then Just (n, g) else Nothing
             library (_, Nothing) = Nothing
 
             lowered : List String

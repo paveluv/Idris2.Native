@@ -2,9 +2,22 @@
 
 # The contract's completeness, checked where a program is linked: the code
 # generator binds each intrinsic, OS service and routine to the one entry
-# the loaded runtime declares by its port, found by its type, and refuses a
-# program in which an entry has none, or more than one. Here each program
+# the loaded runtime declares by its port, found by its type among the
+# modules where the runtime declares it (its core, and for an extern
+# `Native.Support.Text` too), and refuses a program in which an entry has
+# none, or more than one. Here the first two programs each bring a module
+# of the core of their own, under Native/Runtime/ beside them, that
 # declares a second extern of an entry the runtime declares already; the
-# runtime's own builds have each entry once.
+# runtime's own builds have each entry once. The third declares externs by
+# the same ports in its own module, outside the runtime, where they are
+# ordinary externs: it compiles, and runs. The fourth brings a module of
+# the runtime's support tier of its own, under Native/Support/, that
+# declares an extern outside the modules where the runtime declares its
+# externs, which the code generator would not find: the module's build
+# refuses it, at the extern, so checking the program shows it.
 idris2 --cg native -p idris2-native -p idris2-native-runtime -o twice Twice.idr 2>&1
 idris2 --cg native -p idris2-native -p idris2-native-runtime -o again Again.idr 2>&1
+idris2 --cg native -p idris2-native -p idris2-native-runtime -o own Own.idr 2>&1
+./build/exec/own 2>&1
+echo "status: $?"
+idris2 -p idris2-native -p idris2-native-runtime --check Tier.idr 2>&1

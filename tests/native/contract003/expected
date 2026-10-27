@@ -2,3 +2,16 @@ Error: native: the runtime's inline externs: Native.Intrinsic.Load64 has 2
 
 Error: native: the runtime's OS services: Native.Service.Exit has 2
 
+the program's own externs are not the contract's
+status: 0
+1/2: Building Native.Support.Leave (Native/Support/Leave.idr)
+Error: Native.Support.Leave.service__leave is an extern of the runtime outside its core and Native.Support.Text, where the runtime declares its externs and the code generator looks for them
+
+Native.Support.Leave:22:1--22:60
+ 18 | import Native.Runtime.Ordo
+ 19 | import Native.Runtime.PortTy
+ 20 | import Native.Service
+ 21 |
+ 22 | %extern service__leave : PortTy (Service.port Service.Exit)
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+

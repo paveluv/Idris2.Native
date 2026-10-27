@@ -116,7 +116,8 @@ export
 resolvedRuleNames : List String
 resolvedRuleNames =
   ["import-unused", "import-indirect", "generic-export", "public-unneeded", "byte-addr-maker",
-   "sealed-allocator", "sealed-boundary", "sealed-values", "unqualified", "repr-orphan"]
+   "sealed-allocator", "sealed-boundary", "sealed-values", "unqualified", "repr-orphan",
+   "decoding-walk"]
 
 ||| The rules whose suppression covers one use, the first after it: each
 ||| use is to say why it is sound by itself.
@@ -134,9 +135,33 @@ resolvedRules fms programNames r =
     [ importUnused m ++ importIndirect r m ++ genericExport m | m <- lintedModules fms r ]
   ++ Finding.joined
     [ publicUnneeded f ds ++ byteAddrMaker f ++ sealedAllocator f ds ms ++ sealedValues f ms
-      ++ unqualifiedNames f ds ms ++ reprOrphan f ds
+      ++ unqualifiedNames f ds ms ++ reprOrphan f ds ++ decodingWalk f ms
      | (f, ds, ms) <- fms ]
   where
+    ||| `decoding-walk`: a use of Idris's list of every name of the context,
+    ||| `Core.Context.allNames`, which looks up every entry to give its name:
+    ||| a lookup decodes the definition from its module's TTC, and keeps it
+    ||| decoded, so the list costs the whole context decoded, every module
+    ||| loaded, and it leaves out the first entry. A walk that looks for
+    ||| some definitions lists the names of the context's map from full names
+    ||| to entries (`resolvedAs`), which decodes nothing, and looks up only
+    ||| those a rule of the name keeps. Where every definition is needed, the
+    ||| suppression says so. In a module that uses Idris's, every mention of
+    ||| the name is reported, where it is written, as the resolution says
+    ||| which names a module uses, not where; a module that uses only another
+    ||| `allNames` than Idris's, its own or another module's, is not looked
+    ||| at.
+    decodingWalk : Source.SourceFile -> Rules.Mentions -> List Finding
+    decodingWalk f ms =
+      if not (any (\rm => rm.path == f.path && any isAllNames rm.uses) r.modules) then [] else
+        [ Rules.finding f "decoding-walk" fc (nameRoot n)
+            ("`allNames` decodes every definition of the context: list the names of its "
+             ++ "`resolvedAs`, and look up only those a rule of the name keeps")
+        | (fc, n) <- ms.refs, nameRoot n == "allNames" ]
+      where
+        isAllNames : Resolution.Use -> Bool
+        isAllNames u = u.definer == "Core.Context" && u.name == "allNames"
+
     ||| `repr-orphan`: a statement of the representation contract, an
     ||| implementation of one of `Native.Types.Repr`'s relations, is made in
     ||| the module that defines the type whose layout it states, which

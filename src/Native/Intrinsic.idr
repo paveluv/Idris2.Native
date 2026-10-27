@@ -5,7 +5,8 @@
 ||| which intrinsics there are, and each one's arrow (`port`). The runtime
 ||| declares each extern by its port (`%extern intrinsic__store64 : PortTy
 ||| (port Store64)` in `Native.Runtime.Memory`), which Idris checks; the code
-||| generator finds each extern by that type alone, and lowers it as
+||| generator finds each extern by that type among the runtime's externs,
+||| in the modules where the runtime declares them, and lowers it as
 ||| `Native.Codegen.Linkage.Expansion` says, which Idris checks against the
 ||| same port. Neither side restates it.
 |||

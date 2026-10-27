@@ -2,24 +2,32 @@
 ||| entry, the function or the extern that is it (`realise`), not named by
 ||| the code generator.
 |||
-||| An inline extern is found by its type alone: the runtime declares each
-||| as `PortTy (port c)` for its intrinsic `c` (`Native.Intrinsic`), which
-||| Idris checks, and which the loaded context keeps as written. The
-||| constructor `c` there is matched to the code generator's own by the
-||| contract's list of every intrinsic: the list's term in the context and
-||| the code generator's copy of it are one declaration, so their elements
-||| pair up whatever the order. Each intrinsic must have exactly one extern.
+||| An inline extern is found by its type among the runtime's externs, in
+||| the modules where it declares them (`RuntimeModule.declaresExterns`):
+||| the runtime declares each as `PortTy (port c)` for its intrinsic `c`
+||| (`Native.Intrinsic`), which Idris checks, and which the loaded context
+||| keeps as written. The constructor `c` there is matched to the code
+||| generator's own by the contract's list of every intrinsic: the list's
+||| term in the context and the code generator's copy of it are one
+||| declaration, so their elements pair up whatever the order. Each
+||| intrinsic must have exactly one extern. An extern of the runtime
+||| outside those modules is refused as its module is built
+||| (`checkExterns`), and outside the runtime an extern of a port's type is
+||| an ordinary extern, not looked at: a program that declares one declares
+||| no intrinsic, since the lowering knows an extern only as one found here.
 |||
 ||| The OS services are found the same way, by their enumeration
-||| (`Native.Service`): each extern, `PortTy (port c)`, and the function of
-||| the platform's module that implements it, of the same type, paired by
-||| their constructor.
+||| (`Native.Service`): each extern, `PortTy (port c)`, among the runtime's,
+||| and the function of the platform's module that implements it, of the
+||| same type, paired by their constructor.
 |||
 ||| The routines are found the same way (`Native.Routine`), each a function
-||| `PortTy (port c)` of the runtime, and the string routines
+||| `PortTy (port c)` of the runtime's core, and the string routines
 ||| (`Native.Types.StringRoutine`) in the string encoding's module. The
-||| string routines the runtime's own code calls each have an extern, as a
-||| service does, paired with the encoding's function by their constructor.
+||| string routines the runtime's own code calls each have an extern among
+||| the runtime's, as a service does, which the support tier's module of
+||| the system's text declares (`RuntimeModule.textModule`), paired with the
+||| encoding's function by their constructor.
 |||
 ||| The backend's primitives are found the same way (`Native.Primitive`),
 ||| each a definition `FunctionTy (signature c)` of a module of
@@ -32,6 +40,14 @@
 ||| `Native.Types`, in those of `Native.Primitive` too, a definition of the
 ||| type is an ordinary function, not looked at. A program that imports
 ||| none of these uses none.
+|||
+||| So each entry is looked for only in the modules where it may be, by a
+||| rule of the module's namespace alone, and only their definitions are
+||| looked up (`named`), the runtime's externs once for every contract that
+||| has them: a lookup decodes the definition it finds from its module's
+||| TTC, and keeps it decoded, and most of the context's definitions are of
+||| modules where no entry may be, the program's, its libraries' and most
+||| of the runtime's.
 |||
 ||| Part of what generated code, the runtime and the linker agree on
 ||| (`Native.Codegen.Linkage.Routine` says what it is).
@@ -54,6 +70,7 @@ import Data.Maybe
 import Data.SortedMap
 import Data.SortedSet
 import Data.Zippable
+import Libraries.Data.NameMap
 import Native.Codegen.Evaluate
 import Native.Codegen.Platform
 import Native.Intrinsic
@@ -95,20 +112,41 @@ record Realised where
 in' : Namespace -> String -> Name
 in' ns n = NS ns (UN (Basic n))
 
+||| The full names of the context's entries of the modules whose namespaces
+||| pass a rule, in the order the context added the entries in, none looked
+||| up; a name of no module passes no rule. The context's map from full
+||| names to entries (`resolvedAs`) holds every entry's name and decodes no
+||| definition to give it; Idris's list of the names (`allNames`) looks up
+||| every entry, which decodes the whole context, and leaves out the first.
+||| The order is kept because the contract's lists follow it, and the image
+||| follows them. The rule is given every entry's namespace, so it is made
+||| before the walk, with the namespaces it compares (`under`,
+||| `RuntimeModule.inCore`), and given as made, not made at each name.
+named : (rule : Namespace -> Bool) -> Context -> List Name
+named rule ctxt =
+  map fst (sortBy (comparing snd) (filter (inModule . fst) (NameMap.toList (resolvedAs ctxt))))
+  where
+    inModule : Name -> Bool
+    inModule (NS ns _) = rule ns
+    inModule _ = False
+
 ||| The definitions the context keeps whose type is the port of a
 ||| constructor of a contract's enumeration, `f ... (port c)` for a head `f`
 ||| of `heads`, or its signature, `f ... (signature c)`, the last argument,
 ||| each with its constructor's name and the code generator's own
 ||| constructor; exactly one of each if `required`, else at most one, or
-||| which have none or more. The constructors are the enumeration's list's
-||| (`listName`, in the module `contract`): its term in the context and the
-||| code generator's copy of it (`own`) are one declaration, so their
-||| elements pair up whatever the order. A context without the list has
-||| none of them, which only an enumeration not `required` may.
+||| which have none or more. Of the context's definitions, only the
+||| `candidates` are looked up, those of the modules where the entries may
+||| be (`named`), in the context's order. The constructors are the
+||| enumeration's list's (`listName`, in the module `contract`): its term
+||| in the context and the code generator's copy of it (`own`) are one
+||| declaration, so their elements pair up whatever the order. A context
+||| without the list has none of them, which only an enumeration not
+||| `required` may.
 entries : {auto c : Ref Ctxt Defs} -> (required : Bool) -> (contract, listName : String) ->
-          (own : List a) -> (heads : List Name) ->
-          (keep : Name -> GlobalDef -> Bool) -> Core (Either String (List (Name, Name, a)))
-entries required contract listName own heads keep = do
+          (own : List a) -> (heads : List Name) -> (candidates : List Name) ->
+          Core (Either String (List (Name, Name, a)))
+entries required contract listName own heads candidates = do
   defs <- get Ctxt
   Just lg <- lookupCtxtExact (in' ns listName) (gamma defs)
     | Nothing =>
@@ -117,7 +155,7 @@ entries required contract listName own heads keep = do
     PMDef _ _ (STerm _ tm) _ _ => elements <$> toFullNames tm
     _ => pure []
   let byConstructor = fromList (zip listed own)
-  found <- catMaybes <$> traverse (entry defs byConstructor) !(allNames (gamma defs))
+  found <- catMaybes <$> traverse (entry defs byConstructor) candidates
   let problems = mapMaybe (\c => case length (filter (\(_, c', _) => c' == c) found) of
                                     1 => Nothing
                                     0 => if required then Just (show c ++ " has none") else Nothing
@@ -151,17 +189,16 @@ entries required contract listName own heads keep = do
     entry defs byConstructor n = do
       Just g <- lookupCtxtExact n (gamma defs)
         | Nothing => pure Nothing
-      n' <- toFullNames n
-      if not (keep n' g) then pure Nothing else do
-        ty <- toFullNames (type g)
-        pure $ do
-          c <- typePort ty
-          i <- lookup c byConstructor
-          pure (n', c, i)
+      ty <- toFullNames (type g)
+      pure $ do
+        c <- typePort ty
+        i <- lookup c byConstructor
+        pure (n, c, i)
 
-||| Strictly under a group of modules.
+||| Strictly under a group of modules. The group's namespace is made once,
+||| with the rule (`under g`), not at each namespace the rule is given.
 under : String -> Namespace -> Bool
-under g ns = ns /= mkNamespace g && isParentOf (mkNamespace g) ns
+under g = let root = mkNamespace g in \ns => ns /= root && isParentOf root ns
 
 ||| Whether a type's head is defined in the module: `Bytes` of `PureLoad
 ||| Bytes ...` in `Native.Types.Bytes`. A primitive that reads an object of
@@ -181,8 +218,9 @@ definesType ns t = case getFnArgs t of
 ||| primitive are; outside them, it is an ordinary function, not looked at.
 primitives : {auto c : Ref Ctxt Defs} -> Core (Either String (List (Name, Name, Primitive)))
 primitives = do
+  defs <- get Ctxt
   Right found <- entries False "Native.Primitive" "allPrimitives" Primitive.allPrimitives
-                   [functionTy, pureLoad] inGroups
+                   [functionTy, pureLoad] (named inGroups (gamma defs))
     | Left e => pure (Left e)
   misplaced <- catMaybes <$> traverse (\(n, _, _) => place n) found
   pure (if null misplaced then Right found else Left (concat (intersperse "; " misplaced)))
@@ -193,11 +231,12 @@ primitives = do
     pureLoad : Name
     pureLoad = in' (mkNamespace "Native.Types.PureLoad") "PureLoad"
 
-    -- in a module of either group, by the name alone; where each head may
-    -- be, `place` says
-    inGroups : Name -> GlobalDef -> Bool
-    inGroups (NS ns _) _ = under "Native.Primitive" ns || under "Native.Types" ns
-    inGroups _ _ = False
+    -- a module of either group, the groups' namespaces made once, with the
+    -- rule; where each head may be, `place` says
+    inGroups : Namespace -> Bool
+    inGroups = let inPrimitive = under "Native.Primitive"
+                   inTypes = under "Native.Types" in
+               \ns => inPrimitive ns || inTypes ns
 
     -- what is wrong with where a primitive is defined, if anything
     place : Name -> Core (Maybe String)
@@ -230,38 +269,79 @@ flatPrimitives c = do
     | Left e => throw (GenericMsg EmptyFC ("the backend's primitives: " ++ e))
   pure (map (\(n, _, _) => n) ps)
 
+||| The check of a module as it is built, before its TTC is written: an
+||| extern of the runtime that the module declares outside the modules
+||| where the runtime declares its externs (`RuntimeModule.declaresExterns`)
+||| is an error, at the extern. The contract looks for every extern only
+||| there, so one elsewhere would be no entry of it but an ordinary extern,
+||| which the lowering knows as none of the contract's, and each call of
+||| which would fail as it ran. The module's own definitions are the names
+||| its TTC is to keep (`toSave`), held as elaborated, so none is decoded
+||| to be checked; a module outside the runtime declares none of the
+||| runtime's, and is not looked at.
+export
+checkExterns : Ref Ctxt Defs -> Core ()
+checkExterns c = do
+  defs <- get Ctxt
+  if not (RuntimeModule.inRuntime (currentNS defs)) then pure () else
+    traverse_ (misplaced defs) (keys (toSave defs))
+  where
+    -- an error if the name is an extern of the runtime outside its modules
+    -- of externs
+    misplaced : Defs -> Name -> Core ()
+    misplaced defs n@(NS ns _) =
+      if not (RuntimeModule.inRuntime ns) || RuntimeModule.declaresExterns ns then pure () else do
+        Just g <- lookupCtxtExact n (gamma defs)
+          | Nothing => pure ()
+        case definition g of
+          ExternDef _ =>
+            throw
+              (GenericMsg (location g)
+                (show n ++ " is an extern of the runtime outside its core and "
+                 ++ show RuntimeModule.textModule ++ ", where the runtime declares its externs"
+                 ++ " and the code generator looks for them"))
+          _ => pure ()
+    misplaced _ _ = pure ()
+
 ||| The contract as the loaded runtime realises it, for the platform and the
 ||| encodings, or what is missing.
 export
 realise : {auto c : Ref Ctxt Defs} -> Platform -> Types.Enc -> Core (Either String Realised)
 realise platform enc = do
-  Right rs <- entries True "Native.Routine" "allRoutines" Routine.allRoutines [portTy] runtimeOwn
+  defs <- get Ctxt
+  -- the runtime's externs, every contract's, found once for the three
+  -- contracts that have externs, each of which takes its own by their port
+  externs <- catMaybes <$> traverse (extern defs) (named RuntimeModule.declaresExterns (gamma defs))
+  Right rs <- entries True "Native.Routine" "allRoutines" Routine.allRoutines [portTy]
+                (named RuntimeModule.inCore (gamma defs))
     | Left e => pure (Left ("the runtime's routines: " ++ e))
   ss <- case RuntimeModule.stringModule enc.string of
     Just ns => map (map Just) (entries True "Native.Types.StringRoutine" "allStringRoutines"
-                                 Types.StringRoutine.allStringRoutines [portTy] (inModule ns))
+                                 Types.StringRoutine.allStringRoutines [portTy]
+                                 (named (== ns) (gamma defs)))
     Nothing => pure (Right Nothing)
   let Right ss' = ss
     | Left e => pure (Left ("the string encoding's routines: " ++ e))
   is <- case RuntimeModule.bignumModule enc of
     Just ns => map (map Just) (entries True "Native.Types.IntegerRoutine" "allIntegerRoutines"
-                                 Types.IntegerRoutine.allIntegerRoutines [portTy] (inModule ns))
+                                 Types.IntegerRoutine.allIntegerRoutines [portTy]
+                                 (named (== ns) (gamma defs)))
     Nothing => pure (Right Nothing)
   let Right is' = is
     | Left e => pure (Left ("the bignum encoding's routines: " ++ e))
   Just platformNs <- pure (OSService.platformModule platform)
     | Nothing => pure (Left ("the platform " ++ show platform ++ " has no OS services"))
   Right intrinsics <- entries True "Native.Intrinsic" "allIntrinsics" Intrinsic.allIntrinsics
-    [portTy] isExtern
+    [portTy] externs
     | Left e => pure (Left ("the runtime's inline externs: " ++ e))
   Right serviceExterns <- entries True "Native.Service" "allServices" Service.allServices [portTy]
-    isExtern
+    externs
     | Left e => pure (Left ("the runtime's OS services: " ++ e))
   Right serviceFunctions <- entries True "Native.Service" "allServices" Service.allServices [portTy]
-    (inModule platformNs)
+    (named (== platformNs) (gamma defs))
     | Left e => pure (Left ("the platform's OS services: " ++ e))
   Right textExterns <- entries False "Native.Types.StringRoutine" "allStringRoutines"
-    Types.StringRoutine.allStringRoutines [portTy] isExtern
+    Types.StringRoutine.allStringRoutines [portTy] externs
     | Left e => pure (Left ("the runtime's externs of the string encoding: " ++ e))
   Right prims <- primitives
     | Left e => pure (Left ("the backend's primitives: " ++ e))
@@ -280,18 +360,14 @@ realise platform enc = do
     portTy : Name
     portTy = in' (RuntimeModule.runtimeModule "PortTy") "PortTy"
 
-    isExtern : Name -> GlobalDef -> Bool
-    isExtern _ g = case definition g of
-      ExternDef _ => True
-      _ => False
-
-    inModule : Namespace -> Name -> GlobalDef -> Bool
-    inModule ns (NS ns' _) _ = ns' == ns
-    inModule _ _ _ = False
-
-    runtimeOwn : Name -> GlobalDef -> Bool
-    runtimeOwn (NS ns _) _ = RuntimeModule.inRuntime ns
-    runtimeOwn _ _ = False
+    -- the name, if the context's definition of it is an extern
+    extern : Defs -> Name -> Core (Maybe Name)
+    extern defs n = do
+      Just g <- lookupCtxtExact n (gamma defs)
+        | Nothing => pure Nothing
+      pure (case definition g of
+              ExternDef _ => Just n
+              _ => Nothing)
 
     -- each entry's definition, with the code generator's constructor
     pairs : List (Name, Name, a) -> List (Name, a)
@@ -308,9 +384,10 @@ realise platform enc = do
     makers : Core (Either String (List Name))
     makers = do
       defs <- get Ctxt
-      -- the mark's name, made once for the walk over every name
+      -- the mark's name, made once for the walk over the names
       let fromWords = in' (mkNamespace "Native.Types.FromWords") "FromWords"
-      found <- catMaybes <$> traverse (maker defs fromWords) !(allNames (gamma defs))
+      found <- catMaybes <$>
+                 traverse (maker defs fromWords) (named (under "Native.Types") (gamma defs))
       let problems = mapMaybe snd found
       pure (if null problems then Right (map fst found)
             else Left (concat (intersperse "; " problems)))
@@ -318,21 +395,19 @@ realise platform enc = do
         -- a maker the context defines, by the mark's name, with what is
         -- wrong with it, if anything
         maker : Defs -> (fromWords : Name) -> Name -> Core (Maybe (Name, Maybe String))
-        maker defs fromWords n = do
-          n'@(NS ns _) <- toFullNames n
-            | _ => pure Nothing
-          if not (under "Native.Types" ns) then pure Nothing else do
-            Just g <- lookupCtxtExact n (gamma defs)
-              | Nothing => pure Nothing
-            ty <- toFullNames (type g)
-            pure $ case getFnArgs ty of
-              (Ref _ _ f, a :: _) =>
-                if f /= fromWords then Nothing
-                else Just (n', if not (definesType ns a)
-                                 then Just (show n' ++ " makes a type it is not defined with")
-                               else if Evaluate.inlined g
-                                 then Just (show n' ++ " is a maker Idris inlines at each use,"
-                                            ++ " so no call of it is left to mean its object: "
-                                            ++ Evaluate.inliningFix g)
-                               else Nothing)
-              _ => Nothing
+        maker defs fromWords n@(NS ns _) = do
+          Just g <- lookupCtxtExact n (gamma defs)
+            | Nothing => pure Nothing
+          ty <- toFullNames (type g)
+          pure $ case getFnArgs ty of
+            (Ref _ _ f, a :: _) =>
+              if f /= fromWords then Nothing
+              else Just (n, if not (definesType ns a)
+                              then Just (show n ++ " makes a type it is not defined with")
+                            else if Evaluate.inlined g
+                              then Just (show n ++ " is a maker Idris inlines at each use,"
+                                         ++ " so no call of it is left to mean its object: "
+                                         ++ Evaluate.inliningFix g)
+                            else Nothing)
+            _ => Nothing
+        maker _ _ _ = pure Nothing

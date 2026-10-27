@@ -1,5 +1,6 @@
 ||| `flat-check`: the check of a module's flat functions as the module is
-||| built, as a code generator, since that is what Idris runs then.
+||| built, and the code generator's own of the module, as a code generator,
+||| since that is what Idris runs then.
 module Native.Flat.Check
 
 import Native.Flat.Marked
@@ -24,10 +25,15 @@ import Idris.Syntax
 ||| check off under `--cg native` and rebuild every module each time.
 |||
 ||| The backend's primitives are the code generator's to name
-||| (`primitives`), by their types.
+||| (`primitives`), by their types; and the code generator checks what it
+||| needs of each module as it is built (`moduleCheck`), before its flat
+||| functions are checked: as it is built, a module's own definitions are
+||| at hand as elaborated, where a program's compilation would decode them
+||| to look.
 export
-codegenFlatCheck : (primitives : Ref Ctxt Defs -> Core (List Name)) -> Codegen
-codegenFlatCheck primitives = MkCG compileExpr executeExpr (Just check) Nothing
+codegenFlatCheck : (primitives : Ref Ctxt Defs -> Core (List Name)) ->
+                   (moduleCheck : Ref Ctxt Defs -> Core ()) -> Codegen
+codegenFlatCheck primitives moduleCheck = MkCG compileExpr executeExpr (Just check) Nothing
   where
     nothing : Core a
     nothing =
@@ -44,5 +50,6 @@ codegenFlatCheck primitives = MkCG compileExpr executeExpr (Just check) Nothing
     check : Ref Ctxt Defs -> Ref Syn SyntaxInfo -> (sourceFile : String) ->
             Core (Maybe (String, List String))
     check c s sourceFile
-        = do Marked.checkModule primitives sourceFile
+        = do moduleCheck c
+             Marked.checkModule primitives sourceFile
              pure (Just (sourceFile, []))

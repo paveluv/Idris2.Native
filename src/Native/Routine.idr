@@ -5,8 +5,9 @@
 ||| declares the function that is each routine by its port (`allocSlow :
 ||| PortTy (port AllocSlow)` in `Native.Runtime.Space`), which
 ||| Idris checks where the function is defined; the code generator finds
-||| each by that type alone, takes the registers of its calls from the port,
-||| and compiles its flat form into the program.
+||| each by that type among the modules of the runtime's core, takes the
+||| registers of its calls from the port, and compiles its flat form into
+||| the program.
 |||
 ||| Part of the contract between compiled code and the runtime, with the
 ||| heap-object model (`HeapObj.Shape` says what it is).

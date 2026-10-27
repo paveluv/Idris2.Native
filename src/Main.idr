@@ -5,7 +5,9 @@
 ||| given first: without `--cg`, `idris2-native` compiles as `idris2` does.
 |||
 ||| `flat-check` compiles nothing: as an incremental code generator it checks
-||| each module's flat functions as the module is built (`Flat.Check`).
+||| each module's flat functions as the module is built (`Flat.Check`), and
+||| that a module of the runtime declares an extern only where the code
+||| generator looks for the runtime's (`Realised.checkExterns`).
 ||| `idris2-native` adds it to the incremental code generators Idris reads
 ||| from `IDRIS2_INC_CGS`, so a function that is not flat is reported when its
 ||| module is checked, with the location of the term at fault.
@@ -35,7 +37,8 @@ main = do
                       Native.Codegen.Linkage.Realised.flatPrimitives)
                    , ("flat-check",
                      Native.Flat.Check.codegenFlatCheck
-                      Native.Codegen.Linkage.Realised.flatPrimitives) ]
+                      Native.Codegen.Linkage.Realised.flatPrimitives
+                      Native.Codegen.Linkage.Realised.checkExterns) ]
   where
     ||| The incremental code generators the environment names, and `flat-check`.
     incremental : Maybe String -> String

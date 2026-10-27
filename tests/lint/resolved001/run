@@ -12,7 +12,10 @@
 # `Values` converts a value through the core's conversion, not the support
 # tier's door; `Plain` writes names of our modules bare; `Native.Shop.Crate`
 # states a layout for a type of `base` outside the contract, and
-# `Native.Shop.Ledger` one for `Crate` outside `Crate`'s module.
+# `Native.Shop.Ledger` one for `Crate` outside `Crate`'s module; `Walk`
+# lists the names of Idris's context by `allNames`, which decodes every
+# definition in it, where the names of its `resolvedAs` decode none, and
+# `Census` uses `Roster`'s `allNames`, not Idris's, not reported.
 # Then the score's components that the resolution measures, and the
 # accumulation with what costs it: `JoinAll` accumulates lists in each
 # shape, the superlinear ones counted against it.

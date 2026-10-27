@@ -1,7 +1,9 @@
 ||| Where the runtime library's modules are: its core's under one root
 ||| (`runtimeModule`), its support tier's under another (`supportModule`),
 ||| each system library's under its own (`systemModule`), all the runtime's
-||| part of the project's.
+||| part of the project's; and in which of them the contract's entries are
+||| declared, where the code generator looks for them (`inCore`,
+||| `declaresExterns`, `stringModule`, `bignumModule`).
 |||
 ||| Part of what generated code, the runtime and the linker agree on
 ||| (`Native.Codegen.Linkage.Routine` says what it is).
@@ -62,6 +64,39 @@ inRuntime ns = let s =
                      show ns in any (\r => s == r || isPrefixOf (r ++ ".") s)
                        ([runtimeRoot, supportRoot]
                         ++ map SystemLibrary.systemRoot SystemLibrary.allSystemLibraries)
+
+||| Whether a namespace is the runtime's core's: its root, or a module under
+||| it. The routines are the core's functions of their ports, so the
+||| contract looks for them only in its modules, and decodes no other
+||| tier's definitions to find them; a function of a routine's port
+||| elsewhere is an ordinary function, called as one. The root is made
+||| once, with the rule, not at each namespace the rule is given: a walk of
+||| the context gives it every entry's.
+export
+inCore : Namespace -> Bool
+inCore = let root = runtimeModule "" in \ns => isParentOf root ns
+
+||| The support tier's module that declares the externs of the string
+||| routines the runtime's own code calls (`Types.StringRoutine`'s text,
+||| as the system's bytes).
+export
+textModule : Namespace
+textModule = supportModule "Text"
+
+||| Whether a namespace is of the modules where the runtime declares its
+||| externs: its core's, which declare the inline externs and the OS
+||| services', and the module of the system's text (`textModule`), which
+||| declares the string routines' that the runtime's own code calls. The
+||| contract looks for every extern only there, each by its port, so it
+||| decodes no other module's definitions to find them; and an extern of
+||| the runtime anywhere else is refused as its module is built
+||| (`Realised.checkExterns`), since the contract would not find it. The
+||| namespaces are made once, with the rule, as `inCore`'s root is.
+export
+declaresExterns : Namespace -> Bool
+declaresExterns = let core = inCore
+                      text = textModule in
+                  \ns => core ns || ns == text
 
 ||| The support tier's module that lays strings out under the encoding: the
 ||| one module of the runtime that reads a string's header or bytes. Every
