@@ -1,0 +1,4 @@
+small: fetch 2 gives 12, lookup 1 Just 11, lookup 3 Nothing, size 3
+by cons: 301 of 301 lists hold their elements
+by prepend: 45451 of 45451 lists hold their elements
+from All: 301 of 301 lists hold their elements
