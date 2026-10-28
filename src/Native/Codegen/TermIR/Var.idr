@@ -4,7 +4,6 @@
 ||| Part of the term IR (`Native.Codegen.TermIR.Program` says what it is).
 module Native.Codegen.TermIR.Var
 
-import Data.List.Quantifiers
 import Data.Nat
 import Data.Singleton
 import Decidable.Equality.Core
@@ -32,14 +31,12 @@ public export
 later : Var xs x -> Var (y :: xs) x
 later (MkVar i at) = MkVar (S i) (Data.AtIndex.Later at)
 
-||| What an environment holds for the variable.
+||| What an environment holds for the variable, from the environment as a
+||| random-access list: in steps of the order of the logarithm of its
+||| length.
 public export
-fetch : Var xs x -> All p xs -> p x
-fetch (MkVar i at) env = go i at env
-  where
-    go : (i : Nat) -> (0 _ : Data.AtIndex i y ys) -> All p ys -> p y
-    go Z Data.AtIndex.First (z :: _) = z
-    go (S i) (Data.AtIndex.Later at) (_ :: zs) = go i at zs
+fetch : Var xs x -> Data.RAList p xs -> p x
+fetch (MkVar i at) env = Data.RAList.fetch i at env
 
 ||| The entry a variable names, a callee's signature or a static's, from
 ||| the entries as a random-access list of themselves (`RAList.fromList`):

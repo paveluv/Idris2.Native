@@ -16,6 +16,11 @@
 ||| immediate where the IR wants a register is materialised just before its
 ||| use.
 |||
+||| An environment, how each variable of a body's context is held, and the
+||| blocks' labels in scope are random-access lists (`Native.Data.RAList`):
+||| a variable is read in steps of the order of the logarithm of its
+||| context's length, however far below the top it was bound.
+|||
 ||| What is live is computed, not stored. Lowering a body returns, with its
 ||| code, the registers of its environment it reads, directly or through
 ||| the blocks it jumps to; so live across an instruction, an allocation or
@@ -114,10 +119,6 @@ record LabelInfo (enc : Types.Enc) where
 LI : (enc : Types.Enc) -> List (IRCommon.Ty enc) -> Type
 LI enc _ = LabelInfo enc
 
-append : All p xs -> All p ys -> All p (xs ++ ys)
-append [] ys = ys
-append (x :: xs) ys = x :: append xs ys
-
 regs : All (RV enc) ts -> List (LocatedIR.Reg enc)
 regs [] = []
 regs (r :: rs) = r :: regs rs
@@ -137,11 +138,11 @@ one : Held enc -> RegMap enc
 one (InReg r) = singleton (LocatedIR.Reg.slot r) r
 one (OfStatic _) = empty
 
-uses : All (HV enc) ctx -> TermIR.Opnd (TermIR.Var ctx) t -> RegMap enc
+uses : Data.RAList (HV enc) ctx -> TermIR.Opnd (TermIR.Var ctx) t -> RegMap enc
 uses env (TermIR.Opnd.V x) = one (TermIR.Var.fetch x env)
 uses _ _ = empty
 
-usesAll : All (HV enc) ctx -> All (TermIR.Opnd (TermIR.Var ctx)) ts -> RegMap enc
+usesAll : Data.RAList (HV enc) ctx -> All (TermIR.Opnd (TermIR.Var ctx)) ts -> RegMap enc
 usesAll env [] = empty
 usesAll env (x :: xs) = mergeLeft (uses env x) (usesAll env xs)
 
@@ -206,7 +207,7 @@ Lowered enc = (RegMap enc, Code enc)
 ------------------------------------------------------------------------------
 -- Operands
 
-operand : All (HV enc) ctx -> TermIR.Opnd (TermIR.Var ctx) t -> LocatedIR.Opnd enc
+operand : Data.RAList (HV enc) ctx -> TermIR.Opnd (TermIR.Var ctx) t -> LocatedIR.Opnd enc
 operand env (TermIR.Opnd.V x) = case TermIR.Var.fetch x env of
   InReg r => LocatedIR.Opnd.R r
   OfStatic s => LocatedIR.Opnd.StaticRef s
@@ -215,13 +216,14 @@ operand env (TermIR.Opnd.Fx i) = LocatedIR.Opnd.Imm i
 operand env (TermIR.Opnd.Vx i) = LocatedIR.Opnd.Imm i
 operand env TermIR.Opnd.Erased = LocatedIR.Opnd.Imm 0
 
-operands : All (HV enc) ctx -> All (TermIR.Opnd (TermIR.Var ctx)) ts -> List (LocatedIR.Opnd enc)
+operands : Data.RAList (HV enc) ctx -> All (TermIR.Opnd (TermIR.Var ctx)) ts ->
+           List (LocatedIR.Opnd enc)
 operands env [] = []
 operands env (x :: xs) = operand env x :: operands env xs
 
 ||| An operand in a register, with the instruction that materialises an
 ||| immediate.
-asReg : All (HV enc) ctx -> TermIR.Opnd (TermIR.Var ctx) t ->
+asReg : Data.RAList (HV enc) ctx -> TermIR.Opnd (TermIR.Var ctx) t ->
         M enc (List (LocatedIR.Instr enc), LocatedIR.Reg enc)
 asReg env (TermIR.Opnd.V x) = case TermIR.Var.fetch x env of
   InReg r => pure ([], r)
@@ -256,7 +258,7 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
   mutual
     ||| Where a branch goes: a block of the body's own, or, when the body only
     ||| jumps to a block without parameters, that block.
-    branchTo : TermIR.Body d c m ls ctx -> All (HV enc) ctx -> All (LI enc) ls ->
+    branchTo : TermIR.Body d c m ls ctx -> Data.RAList (HV enc) ctx -> Data.RAList (LI enc) ls ->
                M enc (RegMap enc, LocatedIR.Label)
     branchTo (TermIR.Body.Jump l []) env li = let info =
                                                     TermIR.Var.fetch l li in pure
@@ -270,7 +272,8 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
     ||| The code of a body, and the registers of its environment it reads.
     ||| Labels are taken before the code under them is lowered, so that they
     ||| number the blocks in reading order.
-    body : TermIR.Body d c m ls ctx -> All (HV enc) ctx -> All (LI enc) ls -> M enc (Lowered enc)
+    body : TermIR.Body d c m ls ctx -> Data.RAList (HV enc) ctx -> Data.RAList (LI enc) ls ->
+           M enc (Lowered enc)
     -- a static's address is held as itself, and so is the value it widens to
     body (TermIR.Body.Bind (TermIR.Instr.StaticAddr s) k) env li =
       body k (OfStatic (varSym s) :: env) li
@@ -286,7 +289,7 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
       let fb = registersAt env depth levels
           info = MkLabelInfo l (regs params) fb
       (fr, codeR) <- body r env (info :: li)
-      (_, codeB) <- body b (append (held params) env) (info :: li)
+      (_, codeB) <- body b (Data.RAList.prepend (held params) env) (info :: li)
       addBlock l [] codeB
       pure (fr, codeR)
       where
@@ -299,17 +302,12 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
             [] => pure (0, empty)
 
         ||| The registers of the environment, `depth` deep, at the levels.
-        registersAt : All (HV enc) ctx -> (depth : Nat) -> SortedSet Level -> RegMap enc
+        registersAt : Data.RAList (HV enc) ctx -> (depth : Nat) -> SortedSet Level -> RegMap enc
         registersAt env depth lvs = foldl add empty (Prelude.toList lvs)
           where
-            at : Nat -> All (HV enc) xs -> Maybe (Held enc)
-            at _ [] = Nothing
-            at Z (h :: _) = Just h
-            at (S i) (_ :: hs) = at i hs
-
             add : RegMap enc -> Level -> RegMap enc
-            add m l = case at (minus depth (S l)) env of
-              Just (InReg r) => insert (LocatedIR.Reg.slot r) r m
+            add m l = case Data.RAList.lookup (minus depth (S l)) env of
+              Just (Data.RAList.MkFound (InReg r) _) => insert (LocatedIR.Reg.slot r) r m
               _ => m
     body (TermIR.Body.Jump l xs) env li = do
       let info = TermIR.Var.fetch l li
@@ -319,7 +317,7 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
         ||| A jump to a block: the arguments into its parameters. When an argument
         ||| reads one of those parameters, every argument goes into a fresh
         ||| register first, so that none is overwritten before it is read.
-        jump : All (HV enc) ctx -> LabelInfo enc -> All (TermIR.Opnd (TermIR.Var ctx)) ps ->
+        jump : Data.RAList (HV enc) ctx -> LabelInfo enc -> All (TermIR.Opnd (TermIR.Var ctx)) ps ->
                M enc (Code enc)
         jump env info xs =
           if any (\r => isJust (lookup (LocatedIR.Reg.slot r) (usesAll env xs))) info.params
@@ -331,7 +329,8 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
                (Data.Builder.piece (direct info.params xs), LocatedIR.Terminator.Jump info.label)
           where
             ||| An operand into a given register.
-            moveInto : All (HV enc) ctx -> LocatedIR.Reg enc -> TermIR.Opnd (TermIR.Var ctx) t ->
+            moveInto : Data.RAList (HV enc) ctx -> LocatedIR.Reg enc ->
+                       TermIR.Opnd (TermIR.Var ctx) t ->
                        LocatedIR.Instr enc
             moveInto env d (TermIR.Opnd.V x) = case TermIR.Var.fetch x env of
               InReg r => LocatedIR.Instr.Move d r
@@ -363,14 +362,14 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
       loaded <- traverse (asReg env) vs
       let rs = map snd loaded
       (narrows, fs) <- narrowAll rs
-      (fy, (isY, tY)) <- body y (append (held fs) env) li
+      (fy, (isY, tY)) <- body y (Data.RAList.prepend (held fs) env) li
       addBlock ly [] (Data.Builder.piece narrows <+> isY, tY)
       (fn, ln) <- branchTo no env li
       pure (mergeLeft (usesVect env vs) (mergeLeft (without (regs fs) fy) fn),
             (concatMap (Data.Builder.piece . fst) (toList loaded),
               LocatedIR.Terminator.IfFixnums (toList rs) ly ln))
       where
-        usesVect : All (HV enc) ctx -> Vect n (TermIR.Opnd (TermIR.Var ctx) t) -> RegMap enc
+        usesVect : Data.RAList (HV enc) ctx -> Vect n (TermIR.Opnd (TermIR.Var ctx) t) -> RegMap enc
         usesVect env = foldr (\x, m => mergeLeft (uses env x) m) empty
 
         narrowAll : Vect n (LocatedIR.Reg enc) ->
@@ -404,7 +403,8 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
             (Data.Builder.piece px, LocatedIR.Terminator.Switch rx (zip keys labels) ld))
       where
         ||| A switch's cases, each a block of its own, in order.
-        cases : All (\_ => TermIR.Body d c m ls ctx) ks -> All (HV enc) ctx -> All (LI enc) ls ->
+        cases : All (\_ => TermIR.Body d c m ls ctx) ks -> Data.RAList (HV enc) ctx ->
+                Data.RAList (LI enc) ls ->
                 M enc (RegMap enc, List LocatedIR.Label)
         cases [] env li = pure (empty, [])
         cases (b :: bs) env li = do
@@ -447,7 +447,7 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
       pure (mergeLeft (uses env f) (usesList env xs),
             (Data.Builder.piece pf, LocatedIR.Terminator.Enter rf (map (operand env) xs)))
       where
-        usesList : All (HV enc) ctx -> List (TermIR.Opnd (TermIR.Var ctx) t) -> RegMap enc
+        usesList : Data.RAList (HV enc) ctx -> List (TermIR.Opnd (TermIR.Var ctx) t) -> RegMap enc
         usesList env = foldr (\x, m => mergeLeft (uses env x) m) empty
     body (TermIR.Body.Ret xs) env li =
       pure (usesAll env xs, (neutral, LocatedIR.Terminator.Ret (operands env xs)))
@@ -458,10 +458,10 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
     ||| An instruction's registers, bound in the environment of the rest.
     bind : (ts : List (IRCommon.Ty enc)) -> TermIR.Instr d m (TermIR.Var ctx) ts ->
            TermIR.Body d c m ls (ts ++ ctx) ->
-           All (HV enc) ctx -> All (LI enc) ls -> M enc (Lowered enc)
+           Data.RAList (HV enc) ctx -> Data.RAList (LI enc) ls -> M enc (Lowered enc)
     bind ts i k env li = do
       ds <- results ts i
-      (after, (is, t)) <- body k (append (held ds) env) li
+      (after, (is, t)) <- body k (Data.RAList.prepend (held ds) env) li
       let outer = without (regs ds) after
       pre <- instr env ds outer i
       pure (mergeLeft (instrUses env i) outer, (Data.Builder.piece pre <+> is, t))
@@ -483,17 +483,17 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
         results ts' _ = freshAll ts'
 
         ||| The registers of the environment an instruction reads.
-        instrUses : All (HV enc) ctx -> TermIR.Instr d m (TermIR.Var ctx) ts -> RegMap enc
+        instrUses : Data.RAList (HV enc) ctx -> TermIR.Instr d m (TermIR.Var ctx) ts -> RegMap enc
         instrUses env i = execState empty (TermIR.Instr.traverseInstr (collect env) i)
           where
-            collect : All (HV enc) ctx -> {0 t : IRCommon.Ty enc} ->
+            collect : Data.RAList (HV enc) ctx -> {0 t : IRCommon.Ty enc} ->
                       TermIR.Opnd (TermIR.Var ctx) t ->
                       State (RegMap enc) (TermIR.Opnd (TermIR.Var ctx) t)
             collect env x = do modify (mergeLeft (uses env x)); pure x
 
         ||| The IR of an instruction binding the registers `ds`, given what is live
         ||| after it.
-        instr : All (HV enc) ctx''' -> All (RV enc) ts' -> (after : RegMap enc) ->
+        instr : Data.RAList (HV enc) ctx''' -> All (RV enc) ts' -> (after : RegMap enc) ->
                 TermIR.Instr d m' (TermIR.Var ctx''') ts' ->
                 M enc (List (LocatedIR.Instr enc))
         instr env z after instr' = case (z, instr') of
@@ -587,7 +587,7 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
               IRCommon.Conv.CPS => False
               IRCommon.Conv.Direct _ col => col
 
-            memRef : All (HV enc'') ctx'' -> TermIR.Mem (TermIR.Var ctx'') cell ->
+            memRef : Data.RAList (HV enc'') ctx'' -> TermIR.Mem (TermIR.Var ctx'') cell ->
                      M enc'' (List (LocatedIR.Instr enc''), LocatedIR.Mem enc'')
             memRef env (TermIR.MkMem b i o) = do
               (pb, rb) <- baseReg env b
@@ -596,7 +596,7 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
                 Just x => do (pi, ri) <- asReg env x
                              pure (pb ++ pi, LocatedIR.MkMem rb (Just ri) o)
               where
-                baseReg : All (HV enc') ctx' -> TermIR.Mem.Base (TermIR.Var ctx') b' ->
+                baseReg : Data.RAList (HV enc') ctx' -> TermIR.Mem.Base (TermIR.Var ctx') b' ->
                           M enc' (List (LocatedIR.Instr enc'), LocatedIR.Reg enc')
                 baseReg env (TermIR.Mem.AtBytes x) = asReg env x
                 baseReg env (TermIR.Mem.AtPtr x) = asReg env x
@@ -610,11 +610,11 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
               OfStatic n => pure [LocatedIR.Instr.StaticAddr r n]
 
             ||| One register, through an instruction that reads it from an operand.
-            unary : All (HV enc) ctx' -> TermIR.Opnd (TermIR.Var ctx') t ->
+            unary : Data.RAList (HV enc) ctx' -> TermIR.Opnd (TermIR.Var ctx') t ->
                     (LocatedIR.Reg enc -> LocatedIR.Instr enc) -> M enc (List (LocatedIR.Instr enc))
             unary env x f = do (p, r) <- asReg env x; pure (p ++ [f r])
 
-            binary : All (HV enc) ctx' -> TermIR.Opnd (TermIR.Var ctx') t ->
+            binary : Data.RAList (HV enc) ctx' -> TermIR.Opnd (TermIR.Var ctx') t ->
                      TermIR.Opnd (TermIR.Var ctx') u ->
                      (LocatedIR.Reg enc -> LocatedIR.Reg enc -> LocatedIR.Instr enc) ->
                      M enc (List (LocatedIR.Instr enc))
@@ -633,7 +633,7 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
             run = do
               ps <- freshAll s.params
               modify { joins := snd (frees b (length s.params) []) [] }
-              (_, code) <- body b (held ps) []
+              (_, code) <- body b (Data.RAList.fromAll (held ps)) []
               addBlock 0 [] code
               pure (regs ps)
         in case runState (MkSt 0 1 empty []) run of
@@ -645,12 +645,17 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
           ||| joins: a join, then those in the code that reaches it, then those in
           ||| its block. Once for a whole body: computing a block's at its join read
           ||| the rest of the function again at every join, the square of its length.
-          frees : TermIR.Body d'' c m ls ctx -> (depth : Nat) -> All (\_ => SortedSet Level) ls ->
+          ||| `union s t` inserts each level of `t` into `s`, so what the code after a
+          ||| binder or a branch reads, which can be most of the function's levels,
+          ||| comes first, and a node's own few levels second: the other way, a body
+          ||| that keeps many levels in use paid for all of them at every binder.
+          frees : TermIR.Body d'' c m ls ctx -> (depth : Nat) ->
+                  Data.RAList (\_ => SortedSet Level) ls ->
                   (SortedSet Level, List JoinFrees -> List JoinFrees)
           frees body' depth lf = case body' of
             TermIR.Body.Bind {ts} i k =>
                           let (fk, jk) = frees k (depth + length ts) lf
-                          in (union (instrLevels depth i) (outside depth (length ts) fk), jk)
+                          in (union (outside depth (length ts) fk) (instrLevels depth i), jk)
             TermIR.Body.Join ps b r =>
                           let (fb, jb) = frees b (depth + length ps) (empty :: lf)
                               block = outside depth (length ps) fb
@@ -660,34 +665,34 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
             TermIR.Body.Branch _ x y a b =>
               let (fa, ja) = frees a depth lf
                   (fb, jb) = frees b depth lf
-              in (union (union (opLevel depth x) (opLevel depth y)) (union fa fb), ja . jb)
+              in (union (union fb fa) (union (opLevel depth x) (opLevel depth y)), ja . jb)
             TermIR.Body.IfFixnums {n} vs y no =>
               let (fy, jy) = frees y (depth + S n) lf
                   (fn, jn) = frees no depth lf
-              in (union (vectLevels depth vs) (union (outside depth (S n) fy) fn), jy . jn)
+              in (union (union (outside depth (S n) fy) fn) (vectLevels depth vs), jy . jn)
             TermIR.Body.ArithOv _ x y ok ovf =>
               let (fo, jo) = frees ok (S depth) lf
                   (fv, jv) = frees ovf depth lf
-              in (union (union (opLevel depth x) (opLevel depth y)) (union (outside depth 1 fo) fv),
+              in (union (union (outside depth 1 fo) fv) (union (opLevel depth x) (opLevel depth y)),
                   jo . jv)
             TermIR.Body.TagOv x ok ovf =>
               let (fo, jo) = frees ok (S depth) lf
                   (fv, jv) = frees ovf depth lf
-              in (union (opLevel depth x) (union (outside depth 1 fo) fv), jo . jv)
+              in (union (union (outside depth 1 fo) fv) (opLevel depth x), jo . jv)
             TermIR.Body.Switch x _ bs dflt =>
               let (fc, jc) = freesCases bs depth lf
                   (fd, jd) = frees dflt depth lf
-              in (union (opLevel depth x) (union fc fd), jc . jd)
+              in (union (union fd fc) (opLevel depth x), jc . jd)
             TermIR.Body.Call _ xs k =>
               let (fk, jk) =
-                    frees k (S depth) lf in (union (opsLevels depth xs) (outside depth 1 fk), jk)
+                    frees k (S depth) lf in (union (outside depth 1 fk) (opsLevels depth xs), jk)
             TermIR.Body.TailCall _ xs => (opsLevels depth xs, id)
             TermIR.Body.Apply f x k =>
               let (fk, jk) = frees k (S depth) lf
-              in (union (union (opLevel depth f) (opLevel depth x)) (outside depth 1 fk), jk)
+              in (union (outside depth 1 fk) (union (opLevel depth f) (opLevel depth x)), jk)
             TermIR.Body.TailApply f x => (union (opLevel depth f) (opLevel depth x), id)
             TermIR.Body.Return x => (opLevel depth x, id)
-            TermIR.Body.Enter f xs => (union (opLevel depth f) (listLevels depth xs), id)
+            TermIR.Body.Enter f xs => (union (listLevels depth xs) (opLevel depth f), id)
             TermIR.Body.Ret xs => (opsLevels depth xs, id)
             TermIR.Body.Crash _ => (empty, id)
             TermIR.Body.Unsupported _ => (empty, id)
@@ -709,23 +714,23 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
 
               vectLevels : (depth : Nat) -> Vect n' (TermIR.Opnd (TermIR.Var ctx) t) ->
                            SortedSet Level
-              vectLevels depth = foldr (union . opLevel depth) empty
+              vectLevels depth = foldr (\x, s => union s (opLevel depth x)) empty
 
               freesCases : All (\_ => TermIR.Body d' c' m' ls' ctx') ks -> (depth : Nat) ->
-                           All (\_ => SortedSet Level) ls' ->
+                           Data.RAList (\_ => SortedSet Level) ls' ->
                            (SortedSet Level, List JoinFrees -> List JoinFrees)
               freesCases [] depth lf = (empty, id)
               freesCases (b :: bs) depth lf =
                 let (fb, jb) = frees b depth lf
                     (fs, js) = freesCases bs depth lf
-                in (union fb fs, jb . js)
+                in (union fs fb, jb . js)
 
               listLevels : (depth : Nat) -> List (TermIR.Opnd (TermIR.Var ctx) t) -> SortedSet Level
-              listLevels depth = foldr (union . opLevel depth) empty
+              listLevels depth = foldr (\x, s => union s (opLevel depth x)) empty
 
               opsLevels : (depth : Nat) -> All (TermIR.Opnd (TermIR.Var ctx)) ts -> SortedSet Level
               opsLevels depth [] = empty
-              opsLevels depth (x :: xs) = union (opLevel depth x) (opsLevels depth xs)
+              opsLevels depth (x :: xs) = union (opsLevels depth xs) (opLevel depth x)
 
               ||| The levels of a body's own first `n` binders, from `depth`, taken out of
               ||| what it reads: what is left, it reads from outside.
