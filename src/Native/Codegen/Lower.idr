@@ -2139,9 +2139,12 @@ lowerProgram enc platform realised _ forms shapes staticReads staticObjects cons
   let entryPlan = case Data.List.lookup mainExpression vmdefs of
                     Just (MkVMFun [] body) => FromVM [] body
                     _ => NoEntry
+      -- grown at its end: a list's `concatMap` would copy what it has so
+      -- far at each function
       planned =
-        concatMap (kept cells)
+        foldl (\acc, sp => acc <>< kept cells sp) [<]
           (mapMaybe (plan byName) (filter ((/= mainExpression) . fst) vmdefs))
+          <>> []
       others = planned
                  ++ [(LowerFlat.formSig fd, Form fd) | fd <- forms]
                  ++ outside (Data.SortedSet.fromList [fd.name | fd <- forms])

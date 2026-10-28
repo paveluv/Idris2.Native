@@ -44,9 +44,12 @@ reach roots p =
   in { functions := filter (\f => contains f.name cs) p.functions
      , statics := filter (\s => contains s.sym ss) p.statics } p
   where
-    ||| The names a function refers to.
+    ||| The names a function refers to, joined from the right, so that each
+    ||| join copies only an instruction's few names.
     function : Function enc -> Refs
-    function f = concatMap (\b => concatMap instr b.body <+> terminator b.term) f.blocks
+    function f =
+      foldr (\b, rest => foldr (\i, r => instr i <+> r) (terminator b.term <+> rest) b.body)
+        neutral f.blocks
       where
         ||| The names an operand refers to: a static's.
         opnd : Opnd enc' -> Refs
@@ -84,7 +87,7 @@ reach roots p =
 
     ||| The names a static refers to: the code and the statics its fields hold.
     static : Static enc -> Refs
-    static s = concatMap field s.fields
+    static s = foldr (\x, r => field x <+> r) neutral s.fields
       where
         field : Static.SField -> Refs
         field (Static.SCode f) = MkRefs [f] []
@@ -92,7 +95,9 @@ reach roots p =
         field _ = neutral
 
     -- the names still to follow, and those reached; each name is followed
-    -- once, so the fuel, every function and static once, is enough
+    -- once, so the fuel, every function and static once, is enough. What a
+    -- name refers to goes before the rest, which is not copied: the order
+    -- of the visits changes nothing reached
     go : SortedMap Name (Function enc) -> SortedMap Name (Static enc) -> Refs ->
          (code, statics : SortedSet Name) -> (fuel : Nat) -> (SortedSet Name, SortedSet Name)
     go funs stats (MkRefs [] []) cs ss _ = (cs, ss)
@@ -100,8 +105,8 @@ reach roots p =
     go funs stats (MkRefs (f :: fs) ss') cs ss (S k) =
       if contains f cs then go funs stats (MkRefs fs ss') cs ss (S k) else
         let more = maybe neutral function (lookup f funs)
-        in go funs stats (MkRefs fs ss' <+> more) (insert f cs) ss k
+        in go funs stats (more <+> MkRefs fs ss') (insert f cs) ss k
     go funs stats (MkRefs [] (s :: ss')) cs ss (S k) =
       if contains s ss then go funs stats (MkRefs [] ss') cs ss (S k) else
         let more = maybe neutral static (lookup s stats)
-        in go funs stats (MkRefs [] ss' <+> more) cs (insert s ss) k
+        in go funs stats (more <+> MkRefs [] ss') cs (insert s ss) k
