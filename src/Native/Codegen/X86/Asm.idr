@@ -305,7 +305,9 @@ Label = Nat
 ||| Memory operands are a base register plus a constant displacement, the
 ||| IR's only memory operand, or RIP plus a label plus a constant, for code
 ||| and static addresses: the constant is a static's pointer tag, when the
-||| encoding of uniform values has one.
+||| encoding of uniform values has one. An instruction names a label only
+||| relative to RIP, here or as a jump's or a call's target, so the code
+||| holds no absolute address: a static's is formed by `lea` of its label.
 public export
 data Mem = MBase Reg64 Int
          | MRip Label Int

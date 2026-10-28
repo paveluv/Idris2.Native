@@ -16,9 +16,10 @@ import Native.Primitive.DoubleBits
 ||| record of functions. Flat code that reads such a table is then
 ||| refused, a function being no flat value; ordinary code calls a copy of
 ||| `row` at each read, `rowWords` a constant there only while the
-||| implementation is `public export`. Idris parses `%inline` on an
+||| implementation is `public export`. Idris takes `%inline` on an
 ||| implementation, which gives it to each of its methods, and on no
-||| single method.
+||| single method: it refuses it on one of an implementation's methods,
+||| and ignores it on the interface's declaration of one.
 public export
 interface Row r where
   ||| The words of a row, one at least.

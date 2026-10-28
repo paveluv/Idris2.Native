@@ -145,18 +145,18 @@ resolvedRules fms programNames r =
     ||| loaded, and it leaves out the first entry. A walk that looks for
     ||| some definitions lists the names of the context's map from full names
     ||| to entries (`resolvedAs`), which decodes nothing, and looks up only
-    ||| those a rule of the name keeps. Where every definition is needed, the
-    ||| suppression says so. In a module that uses Idris's, every mention of
-    ||| the name is reported, where it is written, as the resolution says
-    ||| which names a module uses, not where; a module that uses only another
-    ||| `allNames` than Idris's, its own or another module's, is not looked
-    ||| at.
+    ||| those a rule of the module keeps, by the namespace each is in. Where
+    ||| every definition is needed, the suppression says so. In a module
+    ||| that uses Idris's, every mention of the name is reported, where it
+    ||| is written, as the resolution says which names a module uses, not
+    ||| where; a module that uses only another `allNames` than Idris's, its
+    ||| own or another module's, is not looked at.
     decodingWalk : Source.SourceFile -> Rules.Mentions -> List Finding
     decodingWalk f ms =
       if not (any (\rm => rm.path == f.path && any isAllNames rm.uses) r.modules) then [] else
         [ Rules.finding f "decoding-walk" fc (nameRoot n)
             ("`allNames` decodes every definition of the context: list the names of its "
-             ++ "`resolvedAs`, and look up only those a rule of the name keeps")
+             ++ "`resolvedAs`, and look up only those a rule of the module keeps")
         | (fc, n) <- ms.refs, nameRoot n == "allNames" ]
       where
         isAllNames : Resolution.Use -> Bool

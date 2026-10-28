@@ -92,10 +92,11 @@ generate n f =
     maxWords : Int
     maxWords = 0x100000000000
 
-||| Word `d` of row `i`, both in words: the word at `i + d`. Nothing checks
-||| that it is inside, so each use says why it is (`trust-escape`); outside,
-||| it is any word, or the end of the program. Natively it is one load,
-||| inline in flat code; elsewhere its body, the buffer's word.
+||| The word at index `i` and displacement `d`, both in words: the word at
+||| `i + d`. Nothing checks that it is inside, so each use says why it is
+||| (`trust-escape`); outside, it is any word, or the end of the program.
+||| Natively it is one load, inline in flat code; elsewhere its body, the
+||| buffer's word.
 export %noinline
 uncheckedWord : PureLoad Bytes (Primitive.signature Primitive.PayloadWord)
 uncheckedWord (MkBytes (Flat.MkUniform b)) i d =

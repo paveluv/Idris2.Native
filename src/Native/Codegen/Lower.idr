@@ -65,7 +65,9 @@
 ||| Constructor ids are the per-type numbers VMCode gives constructors (its
 ||| `tag`): a `CASE` carries no type, so a global numbering cannot be
 ||| computed here, and every nullary constructor with the same id is the
-||| same static object.
+||| same static object. A type constructor built as a value is a
+||| constructor whose id is its number among the program's (`typeCons`),
+||| so one of no arguments is the static object of that id too.
 module Native.Codegen.Lower
 
 import Native.Codegen.CastWay
@@ -2144,6 +2146,9 @@ lowerProgram enc platform realised _ forms shapes staticReads staticObjects cons
            ::
              [(ConstantWord.nullaryCon c, ConstantWord.Nullary c)
               | c <- toList (concatMap (boxed . snd) planned)])
+      -- each static once, in the order of their names, which is the order
+      -- the image lays them out in: so the image is the same, byte for
+      -- byte, whatever order the statics were collected in
       statics = Data.SortedMap.toList
                   (foldl mergeLeft boxing (staticObjects :: mapMaybe bodyStatics vmdefs))
       rs = mapMaybe ready statics

@@ -19,7 +19,7 @@
 ./Values.idr:16:14 sealed-values: `objectValue` takes a value for what the caller says: convert through `Native.Support.Obj`, with the representation contract's evidence
 ./Viewer.idr:7:1 import-indirect: `Data.Fin` is used (`Fin`, `FZ`) only through `Data.Vect`: import it
 ./Viewer.idr:8:1 import-indirect: `Shape` is used (`Square`, `Shape`) only through `Shapes`: import it
-./Walk.idr:18:18 decoding-walk: `allNames` decodes every definition of the context: list the names of its `resolvedAs`, and look up only those a rule of the name keeps
+./Walk.idr:18:18 decoding-walk: `allNames` decodes every definition of the context: list the names of its `resolvedAs`, and look up only those a rule of the module keeps
     directness     92  modules used that are imported directly: 49 of 53
     leanness       91  private imports needed: 30 of 33
   efficiency       40

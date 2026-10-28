@@ -22,7 +22,7 @@ import Native.Types.Bytes
 
 %default covering
 
--- Word 1 of row `i`, a constant displacement: as if written
+-- The word at index `i` and displacement 1, a constant: as if written
 --
 --   pick b i = load (b + 8 + 8 * i + 8 * 1)
 --
@@ -31,8 +31,8 @@ import Native.Types.Bytes
 pick : Bytes -> Int -> Bits64
 pick b i = uncheckedWord b i 1
 
--- Word `d` of row `i`, a displacement known only at run time: the index
--- and the displacement added, then one load.
+-- The word at index `i` and displacement `d`, a displacement known only
+-- at run time: the index and the displacement added, then one load.
 %cg native flat Main.at
 at : Bytes -> Int -> Int -> Bits64
 at b i d = uncheckedWord b i d

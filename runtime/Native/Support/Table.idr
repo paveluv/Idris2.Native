@@ -9,12 +9,12 @@
 ||| of each word (`Bytes.uncheckedWord`).
 |||
 ||| This module is what a read's soundness rests on: `tabulate` is the
-||| only maker of a table, so that a table's rows are always the words its
-||| range and its row type say, and `index` reads them unchecked. It
-||| trusts, besides, the implementation of `Row` it is given to be the one
-||| `tabulate` was, as Idris's search finds one implementation for a type:
-||| an implementation passed by name, of more words a row, could read past
-||| the table.
+||| only function that makes a table, so that a table's rows are always
+||| the words its range and its row type say, and `index` reads them
+||| unchecked. It trusts, besides, the implementation of `Row` it is given
+||| to be the one `tabulate` was, as Idris's search finds one implementation
+||| for a type: an implementation passed by name, of more words a row, could
+||| read past the table.
 module Native.Support.Table
 
 import Native.Support.Table.Row
@@ -91,12 +91,12 @@ index t k _ =
   in Row.row (\j => case prim__lt_Int j (Row.rowWords {r}) of
                       0 => 0
                       _ => case prim__lt_Int j 0 of
-                             -- lint: allow trust-escape: `tabulate`, the only maker, made
-                             -- `(hi - lo + 1) * rowWords` words, by the implementation of `Row`
-                             -- given here; `inside` puts `k` from `lo` to `hi`, and the tests put
-                             -- `j` from 0 below `rowWords`, so word `(k - lo) * rowWords + j`
+                             -- lint: allow trust-escape: `tabulate`, which alone makes a table,
+                             -- made `(hi - lo + 1) * rowWords` words, by the implementation of
+                             -- `Row` given here; `inside` puts `k` from `lo` to `hi`, and the tests
+                             -- put `j` from 0 below `rowWords`, so word `(k - lo) * rowWords + j`
                              -- is one of them; and `i`, `first + j` and their sum, `Int`s that
-                             -- wrap around, give that word exactly, as `uncheckedWord` sums
-                             -- them: the sum is that word modulo 2^64, and an `Int`
+                             -- wrap around, give that word exactly, as `uncheckedWord` sums them:
+                             -- the sum is that word modulo 2^64, and an `Int`
                              0 => Types.Bytes.uncheckedWord rows i (first + j)
                              _ => 0)

@@ -13,8 +13,12 @@
 ||| A static term is reduced where its value is needed: a lambda that is
 ||| applied, a `let` of a static value, a case on a known constructor or
 ||| constant, a primitive operation on constants, and a call of a definition
-||| that is *unfolded*: one marked inline (methods and implementations are),
-||| a case or with block, `io_bind`, `prim__io_bind` and `idris_crash`.
+||| that is *unfolded*: one marked inline, a case or with block, `io_bind`,
+||| `prim__io_bind` and `idris_crash`. Idris marks inline every dictionary
+||| and every method's projection from one, and a method's body only where
+||| its implementation is marked `%inline`, or where the implementation is
+||| `public export` and the body simple enough for Idris's heuristic to
+||| inline it.
 |||
 ||| A definition is unfolded everywhere except in terms written inside its
 ||| own body, where it is called instead, so unfolding ends: every term
