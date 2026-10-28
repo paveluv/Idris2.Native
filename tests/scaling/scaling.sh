@@ -53,11 +53,9 @@ idris2=$1
 shift
 sizes=${*:-128 256 512 1024}
 
-# Superlinear phases known and accepted for now, as shape:phase. A
-# variable of the term IR costs its distance from the top of its context:
-# a constant list binds every element before the first cons, which reads
-# them back from the bottom.
-KNOWN="constlist:regs"
+# Superlinear phases known and accepted for now, as shape:phase, separated
+# by spaces: none.
+KNOWN=""
 
 shapes=${SHAPES:-"functions straight joins calls flat case literals constlist"}
 

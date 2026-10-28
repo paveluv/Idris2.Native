@@ -27,6 +27,7 @@ import Native.Codegen.TermIR.Var
 import Core.Name
 import Data.List
 import Data.List.Quantifiers
+import Data.Singleton
 import Data.So
 import Data.Vect
 import Decidable.Equality
@@ -34,6 +35,7 @@ import Native.Codegen.IRCommon.Conv as IRCommon
 import Native.Codegen.IRCommon.Op
 import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.Data.Distinct
+import Native.Data.RAList as Data
 import Native.HeapObj.ValEnc
 import Native.Types.Enc as Types
 
@@ -337,86 +339,100 @@ levels d ts = go ts (length ts)
     go [] _ = []
     go (_ :: us) k = MkLvl (d + minus k 1) :: go us (minus k 1)
 
-cases : (ls : List (List (IRCommon.Ty enc))) -> (dl : Nat) -> (0 _ : dl = length ls) ->
-        (ctx : List (IRCommon.Ty enc)) -> (dc : Nat) -> (0 _ : dc = length ctx) ->
+-- The label context `ls` and the context `ctx` come as random-access lists
+-- of their own types (`RAList.fromList`), `labels` and `types`, each with
+-- its depth, which the erased proofs keep in step with it. The position of
+-- level n in a context of d entries is d - 1 - n, and the type there is
+-- read and compared with the level's in steps of the order of the
+-- logarithm of d (`Var.varAt`): walking the list to the position, a body
+-- whose instructions read binders far below cost the square of its length.
+cases : {0 ls : List (List (IRCommon.Ty enc))} -> Data.RAList Singleton ls -> (dl : Nat) ->
+        (0 _ : dl = length ls) ->
+        {0 ctx : List (IRCommon.Ty enc)} -> Data.RAList Singleton ctx -> (dc : Nat) ->
+        (0 _ : dc = length ctx) ->
         All (\_ => PBody d c m Lvl LLvl) keys -> Maybe (All (\_ => Body d c m ls ctx) keys)
 
-toBody : (ls : List (List (IRCommon.Ty enc))) -> (dl : Nat) -> (0 _ : dl = length ls) ->
-         (ctx : List (IRCommon.Ty enc)) -> (dc : Nat) -> (0 _ : dc = length ctx) ->
+toBody : {0 ls : List (List (IRCommon.Ty enc))} -> Data.RAList Singleton ls -> (dl : Nat) ->
+         (0 _ : dl = length ls) ->
+         {0 ctx : List (IRCommon.Ty enc)} -> Data.RAList Singleton ctx -> (dc : Nat) ->
+         (0 _ : dc = length ctx) ->
          PBody d c m Lvl LLvl -> Maybe (Body d c m ls ctx)
-toBody ls dl pl ctx dc pc body = case body of
+toBody labels dl pl types dc pc body = case body of
   PBind {ts} i k =>
-    [| Body.Bind (Instr.traverseInstr (opnd ctx dc pc) i)
-            (toBody ls dl pl (ts ++ ctx) (length ts + dc) (plusLength pc) (k (levels dc ts))) |]
+    [| Body.Bind (Instr.traverseInstr (opnd types dc pc) i)
+            (toBody labels dl pl (extend ts types) (length ts + dc) (plusLength pc)
+              (k (levels dc ts))) |]
   PJoin ps b r => do
     let lbl = MkLLvl {ps} dl
-    b' <- toBody (ps :: ls) (S dl) (cong S pl) (ps ++ ctx) (length ps + dc) (plusLength pc)
+        labels' = Val ps :: labels
+    b' <- toBody labels' (S dl) (cong S pl) (extend ps types) (length ps + dc) (plusLength pc)
       (b lbl (levels dc ps))
-    r' <- toBody (ps :: ls) (S dl) (cong S pl) ctx dc pc (r lbl)
+    r' <- toBody labels' (S dl) (cong S pl) types dc pc (r lbl)
     pure (Body.Join ps b' r')
-  PJump lbl xs => [| Body.Jump (label ls dl pl lbl) (Opnd.traverseAll (opnd ctx dc pc) xs) |]
+  PJump lbl xs =>
+    [| Body.Jump (label labels dl pl lbl) (Opnd.traverseAll (opnd types dc pc) xs) |]
   PBranch {int} r x y a b =>
     [| (\x', y', a', b' => Body.Branch {int} r x' y' a' b')
-         (opnd ctx dc pc x) (opnd ctx dc pc y) (toBody ls dl pl ctx dc pc a)
-           (toBody ls dl pl ctx dc pc b) |]
+         (opnd types dc pc x) (opnd types dc pc y) (toBody labels dl pl types dc pc a)
+           (toBody labels dl pl types dc pc b) |]
   PIfFixnums {fx} {n} vs y no =>
     [| (\vs', y', no' => Body.IfFixnums {fx} vs' y' no')
-         (traverse (opnd ctx dc pc) vs)
-         (toBody ls dl pl (replicate (S n) (IRCommon.Ty.Fix {enc}) ++ ctx)
+         (traverse (opnd types dc pc) vs)
+         (toBody labels dl pl (extend (replicate (S n) (IRCommon.Ty.Fix {enc})) types)
            (length (the (List (IRCommon.Ty enc)) (replicate (S n) IRCommon.Ty.Fix)) + dc)
                  (plusLength {ts = replicate (S n) (IRCommon.Ty.Fix {enc})} pc)
                  (y (levels dc _)))
-         (toBody ls dl pl ctx dc pc no) |]
+         (toBody labels dl pl types dc pc no) |]
   PArithOv {t} {int} o x y ok ovf =>
     [| (\x', y', ok', ovf' => Body.ArithOv {t} {int} o x' y' ok' ovf')
-         (opnd ctx dc pc x) (opnd ctx dc pc y)
-         (toBody ls dl pl (t :: ctx) (S dc) (cong S pc) (ok (MkLvl dc)))
-           (toBody ls dl pl ctx dc pc ovf) |]
+         (opnd types dc pc x) (opnd types dc pc y)
+         (toBody labels dl pl (Val t :: types) (S dc) (cong S pc) (ok (MkLvl dc)))
+           (toBody labels dl pl types dc pc ovf) |]
   PTagOv {fx} x ok ovf =>
     [| (\x', ok', ovf' => Body.TagOv {fx} x' ok' ovf')
-         (opnd ctx dc pc x)
-         (toBody ls dl pl (IRCommon.Ty.Fix {enc} :: ctx) (S dc) (cong S pc) (ok (MkLvl dc)))
-           (toBody ls dl pl ctx dc pc ovf) |]
+         (opnd types dc pc x)
+         (toBody labels dl pl (Val (IRCommon.Ty.Fix {enc}) :: types) (S dc) (cong S pc)
+           (ok (MkLvl dc)))
+           (toBody labels dl pl types dc pc ovf) |]
   PSwitch {int} {ok} x keys bs dflt => do
-    x' <- opnd ctx dc pc x
-    bs' <- cases ls dl pl ctx dc pc bs
-    dflt' <- toBody ls dl pl ctx dc pc dflt
+    x' <- opnd types dc pc x
+    bs' <- cases labels dl pl types dc pc bs
+    dflt' <- toBody labels dl pl types dc pc dflt
     pure (Body.Switch {int} x' keys {ok} bs' dflt')
   PCall f xs k =>
-    [| Body.Call (pure f) (Opnd.traverseAll (opnd ctx dc pc) xs)
-      (toBody ls dl pl (IRCommon.Ty.Val :: ctx) (S dc) (cong S pc) (k (MkLvl dc))) |]
-  PTailCall f xs => Body.TailCall f <$> Opnd.traverseAll (opnd ctx dc pc) xs
+    [| Body.Call (pure f) (Opnd.traverseAll (opnd types dc pc) xs)
+      (toBody labels dl pl (Val IRCommon.Ty.Val :: types) (S dc) (cong S pc) (k (MkLvl dc))) |]
+  PTailCall f xs => Body.TailCall f <$> Opnd.traverseAll (opnd types dc pc) xs
   PApply f x k =>
-    [| Body.Apply (opnd ctx dc pc f) (opnd ctx dc pc x)
-      (toBody ls dl pl (IRCommon.Ty.Val :: ctx) (S dc) (cong S pc) (k (MkLvl dc))) |]
-  PTailApply f x => [| Body.TailApply (opnd ctx dc pc f) (opnd ctx dc pc x) |]
-  PReturn x => Body.Return <$> opnd ctx dc pc x
-  PEnter f xs => [| Body.Enter (opnd ctx dc pc f) (traverse (opnd ctx dc pc) xs) |]
-  PRet xs => Body.Ret <$> Opnd.traverseAll (opnd ctx dc pc) xs
+    [| Body.Apply (opnd types dc pc f) (opnd types dc pc x)
+      (toBody labels dl pl (Val IRCommon.Ty.Val :: types) (S dc) (cong S pc) (k (MkLvl dc))) |]
+  PTailApply f x => [| Body.TailApply (opnd types dc pc f) (opnd types dc pc x) |]
+  PReturn x => Body.Return <$> opnd types dc pc x
+  PEnter f xs => [| Body.Enter (opnd types dc pc f) (traverse (opnd types dc pc) xs) |]
+  PRet xs => Body.Ret <$> Opnd.traverseAll (opnd types dc pc) xs
   PCrash s => Just (Body.Crash s)
   PUnsupported s => Just (Body.Unsupported s)
   where
-    label : (ls : List (List (IRCommon.Ty enc))) -> (dl : Nat) -> (0 _ : dl = length ls) ->
-            LLvl ps ->
-            Maybe (Var ls ps)
-    label ls dl _ (MkLLvl n) = if n < dl then Var.varAt (minus dl (S n)) ps ls else Nothing
+    label : {0 ls' : List (List (IRCommon.Ty enc))} -> Data.RAList Singleton ls' -> (dl : Nat) ->
+            (0 _ : dl = length ls') -> LLvl ps -> Maybe (Var ls' ps)
+    label labels dl _ (MkLLvl n) = if n < dl then Var.varAt (minus dl (S n)) ps labels else Nothing
 
-    opnd : (ctx : List (IRCommon.Ty enc)) -> (dc : Nat) -> (0 _ : dc = length ctx) -> Opnd Lvl t ->
-           Maybe (Opnd (Var ctx) t)
-    opnd ctx dc pc (Opnd.V x) = Opnd.V <$> var ctx dc pc x
+    opnd : {0 ctx' : List (IRCommon.Ty enc)} -> Data.RAList Singleton ctx' -> (dc : Nat) ->
+           (0 _ : dc = length ctx') -> Opnd Lvl t -> Maybe (Opnd (Var ctx') t)
+    opnd types dc pc (Opnd.V x) = Opnd.V <$> var types dc pc x
       where
-        -- The position of level n in a context of d entries is d - 1 - n. The
-        -- depth comes with the context, so that a variable costs its distance from
-        -- the top of the context and not the context's length, which made a long
-        -- body cost the square of its length; the erased proof keeps the two in
-        -- step.
-        var : (ctx : List (IRCommon.Ty enc')) -> (dc : Nat) -> (0 _ : dc = length ctx) -> Lvl t' ->
-              Maybe (Var ctx t')
-        var ctx dc _ (MkLvl n) = if n < dc then Var.varAt (minus dc (S n)) t' ctx else Nothing
-    opnd ctx dc _ (Opnd.W i) = Just (Opnd.W i)
-    opnd ctx dc _ (Opnd.Fx {fx} {ok} i) = Just (Opnd.Fx {fx} {ok} i)
-    opnd ctx dc _ (Opnd.Vx {fx} {ok} i) = Just (Opnd.Vx {fx} {ok} i)
-    opnd ctx dc _ Opnd.Erased = Just Opnd.Erased
+        var : {0 ctx'' : List (IRCommon.Ty enc')} -> Data.RAList Singleton ctx'' -> (dc : Nat) ->
+              (0 _ : dc = length ctx'') -> Lvl t' -> Maybe (Var ctx'' t')
+        var types dc _ (MkLvl n) = if n < dc then Var.varAt (minus dc (S n)) t' types else Nothing
+    opnd types dc _ (Opnd.W i) = Just (Opnd.W i)
+    opnd types dc _ (Opnd.Fx {fx} {ok} i) = Just (Opnd.Fx {fx} {ok} i)
+    opnd types dc _ (Opnd.Vx {fx} {ok} i) = Just (Opnd.Vx {fx} {ok} i)
+    opnd types dc _ Opnd.Erased = Just Opnd.Erased
+
+    -- A context extended at the top by the types.
+    extend : (ts : List a) -> Data.RAList Singleton xs -> Data.RAList Singleton (ts ++ xs)
+    extend [] rest = rest
+    extend (t :: ts) rest = Val t :: extend ts rest
 
     -- The depth of a context extended at the top.
     plusLength : {ts, ctx' : List a} -> dc' = length ctx' -> length ts + dc' = length (ts ++ ctx')
@@ -426,11 +442,11 @@ toBody ls dl pl ctx dc pc body = case body of
         appendLength [] ys = Refl
         appendLength (x :: xs) ys = cong S (appendLength xs ys)
 
-cases ls dl pl ctx dc pc [] = Just []
-cases ls dl pl ctx dc pc (b :: bs) =
-  [| toBody ls dl pl ctx dc pc b :: cases ls dl pl ctx dc pc bs |]
+cases labels dl pl types dc pc [] = Just []
+cases labels dl pl types dc pc (b :: bs) =
+  [| toBody labels dl pl types dc pc b :: cases labels dl pl types dc pc bs |]
 
 ||| A closed body as a term over its parameters.
 export
 close : {ps : List (IRCommon.Ty enc)} -> Closed d c m ps -> Maybe (Body d c m [] ps)
-close t = toBody [] 0 Refl ps (length ps) Refl (t (levels 0 ps))
+close t = toBody [] 0 Refl (Data.RAList.fromList ps) (length ps) Refl (t (levels 0 ps))

@@ -45,14 +45,18 @@ public export
 entry : {0 xs : List a} -> Data.RAList Singleton xs -> Var xs x -> a
 entry entries (MkVar i at) = unVal (Data.RAList.fetch i at entries)
 
-||| The variable at the position, if the context has the type there.
+||| The variable at the position, if the context has the type there, from
+||| the context as a random-access list of its own types
+||| (`RAList.fromList`): in steps of the order of the logarithm of its
+||| length.
 public export
-varAt : DecEq a => (i : Nat) -> (x : a) -> (xs : List a) -> Maybe (Var xs x)
-varAt Z x (y :: ys) = case decEq x y of
-  Yes Refl => Just here
-  No _ => Nothing
-varAt (S i) x (_ :: ys) = map later (varAt i x ys)
-varAt _ _ [] = Nothing
+varAt : DecEq a => {0 xs : List a} -> (i : Nat) -> (x : a) -> Data.RAList Singleton xs ->
+        Maybe (Var xs x)
+varAt i x types = case Data.RAList.lookup i types of
+  Just (Data.RAList.MkFound (Val y) at) => case decEq x y of
+    Yes Refl => Just (MkVar i at)
+    No _ => Nothing
+  Nothing => Nothing
 
 ||| Every entry of a list with its variable, in one pass: the proofs are
 ||| erased, so building them costs nothing at run time.
