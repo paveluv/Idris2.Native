@@ -35,6 +35,7 @@ import Native.Data.AtIndex
 import Data.List
 import Data.List.Quantifiers
 import Data.Nat
+import Data.Singleton
 
 %default total
 
@@ -224,6 +225,13 @@ export
 fromAll : All p xs -> RAList p xs
 fromAll [] = []
 fromAll (v :: vs) = v :: fromAll vs
+
+||| A list's own elements, each as itself (`Val x` for `x`), so that what a
+||| lookup finds is the element, in as many steps as they are.
+export
+fromList : (xs : List a) -> RAList Singleton xs
+fromList [] = []
+fromList (x :: xs) = Val x :: fromList xs
 
 ||| The number of values, in as many steps as there are trees.
 export

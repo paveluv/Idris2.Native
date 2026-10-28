@@ -2,10 +2,10 @@
 
 # Native.Data.RAList, random-access lists, checked against the lists they
 # stand for: lists of 0 to 300 elements made a value at a time, a part
-# put in front of the rest at every cut, and from an `All`, each looked up
-# at every position and past its end. It uses the code generator's
-# modules, installed as the package `idris2-native`, and runs on the Chez
-# backend.
+# put in front of the rest at every cut, from an `All` and from the list,
+# each looked up at every position and past its end. It uses the code
+# generator's modules, installed as the package `idris2-native`, and runs
+# on the Chez backend.
 idris2 -p idris2-native Main.idr -o ralist > /dev/null
 ./build/exec/ralist
 rm -rf build

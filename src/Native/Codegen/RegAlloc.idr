@@ -66,12 +66,14 @@ import Core.Name
 import Data.List
 import Data.List.Quantifiers
 import Data.Maybe
+import Data.Singleton
 import Data.SortedMap
 import Data.SortedSet
 import Data.Vect
 import Data.Zippable
 import Native.Data.Builder as Data
 import Native.Data.Distinct
+import Native.Data.RAList as Data
 import Native.HeapObj.ValEnc
 import Native.Types.Enc as Types
 import Native.Types.Header as Types
@@ -234,12 +236,22 @@ asReg env TermIR.Opnd.Erased = do r <- fresh IRCommon.Ty.Val; pure ([LocatedIR.I
 ------------------------------------------------------------------------------
 -- Instructions and bodies
 
-parameters (d : TermIR.Decls enc)
+||| The program's declarations, each list as a random-access list of its
+||| own entries (`RAList.fromList`), made once for the program: a variable
+||| that names a callee or a static is resolved in steps of the order of
+||| the logarithm of their number, where a walk of the list takes as many
+||| as the variable's position.
+record Declared (d : TermIR.Decls enc) where
+  constructor MkDeclared
+  sigs : Data.RAList Singleton d.sigs
+  statics : Data.RAList Singleton d.statics
+
+parameters {0 d : TermIR.Decls enc} (declared : Declared d)
   varName : TermIR.Var d.sigs s -> Name
-  varName r = (TermIR.Var.entry d.sigs r).name
+  varName r = (TermIR.Var.entry declared.sigs r).name
 
   varSym : TermIR.Var d.statics s -> Name
-  varSym r = (TermIR.Var.entry d.statics r).sym
+  varSym r = (TermIR.Var.entry declared.statics r).sym
 
   mutual
     ||| Where a branch goes: a block of the body's own, or, when the body only
@@ -571,7 +583,7 @@ parameters (d : TermIR.Decls enc)
             fillUses _ _ _ = empty
 
             isCollecting : TermIR.Var d.sigs s -> Bool
-            isCollecting r = case (TermIR.Var.entry d.sigs r).conv of
+            isCollecting r = case (TermIR.Var.entry declared.sigs r).conv of
               IRCommon.Conv.CPS => False
               IRCommon.Conv.Direct _ col => col
 
@@ -752,4 +764,6 @@ LocatedProgram enc = LocatedIR.Program enc
 export
 allocRegs : {d : TermIR.Decls enc} -> Target -> TermIR.Program enc d -> LocatedIR.Program enc
 allocRegs target (TermIR.MkProgram fs ss e conIds) =
-  LocatedIR.MkProgram target (functions d d.sigs fs) (statics d d.statics ss) (entryName d e) conIds
+  let declared = MkDeclared (Data.RAList.fromList d.sigs) (Data.RAList.fromList d.statics)
+  in LocatedIR.MkProgram target (functions declared d.sigs fs) (statics declared d.statics ss)
+       (entryName declared e) conIds

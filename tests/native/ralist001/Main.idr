@@ -22,11 +22,12 @@
 ||| right. `lookup 1 small` finds `Val 11` with the proof that 11 is at
 ||| position 1, and `lookup 3 small` finds nothing: the list has 3 elements.
 |||
-||| Lists of 0 to 300 elements are made three ways: a value put in front at
+||| Lists of 0 to 300 elements are made four ways: a value put in front at
 ||| a time, the values of a first part put in front of a list of the rest,
-||| at every place the list can be cut in two, and from an `All`. Each is
-||| looked up at every position, by `fetch` and by `lookup`, and past its
-||| end, and its size is compared with the list's length.
+||| at every place the list can be cut in two, from an `All`, and from the
+||| list itself, `fromList [10, 11, 12]` being `small`. Each is looked up
+||| at every position, by `fetch` and by `lookup`, and past its end, and its
+||| size is compared with the list's length.
 module Main
 
 import Data.List.Quantifiers
@@ -140,3 +141,4 @@ main = do
     (foldr (\xs, rest => let ps = positions xs in map (holds xs ps . byPrepend) (cuts xs) ++ rest)
        [] lists)
   report "from All" (map (\xs => holds xs (positions xs) (fromAll (singletons xs))) lists)
+  report "from List" (map (\xs => holds xs (positions xs) (fromList xs)) lists)

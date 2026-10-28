@@ -6,8 +6,10 @@ module Native.Codegen.TermIR.Var
 
 import Data.List.Quantifiers
 import Data.Nat
+import Data.Singleton
 import Decidable.Equality.Core
 import Native.Data.AtIndex as Data
+import Native.Data.RAList as Data
 
 %default total
 
@@ -39,14 +41,12 @@ fetch (MkVar i at) env = go i at env
     go Z Data.AtIndex.First (z :: _) = z
     go (S i) (Data.AtIndex.Later at) (_ :: zs) = go i at zs
 
-||| The entry a variable names: a callee's signature, a static's.
+||| The entry a variable names, a callee's signature or a static's, from
+||| the entries as a random-access list of themselves (`RAList.fromList`):
+||| in steps of the order of the logarithm of their number.
 public export
-entry : (xs : List a) -> Var xs x -> a
-entry xs (MkVar i at) = go i xs at
-  where
-    go : (i : Nat) -> (ys : List a) -> (0 _ : Data.AtIndex i y ys) -> a
-    go Z (z :: _) Data.AtIndex.First = z
-    go (S i) (_ :: zs) (Data.AtIndex.Later at) = go i zs at
+entry : {0 xs : List a} -> Data.RAList Singleton xs -> Var xs x -> a
+entry entries (MkVar i at) = unVal (Data.RAList.fetch i at entries)
 
 ||| The variable at the position, if the context has the type there.
 public export
