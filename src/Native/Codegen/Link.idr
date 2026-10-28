@@ -94,14 +94,21 @@ linkProgram enc window areas program items =
         | Nothing => pure Nothing
       placeAll s' labels rest
       where
+        -- a datum's bytes written
+        piece : ByteSink.Sink -> X86.Datum -> IO (Maybe ByteSink.Sink)
+        piece s d = case X86.Datum.bytes labels d of
+          Right b => ByteSink.put s b
+          Left _ => pure Nothing
+
+        -- each clause's action written out, `pure` or a `do` block, as
+        -- `piece`'s case would not be: Idris then compiles the loop as a
+        -- function of the world, not one that makes an action at each datum
         pieces : ByteSink.Sink -> List X86.Datum -> IO (Maybe ByteSink.Sink)
         pieces s [] = pure (Just s)
-        pieces s (d :: ds) = case X86.Datum.bytes labels d of
-          Right b => do
-            Just s' <- ByteSink.put s b
-              | Nothing => pure Nothing
-            pieces s' ds
-          Left _ => pure Nothing
+        pieces s (d :: ds) = do
+          Just s' <- piece s d
+            | Nothing => pure Nothing
+          pieces s' ds
 
 ||| The default allocation window: 4 MiB, the bytes the inline bump may
 ||| allocate before the runtime's slow path runs, which extends the window

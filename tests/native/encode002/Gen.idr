@@ -1,6 +1,8 @@
 ||| The encoder reports what it cannot encode faithfully: a field that does
 ||| not fit its bits, a displacement to a label included, and a label that
-||| nothing defines. Each one in turn, after one that fits.
+||| nothing defines. Each one in turn, after one that fits (`Sequences`);
+||| last, a label both the text and the labels outside it define, the
+||| text's taken.
 |||
 ||| An instruction field has a fixed width, such as a 32-bit displacement. A
 ||| value that does not fit would be truncated into a valid but different
@@ -11,20 +13,13 @@ module Gen
 import Data.SortedMap
 import Native.Codegen.X86.Asm
 import Native.Codegen.X86.Encode
+import Sequences
 
-check : String -> SortedMap Label Int -> List Instr -> IO ()
-check what env is = do
+check : (String, SortedMap Label Int, List Instr) -> IO ()
+check (what, env, is) = do
   let measured = measure 0 is
       problems = check (labelsWith env measured) measured 0 is
   putStrLn (what ++ ": " ++ show problems)
 
 main : IO ()
-main = do
-  check "fits" empty [MovRM RAX (MBase RBX 2147483647), AluI ADD RAX (-2147483648), Quad (-1)]
-  check "displacement" empty [MovRM RAX (MBase RBX 2147483648)]
-  check "immediate" empty [AluI ADD RAX 4294967296]
-  check "store immediate" empty [MovMI (MBase RBX 0) 2147483648]
-  check "64-bit immediate" empty [MovRI RAX 18446744073709551616]
-  check "quad" empty [Quad (-9223372036854775809)]
-  check "label too far" (fromList [(7, 4294967296)]) [Jmp 7]
-  check "missing label" empty [Jmp 8]
+main = traverse_ check sequences

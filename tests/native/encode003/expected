@@ -1,0 +1,10 @@
+mov rax, qword ptr [rbx+8]: 48 8b 43 08, as its parts above
+mov rax, qword ptr [r12+16]: 49 8b 44 24 10, as its parts above
+jne L3: 0f 85 10 00 00 00, as its parts above
+instructions: 32829, each at 5 addresses and 5 displacements
+readings that disagree: 0
+sequences assembled into a buffer as assemble makes them: 22 of 22
+a stretch of 5 bytes from 2^63 - 2: no sink
+zeros of 2^63 - 1 into a stretch of 8: no sink
+zeros of 2^64 + 4 into a stretch of 8: no sink, nothing written
+zeros of 8 into a stretch of 8: the stretch filled

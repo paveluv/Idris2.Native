@@ -1,0 +1,12 @@
+. ../../testutils.sh
+
+# The encoder's readings of an instruction agree (Agree.idr), over the
+# instructions of encode001's groups and encode002's sequences, whose
+# modules are compiled from copies in build/, so that the corpus is
+# written once; nothing here needs binutils.
+rm -rf build/src
+mkdir -p build/src
+cp Agree.idr ../encode001/Groups.idr ../encode002/Sequences.idr build/src/
+cd build/src
+idris2 -p idris2-native -p idris2 Agree.idr -o agree > /dev/null
+./build/exec/agree
