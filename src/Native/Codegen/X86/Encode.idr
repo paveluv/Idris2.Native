@@ -13,7 +13,7 @@ import Native.Codegen.X86.Asm
 import Data.Bits
 import Data.List
 import Data.SortedMap
-import Data.Zippable
+import Native.Codegen.ByteSink
 import Native.Codegen.LittleEndian
 %default total
 
@@ -263,19 +263,26 @@ measure base = go base empty [<]
     go pc m ss (Asm.Lbl l :: is) = go pc (insert l pc m) (ss :< 0) is
     go pc m ss (i :: is) = let n = instrSize pc i in go (pc + n) m (ss :< n) is
 
-||| Pass two, of the sequence pass one measured, with an environment of
+||| The labels of the sequence pass one measured, with an environment of
 ||| labels defined outside this text: the image's rodata and bss symbols at
 ||| their final addresses (`planLayout` can run first because sizes do not
-||| depend on labels). Text labels take precedence. Each instruction is
-||| encoded once, at the size pass one found. A reference to an unknown
-||| label, and an instruction with a field that does not fit, are encoded
-||| anyway and reported, so the caller can fail loudly.
+||| depend on labels). Text labels take precedence.
 export
-assembleWith : (env : SortedMap Asm.Label Int) -> Measured -> (base : Int) -> List Asm.Instr
-               -> (SnocList Bits8, SortedMap Asm.Label Int, List AsmProblem)
-assembleWith env measured base is =
-  let labels = foldl (\m, (l, a) => insert l a m) env (SortedMap.toList measured.labels)
-  in go labels base [<] [<] (zip is measured.sizes)
+labelsWith : (env : SortedMap Asm.Label Int) -> Measured -> SortedMap Asm.Label Int
+labelsWith env measured = foldl (\m, (l, a) => insert l a m) env (SortedMap.toList measured.labels)
+
+||| An instruction of `size` bytes at `pc`: the displacement to the label it
+||| refers to, from the end of the instruction, and what is wrong with it, a
+||| label not among the labels or a field that does not fit. The
+||| displacement of a missing label is 0.
+resolve : SortedMap Asm.Label Int -> (pc, size : Int) -> Asm.Instr -> (Int, List AsmProblem)
+resolve labels pc size i =
+  let (rel, missing) = case instrLabel i of
+        Nothing => (the Int 0, [])
+        Just (l, d) => case lookup l labels of
+          Just target => (target + d - (pc + size), [])
+          Nothing => (0, [MissingLabel l])
+  in (rel, if fieldsFit i && fitsInt32 (cast rel) then missing else missing ++ [DoesNotFit i])
   where
     ||| The label an instruction refers to, if any, and the constant added to it.
     instrLabel : Asm.Instr -> Maybe (Asm.Label, Int)
@@ -296,22 +303,49 @@ assembleWith env measured base is =
     instrLabel (Asm.LockCmpxchg (Asm.MRip l d) _) = Just (l, d)
     instrLabel _ = Nothing
 
-    -- the bytes and the problems accumulate at their ends, instruction by
-    -- instruction
-    go : SortedMap Asm.Label Int -> Int -> SnocList Bits8 -> SnocList AsmProblem ->
-         List (Asm.Instr, Int) -> (SnocList Bits8, SortedMap Asm.Label Int, List AsmProblem)
-    go labels _ acc problems [] = (acc, labels, problems <>> [])
-    go labels pc acc problems ((i, size) :: rest) =
-      let (rel, missing) = case instrLabel i of
-            Nothing => (the Int 0, [])
-            Just (l, d) => case lookup l labels of
-              Just target => (target + d - (pc + size), [])
-              Nothing => (0, [MissingLabel l])
-          misfit = if fieldsFit i && fitsInt32 (cast rel) then [] else [DoesNotFit i]
-      in go labels (pc + size) (acc <>< encodeRaw pc rel i) (problems <>< (missing ++ misfit)) rest
+||| What is wrong with the sequence pass one measured, placed at `base`,
+||| with these labels (`labelsWith`): the labels it cannot resolve and the
+||| fields that do not fit, found with no instruction encoded.
+export
+check : SortedMap Asm.Label Int -> Measured -> (base : Int) -> List Asm.Instr -> List AsmProblem
+check labels measured base is = go base [<] is measured.sizes
+  where
+    go : Int -> SnocList AsmProblem -> List Asm.Instr -> List Int -> List AsmProblem
+    go pc problems (i :: rest) (size :: sizes) =
+      go (pc + size) (problems <>< snd (resolve labels pc size i)) rest sizes
+    go _ problems _ _ = problems <>> []
 
-||| Pass two with no external labels.
+||| Pass two, of the sequence pass one measured, placed at `base`, with these
+||| labels (`labelsWith`): each instruction encoded once, at the size pass
+||| one found, and written through the sink. An instruction whose encoding
+||| is not of that size, or that does not fit before the sink's end, stops
+||| the pass with no sink; one with a problem (`check`) is encoded anyway.
+export
+assembleInto : ByteSink.Sink -> SortedMap Asm.Label Int -> Measured -> (base : Int) ->
+               List Asm.Instr -> IO (Maybe ByteSink.Sink)
+assembleInto sink labels measured base is = go sink base is measured.sizes
+  where
+    go : ByteSink.Sink -> Int -> List Asm.Instr -> List Int -> IO (Maybe ByteSink.Sink)
+    go s pc (i :: rest) (size :: sizes) =
+      let bs = encodeRaw pc (fst (resolve labels pc size i)) i
+      in if cast (length bs) /= size then pure Nothing else do
+           Just s' <- ByteSink.put s bs
+             | Nothing => pure Nothing
+           go s' (pc + size) rest sizes
+    go s _ _ _ = pure (Just s)
+
+||| Both passes with no external labels, the bytes made as a snoc-list: the
+||| encoder's reference, for its tests.
 export
 assemble : (base : Int) -> List Asm.Instr ->
            (SnocList Bits8, SortedMap Asm.Label Int, List AsmProblem)
-assemble base is = assembleWith empty (measure base is) base is
+assemble base is =
+  let measured = measure base is
+      labels = labelsWith empty measured
+  in (go labels base [<] is measured.sizes, labels, check labels measured base is)
+  where
+    go : SortedMap Asm.Label Int -> Int -> SnocList Bits8 -> List Asm.Instr -> List Int ->
+         SnocList Bits8
+    go labels pc acc (i :: rest) (size :: sizes) =
+      go labels (pc + size) (acc <>< encodeRaw pc (fst (resolve labels pc size i)) i) rest sizes
+    go _ _ acc _ _ = acc

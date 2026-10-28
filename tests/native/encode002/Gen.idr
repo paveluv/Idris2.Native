@@ -14,7 +14,8 @@ import Native.Codegen.X86.Encode
 
 check : String -> SortedMap Label Int -> List Instr -> IO ()
 check what env is = do
-  let (_, _, problems) = assembleWith env (measure 0 is) 0 is
+  let measured = measure 0 is
+      problems = check (labelsWith env measured) measured 0 is
   putStrLn (what ++ ": " ++ show problems)
 
 main : IO ()

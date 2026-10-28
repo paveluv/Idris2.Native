@@ -22,7 +22,7 @@ main = do
   let prog = [Lbl 0, MovRI RDI 42, MovRI RAX 231, Syscall]
   let (text, _, missing) = assemble textBase prog
   let lay = planLayout (byteCount text) 0 0
-  Right () <- writeImage "exit42" (elfImage X86_64 lay text [<] 0 textBase)
+  Right () <- writeImage "exit42" (elfImage X86_64 lay (bytes (text <>> [])) (bytes []) 0 textBase)
     | Left err => putStrLn ("write failed: " ++ show err)
   putStrLn
     ("text bytes: " ++ show (byteCount text) ++ ", missing labels: " ++ show (length missing))

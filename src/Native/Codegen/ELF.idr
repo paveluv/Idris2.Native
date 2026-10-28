@@ -7,6 +7,7 @@
 ||| executables and shared objects are later work.
 module Native.Codegen.ELF
 
+import Native.Codegen.ByteSink
 import Native.Codegen.LittleEndian
 import Native.Codegen.Platform
 
@@ -56,13 +57,28 @@ planLayout ts rs bs =
 
 -- ELF64 structures -------------------------------------------------------
 
-||| A stretch of an image's bytes: bytes in order; bytes accumulated at the
-||| end of a snoc-list, the text the encoder made and the read-only data,
-||| which the writer lays from their last byte, never read out into a list;
-||| or a run of zero bytes. Abstract: an image is built, measured and
-||| written here, and only passed along elsewhere.
+||| A stretch of an image's bytes: bytes in order; a run of zero bytes; or
+||| `size` bytes that a writer puts into the image when it is written,
+||| through a sink over the stretch alone (`Native.Codegen.ByteSink`), so
+||| that an image's text and read-only data are never made as lists of
+||| their bytes. Abstract: an image is built, measured and written here,
+||| and only passed along elsewhere.
 export
-data Stretch = Bytes (List Bits8) | SnocBytes (SnocList Bits8) | Zeros Nat
+data Stretch
+  = Bytes (List Bits8)
+  | Zeros Nat
+  | Written Int (ByteSink.Sink -> IO (Maybe ByteSink.Sink))
+
+||| A stretch of these bytes.
+export
+bytes : List Bits8 -> Stretch
+bytes = Bytes
+
+||| A stretch of `size` bytes that the writer puts into the image, through
+||| a sink over them: it must write them all, and only them.
+export
+written : (size : Int) -> (ByteSink.Sink -> IO (Maybe ByteSink.Sink)) -> Stretch
+written = Written
 
 ||| An image: its stretches, in file order.
 public export
@@ -73,8 +89,8 @@ Image = List Stretch
 export
 stretchSize : Stretch -> Int
 stretchSize (Bytes bs) = cast (length bs)
-stretchSize (SnocBytes sx) = LittleEndian.byteCount sx
 stretchSize (Zeros k) = cast k
+stretchSize (Written k _) = k
 
 ||| The bytes an image takes.
 export
@@ -86,12 +102,12 @@ imageSize image = sum (map stretchSize image)
 ||| label). Section headers are not needed to run but let `readelf`/`objdump`
 ||| and debuggers see the regions.
 export
-elfImage : Platform.Arch -> Layout -> (text : SnocList Bits8) -> (rodata : SnocList Bits8) ->
+elfImage : Platform.Arch -> Layout -> (text : Stretch) -> (rodata : Stretch) ->
            (bssSize : Int) ->
            (entry : Int) -> Image
 elfImage m lay text rodata bssSize entry =
-  let ts = LittleEndian.byteCount text
-      rs = LittleEndian.byteCount rodata
+  let ts = stretchSize text
+      rs = stretchSize rodata
       strOff = rodataOff lay + rs
       strSize = cast (length shstrtab)
       shoff = LittleEndian.alignUp (strOff + strSize) 8
@@ -109,9 +125,9 @@ elfImage m lay text rodata bssSize entry =
               ++ sectionHeader nameShstrtab shtStrtab 0 0 strOff strSize 1
   in [ Bytes headers
      , Zeros (cast (textOff lay - cast (length headers)))
-     , SnocBytes text
+     , text
      , Zeros (cast (rodataOff lay - (textOff lay + ts)))
-     , SnocBytes rodata
+     , rodata
      , Bytes shstrtab
      , Zeros (cast (shoff - (strOff + strSize)))
      , Bytes sections ]
@@ -193,38 +209,48 @@ elfImage m lay text rodata bssSize entry =
     nameBss = 15
     nameShstrtab = 20
 
-||| Write an image to a file and make it executable (owner rwx, others rx):
-||| each stretch laid into one buffer where it falls.
+||| Why an image could not be written: the file, or a stretch whose writer
+||| did not write exactly its bytes, at the stretch's offset in the image.
+public export
+data ImageError = Unwritable FileError | Miswritten Int
+
 export
-writeImage : (path : String) -> Image -> IO (Either FileError ())
+Show ImageError where
+  show (Unwritable err) = show err
+  show (Miswritten at) = "the stretch at " ++ show at ++ " of the image was not written as sized"
+
+||| Write an image to a file and make it executable (owner rwx, others rx):
+||| each stretch laid into one buffer where it falls, through a sink over
+||| it alone. A stretch whose writer does not write exactly its bytes
+||| leaves the file unwritten.
+export
+writeImage : (path : String) -> Image -> IO (Either ImageError ())
 writeImage path image = do
-  let sized = map (\s => (s, stretchSize s)) image
-      n = sum (map (\(_, k) => k) sized)
+  let n = imageSize image
   Just buf <- newBuffer n
-    | Nothing => pure (Left FileWriteError)
-  write buf 0 sized
+    | Nothing => pure (Left (Unwritable FileWriteError))
+  Right () <- write buf 0 image
+    | Left err => pure (Left err)
   Right () <- writeBufferToFile path buf n
-    | Left (err, _) => pure (Left err)
-  chmod path (MkPermissions [Read, Write, Execute] [Read, Execute] [Read, Execute])
+    | Left (err, _) => pure (Left (Unwritable err))
+  Right () <- chmod path (MkPermissions [Read, Write, Execute] [Read, Execute] [Read, Execute])
+    | Left err => pure (Left (Unwritable err))
+  pure (Right ())
   where
-    front : Buffer -> Int -> List Bits8 -> IO ()
-    front buf i [] = pure ()
-    front buf i (b :: bs) = do setBits8 buf i b; front buf (i + 1) bs
-
-    -- a snoc-list's bytes, its last at `i`, laid towards the front
-    back : Buffer -> Int -> SnocList Bits8 -> IO ()
-    back buf i [<] = pure ()
-    back buf i (sx :< b) = do setBits8 buf i b; back buf (i - 1) sx
-
-    blank : Buffer -> Int -> Nat -> IO ()
-    blank buf i Z = pure ()
-    blank buf i (S k) = do setBits8 buf i 0; blank buf (i + 1) k
-
-    write : Buffer -> Int -> List (Stretch, Int) -> IO ()
-    write buf at [] = pure ()
-    write buf at ((s, k) :: rest) = do
+    -- the stretch, at `at`, through a sink over it
+    stretch : Buffer -> Int -> Stretch -> IO (Maybe ByteSink.Sink)
+    stretch buf at s = do
+      Just sink <- ByteSink.sink buf at (stretchSize s)
+        | Nothing => pure Nothing
       case s of
-        Bytes bs => front buf at bs
-        SnocBytes sx => back buf (at + k - 1) sx
-        Zeros z => blank buf at z
-      write buf (at + k) rest
+        Bytes bs => ByteSink.put sink bs
+        Zeros z => ByteSink.zeros sink z
+        Written _ w => w sink
+
+    write : Buffer -> Int -> Image -> IO (Either ImageError ())
+    write buf at [] = pure (Right ())
+    write buf at (s :: rest) = do
+      Just sink <- stretch buf at s
+        | Nothing => pure (Left (Miswritten at))
+      if ByteSink.full sink then write buf (at + stretchSize s) rest
+        else pure (Left (Miswritten at))

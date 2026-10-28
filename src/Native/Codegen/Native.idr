@@ -208,7 +208,8 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
       coreLift_ $ mkdirAll outputDir
       let outexec = outputDir </> outfile
       Right () <- phase "the image written" (coreLift (ELF.writeImage outexec image))
-        | Left err => throw (FileErr outexec err)
+        | Left (ELF.Unwritable err) => throw (FileErr outexec err)
+        | Left err => throw (InternalError ("native: " ++ show err))
       pure (Just outexec)
       where
         ||| The foreign functions the program's term reaches that the runtime

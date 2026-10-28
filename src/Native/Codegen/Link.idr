@@ -4,6 +4,7 @@
 ||| (`Native.Codegen.Linkage.Areas`).
 module Native.Codegen.Link
 
+import Native.Codegen.ByteSink
 import Native.Codegen.ELF
 import Native.Codegen.Linkage.Areas as Linkage
 import Native.Codegen.Linkage.Sym as Linkage
@@ -35,7 +36,10 @@ import Native.Types.Enc as Types
 ||| assembled with: its own labels, as the assembler places them at the
 ||| text's base, and the data's. Fails with what it could not assemble:
 ||| labels it could not resolve, in the code or in the data, and fields
-||| that do not fit.
+||| that do not fit, all found with nothing encoded. The text and the data
+||| are encoded as the image is written (`ELF.writeImage`), each
+||| instruction once, into the image's buffer: no list of their bytes is
+||| made.
 export
 linkProgram : (enc : Types.Enc) -> {auto 0 _ : HeapObj.ValEnc.HasFixnums enc.val} ->
               (window : Int) -> (areas : Linkage.Areas) -> (program : List X86.Asm.Instr) ->
@@ -53,13 +57,19 @@ linkProgram enc window areas program items =
                    ++ map (\(s, off) => (Linkage.Sym.label s, bssBase lay + off))
                      (Seed.seedBss as)
                    ++ map (\(l, off) => (l, rodataBase lay + off)) offsets)
-      (bytes, labels, problems) = X86.Encode.assembleWith env measured ELF.textBase text
-      (rodata, missing) =
-        foldl (\acc, (_, item) => place labels acc item) (place labels ([<], [<]) seedData) items
-      unwritten = map X86.Encode.MissingLabel (missing <>> [])
+      labels = X86.Encode.labelsWith env measured
+      problems = X86.Encode.check labels measured ELF.textBase text
+      dataItems = seedData :: map snd items
+      unwritten =
+        [ X86.Encode.MissingLabel l
+        | item <- dataItems
+        , l <- mapMaybe (either Just (const Nothing) . X86.Datum.bytes labels) item ]
       entry = fromMaybe ELF.textBase (lookup (Linkage.Sym.label Linkage.Sym.SymStart) labels)
+      code = ELF.written measured.size
+               (\sink => X86.Encode.assembleInto sink labels measured ELF.textBase text)
+      rodata = ELF.written rodataSize (\sink => placeAll sink labels dataItems)
   in if null problems && null unwritten
-    then Right (ELF.elfImage Platform.X86_64 lay bytes rodata (Seed.seedBssSize as) entry)
+    then Right (ELF.elfImage Platform.X86_64 lay code rodata (Seed.seedBssSize as) entry)
     else Left (problems ++ unwritten)
   where
     -- the bytes an item takes, padded to a multiple of 8
@@ -71,19 +81,27 @@ linkProgram enc window areas program items =
     offsetsFrom _ [] = []
     offsetsFrom at ((l, item) :: rest) = (l, at) :: offsetsFrom (at + itemSize item) rest
 
-    -- an item's bytes after the data so far, padded, each address read from
-    -- the labels; a label that is not there is collected, and the link fails
-    place : SortedMap X86.Asm.Label Int -> (SnocList Bits8, SnocList X86.Asm.Label) ->
-            List X86.Datum -> (SnocList Bits8, SnocList X86.Asm.Label)
-    place labels acc item =
-      let (bs, ms) = foldl piece acc item
-      in (bs <>< LittleEndian.zeros (cast (itemSize item - X86.Datum.size item)), ms)
+    -- the items written end to end, each padded, each address read from the
+    -- labels; a label that is not there, which the link refuses first,
+    -- stops the writing with no sink
+    placeAll : ByteSink.Sink -> SortedMap X86.Asm.Label Int -> List (List X86.Datum) ->
+               IO (Maybe ByteSink.Sink)
+    placeAll sink labels [] = pure (Just sink)
+    placeAll sink labels (item :: rest) = do
+      Just s <- pieces sink item
+        | Nothing => pure Nothing
+      Just s' <- ByteSink.zeros s (cast (itemSize item - X86.Datum.size item))
+        | Nothing => pure Nothing
+      placeAll s' labels rest
       where
-        piece : (SnocList Bits8, SnocList X86.Asm.Label) -> X86.Datum ->
-                (SnocList Bits8, SnocList X86.Asm.Label)
-        piece (bs, ms) d = case X86.Datum.bytes labels d of
-          Right b => (bs <>< b, ms)
-          Left l => (bs, ms :< l)
+        pieces : ByteSink.Sink -> List X86.Datum -> IO (Maybe ByteSink.Sink)
+        pieces s [] = pure (Just s)
+        pieces s (d :: ds) = case X86.Datum.bytes labels d of
+          Right b => do
+            Just s' <- ByteSink.put s b
+              | Nothing => pure Nothing
+            pieces s' ds
+          Left _ => pure Nothing
 
 ||| The default allocation window: 4 MiB, the bytes the inline bump may
 ||| allocate before the runtime's slow path runs, which extends the window
