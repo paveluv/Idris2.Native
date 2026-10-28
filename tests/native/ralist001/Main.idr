@@ -25,7 +25,7 @@
 ||| Lists of 0 to 300 elements are made four ways: a value put in front at
 ||| a time, the values of a first part put in front of a list of the rest,
 ||| at every place the list can be cut in two, from an `All`, and from the
-||| list itself, `fromList [10, 11, 12]` being `small`. Each is looked up
+||| list itself (`fromList`). Each is looked up
 ||| at every position, by `fetch` and by `lookup`, and past its end, and its
 ||| size is compared with the list's length.
 module Main

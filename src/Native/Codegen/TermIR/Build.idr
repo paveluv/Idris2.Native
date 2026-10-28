@@ -360,12 +360,13 @@ toBody : {0 ls : List (List (IRCommon.Ty enc))} -> Data.RAList Singleton ls -> (
 toBody labels dl pl types dc pc body = case body of
   PBind {ts} i k =>
     [| Body.Bind (Instr.traverseInstr (opnd types dc pc) i)
-            (toBody labels dl pl (extend ts types) (length ts + dc) (plusLength pc)
+            (toBody labels dl pl (Data.RAList.prependList ts types) (length ts + dc) (plusLength pc)
               (k (levels dc ts))) |]
   PJoin ps b r => do
     let lbl = MkLLvl {ps} dl
         labels' = Val ps :: labels
-    b' <- toBody labels' (S dl) (cong S pl) (extend ps types) (length ps + dc) (plusLength pc)
+    b' <- toBody labels' (S dl) (cong S pl) (Data.RAList.prependList ps types) (length ps + dc)
+      (plusLength pc)
       (b lbl (levels dc ps))
     r' <- toBody labels' (S dl) (cong S pl) types dc pc (r lbl)
     pure (Body.Join ps b' r')
@@ -378,7 +379,8 @@ toBody labels dl pl types dc pc body = case body of
   PIfFixnums {fx} {n} vs y no =>
     [| (\vs', y', no' => Body.IfFixnums {fx} vs' y' no')
          (traverse (opnd types dc pc) vs)
-         (toBody labels dl pl (extend (replicate (S n) (IRCommon.Ty.Fix {enc})) types)
+         (toBody labels dl pl
+           (Data.RAList.prependList (replicate (S n) (IRCommon.Ty.Fix {enc})) types)
            (length (the (List (IRCommon.Ty enc)) (replicate (S n) IRCommon.Ty.Fix)) + dc)
                  (plusLength {ts = replicate (S n) (IRCommon.Ty.Fix {enc})} pc)
                  (y (levels dc _)))
@@ -428,11 +430,6 @@ toBody labels dl pl types dc pc body = case body of
     opnd types dc _ (Opnd.Fx {fx} {ok} i) = Just (Opnd.Fx {fx} {ok} i)
     opnd types dc _ (Opnd.Vx {fx} {ok} i) = Just (Opnd.Vx {fx} {ok} i)
     opnd types dc _ Opnd.Erased = Just Opnd.Erased
-
-    -- A context extended at the top by the types.
-    extend : (ts : List a) -> Data.RAList Singleton xs -> Data.RAList Singleton (ts ++ xs)
-    extend [] rest = rest
-    extend (t :: ts) rest = Val t :: extend ts rest
 
     -- The depth of a context extended at the top.
     plusLength : {ts, ctx' : List a} -> dc' = length ctx' -> length ts + dc' = length (ts ++ ctx')

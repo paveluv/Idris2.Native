@@ -50,7 +50,7 @@ treeSize (S k) = S (treeSize k + treeSize k)
 
 -- A complete binary tree of the rank holding the values for `ys`, in
 -- preorder.
-data Tree : (p : a -> Type) -> (rank : Nat) -> List a -> Type where
+data Tree : (0 p : a -> Type) -> (rank : Nat) -> List a -> Type where
   Leaf : {0 x : a} -> p x -> Tree p Z [x]
   Node : {0 x : a} -> {0 l, r : List a} -> p x -> Tree p k l -> Tree p k r ->
          Tree p (S k) (x :: l ++ r)
@@ -164,7 +164,7 @@ sameRank s s' eq = ranks k k' (trans (sym (countSize s)) (trans (equal _ _ eq) (
 ||| A random-access list: a value of `p x` for each element `x` of `xs`, in
 ||| complete binary trees, each with its sizes.
 export
-data RAList : (p : a -> Type) -> List a -> Type where
+data RAList : (0 p : a -> Type) -> List a -> Type where
   Empty : RAList p []
   InFront : Sizes k -> Tree p k ys -> RAList p zs -> RAList p (ys ++ zs)
 
@@ -172,7 +172,7 @@ data RAList : (p : a -> Type) -> List a -> Type where
 ||| it, and the erased proof that the element is there. At run time it is
 ||| the value alone.
 public export
-record Found (p : a -> Type) (i : Nat) (xs : List a) where
+record Found (0 p : a -> Type) (i : Nat) (xs : List a) where
   constructor MkFound
   {0 element : a}
   value : p element
@@ -202,7 +202,7 @@ Nil = Empty
 ||| or the root of the first two when they are of one size.
 export
 (::) : {0 x : a} -> {0 xs : List a} -> p x -> RAList p xs -> RAList p (x :: xs)
-v :: list@(InFront s t (InFront s' t' rest)) with (count s == count s') proof same
+v :: list@(InFront s t (InFront s' t' rest)) with (count s == count s') proof 0 same
   _ | True = rooted v s t t' (sameRank s s' same) rest
     where
       rooted : p y -> Sizes k -> Tree p k l -> Tree p k' r -> (0 _ : k = k') -> RAList p zs ->
@@ -226,12 +226,19 @@ fromAll : All p xs -> RAList p xs
 fromAll [] = []
 fromAll (v :: vs) = v :: fromAll vs
 
-||| A list's own elements, each as itself (`Val x` for `x`), so that what a
-||| lookup finds is the element, in as many steps as they are.
+||| A list's own elements put in front, in their order, each as itself
+||| (`Val y` for `y`), so that what a lookup finds is the element, in as
+||| many steps as they are.
+export
+prependList : (ys : List a) -> RAList Singleton xs -> RAList Singleton (ys ++ xs)
+prependList [] list = list
+prependList (y :: ys) list = Val y :: prependList ys list
+
+||| A list's own elements, each as itself, as `prependList` puts them in
+||| front.
 export
 fromList : (xs : List a) -> RAList Singleton xs
-fromList [] = []
-fromList (x :: xs) = Val x :: fromList xs
+fromList xs = replace {p = RAList Singleton} (appendNilRightNeutral xs) (prependList xs [])
 
 ||| The number of values, in as many steps as there are trees.
 export

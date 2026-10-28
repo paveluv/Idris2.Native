@@ -287,9 +287,9 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
       params <- freshAll ps
       (depth, levels) <- popJoin
       let fb = registersAt env depth levels
-          info = MkLabelInfo l (regs params) fb
-      (fr, codeR) <- body r env (info :: li)
-      (_, codeB) <- body b (Data.RAList.prepend (held params) env) (info :: li)
+          li' = MkLabelInfo l (regs params) fb :: li
+      (fr, codeR) <- body r env li'
+      (_, codeB) <- body b (Data.RAList.prepend (held params) env) li'
       addBlock l [] codeB
       pure (fr, codeR)
       where
@@ -710,7 +710,8 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
                             SortedSet Level
               instrLevels depth i =
                 execState empty
-                  (TermIR.Instr.traverseInstr (\x => do modify (union (opLevel depth x)); pure x) i)
+                  (TermIR.Instr.traverseInstr (\x => do modify (\s => union s (opLevel depth x))
+                                                        pure x) i)
 
               vectLevels : (depth : Nat) -> Vect n' (TermIR.Opnd (TermIR.Var ctx) t) ->
                            SortedSet Level

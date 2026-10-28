@@ -43,7 +43,7 @@ fetch (MkVar i at) env = Data.RAList.fetch i at env
 ||| in steps of the order of the logarithm of their number.
 public export
 entry : {0 xs : List a} -> Data.RAList Singleton xs -> Var xs x -> a
-entry entries (MkVar i at) = unVal (Data.RAList.fetch i at entries)
+entry entries v = unVal (fetch v entries)
 
 ||| The variable at the position, if the context has the type there, from
 ||| the context as a random-access list of its own types
