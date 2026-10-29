@@ -232,3 +232,54 @@ instrName (SystemCall _ _) = "syscall"
 instrName (Move _ _) = "Move"
 instrName (Loc _) = "Loc"
 instrName (Comment _) = "Comment"
+
+||| The registers the instruction names, its destinations, its operands'
+||| and its memory operands', and those it keeps live: each as often as it
+||| names it, in no order to rely on.
+export
+instrRegs : Instr enc -> List (Reg enc)
+instrRegs i = case i of
+  Const d _ => [d]
+  FConst d _ => [d]
+  CodeOf d _ => [d]
+  StaticAddr d _ => [d]
+  AreaAddr d _ => [d]
+  Arith _ d x y => d :: Opnd.opRegs x ++ Opnd.opRegs y
+  Mul128 h l x y => h :: l :: Opnd.opRegs x ++ Opnd.opRegs y
+  Div128 q r h l x => q :: r :: Opnd.opRegs h ++ Opnd.opRegs l ++ Opnd.opRegs x
+  Unary _ d x => [d, x]
+  ArithOv _ d x y _ => d :: Opnd.opRegs x ++ Opnd.opRegs y
+  Ext _ _ d x => [d, x]
+  FArith _ d x y => [d, x, y]
+  FNeg d x => [d, x]
+  FSqrt d x => [d, x]
+  FCmp _ d x y => [d, x, y]
+  Convert _ d x => [d, x]
+  Cmp _ d x y => d :: Opnd.opRegs x ++ Opnd.opRegs y
+  Load _ d m => d :: memRegs m
+  Store _ m x => x :: memRegs m
+  LoadN _ _ d m => d :: memRegs m
+  StoreN _ m x => x :: memRegs m
+  Tag d x => [d, x]
+  Untag d x => [d, x]
+  TagOv d x _ => [d, x]
+  Narrow _ d x => [d, x]
+  Widen d x => [d, x]
+  AddrToWord d x => [d, x]
+  WordToAddr _ d x => [d, x]
+  ValToWord d x => [d, x]
+  WordToVal d x => [d, x]
+  LoadHeader d x => [d, x]
+  LoadPart _ d x => [d, x]
+  AllocObj d _ fs live => d :: foldr (\o, rs => Opnd.opRegs o ++ rs) live fs
+  AllocSized d _ count fill live => d :: count :: maybe [] Opnd.opRegs fill ++ live
+  DirectCall _ args ds _ live => ds ++ foldr (\o, rs => Opnd.opRegs o ++ rs) live args
+  GetPinned _ d => [d]
+  SetPinned _ x => Opnd.opRegs x
+  SystemCall d args => d :: foldr (\o, rs => Opnd.opRegs o ++ rs) [] args
+  Move d x => [d, x]
+  Loc _ => []
+  Comment _ => []
+  where
+    memRegs : Mem enc -> List (Reg enc)
+    memRegs m = m.base :: maybe [] (\r => [r]) m.index

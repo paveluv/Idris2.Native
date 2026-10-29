@@ -80,6 +80,26 @@ termName (Ret _) = "Ret"
 termName (Crash _) = "Crash"
 termName (Unsupported _) = "Unsupported"
 
+||| The registers the terminator names, its operands' and those its
+||| continuation keeps live: each as often as it names it, in no order to
+||| rely on.
+export
+termRegs : Terminator enc -> List (Reg enc)
+termRegs t = case t of
+  Jump _ => []
+  IfFixnums rs _ _ => rs
+  Branch _ x y _ _ => Opnd.opRegs x ++ Opnd.opRegs y
+  Switch r _ _ => [r]
+  Call _ args c => foldr (\o, rs => Opnd.opRegs o ++ rs) c.live args
+  TailCall _ args => foldr (\o, rs => Opnd.opRegs o ++ rs) [] args
+  Apply f x c => f :: x :: c.live
+  TailApply f x => [f, x]
+  Return x => Opnd.opRegs x
+  Enter f args => f :: foldr (\o, rs => Opnd.opRegs o ++ rs) [] args
+  Ret args => foldr (\o, rs => Opnd.opRegs o ++ rs) [] args
+  Crash _ => []
+  Unsupported _ => []
+
 public export
 termCont : Terminator enc -> Maybe (Cont enc)
 termCont (Call _ _ c) = Just c
