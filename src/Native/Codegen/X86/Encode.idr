@@ -290,7 +290,7 @@ Show AsmProblem where
 ||| Independent of label values (rel32 everywhere).
 export
 instrSize : (pc : Int) -> Asm.Instr -> Int
-instrSize pc i = InstrFormat.size (instrFormat pc 0 i)
+instrSize pc i = cast (InstrFormat.size (instrFormat pc 0 i))
 
 ------------------------------------------------------------------------------
 -- Two-pass assembly
@@ -425,14 +425,15 @@ labelDisplacement pc size a d = a + d - (pc + size)
 
 ||| An instruction of `size` bytes at `pc`: the displacement to the label it
 ||| refers to, from the end of the instruction (`labelDisplacement`); 0 for
-||| none, and for a label with no address in the table.
-displacement : LabelTable -> (pc, size : Int) -> Asm.Instr -> IO Int
-displacement labels pc size i = case instrLabel i of
-  Nothing => pure 0
-  Just (l, d) => do
-    Just a <- LabelTable.address labels l
-      | Nothing => pure 0
-    pure (labelDisplacement pc size a d)
+||| none, and for a label with no address in the table. The world passed
+||| by hand: an `IO` function whose body is a `case` of a pure value Idris
+||| compiles as one that makes an action, at each instruction.
+displacement : LabelTable -> (pc, size : Int) -> Asm.Instr -> PrimIO Int
+displacement labels pc size i w = case instrLabel i of
+  Nothing => MkIORes 0 w
+  Just (l, d) => case toPrim (LabelTable.address labels l) w of
+    MkIORes (Just a) w' => MkIORes (labelDisplacement pc size a d) w'
+    MkIORes Nothing w' => MkIORes 0 w'
 
 ||| What is wrong with the sequence pass one measured, placed at `base`,
 ||| with its labels' table, its environment's labels in it
@@ -469,33 +470,57 @@ check labels measured base is =
 ||| Pass two, of the sequence pass one measured, placed at `base`, with its
 ||| labels' table, its environment's labels in it (`defineEnvironment`):
 ||| each instruction's parts made once, with its displacement
-||| (`displacement`), at the size pass one found, and written through the
-||| sink part by part (`InstrFormat.put`). An instruction whose parts are
-||| not of that size, or that does not fit before the sink's end, stops the
-||| pass with no sink; one with a problem (`check`) is written anyway.
+||| (`displacement`), at the size pass one found, and written through a
+||| span over the bytes it takes, part by part (`InstrFormat.write`), with
+||| one check of the sink's end (`ByteSink.fits`). An instruction whose
+||| parts are not of that size, or that does not fit before the sink's end,
+||| stops the pass with no sink; one with a problem (`check`) is written
+||| anyway.
 export
 assembleInto : ByteSink.Sink -> LabelTable -> Measured -> (base : Int) -> List Asm.Instr ->
                IO (Maybe ByteSink.Sink)
-assembleInto sink labels measured base is = fromPrim (go sink 0 base is)
+assembleInto sink labels measured base is = fromPrim (go (ByteSink.start sink) 0 base is)
   where
-    -- the instruction's parts written, if of the size pass one found
-    written : ByteSink.Sink -> (size : Int) -> InstrFormat -> IO (Maybe ByteSink.Sink)
-    written s size f = if InstrFormat.size f /= size then pure Nothing else InstrFormat.put s f
-
-    -- the world passed by hand, so that the loop is a function of it: an
+    -- The world passed by hand, so that the loop is a function of it: an
     -- `IO` loop with a clause that ends in a call, as a label's does here,
     -- Idris compiles as a function that makes an action at each
-    -- instruction. A label or a comment takes no byte, and is skipped.
-    go : ByteSink.Sink -> (index, pc : Int) -> List Asm.Instr -> PrimIO (Maybe ByteSink.Sink)
-    go s _ _ [] w = MkIORes (Just s) w
-    go s index pc (i :: rest) w = case i of
-      Asm.Lbl _ => go s (index + 1) pc rest w
-      Asm.Comment _ => go s (index + 1) pc rest w
+    -- instruction. The loop's place in the sink is a span of no bytes,
+    -- which each instruction's writing ends at. A label or a comment takes
+    -- no byte, and is skipped.
+    go : ByteSink.Span sink 0 -> (index, pc : Int) -> List Asm.Instr ->
+         PrimIO (Maybe ByteSink.Sink)
+    sized : ByteSink.Span sink 0 -> (index, pc, size : Int) -> InstrFormat -> List Asm.Instr ->
+            PrimIO (Maybe ByteSink.Sink)
+    checked : ByteSink.Span sink 0 -> (index, pc, size : Int) -> (k : Nat) -> (f : InstrFormat) ->
+              (0 _ : InstrFormat.size f = k) -> List Asm.Instr -> PrimIO (Maybe ByteSink.Sink)
+    written : (at : ByteSink.Span sink 0) -> (index, pc, size : Int) -> (k : Nat) ->
+              (f : InstrFormat) -> (0 _ : InstrFormat.size f = k) -> (fit : Bool) ->
+              (0 _ : ByteSink.fits sink at k = fit) -> List Asm.Instr ->
+              PrimIO (Maybe ByteSink.Sink)
+
+    go at _ _ [] w = MkIORes (Just (ByteSink.past sink at)) w
+    go at index pc (i :: rest) w = case i of
+      Asm.Lbl _ => go at (index + 1) pc rest w
+      Asm.Comment _ => go at (index + 1) pc rest w
       _ => case toPrim (sizeAt measured.sizes index pc i) w of
-        MkIORes size w1 => case toPrim (displacement labels pc size i) w1 of
-          MkIORes rel w2 => case toPrim (written s size (instrFormat pc rel i)) w2 of
-            MkIORes (Just s') w3 => go s' (index + 1) (pc + size) rest w3
-            MkIORes Nothing w3 => MkIORes Nothing w3
+        MkIORes size w1 => case displacement labels pc size i w1 of
+          MkIORes rel w2 => sized at index pc size (instrFormat pc rel i) rest w2
+
+    -- The instruction's parts, if of the size pass one found: the size read
+    -- once, as an argument, with its equation (`same`); whether they fit
+    -- likewise (`fits`). A `with` would, but the world, a linear name,
+    -- keeps one from being used here.
+    sized at index pc size f rest w = checked at index pc size (InstrFormat.size f) f Refl rest w
+
+    checked at index pc size k f same rest w =
+      if cast k /= size then MkIORes Nothing w
+      else written at index pc size k f same (ByteSink.fits sink at k) Refl rest w
+
+    -- the parts written from the place, if they fit before the sink's end
+    written at index pc size k f same False _ rest w = MkIORes Nothing w
+    written at index pc size k f same True fits rest w =
+      case toPrim (InstrFormat.write sink f (rewrite same in ByteSink.span sink at k fits)) w of
+        MkIORes end w' => go end (index + 1) (pc + size) rest w'
 
 ||| Both passes with no environment, the labels' table of those the
 ||| sequence defines, the bytes made as a snoc-list, each instruction's
@@ -520,5 +545,5 @@ assemble base is = do
     go _ _ acc [] = pure acc
     go labels pc acc (i :: rest) = do
       let size = instrSize pc i
-      rel <- displacement labels pc size i
+      rel <- fromPrim (displacement labels pc size i)
       go labels (pc + size) (acc <>< encodeRaw pc rel i) rest

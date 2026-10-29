@@ -1,12 +1,16 @@
 ||| A stretch of a buffer that bytes are written into, from its first byte
-||| to its last, each write checked against the stretch's end: what writes
+||| to its last, the writes checked against the stretch's end: what writes
 ||| an image's text or its read-only data into the image, one piece at a
 ||| time, with no list of the stretch's bytes made first.
 |||
 ||| A sink is opened only over a stretch that lies inside its buffer, and a
 ||| write that would pass the stretch's end writes nothing and gives no
 ||| sink, so no write through one lands outside its stretch: a buffer's own
-||| writes check no bounds where Idris's Chez code is compiled unsafe.
+||| writes check no bounds where Idris's Chez code is compiled unsafe. A
+||| piece of several parts, such as an instruction, is written with one
+||| check (`fits`), through a span over the bytes it takes (`Span`), whose
+||| type says how many are left: each part's write takes its width from
+||| them, so the typechecker sees that the parts take the piece's bytes.
 |||
 ||| A number of 4 or 8 bytes is written low byte first, as every target in
 ||| scope orders its bytes (`Native.Codegen.LittleEndian`), by one write of
@@ -47,65 +51,98 @@ export
 full : Sink -> Bool
 full s = s.next == s.end
 
-||| The sink past the next `n` bytes, if they fit before the end: the one
-||| check of every write, of a count `n` that is never negative.
-advance : Sink -> (n : Int) -> Maybe Sink
-advance s n = let next = s.next + n in if next <= s.end then Just ({ next := next } s) else Nothing
+------------------------------------------------------------------------------
+-- Spans
 
--- Each write below is a `case` of `advance`'s answer whose every branch is
--- an action: Idris then compiles the write as a function of its arguments
--- and the world, which a `let` around the branches would make a function
--- that makes an action, at each write.
+||| The next `n` bytes of the sink `s`, to be written in order: each write
+||| below takes its width from the front of the bytes left, which the type
+||| says. A span of no bytes is a place in the stretch, where the next
+||| bytes are written from: the sink's next offset (`start`), or the end
+||| of the bytes a span was written to. At run time a span is the offset
+||| of its next byte, and makes no object of its own. Abstract: made by
+||| `start` and `span` alone, over bytes that fit before the sink's end, so
+||| that no write through a span passes it, with no check of its own.
+export
+data Span : Sink -> Nat -> Type where
+  MkSpan : (next : Int) -> Span s n
+
+||| The place of the sink's next offset.
+export
+start : (s : Sink) -> Span s 0
+start s = MkSpan s.next
+
+||| Whether the `n` bytes from a place fit before the sink's end: the one
+||| check of every write. The count is compared with the bytes left as a
+||| `Nat`, before it is made an `Int`, which one past the largest `Int`
+||| would wrap to a count that fits or one below 0.
+export
+fits : (s : Sink) -> (at : Span s 0) -> (n : Nat) -> Bool
+fits s (MkSpan i) n = n <= cast (s.end - i)
+
+||| A span over the `n` bytes from a place, which fit before the sink's end
+||| (`fits`).
+export
+span : (s : Sink) -> (at : Span s 0) -> (0 n : Nat) -> (0 _ : fits s at n = True) -> Span s n
+span s (MkSpan i) _ _ = MkSpan i
+
+||| What is left of the sink from a place.
+export
+past : (s : Sink) -> Span s 0 -> Sink
+past s (MkSpan i) = { next := i } s
+
+||| A byte written at the span's next byte.
+export
+putBits8 : (s : Sink) -> Span s (S n) -> Bits8 -> IO (Span s n)
+putBits8 s (MkSpan i) b = do setBits8 s.buffer i b; pure (MkSpan (i + 1))
+
+||| A number's four bytes written at the span's next byte, low byte first.
+export
+putBits32 : (s : Sink) -> Span s (4 + n) -> Bits32 -> IO (Span s n)
+putBits32 s (MkSpan i) v = do setBits32 s.buffer i v; pure (MkSpan (i + 4))
+
+||| A number's eight bytes written at the span's next byte, low byte first.
+export
+putBits64 : (s : Sink) -> Span s (8 + n) -> Bits64 -> IO (Span s n)
+putBits64 s (MkSpan i) v = do setBits64 s.buffer i v; pure (MkSpan (i + 8))
+
+||| The bytes written at the span's next byte.
+export
+putBytes : (s : Sink) -> (bs : List Bits8) -> Span s (length bs + n) -> IO (Span s n)
+putBytes s bs sp = fromPrim (go bs sp)
+  where
+    -- the world passed by hand: an `IO` loop that ends in a call of
+    -- itself, Idris compiles as one that makes an action at each byte
+    go : (bs : List Bits8) -> Span s (length bs + n) -> PrimIO (Span s n)
+    go [] sp w = MkIORes sp w
+    go (b :: rest) sp w = case toPrim (putBits8 s sp b) w of
+      MkIORes sp' w' => go rest sp' w'
+
+||| `k` copies of the byte written at the span's next byte.
+export
+putCopies : (s : Sink) -> (k : Nat) -> Bits8 -> Span s (k + n) -> IO (Span s n)
+putCopies s k b sp = fromPrim (go k sp)
+  where
+    -- the world passed by hand: in an `IO` loop, the match on `S` binds
+    -- the count's predecessor before the write, and Idris compiles the
+    -- loop as one that makes an action at each byte
+    go : (k : Nat) -> Span s (k + n) -> PrimIO (Span s n)
+    go Z sp w = MkIORes sp w
+    go (S k) sp w = case toPrim (putBits8 s sp b) w of
+      MkIORes sp' w' => go k sp' w'
+
+------------------------------------------------------------------------------
+-- Pieces of one part
 
 ||| The bytes written at the next offset, if they fit before the end.
 export
 put : Sink -> List Bits8 -> IO (Maybe Sink)
-put s bs = case advance s (cast (length bs)) of
-  Nothing => pure Nothing
-  past@(Just _) => do go s.next bs; pure past
-  where
-    go : Int -> List Bits8 -> IO ()
-    go _ [] = pure ()
-    go i (b :: rest) = do setBits8 s.buffer i b; go (i + 1) rest
-
-||| A byte written at the next offset, if it fits before the end.
-export
-putBits8 : Sink -> Bits8 -> IO (Maybe Sink)
-putBits8 s b = case advance s 1 of
-  Nothing => pure Nothing
-  past@(Just _) => do setBits8 s.buffer s.next b; pure past
-
-||| A number's four bytes written at the next offset, low byte first, if
-||| they fit before the end.
-export
-putBits32 : Sink -> Bits32 -> IO (Maybe Sink)
-putBits32 s v = case advance s 4 of
-  Nothing => pure Nothing
-  past@(Just _) => do setBits32 s.buffer s.next v; pure past
-
-||| A number's eight bytes written at the next offset, low byte first, if
-||| they fit before the end.
-export
-putBits64 : Sink -> Bits64 -> IO (Maybe Sink)
-putBits64 s v = case advance s 8 of
-  Nothing => pure Nothing
-  past@(Just _) => do setBits64 s.buffer s.next v; pure past
+put s bs with (fits s (start s) (length bs + 0)) proof ok
+  _ | True = do end <- putBytes s bs (span s (start s) _ ok); pure (Just (past s end))
+  _ | False = pure Nothing
 
 ||| `n` zero bytes written at the next offset, if they fit before the end.
 export
 zeros : Sink -> Nat -> IO (Maybe Sink)
--- the count compared with the bytes left as a `Nat`, before it is made an
--- `Int`: one past the largest `Int` would wrap, to a count that fits or one
--- below 0
-zeros s n = case (if cast (s.end - s.next) < n then Nothing else advance s (cast n)) of
-  Nothing => pure Nothing
-  past@(Just _) => do fromPrim (go s.next n); pure past
-  where
-    -- `k` zeros from offset `i`, the world passed by hand: in an `IO`
-    -- loop, the match on `S` binds the count's predecessor before the
-    -- write, and Idris compiles the loop as one that makes an action at
-    -- each byte
-    go : (i : Int) -> (k : Nat) -> PrimIO ()
-    go _ Z w = MkIORes () w
-    go i (S k) w = case toPrim (setBits8 s.buffer i 0) w of
-      MkIORes () w' => go (i + 1) k w'
+zeros s n with (fits s (start s) (n + 0)) proof ok
+  _ | True = do end <- putCopies s n 0 (span s (start s) _ ok); pure (Just (past s end))
+  _ | False = pure Nothing

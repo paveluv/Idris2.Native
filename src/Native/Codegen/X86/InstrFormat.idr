@@ -3,8 +3,9 @@
 ||| are written, each a number of a fixed width. The encoder
 ||| (`Native.Codegen.X86.Encode`) gives an instruction's; it is read three
 ||| ways here: the bytes it takes (`size`), with no byte made; its bytes
-||| (`bytes`); and its bytes written through a sink
-||| (`Native.Codegen.ByteSink`), part by part (`put`).
+||| (`bytes`); and its bytes written, part by part, through a span over
+||| the bytes it takes (`write`), whose type makes the parts' widths sum to
+||| its size, into a sink with one check (`put`).
 module Native.Codegen.X86.InstrFormat
 
 import Native.Codegen.X86.OptionalByte
@@ -36,11 +37,12 @@ namespace OpcodeMap
   bytes OneByte = []
   bytes TwoByte = [0x0F]
 
-  ||| The map's escape written.
+  ||| The map's escape written at the span's next byte.
   export
-  put : ByteSink.Sink -> OpcodeMap -> IO (Maybe ByteSink.Sink)
-  put s OneByte = pure (Just s)
-  put s TwoByte = ByteSink.putBits8 s 0x0F
+  write : (s : ByteSink.Sink) -> (m : OpcodeMap) -> ByteSink.Span s (size m + n) ->
+          IO (ByteSink.Span s n)
+  write s OneByte sp = pure sp
+  write s TwoByte sp = ByteSink.putBits8 s sp 0x0F
 
 ||| The width of a displacement: none, 8 bits or 32.
 public export
@@ -62,12 +64,13 @@ namespace DispWidth
   bytes Disp8 d = LittleEndian.le8 d
   bytes Disp32 d = LittleEndian.le32 d
 
-  ||| A displacement's bytes at the width written.
+  ||| A displacement's bytes at the width written at the span's next byte.
   export
-  put : ByteSink.Sink -> DispWidth -> Int -> IO (Maybe ByteSink.Sink)
-  put s NoDisp _ = pure (Just s)
-  put s Disp8 d = ByteSink.putBits8 s (cast d)
-  put s Disp32 d = ByteSink.putBits32 s (cast d)
+  write : (s : ByteSink.Sink) -> (dw : DispWidth) -> Int -> ByteSink.Span s (size dw + n) ->
+          IO (ByteSink.Span s n)
+  write s NoDisp _ sp = pure sp
+  write s Disp8 d sp = ByteSink.putBits8 s sp (cast d)
+  write s Disp32 d sp = ByteSink.putBits32 s sp (cast d)
 
 ||| The width of an immediate: none, 8 bits, 32 or 64.
 public export
@@ -91,13 +94,14 @@ namespace ImmWidth
   bytes Imm32 i = LittleEndian.le32 i
   bytes Imm64 i = LittleEndian.le64 (cast i)
 
-  ||| An immediate's bytes at the width written.
+  ||| An immediate's bytes at the width written at the span's next byte.
   export
-  put : ByteSink.Sink -> ImmWidth -> Int -> IO (Maybe ByteSink.Sink)
-  put s NoImm _ = pure (Just s)
-  put s Imm8 i = ByteSink.putBits8 s (cast i)
-  put s Imm32 i = ByteSink.putBits32 s (cast i)
-  put s Imm64 i = ByteSink.putBits64 s (cast i)
+  write : (s : ByteSink.Sink) -> (iw : ImmWidth) -> Int -> ByteSink.Span s (size iw + n) ->
+          IO (ByteSink.Span s n)
+  write s NoImm _ sp = pure sp
+  write s Imm8 i sp = ByteSink.putBits8 s sp (cast i)
+  write s Imm32 i sp = ByteSink.putBits32 s sp (cast i)
+  write s Imm64 i sp = ByteSink.putBits64 s sp (cast i)
 
 ------------------------------------------------------------------------------
 -- An instruction's bytes
@@ -124,18 +128,18 @@ data InstrFormat : Type where
   Verbatim : List Bits8 -> InstrFormat
 
 ||| The bytes an instruction takes: its parts' sizes summed, with no byte
-||| made.
+||| made. Each sum is of a part and the parts after it, ending in 0 for
+||| none, as the parts are written (`write`), each taking its own from the
+||| front.
 export
-size : InstrFormat -> Int
--- the parts' sizes summed as `Nat`s, which Idris's Chez code adds as
--- Scheme adds, where it wraps each sum of two `Int`s to 64 bits, at
--- several times the cost
-size (Parts p r m _ modrm sib dw _ iw _) = cast $
-  OptionalByte.size p + OptionalByte.size r + OpcodeMap.size m + 1 + OptionalByte.size modrm
-    + OptionalByte.size sib + DispWidth.size dw + ImmWidth.size iw
-size (Padding n) = cast n
+size : InstrFormat -> Nat
+-- a `Nat`, the index of the span the instruction is written through
+size (Parts p r m _ modrm sib dw _ iw _) =
+  OptionalByte.size p + (OptionalByte.size r + (OpcodeMap.size m + (1 + (OptionalByte.size modrm
+    + (OptionalByte.size sib + (DispWidth.size dw + (ImmWidth.size iw + 0)))))))
+size (Padding n) = n + 0
 size (Literal _) = 8
-size (Verbatim bs) = cast (length bs)
+size (Verbatim bs) = length bs + 0
 
 ||| An instruction's bytes, in order.
 export
@@ -148,29 +152,31 @@ bytes (Padding n) = replicate n 0xCC
 bytes (Literal v) = LittleEndian.le64 (cast v)
 bytes (Verbatim bs) = bs
 
-||| An instruction's bytes written at the sink's next offset, part by part,
-||| each if it fits before the sink's end: one that does not fit is
-||| written up to the first part that does not, and gives no sink.
+||| An instruction's bytes written through a span over the bytes it takes,
+||| part by part, each from the front of what is left, to its end.
+export
+write : (s : ByteSink.Sink) -> (f : InstrFormat) -> ByteSink.Span s (size f) ->
+        IO (ByteSink.Span s 0)
+write s (Parts p r m o modrm sib dw d iw i) sp = do
+  sp <- OptionalByte.write s p sp
+  sp <- OptionalByte.write s r sp
+  sp <- OpcodeMap.write s m sp
+  sp <- ByteSink.putBits8 s sp o
+  sp <- OptionalByte.write s modrm sp
+  sp <- OptionalByte.write s sib sp
+  sp <- DispWidth.write s dw d sp
+  ImmWidth.write s iw i sp
+write s (Padding n) sp = ByteSink.putCopies s n 0xCC sp
+write s (Literal v) sp = ByteSink.putBits64 s sp v
+write s (Verbatim bs) sp = ByteSink.putBytes s bs sp
+
+||| An instruction's bytes written at the sink's next offset, if they fit
+||| before the sink's end, with one check (`ByteSink.fits`): one that does
+||| not fit writes nothing, and gives no sink.
 export
 put : ByteSink.Sink -> InstrFormat -> IO (Maybe ByteSink.Sink)
--- a `case` whose every branch is an action, as each write of a sink is
-put s f = case f of
-  Parts p r m o modrm sib dw d iw i => do
-    Just s <- OptionalByte.put s p
-      | Nothing => pure Nothing
-    Just s <- OptionalByte.put s r
-      | Nothing => pure Nothing
-    Just s <- OpcodeMap.put s m
-      | Nothing => pure Nothing
-    Just s <- ByteSink.putBits8 s o
-      | Nothing => pure Nothing
-    Just s <- OptionalByte.put s modrm
-      | Nothing => pure Nothing
-    Just s <- OptionalByte.put s sib
-      | Nothing => pure Nothing
-    Just s <- DispWidth.put s dw d
-      | Nothing => pure Nothing
-    ImmWidth.put s iw i
-  Padding n => ByteSink.put s (replicate n 0xCC)
-  Literal v => ByteSink.putBits64 s v
-  Verbatim bs => ByteSink.put s bs
+put s f with (ByteSink.fits s (ByteSink.start s) (size f)) proof ok
+  _ | True = do
+    end <- write s f (ByteSink.span s (ByteSink.start s) _ ok)
+    pure (Just (ByteSink.past s end))
+  _ | False = pure Nothing

@@ -83,4 +83,6 @@ address t l = if placed t l then addressAt (cast l) else pure Nothing
     addressAt : Int -> IO (Maybe Int)
     addressAt i = do
       d <- getBits8 t.defined i
-      if d == 0 then pure Nothing else map Just (getInt t.addresses (8 * i))
+      if d == 0 then pure Nothing else do
+        a <- getInt t.addresses (8 * i)
+        pure (Just a)

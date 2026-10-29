@@ -8,10 +8,11 @@
 ||| read three ways: the bytes it takes (`InstrFormat.size`, which
 ||| `instrSize` is, with no byte made), its bytes as a list
 ||| (`InstrFormat.bytes`, which `encodeRaw` is), and its bytes written
-||| through a sink into a buffer, part by part (`InstrFormat.put`). The
-||| assembler's first pass reads the sizes, the second writes the parts
-||| into the image (`assembleInto`); `assemble`, the encoder's reference,
-||| makes the bytes as a list.
+||| into a buffer, part by part, through a span over the bytes it takes
+||| (`InstrFormat.write`), with one check of the sink's end
+||| (`InstrFormat.put`). The assembler's first pass reads the sizes, the
+||| second writes the parts into the image (`assembleInto`); `assemble`,
+||| the encoder's reference, makes the bytes as a list.
 module Agree
 
 import Data.Buffer
@@ -107,8 +108,9 @@ mark buf (S k) = do setBits8 buf (cast k) 0xaa; mark buf k
 -- at offset 8 of a buffer of 32 bytes, fill the sink with `encodeRaw`'s
 -- bytes, of which there are as many as its size says, and leave the bytes
 -- either side of the sink as they were. Through a sink one byte short,
--- the writing gives no sink, and the byte past the sink's end is left as
--- it was: a part that would pass the end is not written.
+-- the writing gives no sink and writes nothing: the instruction's bytes
+-- are checked against the sink's end once, before any is written, so
+-- the buffer is left as `mark` left it.
 agrees : Buffer -> Instr -> (pc, rel : Int) -> IO Bool
 agrees buf i pc rel = do
   let expected = encodeRaw pc rel i
@@ -127,8 +129,8 @@ agrees buf i pc rel = do
       | Nothing => pure False
     Nothing <- InstrFormat.put t (instrFormat pc rel i)
       | Just _ => pure False
-    past <- getBits8 buf (8 + n - 1)
-    pure (past == 0xaa)
+    left <- bytesAt buf 0 32
+    pure (all (== 0xaa) left)
   pure (cast (length expected) == n && ByteSink.full s' && got == expected && before == 0xaa
         && after == 0xaa && short)
 
