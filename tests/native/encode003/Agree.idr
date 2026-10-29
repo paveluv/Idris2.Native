@@ -150,6 +150,15 @@ assembledAgree base is = do
   got <- bytesAt buf 0 (cast measured.size)
   pure (ByteSink.full s' && got == (code <>> []))
 
+-- A sequence longer than the first table of sizes pass one makes, of
+-- 65536 bytes, a size each, which grows as the pass goes, to 131072
+-- bytes, then 262144: encode001's two groups five times, their labels
+-- defined five times each, of which a reference takes the last
+-- (`LabelTable.define`). `assemble` computes each size where it encodes
+-- the instruction, and pass two reads them from the table.
+long : List Instr
+long = foldl (\acc, _ => acc <>< (groupA ++ groupB)) [<] [the Nat 1 .. 5] <>> []
+
 -- A sink's checks of numbers near the largest `Int`, 2^63 - 1, in the
 -- buffer of 32 bytes. The stretch of 5 bytes from 2^63 - 2 is not inside
 -- it, though its end, 2^63 + 3, is an `Int` below 0 when summed, which is
@@ -207,4 +216,7 @@ main = do
             (the Nat 0) [(base, is) | base <- [0, 5], is <- sequenced]
   putStrLn ("sequences assembled into a buffer as assemble makes them: " ++ show same ++ " of "
             ++ show (2 * length sequenced))
+  longSame <- assembledAgree 0 long
+  putStrLn ("a sequence of " ++ show (length long)
+            ++ " instructions assembled as assemble makes it: " ++ show longSame)
   sinkEdges buf

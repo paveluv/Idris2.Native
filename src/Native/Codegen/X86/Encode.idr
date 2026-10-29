@@ -20,6 +20,7 @@ import Native.Codegen.X86.LabelTable
 import Native.Codegen.X86.OptionalByte
 
 import Data.Bits
+import Data.Buffer
 import Native.Codegen.ByteSink
 %default total
 
@@ -294,15 +295,40 @@ instrSize pc i = InstrFormat.size (instrFormat pc 0 i)
 ------------------------------------------------------------------------------
 -- Two-pass assembly
 
-||| Pass one, of a sequence placed at `base`: each instruction's size, in
-||| order, and the sequence's, each instruction's size read from its parts
-||| (`instrSize`), with no byte made, since no size depends on a label;
-||| and the labels the sequence defines with no place in the table it
-||| defines them in (`measure`).
+||| Each instruction's size, in order, a byte each, by the instruction's
+||| index in its sequence: what pass one found, read by the check and pass
+||| two (`sizeAt`) with no list of the sizes made. A size of 255 bytes or
+||| more, of an alignment or of raw bytes, is held as 255, and computed
+||| again where it is read. Abstract: made by `measure` alone.
+export
+record Sizes where
+  constructor MkSizes
+  ||| The instructions it holds the sizes of, no more than the table's
+  ||| bytes.
+  count : Int
+  table : Buffer
+
+||| The size of the instruction at `index` of the sequence, at `pc`: the
+||| size pass one found, or, past the instructions it measured or held as
+||| 255, the size computed again (`instrSize`).
+sizeAt : Sizes -> (index, pc : Int) -> Asm.Instr -> IO Int
+sizeAt sizes index pc i =
+  if index < sizes.count then held else pure (instrSize pc i)
+  where
+    held : IO Int
+    held = do
+      b <- getBits8 sizes.table index
+      pure (if b == 255 then instrSize pc i else cast b)
+
+||| Pass one, of a sequence placed at `base`: each instruction's size
+||| (`Sizes`) and the sequence's, each instruction's size read from its
+||| parts (`instrSize`), with no byte made, since no size depends on a
+||| label; and the labels the sequence defines with no place in the table
+||| it defines them in (`measure`).
 public export
 record Measured where
   constructor MkMeasured
-  sizes : List Int
+  sizes : Sizes
   size : Int
   pastBound : List Asm.Label
 
@@ -310,17 +336,50 @@ record Measured where
 ||| at its address.
 export
 measure : LabelTable -> (base : Int) -> List Asm.Instr -> IO Measured
-measure labels base is = fromPrim (go base [<] [<] is)
+measure labels base is = do
+  -- the table grows as the sequence is walked, which counting it first
+  -- would walk once more: a walk of idris2-native's text costs about as
+  -- much as measuring it does. A new buffer is all zeros, under every code
+  -- generator, so a label's or a comment's size, 0, is not written; one
+  -- that cannot be made holds no size, and each is computed again.
+  table <- newBuffer 65536 >>= maybe emptyBuffer pure
+  room <- rawSize table
+  fromPrim (go table room 0 base [<] is)
   where
+    -- the size of the instruction at `index` held in the table, of `room`
+    -- bytes, if it has a place there
+    hold : Buffer -> (room, index, size : Int) -> IO ()
+    hold table room index n =
+      if index < room then setBits8 table index (if n < 255 then cast n else 255) else pure ()
+
+    -- the table grown to hold the instruction at `index`, to twice its
+    -- bytes or more; as it is, if the larger one cannot be made
+    grown : Buffer -> (room, index : Int) -> IO Buffer
+    grown table room index = do
+      Just t <- resizeBuffer table (max (2 * room) (index + 65536))
+        | Nothing => pure table
+      pure t
+
     -- the world passed by hand, so that the loop is a function of it, as
     -- pass two's is
-    go : Int -> SnocList Int -> SnocList Asm.Label -> List Asm.Instr -> PrimIO Measured
-    go pc ss past [] w = MkIORes (MkMeasured (ss <>> []) (pc - base) (past <>> [])) w
-    go pc ss past (Asm.Lbl l :: rest) w = case toPrim (LabelTable.define labels l pc) w of
-      MkIORes True w' => go pc (ss :< 0) past rest w'
-      MkIORes False w' => go pc (ss :< 0) (past :< l) rest w'
-    go pc ss past (Asm.Comment _ :: rest) w = go pc (ss :< 0) past rest w
-    go pc ss past (i :: rest) w = let n = instrSize pc i in go (pc + n) (ss :< n) past rest w
+    go : Buffer -> (room, index, pc : Int) -> SnocList Asm.Label -> List Asm.Instr ->
+         PrimIO Measured
+    go table room index pc past [] w =
+      MkIORes (MkMeasured (MkSizes (min index room) table) (pc - base) (past <>> [])) w
+    go table room index pc past (Asm.Lbl l :: rest) w =
+      case toPrim (LabelTable.define labels l pc) w of
+        MkIORes True w' => go table room (index + 1) pc past rest w'
+        MkIORes False w' => go table room (index + 1) pc (past :< l) rest w'
+    go table room index pc past (Asm.Comment _ :: rest) w = go table room (index + 1) pc past rest w
+    go table room index pc past (i :: rest) w =
+      let n = instrSize pc i
+      in if index < room
+           then case toPrim (hold table room index n) w of
+             MkIORes () w' => go table room (index + 1) (pc + n) past rest w'
+           else case toPrim (grown table room index) w of
+             MkIORes t w1 => case toPrim (rawSize t) w1 of
+               MkIORes room' w2 => case toPrim (hold t room' index n) w2 of
+                 MkIORes () w3 => go t room' (index + 1) (pc + n) past rest w3
 
 ||| The environment of a sequence pass one measured, put in its labels'
 ||| table: the labels defined outside this text, at their final addresses,
@@ -383,27 +442,29 @@ displacement labels pc size i = case instrLabel i of
 export
 check : LabelTable -> Measured -> (base : Int) -> List Asm.Instr -> IO (List AsmProblem)
 check labels measured base is =
-  fromPrim (go base ([<] <>< map LabelPastBound measured.pastBound) is measured.sizes)
+  fromPrim (go 0 base ([<] <>< map LabelPastBound measured.pastBound) is)
   where
     -- the instruction, unless its fields fit
     unfit : Asm.Instr -> (fits : Bool) -> List AsmProblem
     unfit i fits = if fits then [] else [DoesNotFit i]
 
-    -- what is wrong with each instruction of `size` bytes at `pc`: a label
-    -- with no address in the table or a field that does not fit, its
-    -- displacement (`labelDisplacement`) included; the world passed by
-    -- hand, as in pass two
-    go : Int -> SnocList AsmProblem -> List Asm.Instr -> List Int -> PrimIO (List AsmProblem)
-    go pc found (i :: rest) (size :: sizes) w = case instrLabel i of
-      Nothing => go (pc + size) (found <>< unfit i (fieldsFit i)) rest sizes w
-      Just (l, d) => case toPrim (LabelTable.address labels l) w of
-        MkIORes (Just a) w' =>
-          go (pc + size)
-            (found <>< unfit i (fieldsFit i && fitsInt32 (cast (labelDisplacement pc size a d))))
-            rest sizes w'
-        MkIORes Nothing w' =>
-          go (pc + size) (found <>< (MissingLabel l :: unfit i (fieldsFit i))) rest sizes w'
-    go _ found _ _ w = MkIORes (found <>> []) w
+    -- what is wrong with each instruction, of the size pass one found
+    -- (`sizeAt`) at `pc`: a label with no address in the table or a field
+    -- that does not fit, its displacement (`labelDisplacement`) included;
+    -- the world passed by hand, as in pass two
+    go : (index, pc : Int) -> SnocList AsmProblem -> List Asm.Instr -> PrimIO (List AsmProblem)
+    go _ _ found [] w = MkIORes (found <>> []) w
+    go index pc found (i :: rest) w = case toPrim (sizeAt measured.sizes index pc i) w of
+      MkIORes size w1 => case instrLabel i of
+        Nothing => go (index + 1) (pc + size) (found <>< unfit i (fieldsFit i)) rest w1
+        Just (l, d) => case toPrim (LabelTable.address labels l) w1 of
+          MkIORes (Just a) w2 =>
+            go (index + 1) (pc + size)
+              (found <>< unfit i (fieldsFit i && fitsInt32 (cast (labelDisplacement pc size a d))))
+              rest w2
+          MkIORes Nothing w2 =>
+            go (index + 1) (pc + size) (found <>< (MissingLabel l :: unfit i (fieldsFit i)))
+              rest w2
 
 ||| Pass two, of the sequence pass one measured, placed at `base`, with its
 ||| labels' table, its environment's labels in it (`defineEnvironment`):
@@ -415,7 +476,7 @@ check labels measured base is =
 export
 assembleInto : ByteSink.Sink -> LabelTable -> Measured -> (base : Int) -> List Asm.Instr ->
                IO (Maybe ByteSink.Sink)
-assembleInto sink labels measured base is = fromPrim (go sink base is measured.sizes)
+assembleInto sink labels measured base is = fromPrim (go sink 0 base is)
   where
     -- the instruction's parts written, if of the size pass one found
     written : ByteSink.Sink -> (size : Int) -> InstrFormat -> IO (Maybe ByteSink.Sink)
@@ -425,25 +486,28 @@ assembleInto sink labels measured base is = fromPrim (go sink base is measured.s
     -- `IO` loop with a clause that ends in a call, as a label's does here,
     -- Idris compiles as a function that makes an action at each
     -- instruction. A label or a comment takes no byte, and is skipped.
-    go : ByteSink.Sink -> Int -> List Asm.Instr -> List Int -> PrimIO (Maybe ByteSink.Sink)
-    go s pc (i :: rest) (size :: sizes) w = case i of
-      Asm.Lbl _ => go s pc rest sizes w
-      Asm.Comment _ => go s pc rest sizes w
-      _ => case toPrim (displacement labels pc size i) w of
-        MkIORes rel w' => case toPrim (written s size (instrFormat pc rel i)) w' of
-          MkIORes (Just s') w'' => go s' (pc + size) rest sizes w''
-          MkIORes Nothing w'' => MkIORes Nothing w''
-    go s _ _ _ w = MkIORes (Just s) w
+    go : ByteSink.Sink -> (index, pc : Int) -> List Asm.Instr -> PrimIO (Maybe ByteSink.Sink)
+    go s _ _ [] w = MkIORes (Just s) w
+    go s index pc (i :: rest) w = case i of
+      Asm.Lbl _ => go s (index + 1) pc rest w
+      Asm.Comment _ => go s (index + 1) pc rest w
+      _ => case toPrim (sizeAt measured.sizes index pc i) w of
+        MkIORes size w1 => case toPrim (displacement labels pc size i) w1 of
+          MkIORes rel w2 => case toPrim (written s size (instrFormat pc rel i)) w2 of
+            MkIORes (Just s') w3 => go s' (index + 1) (pc + size) rest w3
+            MkIORes Nothing w3 => MkIORes Nothing w3
 
 ||| Both passes with no environment, the labels' table of those the
-||| sequence defines, the bytes made as a snoc-list, with what is wrong
-||| (`check`): the encoder's reference, for its tests.
+||| sequence defines, the bytes made as a snoc-list, each instruction's
+||| size computed where it is encoded, not read from pass one's
+||| (`Sizes`), with what is wrong (`check`): the encoder's reference, for
+||| its tests.
 export
 assemble : (base : Int) -> List Asm.Instr -> IO (SnocList Bits8, List AsmProblem)
 assemble base is = do
   labels <- LabelTable.labelTable (foldl past 0 is)
   measured <- measure labels base is
-  code <- go labels base [<] is measured.sizes
+  code <- go labels base [<] is
   problems <- check labels measured base is
   pure (code, problems)
   where
@@ -452,9 +516,9 @@ assemble base is = do
     past bound (Asm.Lbl l) = max bound (S l)
     past bound _ = bound
 
-    go : LabelTable -> Int -> SnocList Bits8 -> List Asm.Instr -> List Int ->
-         IO (SnocList Bits8)
-    go labels pc acc (i :: rest) (size :: sizes) = do
+    go : LabelTable -> (pc : Int) -> SnocList Bits8 -> List Asm.Instr -> IO (SnocList Bits8)
+    go _ _ acc [] = pure acc
+    go labels pc acc (i :: rest) = do
+      let size = instrSize pc i
       rel <- displacement labels pc size i
-      go labels (pc + size) (acc <>< encodeRaw pc rel i) rest sizes
-    go _ _ acc _ _ = pure acc
+      go labels (pc + size) (acc <>< encodeRaw pc rel i) rest

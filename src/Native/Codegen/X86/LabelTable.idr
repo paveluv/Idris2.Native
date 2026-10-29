@@ -34,20 +34,14 @@ record LabelTable where
 export
 labelTable : (bound : Nat) -> IO LabelTable
 labelTable bound = do
-  -- a new buffer is all zeros: no label is defined
-  defined <- buffer (cast bound)
-  addresses <- buffer (8 * cast bound)
+  -- a new buffer is all zeros, under every code generator: no label is
+  -- defined. A size an `Int` does not hold wraps, and may be below 0, of
+  -- which no buffer is made: an empty one then.
+  defined <- newBuffer (cast bound) >>= maybe emptyBuffer pure
+  addresses <- newBuffer (8 * cast bound) >>= maybe emptyBuffer pure
   m <- rawSize defined
   n <- rawSize addresses
   pure (MkLabelTable (min m (n `div` 8)) defined addresses)
-  where
-    -- a buffer of the bytes, or an empty one: a size an `Int` does not
-    -- hold wraps, and may be below 0
-    buffer : Int -> IO Buffer
-    buffer size = do
-      Just b <- newBuffer size
-        | Nothing => emptyBuffer
-      pure b
 
 ||| Whether the label has a place: its number below the bound, compared as
 ||| an `Integer`, before it is made an `Int`, which one past the largest
