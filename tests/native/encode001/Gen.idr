@@ -12,7 +12,6 @@ module Gen
 
 import Data.Buffer
 import Data.List
-import Data.SortedMap
 import Groups
 import Native.Codegen.X86.Asm
 import Native.Codegen.X86.Encode
@@ -29,8 +28,8 @@ writeBytes path bs = do
 
 emit : String -> List Instr -> IO ()
 emit name is = do
-  let (code, _, missing) = assemble 0 is
-      bytes = code <>> []
+  (code, missing) <- assemble 0 is
+  let bytes = code <>> []
   writeBytes (name ++ ".bin") bytes
   ignore $
     writeFile (name ++ ".s")

@@ -623,7 +623,8 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
               (MkEntry here) noConIds)
     let Right rendered = render enc realised run
       | Left err => putStrLn ("render: " ++ err)
-    let Right image = linkProgram enc windowBytes rendered.areas rendered.text rendered.rodata
+    Right image <- linkProgram enc windowBytes rendered.areas rendered.labelBound rendered.text
+                     rendered.rodata
       | Left problems => putStrLn ("link: " ++ show problems)
     Right () <- writeImage file image
       | Left err => putStrLn ("write: " ++ show err)

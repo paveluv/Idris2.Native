@@ -101,14 +101,16 @@ import Native.Width
 %default covering
 
 ||| What the rendering gives the linker: the program's code, which defines the
-||| seed's `main` label, its read-only data, each item at its label, and the
-||| per-thread areas its code uses.
+||| seed's `main` label, its read-only data, each item at its label, the
+||| per-thread areas its code uses, and the bound of its labels: every
+||| label the code and the data name, the seed's included, is below it.
 public export
 record Rendered where
   constructor MkRendered
   text : List Asm.Instr
   rodata : List (Asm.Label, List Datum)
   areas : Linkage.Areas
+  labelBound : Nat
 
 record RS (enc : Types.Enc) where
   constructor MkRS
@@ -178,7 +180,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                            pieces <- staticData st
                            modify { rodata $= (:< (l, pieces)) })
                 p.statics
-    pure (MkRendered (s.text <>> []) (s.rodata <>> []) s.areas)
+    pure (MkRendered (s.text <>> []) (s.rodata <>> []) s.areas s.nextLabel)
     where
       Render : Types.Enc -> Type -> Type
       Render enc = StateT (RS enc) (Either String)

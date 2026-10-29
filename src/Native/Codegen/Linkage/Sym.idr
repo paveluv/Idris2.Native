@@ -14,8 +14,8 @@ public export
 data Sym
   = ||| `_start`: the ELF entry point
     SymStart
-  | ||| the program's entry under the heap lowering; the caller of `link`
-    ||| defines it
+  | ||| the program's entry under the heap lowering; the program
+    ||| `linkProgram` links defines it
     SymMain
   | ||| `idris_halt`: the code of the HALT continuation; result in rax ->
     ||| exit_group

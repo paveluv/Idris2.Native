@@ -13,13 +13,21 @@ module Gen
 import Data.SortedMap
 import Native.Codegen.X86.Asm
 import Native.Codegen.X86.Encode
+import Native.Codegen.X86.LabelTable
 import Sequences
 
-check : (String, SortedMap Label Int, List Instr) -> IO ()
-check (what, env, is) = do
-  let measured = measure 0 is
-      problems = check (labelsWith env measured) measured 0 is
-  putStrLn (what ++ ": " ++ show problems)
+-- A sequence's problems, as the link finds them: the labels' table made
+-- for the labels below 16, of which the sequences' are, a label's address
+-- held at its number; the text's labels put in it by the first pass
+-- (`measure`), then the environment's, those outside the text
+-- (`defineEnvironment`), then each instruction checked against them.
+report : (String, SortedMap Label Int, List Instr) -> IO ()
+report (what, env, is) = do
+  labels <- labelTable 16
+  measured <- measure labels 0 is
+  outside <- defineEnvironment labels (SortedMap.toList env)
+  problems <- check labels measured 0 is
+  putStrLn (what ++ ": " ++ show (outside ++ problems))
 
 main : IO ()
-main = traverse_ check sequences
+main = traverse_ report sequences

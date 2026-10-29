@@ -256,7 +256,8 @@ main = do
                (MkEntry here) noConIds)
       let Right rendered = render TestEnc realised ir
         | Left err => putStrLn ("render: " ++ err)
-      let Right image = linkProgram TestEnc windowBytes rendered.areas rendered.text rendered.rodata
+      Right image <- linkProgram TestEnc windowBytes rendered.areas rendered.labelBound
+                       rendered.text rendered.rodata
         | Left problems => putStrLn ("link: " ++ show problems)
       Right () <- writeImage "abi" image
         | Left err => putStrLn ("write: " ++ show err)

@@ -587,10 +587,10 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
               pure ()
             Nothing => pure ()
           Right image <- phase "linking"
-            (later
+            (coreLift
               (Link.linkProgram enc settings.window
-                 ({ constants := 2 * length constants } rendered.areas) rendered.text
-                 rendered.rodata))
+                 ({ constants := 2 * length constants } rendered.areas) rendered.labelBound
+                 rendered.text rendered.rodata))
             | Left problems =>
               throw (InternalError ("native: the image cannot be assembled: " ++ show problems))
           pure image

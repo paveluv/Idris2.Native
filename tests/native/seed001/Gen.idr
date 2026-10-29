@@ -132,15 +132,19 @@ allocSlowByHand =
 undefinedRef : List (Label, List Datum)
 undefinedRef = [(reservedLabels, [AddressOf (reservedLabels + 1) 0])]
 
+-- The programs here number their own labels from `reservedLabels`, the
+-- most of them two (`slow` and `done`), so every label is below
+-- `reservedLabels + 2`, the bound the link's table of labels is made for.
 emit : String -> List Instr -> List (Label, List Datum) -> IO ()
-emit name prog rodata =
-  case linkProgram SeedEnc windowBytes seedAreas
-    (prog ++ startByHand ++ allocSlowByHand ++ crashByHand) rodata of
-  Left missing => putStrLn (name ++ ": unresolved labels " ++ show missing)
-  Right image => do
-    Right () <- writeImage name image
-      | Left err => putStrLn (name ++ ": write failed: " ++ show err)
-    putStrLn (name ++ ": " ++ show (imageSize image) ++ " bytes")
+emit name prog rodata = do
+  linked <- linkProgram SeedEnc windowBytes seedAreas (reservedLabels + 2)
+              (prog ++ startByHand ++ allocSlowByHand ++ crashByHand) rodata
+  case linked of
+    Left missing => putStrLn (name ++ ": unresolved labels " ++ show missing)
+    Right image => do
+      Right () <- writeImage name image
+        | Left err => putStrLn (name ++ ": write failed: " ++ show err)
+      putStrLn (name ++ ": " ++ show (imageSize image) ++ " bytes")
 
 main : IO ()
 main = do

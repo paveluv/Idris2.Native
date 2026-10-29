@@ -9,7 +9,6 @@
 ||| ends the process with the status in rdi.
 module Gen
 
-import Data.SortedMap
 import Native.Codegen.ELF
 import Native.Codegen.LittleEndian
 import Native.Codegen.Platform
@@ -20,7 +19,7 @@ import System.File
 main : IO ()
 main = do
   let prog = [Lbl 0, MovRI RDI 42, MovRI RAX 231, Syscall]
-  let (text, _, missing) = assemble textBase prog
+  (text, missing) <- assemble textBase prog
   let lay = planLayout (byteCount text) 0 0
   Right () <- writeImage "exit42" (elfImage X86_64 lay (bytes (text <>> [])) (bytes []) 0 textBase)
     | Left err => putStrLn ("write failed: " ++ show err)

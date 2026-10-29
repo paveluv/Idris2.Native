@@ -23,6 +23,7 @@ import Native.Codegen.ByteSink
 import Native.Codegen.X86.Asm
 import Native.Codegen.X86.Encode
 import Native.Codegen.X86.InstrFormat
+import Native.Codegen.X86.LabelTable
 import Native.Codegen.X86.OptionalByte
 import Sequences
 
@@ -132,12 +133,14 @@ agrees buf i pc rel = do
         && after == 0xaa && short)
 
 -- Whether a sequence assembled at `base` into a buffer of the size its
--- first pass measures (`assembleInto`) is the bytes `assemble` makes, its
--- labels those `assemble` places.
+-- first pass measures (`assembleInto`) is the bytes `assemble` makes. The
+-- first pass puts the sequence's labels in a table of the labels below
+-- 16, of which the sequences' are, apart from the one `assemble` makes.
 assembledAgree : (base : Int) -> List Instr -> IO Bool
 assembledAgree base is = do
-  let (code, labels, _) = assemble base is
-      measured = measure base is
+  (code, _) <- assemble base is
+  labels <- labelTable 16
+  measured <- measure labels base is
   Just buf <- newBuffer measured.size
     | Nothing => pure False
   Just s <- ByteSink.sink buf 0 measured.size

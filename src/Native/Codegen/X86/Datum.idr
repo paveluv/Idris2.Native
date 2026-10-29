@@ -11,7 +11,6 @@ module Native.Codegen.X86.Datum
 
 import Native.Codegen.X86.Asm
 
-import Data.SortedMap
 import Native.Codegen.LittleEndian
 
 %default total
@@ -33,11 +32,8 @@ size = foldl (\n, d => n + datumSize d) 0
     datumSize (Raw bs) = cast (length bs)
     datumSize (AddressOf _ _) = 8
 
-||| The bytes of a piece, given the address of every label of the image:
-||| the label, if the piece names one that has none.
+||| The bytes of an address datum (`AddressOf`) whose label is at
+||| `address`: the address plus the addend, as a little-endian word.
 export
-bytes : SortedMap Asm.Label Int -> Datum -> Either Asm.Label (List Bits8)
-bytes _ (Raw bs) = Right bs
-bytes labels (AddressOf l addend) = case lookup l labels of
-  Just a => Right (LittleEndian.le64 (cast (a + addend)))
-  Nothing => Left l
+addressBytes : (address, addend : Int) -> List Bits8
+addressBytes a addend = LittleEndian.le64 (cast (a + addend))
