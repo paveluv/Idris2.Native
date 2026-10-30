@@ -2212,7 +2212,7 @@ lowerProgram enc platform realised _ forms shapes staticReads staticObjects cons
     answered d = d
 
     -- The type constructors the program builds or matches as values, each
-    -- Data.Numbered.numbered by its place in the order of their names.
+    -- numbered by its place in the order of their names.
     typeCons : SortedMap Name Int
     typeCons = let ns = Prelude.toList (foldl defNames empty vmdefs0)
                in fromList (zip ns (map cast [0 .. length ns]))
