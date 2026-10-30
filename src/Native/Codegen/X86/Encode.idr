@@ -20,14 +20,15 @@ import Native.Codegen.X86.LabelTable
 import Native.Codegen.X86.OptionalByte
 
 import Data.Bits
-import Data.Buffer
-import Native.Codegen.ByteSink
+import Native.Data.ByteSink as Data
+import Native.Data.GrowingBuffer as Data
 %default total
 
 ------------------------------------------------------------------------------
 -- Immediates
 
 ||| Whether the number fits 32 bits, signed.
+export
 fitsInt32 : Integer -> Bool
 fitsInt32 x = x >= -2147483648 && x <= 2147483647
 
@@ -279,12 +280,21 @@ data AsmProblem
     ||| the labels' table (`LabelTable`), which has no place for it: a
     ||| reference to it is a missing label.
     LabelPastBound Asm.Label
+  | ||| A label whose displacement from the end of an instruction that
+    ||| refers to it, at the address given, does not fit its 32 bits. It encodes
+    ||| with the displacement's low bits.
+    LabelTooFar Asm.Label Int
+  | ||| A text whose bytes, the number given or more, could not be held.
+    TextTooLarge Int
 
 export
 Show AsmProblem where
   show (MissingLabel l) = "missing label " ++ show l
   show (DoesNotFit i) = "a field does not fit: " ++ show i
   show (LabelPastBound l) = "a label past the labels' bound: " ++ show l
+  show (LabelTooFar l end) =
+    "a label too far for a 32-bit displacement: " ++ show l ++ ", from " ++ show end
+  show (TextTooLarge n) = "a text too large to hold: " ++ show n ++ " bytes or more"
 
 ||| Size in bytes at address `pc`, with no byte made (`InstrFormat.size`).
 ||| Independent of label values (rel32 everywhere).
@@ -306,7 +316,7 @@ record Sizes where
   ||| The instructions it holds the sizes of, no more than the table's
   ||| bytes.
   count : Int
-  table : Buffer
+  table : Data.GrowingBuffer
 
 ||| The size of the instruction at `index` of the sequence, at `pc`: the
 ||| size pass one found, or, past the instructions it measured or held as
@@ -317,7 +327,7 @@ sizeAt sizes index pc i =
   where
     held : IO Int
     held = do
-      b <- getBits8 sizes.table index
+      b <- Data.GrowingBuffer.getBits8 sizes.table index
       pure (if b == 255 then instrSize pc i else cast b)
 
 ||| Pass one, of a sequence placed at `base`: each instruction's size
@@ -339,47 +349,36 @@ measure : LabelTable -> (base : Int) -> List Asm.Instr -> IO Measured
 measure labels base is = do
   -- the table grows as the sequence is walked, which counting it first
   -- would walk once more: a walk of idris2-native's text costs about as
-  -- much as measuring it does. A new buffer is all zeros, under every code
-  -- generator, so a label's or a comment's size, 0, is not written; one
-  -- that cannot be made holds no size, and each is computed again.
-  table <- newBuffer 65536 >>= maybe emptyBuffer pure
-  room <- rawSize table
-  fromPrim (go table room 0 base [<] is)
+  -- much as measuring it does. Its room is zeros, so a label's or a
+  -- comment's size, 0, is not written; a size it cannot grow to hold is
+  -- computed again where it is read.
+  table <- Data.GrowingBuffer.growingBuffer 65536
+  fromPrim (go table 0 base [<] is)
   where
-    -- the size of the instruction at `index` held in the table, of `room`
-    -- bytes, if it has a place there
-    hold : Buffer -> (room, index, size : Int) -> IO ()
-    hold table room index n =
-      if index < room then setBits8 table index (if n < 255 then cast n else 255) else pure ()
-
-    -- the table grown to hold the instruction at `index`, to twice its
-    -- bytes or more; as it is, if the larger one cannot be made
-    grown : Buffer -> (room, index : Int) -> IO Buffer
-    grown table room index = do
-      Just t <- resizeBuffer table (max (2 * room) (index + 65536))
-        | Nothing => pure table
-      pure t
+    -- the size of the instruction at `index` held in the table
+    hold : Data.GrowingBuffer -> (index, size : Int) -> IO ()
+    hold table index n = Data.GrowingBuffer.setBits8 table index (if n < 255 then cast n else 255)
 
     -- the world passed by hand, so that the loop is a function of it, as
     -- pass two's is
-    go : Buffer -> (room, index, pc : Int) -> SnocList Asm.Label -> List Asm.Instr ->
+    go : Data.GrowingBuffer -> (index, pc : Int) -> SnocList Asm.Label -> List Asm.Instr ->
          PrimIO Measured
-    go table room index pc past [] w =
-      MkIORes (MkMeasured (MkSizes (min index room) table) (pc - base) (past <>> [])) w
-    go table room index pc past (Asm.Lbl l :: rest) w =
+    go table index pc past [] w =
+      MkIORes (MkMeasured (MkSizes (min index (Data.GrowingBuffer.capacity table)) table) (pc - base) (past <>> [])) w
+    go table index pc past (Asm.Lbl l :: rest) w =
       case toPrim (LabelTable.define labels l pc) w of
-        MkIORes True w' => go table room (index + 1) pc past rest w'
-        MkIORes False w' => go table room (index + 1) pc (past :< l) rest w'
-    go table room index pc past (Asm.Comment _ :: rest) w = go table room (index + 1) pc past rest w
-    go table room index pc past (i :: rest) w =
+        MkIORes True w' => go table (index + 1) pc past rest w'
+        MkIORes False w' => go table (index + 1) pc (past :< l) rest w'
+    go table index pc past (Asm.Comment _ :: rest) w = go table (index + 1) pc past rest w
+    go table index pc past (i :: rest) w =
       let n = instrSize pc i
-      in if index < room
-           then case toPrim (hold table room index n) w of
-             MkIORes () w' => go table room (index + 1) (pc + n) past rest w'
-           else case toPrim (grown table room index) w of
-             MkIORes t w1 => case toPrim (rawSize t) w1 of
-               MkIORes room' w2 => case toPrim (hold t room' index n) w2 of
-                 MkIORes () w3 => go t room' (index + 1) (pc + n) past rest w3
+      in if index < Data.GrowingBuffer.capacity table
+           then case toPrim (hold table index n) w of
+             MkIORes () w' => go table (index + 1) (pc + n) past rest w'
+           else case toPrim (Data.GrowingBuffer.grownTo table (index + 1)) w of
+             MkIORes (Just t) w1 => case toPrim (hold t index n) w1 of
+               MkIORes () w2 => go t (index + 1) (pc + n) past rest w2
+             MkIORes Nothing w1 => go table (index + 1) (pc + n) past rest w1
 
 ||| The environment of a sequence pass one measured, put in its labels'
 ||| table: the labels defined outside this text, at their final addresses,
@@ -399,6 +398,10 @@ defineEnvironment labels env = go [<] env
       go (if placed then past else past :< LabelPastBound l) rest
 
 ||| The label an instruction refers to, if any, and the constant added to it.
+||| The displacement to it is 32 bits, where the instruction's displacement
+||| is, for a RIP-relative operand, or its immediate, for a branch's rel32:
+||| either way after the bytes before its displacement (`dispAt`).
+export
 instrLabel : Asm.Instr -> Maybe (Asm.Label, Int)
 instrLabel (Asm.Jmp l) = Just (l, 0)
 instrLabel (Asm.Jcc _ l) = Just (l, 0)
@@ -420,6 +423,7 @@ instrLabel _ = Nothing
 ||| An instruction of `size` bytes at `pc` that refers to a label at
 ||| `address`, plus a constant: the displacement to it from the end of the
 ||| instruction. The one rule for the displacement.
+export
 labelDisplacement : (pc, size, address, constant : Int) -> Int
 labelDisplacement pc size a d = a + d - (pc + size)
 
@@ -477,9 +481,9 @@ check labels measured base is =
 ||| stops the pass with no sink; one with a problem (`check`) is written
 ||| anyway.
 export
-assembleInto : ByteSink.Sink -> LabelTable -> Measured -> (base : Int) -> List Asm.Instr ->
-               IO (Maybe ByteSink.Sink)
-assembleInto sink labels measured base is = fromPrim (go (ByteSink.start sink) 0 base is)
+assembleInto : Data.ByteSink -> LabelTable -> Measured -> (base : Int) -> List Asm.Instr ->
+               IO (Maybe Data.ByteSink)
+assembleInto sink labels measured base is = fromPrim (go (Data.ByteSink.start sink) 0 base is)
   where
     -- The world passed by hand, so that the loop is a function of it: an
     -- `IO` loop with a clause that ends in a call, as a label's does here,
@@ -487,18 +491,18 @@ assembleInto sink labels measured base is = fromPrim (go (ByteSink.start sink) 0
     -- instruction. The loop's place in the sink is a span of no bytes,
     -- which each instruction's writing ends at. A label or a comment takes
     -- no byte, and is skipped.
-    go : ByteSink.Span sink 0 -> (index, pc : Int) -> List Asm.Instr ->
-         PrimIO (Maybe ByteSink.Sink)
-    sized : ByteSink.Span sink 0 -> (index, pc, size : Int) -> InstrFormat -> List Asm.Instr ->
-            PrimIO (Maybe ByteSink.Sink)
-    checked : ByteSink.Span sink 0 -> (index, pc, size : Int) -> (k : Nat) -> (f : InstrFormat) ->
-              (0 _ : InstrFormat.size f = k) -> List Asm.Instr -> PrimIO (Maybe ByteSink.Sink)
-    written : (at : ByteSink.Span sink 0) -> (index, pc, size : Int) -> (k : Nat) ->
+    go : Data.ByteSink.Span sink 0 -> (index, pc : Int) -> List Asm.Instr ->
+         PrimIO (Maybe Data.ByteSink)
+    sized : Data.ByteSink.Span sink 0 -> (index, pc, size : Int) -> InstrFormat -> List Asm.Instr ->
+            PrimIO (Maybe Data.ByteSink)
+    checked : Data.ByteSink.Span sink 0 -> (index, pc, size : Int) -> (k : Nat) -> (f : InstrFormat) ->
+              (0 _ : InstrFormat.size f = k) -> List Asm.Instr -> PrimIO (Maybe Data.ByteSink)
+    written : (at : Data.ByteSink.Span sink 0) -> (index, pc, size : Int) -> (k : Nat) ->
               (f : InstrFormat) -> (0 _ : InstrFormat.size f = k) -> (fit : Bool) ->
-              (0 _ : ByteSink.fits sink at k = fit) -> List Asm.Instr ->
-              PrimIO (Maybe ByteSink.Sink)
+              (0 _ : Data.ByteSink.fits sink at k = fit) -> List Asm.Instr ->
+              PrimIO (Maybe Data.ByteSink)
 
-    go at _ _ [] w = MkIORes (Just (ByteSink.past sink at)) w
+    go at _ _ [] w = MkIORes (Just (Data.ByteSink.past sink at)) w
     go at index pc (i :: rest) w = case i of
       Asm.Lbl _ => go at (index + 1) pc rest w
       Asm.Comment _ => go at (index + 1) pc rest w
@@ -514,12 +518,12 @@ assembleInto sink labels measured base is = fromPrim (go (ByteSink.start sink) 0
 
     checked at index pc size k f same rest w =
       if cast k /= size then MkIORes Nothing w
-      else written at index pc size k f same (ByteSink.fits sink at k) Refl rest w
+      else written at index pc size k f same (Data.ByteSink.fits sink at k) Refl rest w
 
     -- the parts written from the place, if they fit before the sink's end
     written at index pc size k f same False _ rest w = MkIORes Nothing w
     written at index pc size k f same True fits rest w =
-      case toPrim (InstrFormat.write sink f (rewrite same in ByteSink.span sink at k fits)) w of
+      case toPrim (InstrFormat.write sink f (rewrite same in Data.ByteSink.span sink at k fits)) w of
         MkIORes end w' => go end (index + 1) (pc + size) rest w'
 
 ||| Both passes with no environment, the labels' table of those the

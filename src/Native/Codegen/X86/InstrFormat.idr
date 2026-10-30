@@ -11,8 +11,8 @@ module Native.Codegen.X86.InstrFormat
 import Native.Codegen.X86.OptionalByte
 
 import Data.List
-import Native.Codegen.ByteSink
 import Native.Codegen.LittleEndian
+import Native.Data.ByteSink as Data
 
 %default total
 
@@ -39,10 +39,10 @@ namespace OpcodeMap
 
   ||| The map's escape written at the span's next byte.
   export
-  write : (s : ByteSink.Sink) -> (m : OpcodeMap) -> ByteSink.Span s (size m + n) ->
-          IO (ByteSink.Span s n)
+  write : (s : Data.ByteSink) -> (m : OpcodeMap) -> Data.ByteSink.Span s (size m + n) ->
+          IO (Data.ByteSink.Span s n)
   write s OneByte sp = pure sp
-  write s TwoByte sp = ByteSink.putBits8 s sp 0x0F
+  write s TwoByte sp = Data.ByteSink.putBits8 s sp 0x0F
 
 ||| The width of a displacement: none, 8 bits or 32.
 public export
@@ -66,11 +66,11 @@ namespace DispWidth
 
   ||| A displacement's bytes at the width written at the span's next byte.
   export
-  write : (s : ByteSink.Sink) -> (dw : DispWidth) -> Int -> ByteSink.Span s (size dw + n) ->
-          IO (ByteSink.Span s n)
+  write : (s : Data.ByteSink) -> (dw : DispWidth) -> Int -> Data.ByteSink.Span s (size dw + n) ->
+          IO (Data.ByteSink.Span s n)
   write s NoDisp _ sp = pure sp
-  write s Disp8 d sp = ByteSink.putBits8 s sp (cast d)
-  write s Disp32 d sp = ByteSink.putBits32 s sp (cast d)
+  write s Disp8 d sp = Data.ByteSink.putBits8 s sp (cast d)
+  write s Disp32 d sp = Data.ByteSink.putBits32 s sp (cast d)
 
 ||| The width of an immediate: none, 8 bits, 32 or 64.
 public export
@@ -96,12 +96,12 @@ namespace ImmWidth
 
   ||| An immediate's bytes at the width written at the span's next byte.
   export
-  write : (s : ByteSink.Sink) -> (iw : ImmWidth) -> Int -> ByteSink.Span s (size iw + n) ->
-          IO (ByteSink.Span s n)
+  write : (s : Data.ByteSink) -> (iw : ImmWidth) -> Int -> Data.ByteSink.Span s (size iw + n) ->
+          IO (Data.ByteSink.Span s n)
   write s NoImm _ sp = pure sp
-  write s Imm8 i sp = ByteSink.putBits8 s sp (cast i)
-  write s Imm32 i sp = ByteSink.putBits32 s sp (cast i)
-  write s Imm64 i sp = ByteSink.putBits64 s sp (cast i)
+  write s Imm8 i sp = Data.ByteSink.putBits8 s sp (cast i)
+  write s Imm32 i sp = Data.ByteSink.putBits32 s sp (cast i)
+  write s Imm64 i sp = Data.ByteSink.putBits64 s sp (cast i)
 
 ------------------------------------------------------------------------------
 -- An instruction's bytes
@@ -141,6 +141,15 @@ size (Padding n) = n + 0
 size (Literal _) = 8
 size (Verbatim bs) = length bs + 0
 
+||| The bytes before an instruction's displacement, where it is; where its
+||| immediate is, if it has no displacement; 0 for a directive.
+export
+dispAt : InstrFormat -> Nat
+dispAt (Parts p r m _ modrm sib _ _ _ _) =
+  OptionalByte.size p + OptionalByte.size r + OpcodeMap.size m + 1 + OptionalByte.size modrm
+    + OptionalByte.size sib
+dispAt _ = 0
+
 ||| An instruction's bytes, in order.
 export
 bytes : InstrFormat -> List Bits8
@@ -155,28 +164,28 @@ bytes (Verbatim bs) = bs
 ||| An instruction's bytes written through a span over the bytes it takes,
 ||| part by part, each from the front of what is left, to its end.
 export
-write : (s : ByteSink.Sink) -> (f : InstrFormat) -> ByteSink.Span s (size f) ->
-        IO (ByteSink.Span s 0)
+write : (s : Data.ByteSink) -> (f : InstrFormat) -> Data.ByteSink.Span s (size f) ->
+        IO (Data.ByteSink.Span s 0)
 write s (Parts p r m o modrm sib dw d iw i) sp = do
   sp <- OptionalByte.write s p sp
   sp <- OptionalByte.write s r sp
   sp <- OpcodeMap.write s m sp
-  sp <- ByteSink.putBits8 s sp o
+  sp <- Data.ByteSink.putBits8 s sp o
   sp <- OptionalByte.write s modrm sp
   sp <- OptionalByte.write s sib sp
   sp <- DispWidth.write s dw d sp
   ImmWidth.write s iw i sp
-write s (Padding n) sp = ByteSink.putCopies s n 0xCC sp
-write s (Literal v) sp = ByteSink.putBits64 s sp v
-write s (Verbatim bs) sp = ByteSink.putBytes s bs sp
+write s (Padding n) sp = Data.ByteSink.putCopies s n 0xCC sp
+write s (Literal v) sp = Data.ByteSink.putBits64 s sp v
+write s (Verbatim bs) sp = Data.ByteSink.putBytes s bs sp
 
 ||| An instruction's bytes written at the sink's next offset, if they fit
 ||| before the sink's end, with one check (`ByteSink.fits`): one that does
 ||| not fit writes nothing, and gives no sink.
 export
-put : ByteSink.Sink -> InstrFormat -> IO (Maybe ByteSink.Sink)
-put s f with (ByteSink.fits s (ByteSink.start s) (size f)) proof ok
+put : Data.ByteSink -> InstrFormat -> IO (Maybe Data.ByteSink)
+put s f with (Data.ByteSink.fits s (Data.ByteSink.start s) (size f)) proof ok
   _ | True = do
-    end <- write s f (ByteSink.span s (ByteSink.start s) _ ok)
-    pure (Just (ByteSink.past s end))
+    end <- write s f (Data.ByteSink.span s (Data.ByteSink.start s) _ ok)
+    pure (Just (Data.ByteSink.past s end))
   _ | False = pure Nothing

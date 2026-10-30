@@ -1,7 +1,8 @@
-||| A stretch of a buffer that bytes are written into, from its first byte
-||| to its last, the writes checked against the stretch's end: what writes
-||| an image's text or its read-only data into the image, one piece at a
-||| time, with no list of the stretch's bytes made first.
+||| A stretch of a buffer that bytes are written into (`ByteSink`), from its
+||| first byte to its last, the writes checked against the stretch's end:
+||| what writes a large run of bytes, such as an image's text or its
+||| read-only data, one piece at a time, with no list of its bytes made
+||| first.
 |||
 ||| A sink is opened only over a stretch that lies inside its buffer, and a
 ||| write that would pass the stretch's end writes nothing and gives no
@@ -19,7 +20,7 @@
 ||| Chez, which compiles this code, in the order of the host it runs on
 ||| (`native-endianness`), and the host is assumed little-endian, as every
 ||| platform in scope is.
-module Native.Codegen.ByteSink
+module Native.Data.ByteSink
 
 import Data.Buffer
 
@@ -29,8 +30,8 @@ import Data.Buffer
 ||| offset and the stretch's end, one past its last byte. Abstract: made by
 ||| `sink` alone.
 export
-record Sink where
-  constructor MkSink
+record ByteSink where
+  constructor MkByteSink
   buffer : Buffer
   next : Int
   end : Int
@@ -38,17 +39,17 @@ record Sink where
 ||| A sink over the `size` bytes of the buffer from `at`, if they lie inside
 ||| it.
 export
-sink : Buffer -> (at, size : Int) -> IO (Maybe Sink)
+sink : Buffer -> (at, size : Int) -> IO (Maybe ByteSink)
 sink buf at size = do
   n <- rawSize buf
   -- the size compared with the bytes left past `at`: `at + size` could
   -- wrap past the largest `Int`
-  pure (if 0 <= at && 0 <= size && at <= n && size <= n - at then Just (MkSink buf at (at + size))
+  pure (if 0 <= at && 0 <= size && at <= n && size <= n - at then Just (MkByteSink buf at (at + size))
           else Nothing)
 
 ||| Whether the stretch is written to its end.
 export
-full : Sink -> Bool
+full : ByteSink -> Bool
 full s = s.next == s.end
 
 ------------------------------------------------------------------------------
@@ -63,12 +64,12 @@ full s = s.next == s.end
 ||| `start` and `span` alone, over bytes that fit before the sink's end, so
 ||| that no write through a span passes it, with no check of its own.
 export
-data Span : Sink -> Nat -> Type where
+data Span : ByteSink -> Nat -> Type where
   MkSpan : (next : Int) -> Span s n
 
 ||| The place of the sink's next offset.
 export
-start : (s : Sink) -> Span s 0
+start : (s : ByteSink) -> Span s 0
 start s = MkSpan s.next
 
 ||| Whether the `n` bytes from a place fit before the sink's end: the one
@@ -76,38 +77,38 @@ start s = MkSpan s.next
 ||| `Nat`, before it is made an `Int`, which one past the largest `Int`
 ||| would wrap to a count that fits or one below 0.
 export
-fits : (s : Sink) -> (at : Span s 0) -> (n : Nat) -> Bool
+fits : (s : ByteSink) -> (at : Span s 0) -> (n : Nat) -> Bool
 fits s (MkSpan i) n = n <= cast (s.end - i)
 
 ||| A span over the `n` bytes from a place, which fit before the sink's end
 ||| (`fits`).
 export
-span : (s : Sink) -> (at : Span s 0) -> (0 n : Nat) -> (0 _ : fits s at n = True) -> Span s n
+span : (s : ByteSink) -> (at : Span s 0) -> (0 n : Nat) -> (0 _ : fits s at n = True) -> Span s n
 span s (MkSpan i) _ _ = MkSpan i
 
 ||| What is left of the sink from a place.
 export
-past : (s : Sink) -> Span s 0 -> Sink
+past : (s : ByteSink) -> Span s 0 -> ByteSink
 past s (MkSpan i) = { next := i } s
 
 ||| A byte written at the span's next byte.
 export
-putBits8 : (s : Sink) -> Span s (S n) -> Bits8 -> IO (Span s n)
+putBits8 : (s : ByteSink) -> Span s (S n) -> Bits8 -> IO (Span s n)
 putBits8 s (MkSpan i) b = do setBits8 s.buffer i b; pure (MkSpan (i + 1))
 
 ||| A number's four bytes written at the span's next byte, low byte first.
 export
-putBits32 : (s : Sink) -> Span s (4 + n) -> Bits32 -> IO (Span s n)
+putBits32 : (s : ByteSink) -> Span s (4 + n) -> Bits32 -> IO (Span s n)
 putBits32 s (MkSpan i) v = do setBits32 s.buffer i v; pure (MkSpan (i + 4))
 
 ||| A number's eight bytes written at the span's next byte, low byte first.
 export
-putBits64 : (s : Sink) -> Span s (8 + n) -> Bits64 -> IO (Span s n)
+putBits64 : (s : ByteSink) -> Span s (8 + n) -> Bits64 -> IO (Span s n)
 putBits64 s (MkSpan i) v = do setBits64 s.buffer i v; pure (MkSpan (i + 8))
 
 ||| The bytes written at the span's next byte.
 export
-putBytes : (s : Sink) -> (bs : List Bits8) -> Span s (length bs + n) -> IO (Span s n)
+putBytes : (s : ByteSink) -> (bs : List Bits8) -> Span s (length bs + n) -> IO (Span s n)
 putBytes s bs sp = fromPrim (go bs sp)
   where
     -- the world passed by hand: an `IO` loop that ends in a call of
@@ -117,9 +118,21 @@ putBytes s bs sp = fromPrim (go bs sp)
     go (b :: rest) sp w = case toPrim (putBits8 s sp b) w of
       MkIORes sp' w' => go rest sp' w'
 
+||| The `k` bytes of `src` from `from` copied at the span's next byte, by one
+||| copy of the buffer's, if they lie inside `src`: the span past them, or
+||| none, with nothing written. Compared as `Nat`s, as `fits` compares.
+export
+putBuffer : (s : ByteSink) -> (src : Buffer) -> (from : Int) -> (k : Nat) -> Span s (k + n) ->
+            IO (Maybe (Span s n))
+putBuffer s src from k (MkSpan i) = do
+  m <- rawSize src
+  if 0 <= from && from <= m && k <= cast (m - from)
+    then do copyData src from (cast k) s.buffer i; pure (Just (MkSpan (i + cast k)))
+    else pure Nothing
+
 ||| `k` copies of the byte written at the span's next byte.
 export
-putCopies : (s : Sink) -> (k : Nat) -> Bits8 -> Span s (k + n) -> IO (Span s n)
+putCopies : (s : ByteSink) -> (k : Nat) -> Bits8 -> Span s (k + n) -> IO (Span s n)
 putCopies s k b sp = fromPrim (go k sp)
   where
     -- the world passed by hand: in an `IO` loop, the match on `S` binds
@@ -135,14 +148,14 @@ putCopies s k b sp = fromPrim (go k sp)
 
 ||| The bytes written at the next offset, if they fit before the end.
 export
-put : Sink -> List Bits8 -> IO (Maybe Sink)
+put : ByteSink -> List Bits8 -> IO (Maybe ByteSink)
 put s bs with (fits s (start s) (length bs + 0)) proof ok
   _ | True = do end <- putBytes s bs (span s (start s) _ ok); pure (Just (past s end))
   _ | False = pure Nothing
 
 ||| `n` zero bytes written at the next offset, if they fit before the end.
 export
-zeros : Sink -> Nat -> IO (Maybe Sink)
+zeros : ByteSink -> Nat -> IO (Maybe ByteSink)
 zeros s n with (fits s (start s) (n + 0)) proof ok
   _ | True = do end <- putCopies s n 0 (span s (start s) _ ok); pure (Just (past s end))
   _ | False = pure Nothing

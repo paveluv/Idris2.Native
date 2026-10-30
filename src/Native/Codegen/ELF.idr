@@ -7,11 +7,11 @@
 ||| executables and shared objects are later work.
 module Native.Codegen.ELF
 
-import Native.Codegen.ByteSink
 import Native.Codegen.LittleEndian
 import Native.Codegen.Platform
 
 import Data.Buffer
+import Native.Data.ByteSink as Data
 import System.File.Buffer
 import System.File.Error
 import System.File.Permissions
@@ -59,7 +59,7 @@ planLayout ts rs bs =
 
 ||| A stretch of an image's bytes: bytes in order; a run of zero bytes; or
 ||| `size` bytes that a writer puts into the image when it is written,
-||| through a sink over the stretch alone (`Native.Codegen.ByteSink`), so
+||| through a sink over the stretch alone (`Native.Data.ByteSink`), so
 ||| that an image's text and read-only data are never made as lists of
 ||| their bytes. Abstract: an image is built, measured and written here,
 ||| and only passed along elsewhere.
@@ -67,7 +67,7 @@ export
 data Stretch
   = Bytes (List Bits8)
   | Zeros Nat
-  | Written Int (ByteSink.Sink -> IO (Maybe ByteSink.Sink))
+  | Written Int (Data.ByteSink -> IO (Maybe Data.ByteSink))
 
 ||| A stretch of these bytes.
 export
@@ -77,7 +77,7 @@ bytes = Bytes
 ||| A stretch of `size` bytes that the writer puts into the image, through
 ||| a sink over them: it must write them all, and only them.
 export
-written : (size : Int) -> (ByteSink.Sink -> IO (Maybe ByteSink.Sink)) -> Stretch
+written : (size : Int) -> (Data.ByteSink -> IO (Maybe Data.ByteSink)) -> Stretch
 written = Written
 
 ||| An image: its stretches, in file order.
@@ -238,13 +238,13 @@ writeImage path image = do
   pure (Right ())
   where
     -- the stretch, at `at`, through a sink over it
-    stretch : Buffer -> Int -> Stretch -> IO (Maybe ByteSink.Sink)
+    stretch : Buffer -> Int -> Stretch -> IO (Maybe Data.ByteSink)
     stretch buf at s = do
-      Just sink <- ByteSink.sink buf at (stretchSize s)
+      Just sink <- Data.ByteSink.sink buf at (stretchSize s)
         | Nothing => pure Nothing
       case s of
-        Bytes bs => ByteSink.put sink bs
-        Zeros z => ByteSink.zeros sink z
+        Bytes bs => Data.ByteSink.put sink bs
+        Zeros z => Data.ByteSink.zeros sink z
         Written _ w => w sink
 
     write : Buffer -> Int -> Image -> IO (Either ImageError ())
@@ -252,5 +252,5 @@ writeImage path image = do
     write buf at (s :: rest) = do
       Just sink <- stretch buf at s
         | Nothing => pure (Left (Miswritten at))
-      if ByteSink.full sink then write buf (at + stretchSize s) rest
+      if Data.ByteSink.full sink then write buf (at + stretchSize s) rest
         else pure (Left (Miswritten at))

@@ -5,7 +5,7 @@
 module Native.Codegen.X86.OptionalByte
 
 import Data.Bits
-import Native.Codegen.ByteSink
+import Native.Data.ByteSink as Data
 
 %default total
 
@@ -46,11 +46,11 @@ bytes o = if o.code == 0 then [] else [cast o.code]
 ||| a function whose body calls another that gives an action Idris
 ||| compiles as one that makes an action, at each write.
 export %inline
-write : (s : ByteSink.Sink) -> (o : OptionalByte) -> ByteSink.Span s (size o + n) ->
-        IO (ByteSink.Span s n)
+write : (s : Data.ByteSink) -> (o : OptionalByte) -> Data.ByteSink.Span s (size o + n) ->
+        IO (Data.ByteSink.Span s n)
 write s o sp = byNone (o.code == 0) sp
   where
     -- by whether there is none, which the bytes it takes are of (`taken`)
-    byNone : (none : Bool) -> ByteSink.Span s (taken none + n) -> IO (ByteSink.Span s n)
+    byNone : (none : Bool) -> Data.ByteSink.Span s (taken none + n) -> IO (Data.ByteSink.Span s n)
     byNone True sp = pure sp
-    byNone False sp = ByteSink.putBits8 s sp (cast o.code)
+    byNone False sp = Data.ByteSink.putBits8 s sp (cast o.code)

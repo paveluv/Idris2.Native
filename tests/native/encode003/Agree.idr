@@ -20,12 +20,13 @@ import Data.List
 import Data.SortedMap
 import Data.String
 import Groups
-import Native.Codegen.ByteSink
 import Native.Codegen.X86.Asm
+import Native.Codegen.X86.Assembler
 import Native.Codegen.X86.Encode
 import Native.Codegen.X86.InstrFormat
 import Native.Codegen.X86.LabelTable
 import Native.Codegen.X86.OptionalByte
+import Native.Data.ByteSink
 import Sequences
 
 -- An instruction's parts, as Idris values. `mov rax, qword ptr [rbx+8]`
@@ -134,30 +135,34 @@ agrees buf i pc rel = do
   pure (cast (length expected) == n && ByteSink.full s' && got == expected && before == 0xaa
         && after == 0xaa && short)
 
--- Whether a sequence assembled at `base` into a buffer of the size its
--- first pass measures (`assembleInto`) is the bytes `assemble` makes. The
--- first pass puts the sequence's labels in a table of the labels below
--- 16, of which the sequences' are, apart from the one `assemble` makes.
+-- Whether a sequence encoded at `base` by an assembler, its fixups
+-- patched once its labels have their addresses (`resolve`), is the bytes
+-- `assemble` makes, written through a sink of the text's size
+-- (`Assembler.put`). The assembler's labels' table begins with the labels
+-- below 16, of which the sequences' are, and grows; `assemble` makes its
+-- own, and computes each size where it encodes the instruction.
 assembledAgree : (base : Int) -> List Instr -> IO Bool
 assembledAgree base is = do
   (code, _) <- assemble base is
-  labels <- labelTable 16
-  measured <- measure labels base is
-  Just buf <- newBuffer measured.size
+  asm <- assembler base 16
+  encode asm is
+  _ <- resolve asm []
+  n <- Assembler.size asm
+  Just buf <- newBuffer n
     | Nothing => pure False
-  Just s <- ByteSink.sink buf 0 measured.size
+  Just s <- ByteSink.sink buf 0 n
     | Nothing => pure False
-  Just s' <- assembleInto s labels measured base is
+  Just s' <- Assembler.put asm s
     | Nothing => pure False
-  got <- bytesAt buf 0 (cast measured.size)
+  got <- bytesAt buf 0 (cast n)
   pure (ByteSink.full s' && got == (code <>> []))
 
--- A sequence longer than the first table of sizes pass one makes, of
--- 65536 bytes, a size each, which grows as the pass goes, to 131072
--- bytes, then 262144: encode001's two groups five times, their labels
--- defined five times each, of which a reference takes the last
--- (`LabelTable.define`). `assemble` computes each size where it encodes
--- the instruction, and pass two reads them from the table.
+-- A sequence longer than the first buffers an assembler makes, of 64 KiB,
+-- for the text and for the fixups, which grow as the text is encoded:
+-- encode001's two groups five times, their labels defined five times
+-- each, of which a reference takes the last (`LabelTable.define`), so
+-- that every reference waits for its fixup. `assemble` computes each size
+-- where it encodes the instruction.
 long : List Instr
 long = foldl (\acc, _ => acc <>< (groupA ++ groupB)) [<] [the Nat 1 .. 5] <>> []
 
@@ -188,7 +193,7 @@ sinkEdges buf = do
   putStrLn ("zeros of 8 into a stretch of 8: "
             ++ (if ByteSink.full t && all (== 0) zs then "the stretch filled" else "NOT filled"))
   where
-    given : Maybe ByteSink.Sink -> String
+    given : Maybe ByteSink.ByteSink -> String
     given (Just _) = "a sink"
     given Nothing = "no sink"
 
