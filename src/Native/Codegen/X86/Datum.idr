@@ -11,7 +11,7 @@ module Native.Codegen.X86.Datum
 
 import Native.Codegen.X86.Asm
 
-import Native.Codegen.LittleEndian
+import Native.Data.LittleEndian
 
 %default total
 
@@ -36,4 +36,4 @@ size = foldl (\n, d => n + datumSize d) 0
 ||| `address`: the address plus the addend, as a little-endian word.
 export
 addressBytes : (address, addend : Int) -> List Bits8
-addressBytes a addend = LittleEndian.le64 (cast (a + addend))
+addressBytes a addend = Data.LittleEndian.le64 (cast (a + addend))

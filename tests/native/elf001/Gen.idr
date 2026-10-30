@@ -10,11 +10,20 @@
 module Gen
 
 import Native.Codegen.ELF
-import Native.Codegen.LittleEndian
 import Native.Codegen.Platform
 import Native.Codegen.X86.Asm
 import Native.Codegen.X86.Encode
 import System.File
+
+-- The number of bytes accumulated in a snoc-list, in one walk from its
+-- end: the Prelude's `length` on snoc-lists counts in a `Nat`, and its
+-- recursion is no tail call, as deep as the list is long.
+byteCount : SnocList Bits8 -> Int
+byteCount = go 0
+  where
+    go : Int -> SnocList Bits8 -> Int
+    go k [<] = k
+    go k (sx :< _) = go (k + 1) sx
 
 main : IO ()
 main = do

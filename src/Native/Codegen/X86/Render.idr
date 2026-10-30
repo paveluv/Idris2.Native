@@ -76,7 +76,6 @@ import Native.Codegen.Linkage.Realised as Linkage
 import Native.Codegen.Linkage.ResumePoint
 import Native.Codegen.Linkage.Routine
 import Native.Codegen.Linkage.Sym as Linkage
-import Native.Codegen.LittleEndian
 import Native.Codegen.LocatedIR.Block as LocatedIR
 import Native.Codegen.LocatedIR.Cont as LocatedIR
 import Native.Codegen.LocatedIR.Function as LocatedIR
@@ -90,8 +89,10 @@ import Native.Codegen.LocatedIR.Static as LocatedIR
 import Native.Codegen.LocatedIR.Terminator as LocatedIR
 import Native.Codegen.Target
 import Native.Data.Builder as Data
+import Native.Data.LittleEndian
 import Native.HeapObj.LayoutWord
 import Native.HeapObj.ValEnc
+import Native.Primitive.DoubleBits
 import Native.Rep
 import Native.Types.Enc as Types
 import Native.Types.Header as Types
@@ -232,12 +233,12 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
       staticData : Names enc -> LocatedIR.Static enc -> Render enc (List Datum)
       staticData names s = do
         fields <- traverse field s.fields
-        pure (Datum.Raw (LittleEndian.le64 (cast (Types.Header.encodeHeader s.header))) :: fields)
+        pure (Datum.Raw (Data.LittleEndian.le64 (cast (Types.Header.encodeHeader s.header))) :: fields)
         where
           field : LocatedIR.Static.SField -> Render enc Datum
-          field (LocatedIR.Static.SWord w) = pure (Datum.Raw (LittleEndian.le64 (cast w)))
+          field (LocatedIR.Static.SWord w) = pure (Datum.Raw (Data.LittleEndian.le64 (cast w)))
           field (LocatedIR.Static.SVal i) = case HeapObj.ValEnc.valWord enc.val (cast i) of
-            Just w => pure (Datum.Raw (LittleEndian.le64 (cast w)))
+            Just w => pure (Datum.Raw (Data.LittleEndian.le64 (cast w)))
             Nothing => failWith ("the integer " ++ show i ++ ", in the static " ++ show s.sym ++
                                  ", which the value encoding has no word for")
           field (LocatedIR.Static.SRef t) = do l <- staticLabel names t
@@ -309,7 +310,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
 
               block : Nat -> LocatedIR.Block enc -> Nat
               block n b =
-                past (foldl (\m, i => past m (LocatedIR.Instr.instrRegs i)) (past n b.params) b.body)
+                past
+                  (foldl (\m, i => past m (LocatedIR.Instr.instrRegs i)) (past n b.params) b.body)
                   (LocatedIR.Terminator.termRegs b.term)
 
           ||| The register's slot in `SCRATCH`.
@@ -837,7 +839,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                      Asm.Alu Asm.CMP Asm.RCX Asm.RDX, Asm.Jcc Asm.A big]
                                   size <- partSize p
                                   if mutableKind k
-                                     then allocateMutable (\r => do emit (Asm.MovRM r (slotMem count))
+                                     then allocateMutable (\r => do emit
+                                                                      (Asm.MovRM r (slotMem count))
                                                                     emits (size r)) live
                                      else allocateSized count size live
                                   loadReg Asm.RDX count
@@ -888,7 +891,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                 -- A double's slot holds its bits, so a constant is a word and a negation
                 -- flips the sign bit.
                 LocatedIR.Instr.FConst d x => do
-                                  emit (Asm.MovRI Asm.RAX (LittleEndian.doubleBits x))
+                                  emit
+                                    (Asm.MovRI Asm.RAX (cast (Primitive.DoubleBits.doubleBits x)))
                                   store d Asm.RAX
                 LocatedIR.Instr.FNeg d x => do
                                   loadReg Asm.RAX x

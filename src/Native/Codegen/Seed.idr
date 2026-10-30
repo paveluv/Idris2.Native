@@ -12,7 +12,6 @@ module Native.Codegen.Seed
 import Native.Codegen.Linkage.Areas as Linkage
 import Native.Codegen.Linkage.ResumePoint
 import Native.Codegen.Linkage.Sym as Linkage
-import Native.Codegen.LittleEndian
 import Native.Codegen.Target
 import Native.Codegen.X86.Asm
 import Native.Codegen.X86.Datum as X86
@@ -21,6 +20,7 @@ import Native.Codegen.X86.Target
 import Data.List
 import Data.Zippable
 import Native.Area
+import Native.Data.LittleEndian
 import Native.HeapObj.LayoutWord
 import Native.HeapObj.ValEnc as HeapObj
 import Native.Types.Enc as Types
@@ -271,7 +271,7 @@ export
 seedRodata : (List X86.Datum, List (Linkage.Sym, Int))
 seedRodata =
   let halt = [ X86.Datum.AddressOf (Linkage.Sym.label Linkage.Sym.SymHalt) 0      -- code
-             , X86.Datum.Raw (LittleEndian.le64 0) ]                                -- parent
+             , X86.Datum.Raw (Data.LittleEndian.le64 0) ]                                -- parent
   in ( halt ++ [X86.Datum.Raw msgStackOverflow]
      , [(Linkage.Sym.SymHALT, 0), (Linkage.Sym.SymMsgStackOverflow, X86.Datum.size halt)] )
 

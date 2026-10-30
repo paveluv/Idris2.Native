@@ -7,7 +7,6 @@ module Native.Codegen.Link
 import Native.Codegen.ELF
 import Native.Codegen.Linkage.Areas as Linkage
 import Native.Codegen.Linkage.Sym as Linkage
-import Native.Codegen.LittleEndian
 import Native.Codegen.Platform
 import Native.Codegen.Seed
 import Native.Codegen.X86.Asm
@@ -18,6 +17,7 @@ import Native.Codegen.X86.LabelTable as X86
 
 import Data.Maybe
 import Native.Data.ByteSink as Data
+import Native.Data.LittleEndian
 import Native.HeapObj.ValEnc
 import Native.Types.Enc as Types
 
@@ -73,7 +73,7 @@ linkProgram enc window areas bound program items = do
   where
     -- the bytes an item takes, padded to a multiple of 8
     itemSize : List X86.Datum -> Int
-    itemSize item = LittleEndian.alignUp (X86.Datum.size item) 8
+    itemSize item = Data.LittleEndian.alignUp (X86.Datum.size item) 8
 
     -- each item's label at its offset, the items laid end to end from `at`
     offsetsFrom : Int -> List (X86.Asm.Label, List X86.Datum) -> List (X86.Asm.Label, Int)

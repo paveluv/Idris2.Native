@@ -7,11 +7,11 @@
 ||| executables and shared objects are later work.
 module Native.Codegen.ELF
 
-import Native.Codegen.LittleEndian
 import Native.Codegen.Platform
 
 import Data.Buffer
 import Native.Data.ByteSink as Data
+import Native.Data.LittleEndian
 import System.File.Buffer
 import System.File.Error
 import System.File.Permissions
@@ -50,8 +50,8 @@ export
 planLayout : (textSize : Int) -> (rodataSize : Int) -> (bssSize : Int) -> Layout
 planLayout ts rs bs =
   let textOff   = pageSize
-      rodataOff = LittleEndian.alignUp (textOff + ts) pageSize
-      bssOff    = LittleEndian.alignUp (rodataOff + max rs 1) pageSize   -- always its own page
+      rodataOff = Data.LittleEndian.alignUp (textOff + ts) pageSize
+      bssOff    = Data.LittleEndian.alignUp (rodataOff + max rs 1) pageSize   -- always its own page
   in MkLayout (imageBase + textOff) textOff (imageBase + rodataOff) rodataOff (imageBase + bssOff)
     bssOff
 
@@ -110,7 +110,7 @@ elfImage m lay text rodata bssSize entry =
       rs = stretchSize rodata
       strOff = rodataOff lay + rs
       strSize = cast (length shstrtab)
-      shoff = LittleEndian.alignUp (strOff + strSize) 8
+      shoff = Data.LittleEndian.alignUp (strOff + strSize) 8
       headers = elfHeader m entry shoff 3 5 4
              ++ programHeader (pfR + pfX) (textOff lay) (textBase lay) ts ts
              ++ programHeader pfR (rodataOff lay) (rodataBase lay) rs rs
@@ -149,17 +149,17 @@ elfImage m lay text rodata bssSize entry =
     shfExec = 4
 
     u32 : Int -> List Bits8
-    u32 = LittleEndian.le32
+    u32 = Data.LittleEndian.le32
 
     u64 : Int -> List Bits8
-    u64 = LittleEndian.le64 . cast
+    u64 = Data.LittleEndian.le64 . cast
 
     elfHeader : Platform.Arch -> (entry : Int) -> (shoff : Int) -> (phnum : Int) -> (shnum : Int) ->
                 (shstrndx : Int) ->
                 List Bits8
     elfHeader m entry shoff phnum shnum shstrndx =
          [0x7F, 0x45, 0x4C, 0x46, 2, 1, 1, 0]
-           ++ LittleEndian.zeros 8     -- magic, 64-bit, little-endian, version, SysV ABI
+           ++ Data.LittleEndian.zeros 8     -- magic, 64-bit, little-endian, version, SysV ABI
       ++ u16 2                                               -- ET_EXEC
       ++ u16 (machineCode m)
       ++ u32 1                                               -- EV_CURRENT
@@ -181,7 +181,7 @@ elfImage m lay text rodata bssSize entry =
         shentsize = 64
 
         u16 : Int -> List Bits8
-        u16 = LittleEndian.le16
+        u16 = Data.LittleEndian.le16
 
     programHeader : (flags : Int) -> (off : Int) -> (vaddr : Int) -> (filesz : Int) ->
                     (memsz : Int) -> List Bits8

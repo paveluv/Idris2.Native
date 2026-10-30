@@ -14,7 +14,7 @@
 ||| them, so the typechecker sees that the parts take the piece's bytes.
 |||
 ||| A number of 4 or 8 bytes is written low byte first, as every target in
-||| scope orders its bytes (`Native.Codegen.LittleEndian`), by one write of
+||| scope orders its bytes (`Native.Data.LittleEndian`), by one write of
 ||| the buffer's. `Data.Buffer` writes a number low byte first under this
 ||| code generator (`Native.Support.BufferObj`), RefC and JavaScript; under
 ||| Chez, which compiles this code, in the order of the host it runs on

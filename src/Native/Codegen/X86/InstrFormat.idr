@@ -11,8 +11,8 @@ module Native.Codegen.X86.InstrFormat
 import Native.Codegen.X86.OptionalByte
 
 import Data.List
-import Native.Codegen.LittleEndian
 import Native.Data.ByteSink as Data
+import Native.Data.LittleEndian
 
 %default total
 
@@ -61,8 +61,8 @@ namespace DispWidth
   export
   bytes : DispWidth -> Int -> List Bits8
   bytes NoDisp _ = []
-  bytes Disp8 d = LittleEndian.le8 d
-  bytes Disp32 d = LittleEndian.le32 d
+  bytes Disp8 d = Data.LittleEndian.le8 d
+  bytes Disp32 d = Data.LittleEndian.le32 d
 
   ||| A displacement's bytes at the width written at the span's next byte.
   export
@@ -90,9 +90,9 @@ namespace ImmWidth
   export
   bytes : ImmWidth -> Int -> List Bits8
   bytes NoImm _ = []
-  bytes Imm8 i = LittleEndian.le8 i
-  bytes Imm32 i = LittleEndian.le32 i
-  bytes Imm64 i = LittleEndian.le64 (cast i)
+  bytes Imm8 i = Data.LittleEndian.le8 i
+  bytes Imm32 i = Data.LittleEndian.le32 i
+  bytes Imm64 i = Data.LittleEndian.le64 (cast i)
 
   ||| An immediate's bytes at the width written at the span's next byte.
   export
@@ -158,7 +158,7 @@ bytes (Parts p r m o modrm sib dw d iw i) =
     ++ OptionalByte.bytes modrm ++ OptionalByte.bytes sib ++ DispWidth.bytes dw d
     ++ ImmWidth.bytes iw i
 bytes (Padding n) = replicate n 0xCC
-bytes (Literal v) = LittleEndian.le64 (cast v)
+bytes (Literal v) = Data.LittleEndian.le64 (cast v)
 bytes (Verbatim bs) = bs
 
 ||| An instruction's bytes written through a span over the bytes it takes,
