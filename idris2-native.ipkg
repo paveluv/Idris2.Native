@@ -82,6 +82,7 @@ modules =
     Native.Codegen.X86.Assembler,
     Native.Codegen.X86.Datum,
     Native.Codegen.X86.Encode,
+    Native.Codegen.X86.FixupTable,
     Native.Codegen.X86.InstrFormat,
     Native.Codegen.X86.LabelTable,
     Native.Codegen.X86.OptionalByte,

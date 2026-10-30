@@ -33,7 +33,8 @@ record LabelTable where
 
 ||| The table of its buffers: the labels below the bound both hold.
 fromBuffers : Data.GrowingBuffer -> Data.GrowingBuffer -> LabelTable
-fromBuffers d a = MkLabelTable (min (Data.GrowingBuffer.capacity d) (Data.GrowingBuffer.capacity a `div` 8)) d a
+fromBuffers d a =
+  MkLabelTable (min (Data.GrowingBuffer.capacity d) (Data.GrowingBuffer.capacity a `div` 8)) d a
 
 ||| A table of the labels below `bound`, none with an address: of fewer, if
 ||| buffers that large cannot be made, which a size an `Int` does not
@@ -51,22 +52,23 @@ labelTable bound = do
 placed : LabelTable -> Asm.Label -> Bool
 placed t l = natToInteger l < cast t.bound
 
-||| The most labels a table holds: 2^31, so that every place, and every
-||| word's offset, is an `Int` far from wrapping.
+||| Whether a table can give the label a place: its number below the most
+||| labels a table holds, 2^31, so that every place, and every word's
+||| offset, is an `Int` far from wrapping. The number is compared as an
+||| `Integer`, before it is made an `Int`, as `placed` compares it.
 export
-mostLabels : Integer
-mostLabels = 2147483648
+isPlaceable : Asm.Label -> Bool
+isPlaceable l = natToInteger l < 2147483648
 
 ||| A table with a place for the label: this one, if it has one; else one
 ||| whose buffers have grown to hold it (`grownTo`), with every address it
-||| holds, no label past the old bound defined; none for a label past the
-||| most a table holds (`mostLabels`), or one whose buffers cannot be
-||| made.
+||| holds, no label past the old bound defined; none for a label no table
+||| can place (`isPlaceable`), or one whose buffers cannot be made.
 export
 holding : LabelTable -> Asm.Label -> IO (Maybe LabelTable)
 holding t l =
   if placed t l then pure (Just t)
-  else if natToInteger l >= mostLabels then pure Nothing
+  else if not (isPlaceable l) then pure Nothing
   else grown (cast l + 1)
   where
     grown : Int -> IO (Maybe LabelTable)
