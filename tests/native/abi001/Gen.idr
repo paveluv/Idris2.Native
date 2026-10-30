@@ -52,6 +52,8 @@ import Native.Codegen.TermIR.Sig
 import Native.Codegen.TermIR.StaticDef
 import Native.Codegen.TermIR.StaticSig
 import Native.Codegen.TermIR.Var
+import Native.Codegen.X86.Asm
+import Native.Codegen.X86.Assembler
 import Native.Codegen.X86.Encode
 import Native.Codegen.X86.Render
 import Native.Codegen.X86.Target
@@ -254,10 +256,14 @@ main = do
               (MkProgram {d = D}
                 [Defined m, Defined s, Defined e, Defined cr, Defined st, Defined al] []
                (MkEntry here) noConIds)
-      let Right rendered = render TestEnc realised ir
+      -- rendered and linked as the code generator does it: the seed's code,
+      -- then each function's as soon as it is rendered, then the image
+      let Right renderer = render TestEnc realised ir
         | Left err => putStrLn ("render: " ++ err)
-      Right image <- linkProgram TestEnc windowBytes rendered.areas rendered.labelBound
-                       rendered.text rendered.rodata
+      asm <- seeded TestEnc windowBytes renderer.labelsBefore
+      Right rendered <- renderInto asm (\_ => pure ()) renderer
+        | Left err => putStrLn ("render: " ++ err)
+      Right image <- linked rendered.areas asm rendered.rodata
         | Left problems => putStrLn ("link: " ++ show problems)
       Right () <- writeImage "abi" image
         | Left err => putStrLn ("write: " ++ show err)

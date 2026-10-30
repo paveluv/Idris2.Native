@@ -101,17 +101,14 @@ import Native.Width
 
 %default covering
 
-||| What the rendering gives the linker: the program's code, which defines the
-||| seed's `main` label, its read-only data, each item at its label, the
-||| per-thread areas its code uses, and the bound of its labels: every
-||| label the code and the data name, the seed's included, is below it.
+||| What the rendering gives the linker once every function's code is
+||| rendered: the program's read-only data, each item at its label, and the
+||| per-thread areas its code uses.
 public export
 record Rendered where
   constructor MkRendered
-  text : List Asm.Instr
   rodata : List (Asm.Label, List Datum)
   areas : Linkage.Areas
-  labelBound : Nat
 
 ||| What the rendering knows of the program's names, which no step of it
 ||| changes: each function's label and each static's, and each function's
@@ -125,17 +122,41 @@ record Names (enc : Types.Enc) where
   statics : SortedMap Name Asm.Label
 
 ||| What the rendering makes as it goes, each step a new one: only what
-||| changes, so that a step copies no more.
+||| changes, so that a step copies no more. Abstract: made and read by the
+||| rendering alone.
+export
 record RS (enc : Types.Enc) where
   constructor MkRS
   nextLabel : Nat
-  ||| The code so far, accumulating at its end.
+  ||| The code so far of the function being rendered, accumulating at its
+  ||| end.
   text : SnocList Asm.Instr
   ||| Slow paths, placed after the function being rendered.
   cold : SnocList Asm.Instr
   rodata : SnocList (Asm.Label, List Datum)
   ||| The most of each per-thread area the code so far uses.
   areas : Linkage.Areas
+
+||| A program's rendering, a function at a time: the code the seed enters,
+||| `main`, which jumps to the entry function (`mainCode`); then each
+||| function's code, its slow paths after it (`functionCode`), each step
+||| taking what the steps before it made and giving it on, so that each
+||| function's code is a list of its own, to be encoded and forgotten
+||| before the next is rendered; then the read-only data, the statics' last,
+||| and the areas the code uses (`finished`).
+public export
+record Renderer (enc : Types.Enc) where
+  constructor MkRenderer
+  ||| The labels numbered before any function's code: each function's and
+  ||| each static's, and the seed's below them.
+  labelsBefore : Nat
+  mainCode : List Asm.Instr
+  ||| What the rendering has made before the first function.
+  first : RS enc
+  ||| The program's functions, in the order their code goes.
+  functions : List (LocatedIR.Function enc)
+  functionCode : RS enc -> LocatedIR.Function enc -> Either String (RS enc, List Asm.Instr)
+  finished : RS enc -> Either String Rendered
 
 -- Everything below renders for the program's encodings, and the contract as
 -- the loaded runtime realises it. The value encoding decides how a `Val`
@@ -161,11 +182,11 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
   ------------------------------------------------------------------------------
   -- Functions and the program
 
-  ||| The whole program: `main`, which the seed enters, jumps to the entry
-  ||| function; every function follows; the statics and crash messages are
-  ||| read-only data.
+  ||| The whole program, a function at a time (`Renderer`): `main`, which
+  ||| the seed enters, jumps to the entry function; every function follows;
+  ||| the statics and crash messages are read-only data.
   export
-  render : LocatedIR.Program enc -> Either String Rendered
+  render : LocatedIR.Program enc -> Either String (Renderer enc)
   render p = do
     let start = Linkage.Sym.reservedLabels
         funs = fromList (zip (map (.name) p.functions) [start .. start + length p.functions])
@@ -184,12 +205,9 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
     (s, _) <- runStateT (MkRS next2 [<] [<] [<] applyAreas) $ do
       entry <- funLabel names p.entry
       emits [Asm.Lbl (sym Linkage.Sym.SymMain), Asm.Jmp entry]
-      traverse_ (function names symbols) p.functions
-      traverse_ (\st => do l <- staticLabel names st.sym
-                           pieces <- staticData names st
-                           modify { rodata $= (:< (l, pieces)) })
-                p.statics
-    pure (MkRendered (s.text <>> []) (s.rodata <>> []) s.areas s.nextLabel)
+    pure
+      (MkRenderer next2 (s.text <>> []) ({ text := [<] } s) p.functions
+         (functionCode names symbols) (finished names p.statics))
     where
       Render : Types.Enc -> Type -> Type
       Render enc = StateT (RS enc) (Either String)
@@ -1184,3 +1202,22 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                   width Width.Sub8 = Asm.W8
                   width Width.Sub16 = Asm.W16
                   width Width.Sub32 = Asm.W32
+
+      -- a function's code, its slow paths after it, rendered after what
+      -- the rendering has made
+      functionCode : Names enc -> (symbols : SortedMap Name Linkage.Sym) -> RS enc ->
+                     LocatedIR.Function enc -> Either String (RS enc, List Asm.Instr)
+      functionCode names symbols s f = do
+        (s', _) <- runStateT s (function names symbols f)
+        pure ({ text := [<] } s', s'.text <>> [])
+
+      -- the statics' data after what the rendering has made: the read-only
+      -- data and the areas
+      finished : Names enc -> List (LocatedIR.Static enc) -> RS enc -> Either String Rendered
+      finished names statics s = do
+        (s', _) <- runStateT s $
+          traverse_ (\st => do l <- staticLabel names st.sym
+                               pieces <- staticData names st
+                               modify { rodata $= (:< (l, pieces)) })
+            statics
+        pure (MkRendered (s'.rodata <>> []) s'.areas)

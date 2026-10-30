@@ -77,50 +77,49 @@ encode a is = do
       writeIORef a.made
         ({ problems $= (:< Encode.TextTooLarge (Data.GrowingBuffer.used m.text)) } m)
   m' <- fromPrim
-          (go s (Data.ByteSink.start s) m.text (Data.GrowingBuffer.used m.text) m.labels
-             m.fixupTable (FixupTable.count m.fixupTable) m.problems is)
+          (go s (Data.ByteSink.start s) m.text m.labels m.fixupTable
+             (FixupTable.count m.fixupTable) m.problems is)
   writeIORef a.made m'
   where
     -- The world passed by hand, so that the loop is a function of it: an
     -- `IO` loop with a clause that ends in a call Idris compiles as one
     -- that makes an action at each instruction. The loop's place in the
     -- sink over what is left of the text's buffer is a span of no bytes,
-    -- which each instruction's writing ends at, and its offset `at`; a
+    -- which each instruction's writing ends at, its offset the bytes the
+    -- text takes so far (`ByteSink.offset`); a
     -- size and a fit are matched with their equations, as a `with` would,
     -- which the world, a linear name, keeps from being used here.
     go : (s : Data.ByteSink) -> Data.ByteSink.Span s 0 -> (text : Data.GrowingBuffer) ->
-         (at : Int) -> LabelTable -> (fixupTable : FixupTable) -> (fixups : Int) ->
-         SnocList Encode.AsmProblem -> List Asm.Instr -> PrimIO Made
+         LabelTable -> (fixupTable : FixupTable) -> (fixups : Int) -> SnocList Encode.AsmProblem ->
+         List Asm.Instr -> PrimIO Made
     sized : (s : Data.ByteSink) -> Data.ByteSink.Span s 0 -> (text : Data.GrowingBuffer) ->
-            (at : Int) -> LabelTable -> (fixupTable : FixupTable) -> (fixups : Int) ->
+            LabelTable -> (fixupTable : FixupTable) -> (fixups : Int) ->
             SnocList Encode.AsmProblem -> Asm.Instr -> InstrFormat -> List Asm.Instr -> PrimIO Made
     checked : (s : Data.ByteSink) -> Data.ByteSink.Span s 0 -> (text : Data.GrowingBuffer) ->
-              (at : Int) -> LabelTable -> (fixupTable : FixupTable) -> (fixups : Int) ->
+              LabelTable -> (fixupTable : FixupTable) -> (fixups : Int) ->
               SnocList Encode.AsmProblem -> Asm.Instr -> (k : Nat) -> (f : InstrFormat) ->
               (0 _ : InstrFormat.size f = k) -> List Asm.Instr -> PrimIO Made
     written : (s : Data.ByteSink) -> (place : Data.ByteSink.Span s 0) ->
-              (text : Data.GrowingBuffer) -> (at : Int) -> LabelTable ->
-              (fixupTable : FixupTable) -> (fixups : Int) -> SnocList Encode.AsmProblem ->
-              Asm.Instr -> (k : Nat) -> (f : InstrFormat) -> (0 _ : InstrFormat.size f = k) ->
-              (fit : Bool) -> (0 _ : Data.ByteSink.fits s place k = fit) -> List Asm.Instr ->
-              PrimIO Made
+              (text : Data.GrowingBuffer) -> LabelTable -> (fixupTable : FixupTable) ->
+              (fixups : Int) -> SnocList Encode.AsmProblem -> Asm.Instr -> (k : Nat) ->
+              (f : InstrFormat) -> (0 _ : InstrFormat.size f = k) -> (fit : Bool) ->
+              (0 _ : Data.ByteSink.fits s place k = fit) -> List Asm.Instr -> PrimIO Made
     regrown : (s : Data.ByteSink) -> (place : Data.ByteSink.Span s 0) ->
-              (text : Data.GrowingBuffer) -> (at : Int) -> LabelTable ->
-              (fixupTable : FixupTable) -> (fixups : Int) -> SnocList Encode.AsmProblem ->
-              Asm.Instr -> (k : Nat) -> (f : InstrFormat) -> (0 _ : InstrFormat.size f = k) ->
-              (fit : Bool) -> (0 _ : Data.ByteSink.fits s place k = fit) -> List Asm.Instr ->
-              PrimIO Made
+              (text : Data.GrowingBuffer) -> LabelTable -> (fixupTable : FixupTable) ->
+              (fixups : Int) -> SnocList Encode.AsmProblem -> Asm.Instr -> (k : Nat) ->
+              (f : InstrFormat) -> (0 _ : InstrFormat.size f = k) -> (fit : Bool) ->
+              (0 _ : Data.ByteSink.fits s place k = fit) -> List Asm.Instr -> PrimIO Made
     wrote : (s : Data.ByteSink) -> (place : Data.ByteSink.Span s 0) ->
-            (text : Data.GrowingBuffer) -> (at : Int) -> LabelTable -> (fixupTable : FixupTable) ->
+            (text : Data.GrowingBuffer) -> LabelTable -> (fixupTable : FixupTable) ->
             (fixups : Int) -> SnocList Encode.AsmProblem -> Asm.Instr -> (k : Nat) ->
             (f : InstrFormat) -> (0 _ : InstrFormat.size f = k) ->
             (0 _ : Data.ByteSink.fits s place k = True) -> List Asm.Instr -> PrimIO Made
     noted : (s : Data.ByteSink) -> Data.ByteSink.Span s 0 -> (text : Data.GrowingBuffer) ->
-            (at : Int) -> LabelTable -> (fixupTable : FixupTable) -> (fixups : Int) ->
+            LabelTable -> (fixupTable : FixupTable) -> (fixups : Int) ->
             SnocList Encode.AsmProblem -> Asm.Instr -> (start : Int) -> InstrFormat ->
             List Asm.Instr -> PrimIO Made
     recorded : (s : Data.ByteSink) -> Data.ByteSink.Span s 0 -> (text : Data.GrowingBuffer) ->
-               (at : Int) -> LabelTable -> (fixupTable : FixupTable) -> (fixups : Int) ->
+               LabelTable -> (fixupTable : FixupTable) -> (fixups : Int) ->
                SnocList Encode.AsmProblem -> (field : Int) -> Asm.Label -> (constant : Int) ->
                List Asm.Instr -> PrimIO Made
 
@@ -132,35 +131,38 @@ encode a is = do
       MkMade (Data.GrowingBuffer.filledTo text at) labels (FixupTable.filledTo fixupTable fixups)
         problems
 
-    go s place text at labels fixupTable fixups problems [] w =
-      MkIORes (made text at labels fixupTable fixups problems) w
-    go s place text at labels fixupTable fixups problems (i :: rest) w = case i of
+    go s place text labels fixupTable fixups problems [] w =
+      MkIORes (made text (Data.ByteSink.offset s place) labels fixupTable fixups problems) w
+    go s place text labels fixupTable fixups problems (i :: rest) w =
+      let at = Data.ByteSink.offset s place in
+      case i of
       Asm.Lbl l => case toPrim (LabelTable.holding labels l) w of
         MkIORes (Just t) w1 => case toPrim (LabelTable.define t l (a.base + at)) w1 of
-          MkIORes _ w2 => go s place text at t fixupTable fixups problems rest w2
+          MkIORes _ w2 => go s place text t fixupTable fixups problems rest w2
         MkIORes Nothing w1 =>
-          go s place text at labels fixupTable fixups (problems :< Encode.LabelPastBound l) rest w1
-      Asm.Comment _ => go s place text at labels fixupTable fixups problems rest w
+          go s place text labels fixupTable fixups (problems :< Encode.LabelPastBound l) rest w1
+      Asm.Comment _ => go s place text labels fixupTable fixups problems rest w
       _ =>
-        sized s place text at labels fixupTable fixups
+        sized s place text labels fixupTable fixups
           (if Encode.fieldsFit i then problems else problems :< Encode.DoesNotFit i) i
           (Encode.instrFormat (a.base + at) 0 i) rest w
 
     -- the instruction's size read once, as an argument, with its equation
-    sized s place text at labels fixupTable fixups problems i f rest w =
-      checked s place text at labels fixupTable fixups problems i (InstrFormat.size f) f Refl
+    sized s place text labels fixupTable fixups problems i f rest w =
+      checked s place text labels fixupTable fixups problems i (InstrFormat.size f) f Refl
         rest w
 
-    checked s place text at labels fixupTable fixups problems i k f same rest w =
-      written s place text at labels fixupTable fixups problems i k f same
+    checked s place text labels fixupTable fixups problems i k f same rest w =
+      written s place text labels fixupTable fixups problems i k f same
         (Data.ByteSink.fits s place k) Refl rest w
 
     -- the parts written at the place, if they fit before the buffer's end;
     -- else the buffer grown to hold them (`grownTo`), and the parts written
     -- at the same offset of the larger one, through a sink over its room
-    written s place text at labels fixupTable fixups problems i k f same True fit rest w =
-      wrote s place text at labels fixupTable fixups problems i k f same fit rest w
-    written s place text at labels fixupTable fixups problems i k f same False _ rest w =
+    written s place text labels fixupTable fixups problems i k f same True fit rest w =
+      wrote s place text labels fixupTable fixups problems i k f same fit rest w
+    written s place text labels fixupTable fixups problems i k f same False _ rest w =
+      let at = Data.ByteSink.offset s place in
       case toPrim (Data.GrowingBuffer.grownTo text (at + cast k)) w of
         MkIORes Nothing w1 =>
           MkIORes (made text at labels fixupTable fixups (problems :< Encode.TextTooLarge at)) w1
@@ -169,43 +171,46 @@ encode a is = do
           MkIORes Nothing w2 =>
             MkIORes (made t at labels fixupTable fixups (problems :< Encode.TextTooLarge at)) w2
           MkIORes (Just s') w2 =>
-            regrown s' (Data.ByteSink.start s') t at labels fixupTable fixups problems i k f same
+            regrown s' (Data.ByteSink.start s') t labels fixupTable fixups problems i k f same
               (Data.ByteSink.fits s' (Data.ByteSink.start s') k) Refl rest w2
 
     -- after growing, the parts fit or the text cannot be held
-    regrown s place text at labels fixupTable fixups problems i k f same True fit rest w =
-      wrote s place text at labels fixupTable fixups problems i k f same fit rest w
-    regrown s place text at labels fixupTable fixups problems i k f same False _ rest w =
+    regrown s place text labels fixupTable fixups problems i k f same True fit rest w =
+      wrote s place text labels fixupTable fixups problems i k f same fit rest w
+    regrown s place text labels fixupTable fixups problems i k f same False _ rest w =
+      let at = Data.ByteSink.offset s place in
       MkIORes (made text at labels fixupTable fixups (problems :< Encode.TextTooLarge at)) w
 
-    wrote s place text at labels fixupTable fixups problems i k f same fit rest w =
+    wrote s place text labels fixupTable fixups problems i k f same fit rest w =
       case toPrim (InstrFormat.write s f (rewrite same in Data.ByteSink.span s place k fit)) w of
         MkIORes end w1 =>
-          noted s end text (at + cast k) labels fixupTable fixups problems i at f rest w1
+          noted s end text labels fixupTable fixups problems i (Data.ByteSink.offset s place) f
+            rest w1
 
     -- A fixup recorded for an instruction that refers to a label: its
     -- field after the bytes before its displacement (`dispAt`), as
     -- `instrLabel` says. A label no table can place can have no address,
     -- and is missing at once.
-    noted s place text at labels fixupTable fixups problems i start f rest w =
+    noted s place text labels fixupTable fixups problems i start f rest w =
       case Encode.instrLabel i of
-        Nothing => go s place text at labels fixupTable fixups problems rest w
+        Nothing => go s place text labels fixupTable fixups problems rest w
         Just (l, d) =>
           if LabelTable.isPlaceable l
-            then recorded s place text at labels fixupTable fixups problems
+            then recorded s place text labels fixupTable fixups problems
                    (start + cast (InstrFormat.dispAt f)) l d rest w
-            else go s place text at labels fixupTable fixups (problems :< Encode.MissingLabel l)
+            else go s place text labels fixupTable fixups (problems :< Encode.MissingLabel l)
               rest w
 
     -- the fixup written, the table grown first to hold it if it has no
     -- room for it (`holding`)
-    recorded s place text at labels fixupTable fixups problems field l d rest w =
+    recorded s place text labels fixupTable fixups problems field l d rest w =
+      let at = Data.ByteSink.offset s place in
       if FixupTable.hasRoom fixupTable (fixups + 1)
         then case toPrim (FixupTable.write fixupTable fixups field at l d) w of
-          MkIORes () w1 => go s place text at labels fixupTable (fixups + 1) problems rest w1
+          MkIORes () w1 => go s place text labels fixupTable (fixups + 1) problems rest w1
         else case toPrim (FixupTable.holding fixupTable (fixups + 1)) w of
           MkIORes (Just t) w1 => case toPrim (FixupTable.write t fixups field at l d) w1 of
-            MkIORes () w2 => go s place text at labels t (fixups + 1) problems rest w2
+            MkIORes () w2 => go s place text labels t (fixups + 1) problems rest w2
           MkIORes Nothing w1 =>
             MkIORes (made text at labels fixupTable fixups (problems :< Encode.TextTooLarge at)) w1
 

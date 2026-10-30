@@ -1,12 +1,13 @@
 ||| Linking: one static executable from the runtime seed
-||| (`Native.Codegen.Seed`) and a program's rendered instructions and
-||| read-only data, the per-thread areas sized as the program needs
-||| (`Native.Codegen.Linkage.Areas`).
+||| (`Native.Codegen.Seed`) and a program's code, encoded a function at a
+||| time as it is rendered, and its read-only data, the per-thread areas
+||| sized as the program needs (`Native.Codegen.Linkage.Areas`).
 module Native.Codegen.Link
 
 import Native.Codegen.ELF
 import Native.Codegen.Linkage.Areas as Linkage
 import Native.Codegen.Linkage.Sym as Linkage
+import Native.Codegen.LocatedIR.Function as LocatedIR
 import Native.Codegen.Platform
 import Native.Codegen.Seed
 import Native.Codegen.X86.Asm
@@ -14,6 +15,7 @@ import Native.Codegen.X86.Assembler as X86
 import Native.Codegen.X86.Datum as X86
 import Native.Codegen.X86.Encode
 import Native.Codegen.X86.LabelTable as X86
+import Native.Codegen.X86.Render as X86
 
 import Data.Maybe
 import Native.Data.ByteSink as Data
@@ -26,31 +28,61 @@ import Native.Types.Enc as Types
 ------------------------------------------------------------------------------
 -- Linking: one image from the seed and a program
 
-||| A static executable from the seed and the program's own instructions and
-||| read-only data, with allocation windows of `window` bytes, a multiple of
-||| 8, and the per-thread areas the program needs (`Areas`). The program
-||| defines `label SymMain`, which is entered with `k = HALT`, `hp`/`hplim`
-||| set and the stack 16-aligned, and numbers its other labels from
-||| `reservedLabels`, its labels' table made for those below `bound` to
-||| begin with, and growing. Each item of read-only data follows the
-||| seed's, 8-aligned, at its label. The seed's text and the program's are
-||| encoded at their addresses, each instruction once, by an assembler
-||| (`Native.Codegen.X86.Assembler`), into a buffer the image's text is
-||| copied from; a word of the data that is a label's address is written
-||| once the image is laid out, from the labels' addresses, the code's and
-||| the data's, all in one table (`LabelTable`). Fails with what it could
-||| not assemble: a field that does not fit, a label with no place, a
-||| label it could not resolve, in the code or in the data, a displacement
-||| too far.
+||| An assembler of an image's text, at its address, with the seed's text
+||| encoded first, for allocation windows of `window` bytes, a multiple of
+||| 8: the program's code follows. Its labels' table is made for the
+||| labels below `bound` to begin with, and grows.
 export
-linkProgram : (enc : Types.Enc) -> {auto 0 _ : HeapObj.ValEnc.HasFixnums enc.val} ->
-              (window : Int) -> (areas : Linkage.Areas) -> (bound : Nat) ->
-              (program : List X86.Asm.Instr) -> (rodata : List (X86.Asm.Label, List X86.Datum)) ->
-              IO (Either (List X86.Encode.AsmProblem) ELF.Image)
-linkProgram enc window areas bound program items = do
+seeded : (enc : Types.Enc) -> {auto 0 _ : HeapObj.ValEnc.HasFixnums enc.val} ->
+         (window : Int) -> (bound : Nat) -> IO X86.Assembler
+seeded enc window bound = do
   asm <- X86.Assembler.assembler ELF.textBase bound
   X86.Assembler.encode asm (Seed.seedText enc window)
-  X86.Assembler.encode asm program
+  pure asm
+
+||| A program's code encoded after what the assembler holds, a function at
+||| a time as it is rendered (`Renderer`), each function's instructions
+||| given to `dump` before they are encoded, so that no list of the whole
+||| text is made: the rendering's read-only data and areas, or why it could
+||| not render a function.
+export
+renderInto : X86.Assembler -> (dump : List X86.Asm.Instr -> IO ()) -> X86.Render.Renderer enc ->
+             IO (Either String X86.Render.Rendered)
+renderInto asm dump r = do
+  encoded r.mainCode
+  functions r.first r.functions
+  where
+    encoded : List X86.Asm.Instr -> IO ()
+    encoded is = do
+      dump is
+      X86.Assembler.encode asm is
+
+    functions : X86.Render.RS enc -> List (LocatedIR.Function enc) ->
+                IO (Either String X86.Render.Rendered)
+    functions s [] = pure (r.finished s)
+    functions s (f :: fs) = case r.functionCode s f of
+      Left err => pure (Left err)
+      Right (s', is) => do
+        encoded is
+        functions s' fs
+
+||| A static executable from the seed's text and the program's code, which
+||| the assembler holds (`seeded`, then the program's), and the read-only
+||| data, with the per-thread areas the program needs (`Areas`). The
+||| program defines `label SymMain`, which is entered with `k = HALT`,
+||| `hp`/`hplim` set and the stack 16-aligned, and numbers its other labels
+||| from `reservedLabels`. Each item of read-only data follows the seed's,
+||| 8-aligned, at its label; a word of the data that is a label's address
+||| is written once the image is laid out, from the labels' addresses, the
+||| code's and the data's, all in one table (`LabelTable`), and the text is
+||| copied from the assembler's buffer. Fails with what it could not
+||| assemble: a field that does not fit, a label with no place, a label it
+||| could not resolve, in the code or in the data, a displacement too far.
+export
+linked : (areas : Linkage.Areas) -> X86.Assembler ->
+         (rodata : List (X86.Asm.Label, List X86.Datum)) ->
+         IO (Either (List X86.Encode.AsmProblem) ELF.Image)
+linked areas asm items = do
   textSize <- X86.Assembler.size asm
   let (seedData, rsyms) = Seed.seedRodata
       offsets = offsetsFrom (itemSize seedData) items
@@ -127,6 +159,20 @@ linkProgram enc window areas bound program items = do
           Just s' <- piece s d
             | Nothing => pure Nothing
           pieces s' ds
+
+||| A static executable from the seed and a program of instructions and
+||| read-only data, as `linked` makes one, the program encoded after the
+||| seed whole (`seeded`), its labels' table made for those below `bound`
+||| to begin with.
+export
+linkProgram : (enc : Types.Enc) -> {auto 0 _ : HeapObj.ValEnc.HasFixnums enc.val} ->
+              (window : Int) -> (areas : Linkage.Areas) -> (bound : Nat) ->
+              (program : List X86.Asm.Instr) -> (rodata : List (X86.Asm.Label, List X86.Datum)) ->
+              IO (Either (List X86.Encode.AsmProblem) ELF.Image)
+linkProgram enc window areas bound program items = do
+  asm <- seeded enc window bound
+  X86.Assembler.encode asm program
+  linked areas asm items
 
 ||| The default allocation window: 4 MiB, the bytes the inline bump may
 ||| allocate before the runtime's slow path runs, which extends the window

@@ -45,6 +45,7 @@ import Native.Codegen.StaticRead
 import Native.Codegen.TermIR.Decls as TermIR
 import Native.Codegen.TermIR.Program as TermIR
 import Native.Codegen.X86.Asm
+import Native.Codegen.X86.Assembler
 import Native.Codegen.X86.Encode
 import Native.Codegen.X86.Render
 import Native.Codegen.X86.Target
@@ -67,6 +68,7 @@ import Core.Options
 import Core.TT
 import Core.TT.Term
 import Core.UnifyState
+import Data.IORef
 import Data.List
 import Data.List1
 import Data.Maybe
@@ -94,7 +96,11 @@ import Native.Types.StringEnc as Types
 import System
 import System.Clock
 import System.File
+import System.File.Error
+import System.File.Handle
+import System.File.Mode
 import System.File.ReadWrite
+import System.File.Types
 
 %default covering
 
@@ -125,8 +131,9 @@ import System.File.ReadWrite
 ||| * `dump-flat=<file>`: write the flat forms, and the shapes of their data
 |||   types, to the file.
 ||| * `dump-ir=<file>`: write the IR the produce pass makes to the file.
-||| * `dump-asm=<file>`: write the rendered instructions to the file, in Intel
-|||   syntax, with each function's name before its code.
+||| * `dump-asm=<file>`: write the program's instructions to the file as
+|||   each function is rendered, in Intel syntax, with each function's name
+|||   before its code.
 ||| * `dump-foreign=<file>`: write the foreign functions and externs of the
 |||   program's libraries, each with how this backend implements it.
 ||| * `val-encoding=tag1`, `tag0` or `nofixnums`: how a uniform value is a word
@@ -575,26 +582,54 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
                 | Left err => throw (FileErr path err)
               pure ()
             Nothing => pure ()
-          Right rendered <- phase "rendering"
-            (later (X86.Render.render enc realised ir))
+          -- each function's code encoded as soon as it is rendered, after
+          -- the seed's: no list of the whole text is made
+          (dump, dumped) <- asmDump settings.dumpAsm
+          rendering <- phase "rendering and encoding"
+            (coreLift
+              (do let Right renderer = X86.Render.render enc realised ir
+                        | Left err => pure (Left err)
+                  asm <- Link.seeded enc settings.window renderer.labelsBefore
+                  map (map (asm,)) (Link.renderInto asm dump renderer)))
+          dumped
+          Right (asm, rendered) <- pure rendering
             | Left err => throw (InternalError ("native: " ++ err))
-          case settings.dumpAsm of
-            Just path => do
-              Right () <- coreLift
-                (Data.WriteBuilder.writeBuilder path
-                 (concatMap (\i => Data.Builder.single (show i ++ "\n")) rendered.text))
-                | Left err => throw (FileErr path err)
-              pure ()
-            Nothing => pure ()
           Right image <- phase "linking"
             (coreLift
-              (Link.linkProgram enc settings.window
-                 ({ constants := 2 * length constants } rendered.areas) rendered.labelBound
-                 rendered.text rendered.rodata))
+              (Link.linked ({ constants := 2 * length constants } rendered.areas) asm
+                 rendered.rodata))
             | Left problems =>
               throw (InternalError ("native: the image cannot be assembled: " ++ show problems))
           pure image
           where
+            ||| The writer of `dump-asm`'s file, which each function's
+            ||| instructions go to as they are rendered, one a line, and the
+            ||| file's closing, which reports the first error in writing it;
+            ||| neither does anything for no file.
+            asmDump : Maybe String -> Core (List X86.Asm.Instr -> IO (), Core ())
+            asmDump Nothing = pure (\_ => pure (), pure ())
+            asmDump (Just path) = do
+              Right h <- coreLift (openFile path WriteTruncate)
+                | Left err => throw (FileErr path err)
+              failed <- coreLift (newIORef Nothing)
+              pure (write h failed, close h failed)
+              where
+                write : File -> IORef (Maybe FileError) -> List X86.Asm.Instr -> IO ()
+                write h failed is = do
+                  Nothing <- readIORef failed
+                    | Just _ => pure ()
+                  Right () <- Data.WriteBuilder.writeTo h
+                                (concatMap (\i => Data.Builder.single (show i ++ "\n")) is)
+                    | Left err => writeIORef failed (Just err)
+                  pure ()
+
+                close : File -> IORef (Maybe FileError) -> Core ()
+                close h failed = do
+                  coreLift (closeFile h)
+                  Nothing <- coreLift (readIORef failed)
+                    | Just err => throw (FileErr path err)
+                  pure ()
+
             ||| Each routine of the runtime, in the contract's order, with whether
             ||| it is a root of what the program reaches: the seed and the
             ||| rendering reach those of a symbol

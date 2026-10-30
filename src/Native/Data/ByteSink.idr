@@ -86,6 +86,11 @@ export
 span : (s : ByteSink) -> (at : Span s 0) -> (0 n : Nat) -> (0 _ : fits s at n = True) -> Span s n
 span s (MkSpan i) _ _ = MkSpan i
 
+||| The offset of a place in the sink's buffer.
+export %inline
+offset : (s : ByteSink) -> Span s 0 -> Int
+offset s (MkSpan i) = i
+
 ||| What is left of the sink from a place.
 export
 past : (s : ByteSink) -> Span s 0 -> ByteSink

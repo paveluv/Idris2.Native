@@ -57,6 +57,8 @@ import Native.Codegen.TermIR.Sizes
 import Native.Codegen.TermIR.StaticDef
 import Native.Codegen.TermIR.StaticSig
 import Native.Codegen.TermIR.Var
+import Native.Codegen.X86.Asm
+import Native.Codegen.X86.Assembler
 import Native.Codegen.X86.Encode
 import Native.Codegen.X86.Render
 import Native.Codegen.X86.Target
@@ -583,7 +585,9 @@ coverBody = build $ \[] => do
 
 parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
   ||| The running program under the encoding, rendered and linked into the
-  ||| executable `file`.
+  ||| executable `file`, as the code generator does it: the seed's code
+  ||| encoded first (`seeded`), then each function's as soon as it is
+  ||| rendered (`renderInto`), then the image laid out (`linked`).
   covering
   writeRun : String -> IO ()
   writeRun file = do
@@ -621,10 +625,12 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
               , MkStaticDef Int64H [SWord 4611686018427387909]
               , MkStaticDef (ClosureH 2 1) [SCode (addToRef {enc}), SVal 30] ]
               (MkEntry here) noConIds)
-    let Right rendered = render enc realised run
+    let Right renderer = render enc realised run
       | Left err => putStrLn ("render: " ++ err)
-    Right image <- linkProgram enc windowBytes rendered.areas rendered.labelBound rendered.text
-                     rendered.rodata
+    asm <- seeded enc windowBytes renderer.labelsBefore
+    Right rendered <- renderInto asm (\_ => pure ()) renderer
+      | Left err => putStrLn ("render: " ++ err)
+    Right image <- linked rendered.areas asm rendered.rodata
       | Left problems => putStrLn ("link: " ++ show problems)
     Right () <- writeImage file image
       | Left err => putStrLn ("write: " ++ show err)

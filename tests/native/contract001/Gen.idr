@@ -70,6 +70,7 @@ import Native.Codegen.Linkage.Realised
 import Native.Codegen.Linkage.Routine
 import Native.Codegen.Linkage.RuntimeModule
 import Native.Codegen.Linkage.Sym
+import Native.Codegen.LocatedIR.Function
 import Native.Codegen.LocatedIR.Program
 import Native.Codegen.LocatedIR.Reach
 import Native.Codegen.Lower
@@ -78,6 +79,7 @@ import Native.Codegen.RegAlloc
 import Native.Codegen.StaticRead
 import Native.Codegen.TermIR.Decls
 import Native.Codegen.TermIR.Program
+import Native.Codegen.X86.Asm
 import Native.Codegen.X86.Render
 import Native.Codegen.X86.Target
 import Native.Flat.Exp
@@ -191,7 +193,10 @@ rendered runtime program vmdefs = either id (const "rendered") $ do
   (_ ** term) <- lowered runtime program empty [] vmdefs
   let symbols = routineSymbols {enc = TestEnc} realised
       ir = reach (\n => isJust (lookup n symbols)) (allocRegs x86_64 term)
-  ignore (render TestEnc realised ir)
+  r <- render TestEnc realised ir
+  -- every function rendered in turn, the code itself not kept
+  s <- foldlM (\s, f => map fst (r.functionCode s f)) r.first r.functions
+  ignore (r.finished s)
 
 ||| The program compiled with these forms as the runtime's, every one of
 ||| them given to the lowering.
