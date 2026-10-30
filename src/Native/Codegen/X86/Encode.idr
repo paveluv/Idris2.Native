@@ -1,4 +1,4 @@
-||| x86-64 encoder and two-pass assembler.
+||| The x86-64 encoder.
 |||
 ||| `instrFormat` is the encoder: a pure function from an instruction (with
 ||| any label-relative displacement already computed) to its parts in
@@ -7,11 +7,12 @@
 ||| are; `encodeRaw` is its bytes, `instrSize` the bytes it takes. Two
 ||| facts of those rules are stated apart, each once: the bits a field's
 ||| value must fit (`fieldsFit`), and the instructions that refer to a
-||| label, by a displacement from their end (`instrLabel`). `assemble`
-||| lays out a code stream: pass one assigns label addresses (every
-||| instruction's size is independent of label values because branches
-||| and RIP-relative operands always use rel32), pass two encodes with
-||| resolved displacements. Alignment padding is `int3`, never executed.
+||| label, by a displacement from their end (`instrLabel`), and the rule of
+||| that displacement (`labelDisplacement`). No instruction's size depends
+||| on a label's value, since branches and RIP-relative operands always use
+||| rel32. Alignment padding is `int3`, never executed. The assembler the
+||| link uses is `Native.Codegen.X86.Assembler`; `assemble`, apart from
+||| it, is the encoder's reference for its tests.
 module Native.Codegen.X86.Encode
 
 import Native.Codegen.X86.Asm
@@ -20,8 +21,6 @@ import Native.Codegen.X86.LabelTable
 import Native.Codegen.X86.OptionalByte
 
 import Data.Bits
-import Native.Data.ByteSink as Data
-import Native.Data.GrowingBuffer as Data
 %default total
 
 ------------------------------------------------------------------------------
@@ -41,50 +40,59 @@ fitsInt32 x = x >= -2147483648 && x <= 2147483647
 export
 instrFormat : (pc, rel : Int) -> Asm.Instr -> InstrFormat
 instrFormat pc rel instr = case instr of
-  Asm.MovRR d s => regForm 0 True 0x89 (Asm.regNum s) (Asm.regNum d) False InstrFormat.NoImm 0
+  Asm.MovRR d s =>
+    regForm noLegacy True 0x89 (Asm.regNum s) (Asm.regNum d) False InstrFormat.NoImm 0
   Asm.MovRI d i => movImmForm (Asm.regNum d) i
-  Asm.MovRM d m => memForm 0 True 0x8B (Asm.regNum d) m False InstrFormat.NoImm 0
-  Asm.MovMR m s => memForm 0 True 0x89 (Asm.regNum s) m False InstrFormat.NoImm 0
-  Asm.MovMI m i => memForm 0 True 0xC7 0 m False InstrFormat.Imm32 i
-  Asm.Lea d m => memForm 0 True 0x8D (Asm.regNum d) m False InstrFormat.NoImm 0
-  Asm.Load Asm.W8 False d m => memForm 0 True 0x0FB6 (Asm.regNum d) m False InstrFormat.NoImm 0
-  Asm.Load Asm.W8 True d m => memForm 0 True 0x0FBE (Asm.regNum d) m False InstrFormat.NoImm 0
-  Asm.Load Asm.W16 False d m => memForm 0 True 0x0FB7 (Asm.regNum d) m False InstrFormat.NoImm 0
-  Asm.Load Asm.W16 True d m => memForm 0 True 0x0FBF (Asm.regNum d) m False InstrFormat.NoImm 0
-  Asm.Load Asm.W32 False d m => memForm 0 False 0x8B (Asm.regNum d) m False InstrFormat.NoImm 0
-  Asm.Load Asm.W32 True d m => memForm 0 True 0x63 (Asm.regNum d) m False InstrFormat.NoImm 0
+  Asm.MovRM d m => memForm noLegacy True 0x8B (Asm.regNum d) m False InstrFormat.NoImm 0
+  Asm.MovMR m s => memForm noLegacy True 0x89 (Asm.regNum s) m False InstrFormat.NoImm 0
+  Asm.MovMI m i => memForm noLegacy True 0xC7 0 m False InstrFormat.Imm32 i
+  Asm.Lea d m => memForm noLegacy True 0x8D (Asm.regNum d) m False InstrFormat.NoImm 0
+  Asm.Load Asm.W8 False d m =>
+    memForm noLegacy True 0x0FB6 (Asm.regNum d) m False InstrFormat.NoImm 0
+  Asm.Load Asm.W8 True d m =>
+    memForm noLegacy True 0x0FBE (Asm.regNum d) m False InstrFormat.NoImm 0
+  Asm.Load Asm.W16 False d m =>
+    memForm noLegacy True 0x0FB7 (Asm.regNum d) m False InstrFormat.NoImm 0
+  Asm.Load Asm.W16 True d m =>
+    memForm noLegacy True 0x0FBF (Asm.regNum d) m False InstrFormat.NoImm 0
+  Asm.Load Asm.W32 False d m =>
+    memForm noLegacy False 0x8B (Asm.regNum d) m False InstrFormat.NoImm 0
+  Asm.Load Asm.W32 True d m => memForm noLegacy True 0x63 (Asm.regNum d) m False InstrFormat.NoImm 0
   Asm.Store Asm.W8 m s =>
-    memForm 0 False 0x88 (Asm.regNum s) m (byteRegNeedsRex s) InstrFormat.NoImm 0
-  Asm.Store Asm.W16 m s => memForm 0x66 False 0x89 (Asm.regNum s) m False InstrFormat.NoImm 0
-  Asm.Store Asm.W32 m s => memForm 0 False 0x89 (Asm.regNum s) m False InstrFormat.NoImm 0
+    memForm noLegacy False 0x88 (Asm.regNum s) m (byteRegNeedsRex s) InstrFormat.NoImm 0
+  Asm.Store Asm.W16 m s => memForm operandSize False 0x89 (Asm.regNum s) m False InstrFormat.NoImm 0
+  Asm.Store Asm.W32 m s => memForm noLegacy False 0x89 (Asm.regNum s) m False InstrFormat.NoImm 0
   Asm.Alu op d s =>
-    regForm 0 True (0x01 + 8 * cast (Asm.aluDigit op)) (Asm.regNum s) (Asm.regNum d) False
+    regForm noLegacy True (0x01 + 8 * cast (Asm.aluDigit op)) (Asm.regNum s) (Asm.regNum d) False
       InstrFormat.NoImm 0
   Asm.AluI op d i => immForm 0x83 0x81 (Asm.aluDigit op) (Asm.regNum d) i
   Asm.AluRM op d m =>
-    memForm 0 True (0x03 + 8 * cast (Asm.aluDigit op)) (Asm.regNum d) m False InstrFormat.NoImm 0
+    memForm noLegacy True (0x03 + 8 * cast (Asm.aluDigit op)) (Asm.regNum d) m False
+      InstrFormat.NoImm 0
   Asm.AluMR op m s =>
-    memForm 0 True (0x01 + 8 * cast (Asm.aluDigit op)) (Asm.regNum s) m False InstrFormat.NoImm 0
-  Asm.Test a b => regForm 0 True 0x85 (Asm.regNum b) (Asm.regNum a) False InstrFormat.NoImm 0
-  Asm.TestI a i => regForm 0 True 0xF7 0 (Asm.regNum a) False InstrFormat.Imm32 i
-  Asm.Imul d s => regForm 0 True 0x0FAF (Asm.regNum d) (Asm.regNum s) False InstrFormat.NoImm 0
+    memForm noLegacy True (0x01 + 8 * cast (Asm.aluDigit op)) (Asm.regNum s) m False
+      InstrFormat.NoImm 0
+  Asm.Test a b => regForm noLegacy True 0x85 (Asm.regNum b) (Asm.regNum a) False InstrFormat.NoImm 0
+  Asm.TestI a i => regForm noLegacy True 0xF7 0 (Asm.regNum a) False InstrFormat.Imm32 i
+  Asm.Imul d s =>
+    regForm noLegacy True 0x0FAF (Asm.regNum d) (Asm.regNum s) False InstrFormat.NoImm 0
   Asm.ImulI d s i => immForm 0x6B 0x69 (Asm.regNum d) (Asm.regNum s) i
   Asm.Cqo => opcodeForm (OptionalByte.byte 0x48) 0x99 InstrFormat.NoImm 0
-  Asm.Idiv r => regForm 0 True 0xF7 7 (Asm.regNum r) False InstrFormat.NoImm 0
-  Asm.DivU r => regForm 0 True 0xF7 6 (Asm.regNum r) False InstrFormat.NoImm 0
-  Asm.Mul r => regForm 0 True 0xF7 4 (Asm.regNum r) False InstrFormat.NoImm 0
-  Asm.Neg r => regForm 0 True 0xF7 3 (Asm.regNum r) False InstrFormat.NoImm 0
-  Asm.Not r => regForm 0 True 0xF7 2 (Asm.regNum r) False InstrFormat.NoImm 0
+  Asm.Idiv r => regForm noLegacy True 0xF7 7 (Asm.regNum r) False InstrFormat.NoImm 0
+  Asm.DivU r => regForm noLegacy True 0xF7 6 (Asm.regNum r) False InstrFormat.NoImm 0
+  Asm.Mul r => regForm noLegacy True 0xF7 4 (Asm.regNum r) False InstrFormat.NoImm 0
+  Asm.Neg r => regForm noLegacy True 0xF7 3 (Asm.regNum r) False InstrFormat.NoImm 0
+  Asm.Not r => regForm noLegacy True 0xF7 2 (Asm.regNum r) False InstrFormat.NoImm 0
   Asm.ShiftI op r n =>
-    regForm 0 True 0xC1 (Asm.shiftDigit op) (Asm.regNum r) False InstrFormat.Imm8 (cast n)
+    regForm noLegacy True 0xC1 (Asm.shiftDigit op) (Asm.regNum r) False InstrFormat.Imm8 (cast n)
   Asm.ShiftCl op r =>
-    regForm 0 True 0xD3 (Asm.shiftDigit op) (Asm.regNum r) False InstrFormat.NoImm 0
+    regForm noLegacy True 0xD3 (Asm.shiftDigit op) (Asm.regNum r) False InstrFormat.NoImm 0
   Asm.Jmp _ => opcodeForm OptionalByte.none 0xE9 InstrFormat.Imm32 rel
   Asm.Jcc c _ => opcodeForm OptionalByte.none (0x0F80 + cast (Asm.condCode c)) InstrFormat.Imm32 rel
   Asm.Call _ => opcodeForm OptionalByte.none 0xE8 InstrFormat.Imm32 rel
-  Asm.JmpR r => regForm 0 False 0xFF 4 (Asm.regNum r) False InstrFormat.NoImm 0
-  Asm.JmpM m => memForm 0 False 0xFF 4 m False InstrFormat.NoImm 0
-  Asm.CallR r => regForm 0 False 0xFF 2 (Asm.regNum r) False InstrFormat.NoImm 0
+  Asm.JmpR r => regForm noLegacy False 0xFF 4 (Asm.regNum r) False InstrFormat.NoImm 0
+  Asm.JmpM m => memForm noLegacy False 0xFF 4 m False InstrFormat.NoImm 0
+  Asm.CallR r => regForm noLegacy False 0xFF 2 (Asm.regNum r) False InstrFormat.NoImm 0
   Asm.Ret => opcodeForm OptionalByte.none 0xC3 InstrFormat.NoImm 0
   Asm.Push r =>
     opcodeForm (rex False 0 0 (Asm.regNum r) False) (0x50 + cast (lo (Asm.regNum r)))
@@ -93,31 +101,32 @@ instrFormat pc rel instr = case instr of
     opcodeForm (rex False 0 0 (Asm.regNum r) False) (0x58 + cast (lo (Asm.regNum r)))
       InstrFormat.NoImm 0
   Asm.Setcc c r =>
-    regForm 0 False (0x0F90 + cast (Asm.condCode c)) 0 (Asm.regNum r) (byteRegNeedsRex r)
+    regForm noLegacy False (0x0F90 + cast (Asm.condCode c)) 0 (Asm.regNum r) (byteRegNeedsRex r)
       InstrFormat.NoImm 0
   Asm.Cmov c d s =>
-    regForm 0 True (0x0F40 + cast (Asm.condCode c)) (Asm.regNum d) (Asm.regNum s) False
+    regForm noLegacy True (0x0F40 + cast (Asm.condCode c)) (Asm.regNum d) (Asm.regNum s) False
       InstrFormat.NoImm 0
-  Asm.MovsdRM x m => memForm 0xF2 False 0x0F10 (Asm.xmmNum x) m False InstrFormat.NoImm 0
-  Asm.MovsdMR m x => memForm 0xF2 False 0x0F11 (Asm.xmmNum x) m False InstrFormat.NoImm 0
+  Asm.MovsdRM x m => memForm scalarDouble False 0x0F10 (Asm.xmmNum x) m False InstrFormat.NoImm 0
+  Asm.MovsdMR m x => memForm scalarDouble False 0x0F11 (Asm.xmmNum x) m False InstrFormat.NoImm 0
   Asm.MovsdRR d s =>
-    regForm 0xF2 False 0x0F10 (Asm.xmmNum d) (Asm.xmmNum s) False InstrFormat.NoImm 0
+    regForm scalarDouble False 0x0F10 (Asm.xmmNum d) (Asm.xmmNum s) False InstrFormat.NoImm 0
   Asm.Sse op d s =>
-    regForm 0xF2 False (0x0F00 + cast (Asm.sseOpcode op)) (Asm.xmmNum d) (Asm.xmmNum s) False
+    regForm scalarDouble False (0x0F00 + cast (Asm.sseOpcode op)) (Asm.xmmNum d) (Asm.xmmNum s)
+      False
       InstrFormat.NoImm 0
   Asm.Ucomisd a b =>
-    regForm 0x66 False 0x0F2E (Asm.xmmNum a) (Asm.xmmNum b) False InstrFormat.NoImm 0
+    regForm operandSize False 0x0F2E (Asm.xmmNum a) (Asm.xmmNum b) False InstrFormat.NoImm 0
   Asm.Cvtsi2sd x r =>
-    regForm 0xF2 True 0x0F2A (Asm.xmmNum x) (Asm.regNum r) False InstrFormat.NoImm 0
+    regForm scalarDouble True 0x0F2A (Asm.xmmNum x) (Asm.regNum r) False InstrFormat.NoImm 0
   Asm.Cvttsd2si r x =>
-    regForm 0xF2 True 0x0F2C (Asm.regNum r) (Asm.xmmNum x) False InstrFormat.NoImm 0
+    regForm scalarDouble True 0x0F2C (Asm.regNum r) (Asm.xmmNum x) False InstrFormat.NoImm 0
   Asm.MovqXR x r =>
-    regForm 0x66 True 0x0F6E (Asm.xmmNum x) (Asm.regNum r) False InstrFormat.NoImm 0
+    regForm operandSize True 0x0F6E (Asm.xmmNum x) (Asm.regNum r) False InstrFormat.NoImm 0
   Asm.MovqRX r x =>
-    regForm 0x66 True 0x0F7E (Asm.xmmNum x) (Asm.regNum r) False InstrFormat.NoImm 0
+    regForm operandSize True 0x0F7E (Asm.xmmNum x) (Asm.regNum r) False InstrFormat.NoImm 0
   Asm.Syscall => opcodeForm OptionalByte.none 0x0F05 InstrFormat.NoImm 0
   Asm.LockCmpxchg m r =>
-    memForm 0xF0 True 0x0FB1 (Asm.regNum r) m False InstrFormat.NoImm 0
+    memForm lock True 0x0FB1 (Asm.regNum r) m False InstrFormat.NoImm 0
   Asm.Nop => opcodeForm OptionalByte.none 0x90 InstrFormat.NoImm 0
   Asm.Int3 => opcodeForm OptionalByte.none 0xCC InstrFormat.NoImm 0
   Asm.Lbl _ => InstrFormat.Verbatim []
@@ -126,10 +135,20 @@ instrFormat pc rel instr = case instr of
   Asm.Bytes bs => InstrFormat.Verbatim bs
   Asm.Comment _ => InstrFormat.Verbatim []
   where
-    -- Each form below takes the legacy prefix as its byte, 0 for none (no
-    -- legacy prefix is 0), and the opcode as Intel writes it: a byte of
-    -- the one-byte map, or 0x0F and a byte of the two-byte map, as one
-    -- 16-bit number (0x0FB6 for 0F B6).
+    -- Each form below takes the legacy prefix, if the instruction has one,
+    -- and the opcode as Intel writes it: a byte of the one-byte map, or
+    -- 0x0F and a byte of the two-byte map, as one 16-bit number (0x0FB6
+    -- for 0F B6).
+
+    -- The legacy prefixes of the forms: none; the operand-size override,
+    -- which makes an operand 16 bits wide or, before some two-byte
+    -- opcodes, picks the instruction; the prefix that picks SSE2's scalar
+    -- double instructions; and the lock prefix.
+    noLegacy, operandSize, scalarDouble, lock : OptionalByte
+    noLegacy = OptionalByte.none
+    operandSize = OptionalByte.byte 0x66
+    scalarDouble = OptionalByte.byte 0xF2
+    lock = OptionalByte.byte 0xF0
 
     padding : Int -> Nat -> Nat
     padding at n = let m = cast {to = Int} n in
@@ -156,26 +175,27 @@ instrFormat pc rel instr = case instr of
     modrm : (md : Bits8) -> (reg : Bits8) -> (rm : Bits8) -> Bits8
     modrm md reg rm = shiftL md 6 .|. shiftL (lo reg) 3 .|. lo rm
 
-    ||| The parts of an instruction of this legacy prefix (0 for none), REX
-    ||| prefix, opcode (as Intel writes it), ModRM, SIB, displacement and
-    ||| immediate. An opcode of 0x100 or more is read as its low byte, of
-    ||| the two-byte map: its high byte must be 0x0F, and is not checked.
-    parts : (legacy : Bits8) -> (rexPrefix : OptionalByte) -> (opcode : Bits16) ->
+    ||| The parts of an instruction of this legacy prefix, REX prefix, opcode
+    ||| (as Intel writes it), ModRM, SIB, displacement and immediate. An
+    ||| opcode of 0x100 or more is read as its low byte, of the two-byte map:
+    ||| its high byte must be 0x0F, and is not checked.
+    parts : (legacy, rexPrefix : OptionalByte) -> (opcode : Bits16) ->
             (modrmByte, sibByte : OptionalByte) -> InstrFormat.DispWidth -> (disp : Int) ->
             InstrFormat.ImmWidth -> (imm : Int) -> InstrFormat
     parts p r o m s dw d iw i =
-      InstrFormat.Parts (if p == 0 then OptionalByte.none else OptionalByte.byte p) r
-        (if o >= 0x100 then InstrFormat.TwoByte else InstrFormat.OneByte) (cast o) m s dw d iw i
+      InstrFormat.Parts p r (if o >= 0x100 then InstrFormat.TwoByte else InstrFormat.OneByte)
+        (cast o) m s dw d iw i
 
     ||| An instruction of no ModRM byte: REX · opcode · imm, of the REX
     ||| prefix given.
     opcodeForm : OptionalByte -> (opcode : Bits16) -> InstrFormat.ImmWidth -> (imm : Int) ->
                  InstrFormat
-    opcodeForm r o iw i = parts 0 r o OptionalByte.none OptionalByte.none InstrFormat.NoDisp 0 iw i
+    opcodeForm r o iw i =
+      parts noLegacy r o OptionalByte.none OptionalByte.none InstrFormat.NoDisp 0 iw i
 
     ||| An instruction of the form  legacy prefix · REX · opcode · ModRM · imm,
     ||| of a register operand in ModRM's rm, by its number.
-    regForm : (legacy : Bits8) -> (w : Bool) -> (opcode : Bits16) -> (reg, rm : Bits8) ->
+    regForm : (legacy : OptionalByte) -> (w : Bool) -> (opcode : Bits16) -> (reg, rm : Bits8) ->
               (forceRex : Bool) -> InstrFormat.ImmWidth -> (imm : Int) -> InstrFormat
     regForm p w o reg rm forceRex iw i =
       parts p (rex w reg 0 rm forceRex) o (OptionalByte.byte (modrm 3 reg rm)) OptionalByte.none
@@ -190,22 +210,22 @@ instrFormat pc rel instr = case instr of
     ||| them, else of `o32` and the immediate in 32.
     immForm : (o8, o32 : Bits16) -> (reg, rm : Bits8) -> (imm : Int) -> InstrFormat
     immForm o8 o32 reg rm i =
-      if fitsInt8 i then regForm 0 True o8 reg rm False InstrFormat.Imm8 i
-      else regForm 0 True o32 reg rm False InstrFormat.Imm32 i
+      if fitsInt8 i then regForm noLegacy True o8 reg rm False InstrFormat.Imm8 i
+      else regForm noLegacy True o32 reg rm False InstrFormat.Imm32 i
 
     ||| An immediate moved into a 64-bit register, by its number: in 32 bits,
     ||| sign-extended (C7 /0), if it fits them, else in 64 (B8+r), as the
     ||| `Int` of its 64 bits, read as signed or not.
     movImmForm : (reg : Bits8) -> Integer -> InstrFormat
     movImmForm r i =
-      if fitsInt32 i then regForm 0 True 0xC7 0 r False InstrFormat.Imm32 (cast i)
+      if fitsInt32 i then regForm noLegacy True 0xC7 0 r False InstrFormat.Imm32 (cast i)
       else opcodeForm (rex True 0 0 r False) (0xB8 + cast (lo r)) InstrFormat.Imm64 (cast i)
 
     ||| An instruction of the form
     ||| legacy prefix · REX · opcode · ModRM[·SIB·disp] · imm, of a memory
     ||| operand. For `MRip`, the displacement is `rel`, computed already.
-    memForm : (legacy : Bits8) -> (w : Bool) -> (opcode : Bits16) -> (reg : Bits8) -> Asm.Mem ->
-              (forceRex : Bool) -> InstrFormat.ImmWidth -> (imm : Int) -> InstrFormat
+    memForm : (legacy : OptionalByte) -> (w : Bool) -> (opcode : Bits16) -> (reg : Bits8) ->
+              Asm.Mem -> (forceRex : Bool) -> InstrFormat.ImmWidth -> (imm : Int) -> InstrFormat
     memForm p w o reg mem forceRex iw i = case mem of
       Asm.MRip _ _ =>
         parts p (rex w reg 0 0 forceRex) o (OptionalByte.byte (modrm 0 reg 5)) OptionalByte.none
@@ -234,8 +254,9 @@ encodeRaw pc rel instr = InstrFormat.bytes (instrFormat pc rel instr)
 ||| Whether every field the encoder writes in fewer bits than its type holds
 ||| fits them: a displacement or an immediate in 32 bits, a 64-bit immediate
 ||| in 64. `encodeRaw` writes the low bits of a field that does not fit, so
-||| `check` reports such an instruction instead. A displacement to a label
-||| is checked there, once the label's address is known.
+||| the assembler reports such an instruction instead (`DoesNotFit`). A
+||| displacement to a label is checked once the label's address is known
+||| (`LabelTooFar`).
 export
 fieldsFit : Asm.Instr -> Bool
 fieldsFit instr = case instr of
@@ -266,8 +287,9 @@ fieldsFit instr = case instr of
     memFits (Asm.MBase _ d) = fitsInt32 (cast d)
     memFits (Asm.MRip _ d) = fitsInt32 (cast d)
 
-||| What the assembler could not encode faithfully (`check`), and what the
-||| link could not write (`Native.Codegen.Link`).
+||| What the assembler could not encode faithfully
+||| (`Native.Codegen.X86.Assembler`, `assemble`), and what the link could
+||| not write (`Native.Codegen.Link`).
 public export
 data AsmProblem
   = ||| A reference to a label that nothing defines. In code it encodes as
@@ -303,99 +325,7 @@ instrSize : (pc : Int) -> Asm.Instr -> Int
 instrSize pc i = cast (InstrFormat.size (instrFormat pc 0 i))
 
 ------------------------------------------------------------------------------
--- Two-pass assembly
-
-||| Each instruction's size, in order, a byte each, by the instruction's
-||| index in its sequence: what pass one found, read by the check and pass
-||| two (`sizeAt`) with no list of the sizes made. A size of 255 bytes or
-||| more, of an alignment or of raw bytes, is held as 255, and computed
-||| again where it is read. Abstract: made by `measure` alone.
-export
-record Sizes where
-  constructor MkSizes
-  ||| The instructions it holds the sizes of, no more than the table's
-  ||| bytes.
-  count : Int
-  table : Data.GrowingBuffer
-
-||| The size of the instruction at `index` of the sequence, at `pc`: the
-||| size pass one found, or, past the instructions it measured or held as
-||| 255, the size computed again (`instrSize`).
-sizeAt : Sizes -> (index, pc : Int) -> Asm.Instr -> IO Int
-sizeAt sizes index pc i =
-  if index < sizes.count then held else pure (instrSize pc i)
-  where
-    held : IO Int
-    held = do
-      b <- Data.GrowingBuffer.getBits8 sizes.table index
-      pure (if b == 255 then instrSize pc i else cast b)
-
-||| Pass one, of a sequence placed at `base`: each instruction's size
-||| (`Sizes`) and the sequence's, each instruction's size read from its
-||| parts (`instrSize`), with no byte made, since no size depends on a
-||| label; and the labels the sequence defines with no place in the table
-||| it defines them in (`measure`).
-public export
-record Measured where
-  constructor MkMeasured
-  sizes : Sizes
-  size : Int
-  pastBound : List Asm.Label
-
-||| Pass one (`Measured`), each label the sequence defines put in the table
-||| at its address.
-export
-measure : LabelTable -> (base : Int) -> List Asm.Instr -> IO Measured
-measure labels base is = do
-  -- the table grows as the sequence is walked, which counting it first
-  -- would walk once more: a walk of idris2-native's text costs about as
-  -- much as measuring it does. Its room is zeros, so a label's or a
-  -- comment's size, 0, is not written; a size it cannot grow to hold is
-  -- computed again where it is read.
-  table <- Data.GrowingBuffer.growingBuffer 65536
-  fromPrim (go table 0 base [<] is)
-  where
-    -- the size of the instruction at `index` held in the table
-    hold : Data.GrowingBuffer -> (index, size : Int) -> IO ()
-    hold table index n = Data.GrowingBuffer.setBits8 table index (if n < 255 then cast n else 255)
-
-    -- the world passed by hand, so that the loop is a function of it, as
-    -- pass two's is
-    go : Data.GrowingBuffer -> (index, pc : Int) -> SnocList Asm.Label -> List Asm.Instr ->
-         PrimIO Measured
-    go table index pc past [] w =
-      MkIORes (MkMeasured (MkSizes (min index (Data.GrowingBuffer.capacity table)) table) (pc - base) (past <>> [])) w
-    go table index pc past (Asm.Lbl l :: rest) w =
-      case toPrim (LabelTable.define labels l pc) w of
-        MkIORes True w' => go table (index + 1) pc past rest w'
-        MkIORes False w' => go table (index + 1) pc (past :< l) rest w'
-    go table index pc past (Asm.Comment _ :: rest) w = go table (index + 1) pc past rest w
-    go table index pc past (i :: rest) w =
-      let n = instrSize pc i
-      in if index < Data.GrowingBuffer.capacity table
-           then case toPrim (hold table index n) w of
-             MkIORes () w' => go table (index + 1) (pc + n) past rest w'
-           else case toPrim (Data.GrowingBuffer.grownTo table (index + 1)) w of
-             MkIORes (Just t) w1 => case toPrim (hold t index n) w1 of
-               MkIORes () w2 => go t (index + 1) (pc + n) past rest w2
-             MkIORes Nothing w1 => go table (index + 1) (pc + n) past rest w1
-
-||| The environment of a sequence pass one measured, put in its labels'
-||| table: the labels defined outside this text, at their final addresses,
-||| such as the image's rodata and bss symbols (`planLayout` can run first
-||| because sizes do not depend on labels). Text labels take precedence,
-||| and of a label the environment gives twice, the first address: each is
-||| put in the table unless it has an address there. What is wrong: the
-||| labels with no place in the table.
-export
-defineEnvironment : LabelTable -> (env : List (Asm.Label, Int)) -> IO (List AsmProblem)
-defineEnvironment labels env = go [<] env
-  where
-    go : SnocList AsmProblem -> List (Asm.Label, Int) -> IO (List AsmProblem)
-    go past [] = pure (past <>> [])
-    go past ((l, a) :: rest) = do
-      placed <- LabelTable.defineNew labels l a
-      go (if placed then past else past :< LabelPastBound l) rest
+-- Labels
 
 ||| The label an instruction refers to, if any, and the constant added to it.
 ||| The displacement to it is 32 bits, where the instruction's displacement
@@ -427,127 +357,57 @@ export
 labelDisplacement : (pc, size, address, constant : Int) -> Int
 labelDisplacement pc size a d = a + d - (pc + size)
 
-||| An instruction of `size` bytes at `pc`: the displacement to the label it
-||| refers to, from the end of the instruction (`labelDisplacement`); 0 for
-||| none, and for a label with no address in the table. The world passed
-||| by hand: an `IO` function whose body is a `case` of a pure value Idris
-||| compiles as one that makes an action, at each instruction.
-displacement : LabelTable -> (pc, size : Int) -> Asm.Instr -> PrimIO Int
-displacement labels pc size i w = case instrLabel i of
-  Nothing => MkIORes 0 w
-  Just (l, d) => case toPrim (LabelTable.address labels l) w of
-    MkIORes (Just a) w' => MkIORes (labelDisplacement pc size a d) w'
-    MkIORes Nothing w' => MkIORes 0 w'
+------------------------------------------------------------------------------
+-- The reference
 
-||| What is wrong with the sequence pass one measured, placed at `base`,
-||| with its labels' table, its environment's labels in it
-||| (`defineEnvironment`): the labels it defines with no place in the
-||| table, the labels it cannot resolve and the fields that do not fit,
-||| found with no instruction encoded.
-export
-check : LabelTable -> Measured -> (base : Int) -> List Asm.Instr -> IO (List AsmProblem)
-check labels measured base is =
-  fromPrim (go 0 base ([<] <>< map LabelPastBound measured.pastBound) is)
-  where
-    -- the instruction, unless its fields fit
-    unfit : Asm.Instr -> (fits : Bool) -> List AsmProblem
-    unfit i fits = if fits then [] else [DoesNotFit i]
-
-    -- what is wrong with each instruction, of the size pass one found
-    -- (`sizeAt`) at `pc`: a label with no address in the table or a field
-    -- that does not fit, its displacement (`labelDisplacement`) included;
-    -- the world passed by hand, as in pass two
-    go : (index, pc : Int) -> SnocList AsmProblem -> List Asm.Instr -> PrimIO (List AsmProblem)
-    go _ _ found [] w = MkIORes (found <>> []) w
-    go index pc found (i :: rest) w = case toPrim (sizeAt measured.sizes index pc i) w of
-      MkIORes size w1 => case instrLabel i of
-        Nothing => go (index + 1) (pc + size) (found <>< unfit i (fieldsFit i)) rest w1
-        Just (l, d) => case toPrim (LabelTable.address labels l) w1 of
-          MkIORes (Just a) w2 =>
-            go (index + 1) (pc + size)
-              (found <>< unfit i (fieldsFit i && fitsInt32 (cast (labelDisplacement pc size a d))))
-              rest w2
-          MkIORes Nothing w2 =>
-            go (index + 1) (pc + size) (found <>< (MissingLabel l :: unfit i (fieldsFit i)))
-              rest w2
-
-||| Pass two, of the sequence pass one measured, placed at `base`, with its
-||| labels' table, its environment's labels in it (`defineEnvironment`):
-||| each instruction's parts made once, with its displacement
-||| (`displacement`), at the size pass one found, and written through a
-||| span over the bytes it takes, part by part (`InstrFormat.write`), with
-||| one check of the sink's end (`ByteSink.fits`). An instruction whose
-||| parts are not of that size, or that does not fit before the sink's end,
-||| stops the pass with no sink; one with a problem (`check`) is written
-||| anyway.
-export
-assembleInto : Data.ByteSink -> LabelTable -> Measured -> (base : Int) -> List Asm.Instr ->
-               IO (Maybe Data.ByteSink)
-assembleInto sink labels measured base is = fromPrim (go (Data.ByteSink.start sink) 0 base is)
-  where
-    -- The world passed by hand, so that the loop is a function of it: an
-    -- `IO` loop with a clause that ends in a call, as a label's does here,
-    -- Idris compiles as a function that makes an action at each
-    -- instruction. The loop's place in the sink is a span of no bytes,
-    -- which each instruction's writing ends at. A label or a comment takes
-    -- no byte, and is skipped.
-    go : Data.ByteSink.Span sink 0 -> (index, pc : Int) -> List Asm.Instr ->
-         PrimIO (Maybe Data.ByteSink)
-    sized : Data.ByteSink.Span sink 0 -> (index, pc, size : Int) -> InstrFormat -> List Asm.Instr ->
-            PrimIO (Maybe Data.ByteSink)
-    checked : Data.ByteSink.Span sink 0 -> (index, pc, size : Int) -> (k : Nat) -> (f : InstrFormat) ->
-              (0 _ : InstrFormat.size f = k) -> List Asm.Instr -> PrimIO (Maybe Data.ByteSink)
-    written : (at : Data.ByteSink.Span sink 0) -> (index, pc, size : Int) -> (k : Nat) ->
-              (f : InstrFormat) -> (0 _ : InstrFormat.size f = k) -> (fit : Bool) ->
-              (0 _ : Data.ByteSink.fits sink at k = fit) -> List Asm.Instr ->
-              PrimIO (Maybe Data.ByteSink)
-
-    go at _ _ [] w = MkIORes (Just (Data.ByteSink.past sink at)) w
-    go at index pc (i :: rest) w = case i of
-      Asm.Lbl _ => go at (index + 1) pc rest w
-      Asm.Comment _ => go at (index + 1) pc rest w
-      _ => case toPrim (sizeAt measured.sizes index pc i) w of
-        MkIORes size w1 => case displacement labels pc size i w1 of
-          MkIORes rel w2 => sized at index pc size (instrFormat pc rel i) rest w2
-
-    -- The instruction's parts, if of the size pass one found: the size read
-    -- once, as an argument, with its equation (`same`); whether they fit
-    -- likewise (`fits`). A `with` would, but the world, a linear name,
-    -- keeps one from being used here.
-    sized at index pc size f rest w = checked at index pc size (InstrFormat.size f) f Refl rest w
-
-    checked at index pc size k f same rest w =
-      if cast k /= size then MkIORes Nothing w
-      else written at index pc size k f same (Data.ByteSink.fits sink at k) Refl rest w
-
-    -- the parts written from the place, if they fit before the sink's end
-    written at index pc size k f same False _ rest w = MkIORes Nothing w
-    written at index pc size k f same True fits rest w =
-      case toPrim (InstrFormat.write sink f (rewrite same in Data.ByteSink.span sink at k fits)) w of
-        MkIORes end w' => go end (index + 1) (pc + size) rest w'
-
-||| Both passes with no environment, the labels' table of those the
-||| sequence defines, the bytes made as a snoc-list, each instruction's
-||| size computed where it is encoded, not read from pass one's
-||| (`Sizes`), with what is wrong (`check`): the encoder's reference, for
-||| its tests.
+||| A sequence placed at `base` encoded as bytes, with what is wrong: the
+||| encoder's reference for its tests, apart from the assembler the link
+||| uses (`Native.Codegen.X86.Assembler`), which encode003 compares with
+||| it. A first walk puts each label the sequence defines in a table at its
+||| address, each instruction's size its parts' (`instrSize`), since no
+||| size depends on a label; a second encodes each instruction with the
+||| displacement to its label (`labelDisplacement`), 0 for a label with no
+||| address. What is wrong, as the assembler finds it: a label with no
+||| place in the table, then, in order, a label with no address, a field
+||| that does not fit (`fieldsFit`) and a displacement too far.
 export
 assemble : (base : Int) -> List Asm.Instr -> IO (SnocList Bits8, List AsmProblem)
 assemble base is = do
   labels <- LabelTable.labelTable (foldl past 0 is)
-  measured <- measure labels base is
-  code <- go labels base [<] is
-  problems <- check labels measured base is
-  pure (code, problems)
+  pastBound <- defined labels base [<] is
+  (code, found) <- encoded labels base [<] pastBound is
+  pure (code, found <>> [])
   where
     -- one past the labels defined so far
     past : Nat -> Asm.Instr -> Nat
     past bound (Asm.Lbl l) = max bound (S l)
     past bound _ = bound
 
-    go : LabelTable -> (pc : Int) -> SnocList Bits8 -> List Asm.Instr -> IO (SnocList Bits8)
-    go _ _ acc [] = pure acc
-    go labels pc acc (i :: rest) = do
+    defined : LabelTable -> (pc : Int) -> SnocList AsmProblem -> List Asm.Instr ->
+              IO (SnocList AsmProblem)
+    defined _ _ found [] = pure found
+    defined labels pc found (Asm.Lbl l :: rest) = do
+      placed <- LabelTable.define labels l pc
+      defined labels pc (if placed then found else found :< LabelPastBound l) rest
+    defined labels pc found (i :: rest) = defined labels (pc + instrSize pc i) found rest
+
+    -- the instruction, unless its fields fit
+    unfit : Asm.Instr -> List AsmProblem
+    unfit i = if fieldsFit i then [] else [DoesNotFit i]
+
+    encoded : LabelTable -> (pc : Int) -> SnocList Bits8 -> SnocList AsmProblem ->
+              List Asm.Instr -> IO (SnocList Bits8, SnocList AsmProblem)
+    encoded _ _ code found [] = pure (code, found)
+    encoded labels pc code found (i :: rest) = do
       let size = instrSize pc i
-      rel <- fromPrim (displacement labels pc size i)
-      go labels (pc + size) (acc <>< encodeRaw pc rel i) rest
+      case instrLabel i of
+        Nothing => encoded labels (pc + size) (code <>< encodeRaw pc 0 i) (found <>< unfit i) rest
+        Just (l, d) => do
+          Just a <- LabelTable.address labels l
+            | Nothing =>
+              encoded labels (pc + size) (code <>< encodeRaw pc 0 i)
+                (found <>< (MissingLabel l :: unfit i)) rest
+          let rel = labelDisplacement pc size a d
+              far = if fitsInt32 (cast rel) then [] else [LabelTooFar l (pc + size)]
+          encoded labels (pc + size) (code <>< encodeRaw pc rel i) (found <>< (unfit i ++ far))
+            rest

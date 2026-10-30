@@ -10,9 +10,11 @@
 ||| (`InstrFormat.bytes`, which `encodeRaw` is), and its bytes written
 ||| into a buffer, part by part, through a span over the bytes it takes
 ||| (`InstrFormat.write`), with one check of the sink's end
-||| (`InstrFormat.put`). The assembler's first pass reads the sizes, the
-||| second writes the parts into the image (`assembleInto`); `assemble`,
-||| the encoder's reference, makes the bytes as a list.
+||| (`InstrFormat.put`). The assembler writes each instruction's parts
+||| into the text's buffer where it runs, its reference to a label fixed
+||| up once the label has its address (`Native.Codegen.X86.Assembler`);
+||| `assemble`, the encoder's reference apart from it, makes the bytes as
+||| a list, each instruction's size read from its parts.
 module Agree
 
 import Data.Buffer
