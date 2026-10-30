@@ -63,9 +63,6 @@ import Native.Codegen.TermIR.StaticDef as TermIR
 import Native.Codegen.TermIR.StaticSig as TermIR
 import Native.Codegen.TermIR.Var as TermIR
 
-import Control.Monad.Identity
-import Control.Monad.State.Interface
-import Control.Monad.State.State
 import Core.FC
 import Core.Name
 import Data.List
@@ -80,6 +77,7 @@ import Native.Data.Builder as Data
 import Native.Data.Distinct
 import Native.Data.Level
 import Native.Data.RAList as Data
+import Native.Data.Stateful as Data
 import Native.HeapObj.ValEnc
 import Native.Types.Enc as Types
 import Native.Types.Header as Types
@@ -175,23 +173,17 @@ record St (enc : Types.Enc) where
   joins : List JoinFrees
 
 M : Types.Enc -> Type -> Type
-M enc = State (St enc)
+M enc = Data.Stateful (St enc) Void
 
 fresh : IRCommon.Ty enc -> M enc (LocatedIR.Reg enc)
-fresh t = do
-  s <- get
-  put ({ nextReg := S s.nextReg } s)
-  pure (LocatedIR.Reg.Slot s.nextReg t)
+fresh t = Data.Stateful.state (\s => ({ nextReg := S s.nextReg } s, LocatedIR.Reg.Slot s.nextReg t))
 
 freshAll : (ts : List (IRCommon.Ty enc)) -> M enc (All (RV enc) ts)
 freshAll [] = pure []
 freshAll (t :: ts) = [| fresh t :: freshAll ts |]
 
 freshLabel : M enc LocatedIR.Label
-freshLabel = do
-  s <- get
-  put ({ nextLabel := S s.nextLabel } s)
-  pure s.nextLabel
+freshLabel = Data.Stateful.state (\s => ({ nextLabel := S s.nextLabel } s, s.nextLabel))
 
 ||| A block's code: its instructions, as the lowering produces them, and
 ||| its terminator.
@@ -199,7 +191,8 @@ Code : Types.Enc -> Type
 Code enc = (Data.Builder (LocatedIR.Instr enc), LocatedIR.Terminator enc)
 
 addBlock : LocatedIR.Label -> List (LocatedIR.Reg enc) -> Code enc -> M enc ()
-addBlock l ps (is, t) = modify { blocks $= insert l (LocatedIR.MkBlock l ps (toList is) t) }
+addBlock l ps (is, t) =
+  Data.Stateful.modify { blocks $= insert l (LocatedIR.MkBlock l ps (toList is) t) }
 
 ||| Code, with the registers of its environment it reads.
 Lowered : Types.Enc -> Type
@@ -297,9 +290,9 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
         ||| What the next join's block reads.
         popJoin : M enc JoinFrees
         popJoin = do
-          s <- get
+          s <- Data.Stateful.get
           case s.joins of
-            j :: js => do put ({ joins := js } s); pure j
+            j :: js => do Data.Stateful.put ({ joins := js } s); pure j
             [] => pure (0, empty)
 
         ||| The registers of the environment, `depth` deep, at the levels.
@@ -485,12 +478,15 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
 
         ||| The registers of the environment an instruction reads.
         instrUses : Data.RAList (HV enc) ctx -> TermIR.Instr d m (TermIR.Var ctx) ts -> RegMap enc
-        instrUses env i = execState empty (TermIR.Instr.traverseInstr (collect env) i)
+        instrUses env i =
+          fst
+            (Data.Stateful.toPair
+             (Data.Stateful.outcome empty (TermIR.Instr.traverseInstr (collect env) i)))
           where
             collect : Data.RAList (HV enc) ctx -> {0 t : IRCommon.Ty enc} ->
                       TermIR.Opnd (TermIR.Var ctx) t ->
-                      State (RegMap enc) (TermIR.Opnd (TermIR.Var ctx) t)
-            collect env x = do modify (mergeLeft (uses env x)); pure x
+                      Data.Stateful (RegMap enc) Void (TermIR.Opnd (TermIR.Var ctx) t)
+            collect env x = do Data.Stateful.modify (mergeLeft (uses env x)); pure x
 
         ||| The IR of an instruction binding the registers `ds`, given what is live
         ||| after it.
@@ -633,11 +629,11 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
         let run : M enc (List (LocatedIR.Reg enc))
             run = do
               ps <- freshAll s.params
-              modify { joins := snd (frees b (length s.params) []) [] }
+              Data.Stateful.modify { joins := snd (frees b (length s.params) []) [] }
               (_, code) <- body b (Data.RAList.fromAll (held ps)) []
               addBlock 0 [] code
               pure (regs ps)
-        in case runState (MkSt 0 1 empty []) run of
+        in case Data.Stateful.toPair (Data.Stateful.outcome (MkSt 0 1 empty []) run) of
              (st, ps) => LocatedIR.MkFunction s.name s.conv ps 0 (values st.blocks) EmptyFC
         where
           ||| The levels a body reads of the variables bound outside it, directly or
@@ -706,9 +702,10 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
               instrLevels : (depth : Nat) -> TermIR.Instr d' m' (TermIR.Var ctx') ts' ->
                             SortedSet Level
               instrLevels depth i =
-                execState empty
-                  (TermIR.Instr.traverseInstr (\x => do modify (\s => union s (opLevel depth x))
-                                                        pure x) i)
+                fst (Data.Stateful.toPair (Data.Stateful.outcome empty
+                  (TermIR.Instr.traverseInstr (\x => do Data.Stateful.modify
+                                                          (\s => union s (opLevel depth x))
+                                                        pure x) i)))
 
               vectLevels : (depth : Nat) -> Vect n' (TermIR.Opnd (TermIR.Var ctx) t) ->
                            SortedSet Level

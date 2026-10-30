@@ -58,9 +58,6 @@ import Native.Codegen.X86.Asm
 import Native.Codegen.X86.Datum
 import Native.Codegen.X86.Target
 
-import Control.Monad.State.Interface
-import Control.Monad.State.State
-import Control.Monad.Trans
 import Core.Name
 import Data.List
 import Data.Maybe
@@ -90,6 +87,7 @@ import Native.Codegen.LocatedIR.Terminator as LocatedIR
 import Native.Codegen.Target
 import Native.Data.LittleEndian
 import Native.Data.Numbered
+import Native.Data.Stateful as Data
 import Native.HeapObj.LayoutWord
 import Native.HeapObj.ValEnc
 import Native.Primitive.DoubleBits
@@ -202,7 +200,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
         arity = foldl max 0 [length f.params | f <- p.functions, f.conv == IRCommon.Conv.CPS]
         applyAreas =
           Linkage.MkAreas (Target.argsWords abi (replicate arity Rep.WordClass)) 0 arity 0
-    (s, _) <- runStateT (MkRS next2 [<] [<] [<] applyAreas) $ do
+    (s, _) <- Data.Stateful.toEither $ Data.Stateful.outcome (MkRS next2 [<] [<] [<] applyAreas) $
+      do
       entry <- funLabel names p.entry
       emits [Asm.Lbl (sym Linkage.Sym.SymMain), Asm.Jmp entry]
     pure
@@ -210,10 +209,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
          (functionCode names symbols) (finished names p.statics))
     where
       Render : Types.Enc -> Type -> Type
-      Render enc = StateT (RS enc) (Either String)
-
-      failWith : String -> Render enc a
-      failWith = lift . Left
+      Render enc = Data.Stateful (RS enc) String
 
       ||| The pointer tag of the value encoding: a pointer word is the object's
       ||| address plus it, so every load and store through a pointer folds its
@@ -222,11 +218,11 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
       ptag = cast (HeapObj.ValEnc.pointerTag enc.val)
 
       emit : Asm.Instr -> Render enc' ()
-      emit i = modify { text $= (:< i) }
+      emit i = Data.Stateful.modify { text $= (:< i) }
 
       -- the instructions put at the code's end in one step, not one each
       emits : List Asm.Instr -> Render enc ()
-      emits is = modify { text $= (<>< is) }
+      emits is = Data.Stateful.modify { text $= (<>< is) }
 
       sym : Linkage.Sym -> Asm.Label
       sym = Linkage.Sym.label
@@ -237,12 +233,12 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
       staticLabel : Names enc -> Name -> Render enc Asm.Label
       staticLabel names n = case lookup n names.statics of
         Just l => pure l
-        Nothing => failWith ("no static " ++ show n)
+        Nothing => Data.Stateful.failWith ("no static " ++ show n)
 
       funLabel : Names enc -> Name -> Render enc Asm.Label
       funLabel names n = case lookup n names.funs of
         Just l => pure l
-        Nothing => failWith ("no function " ++ show n)
+        Nothing => Data.Stateful.failWith ("no function " ++ show n)
 
       ||| A static's data: its header word, then a word for each field. A
       ||| uniform value's word is the value encoding's; another static's
@@ -258,7 +254,9 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
           field (LocatedIR.Static.SWord w) = pure (Datum.Raw (Data.LittleEndian.le64 (cast w)))
           field (LocatedIR.Static.SVal i) = case HeapObj.ValEnc.valWord enc.val (cast i) of
             Just w => pure (Datum.Raw (Data.LittleEndian.le64 (cast w)))
-            Nothing => failWith ("the integer " ++ show i ++ ", in the static " ++ show s.sym ++
+            Nothing =>
+              Data.Stateful.failWith
+                ("the integer " ++ show i ++ ", in the static " ++ show s.sym ++
                                  ", which the value encoding has no word for")
           field (LocatedIR.Static.SRef t) = do l <- staticLabel names t
                                                pure (Datum.AddressOf l ptag)
@@ -295,8 +293,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
         -- at every call of it, which read the function's blocks once per block
         let rs = resumes f
         traverse_ (block blk (IRCommon.Conv.results f.conv) rs) f.blocks
-        s <- get
-        put ({ text := s.text ++ s.cold, cold := [<] } s)
+        Data.Stateful.modify (\s => { text := s.text ++ s.cold, cold := [<] } s)
         where
           ||| The live values a resume block reloads, in the order its continuation
           ||| stores them, and the layout word for them.
@@ -316,7 +313,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
 
           ||| Record that the code uses at least these areas.
           uses : Linkage.Areas -> Render enc ()
-          uses a = modify { areas $= Linkage.Areas.maxAreas a }
+          uses a = Data.Stateful.modify { areas $= Linkage.Areas.maxAreas a }
 
           ||| The slots of `SCRATCH` a function's registers take: one past the
           ||| largest slot of a register it names, its parameters' and its
@@ -440,13 +437,10 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                                                  Asm.Alu Asm.CMP Asm.RAX Asm.RCX]
 
           coldEmit : Asm.Instr -> Render enc ()
-          coldEmit i = modify { cold $= (:< i) }
+          coldEmit i = Data.Stateful.modify { cold $= (:< i) }
 
           fresh : Render enc Asm.Label
-          fresh = do
-            s <- get
-            put ({ nextLabel := S s.nextLabel } s)
-            pure s.nextLabel
+          fresh = Data.Stateful.state (\s => ({ nextLabel := S s.nextLabel } s, s.nextLabel))
 
           isOdd : Nat -> Bool
           isOdd Z = False
@@ -541,7 +535,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
           loadFloat x (LocatedIR.Opnd.R r) = emit (Asm.MovsdRM x (slotMem r))
           loadFloat x (LocatedIR.Opnd.Imm i) =
             emits [Asm.MovRI Asm.RAX (cast i), Asm.MovqXR x Asm.RAX]
-          loadFloat x (LocatedIR.Opnd.StaticRef _) = failWith "a static where a double is expected"
+          loadFloat x (LocatedIR.Opnd.StaticRef _) =
+            Data.Stateful.failWith "a static where a double is expected"
 
           ||| Pass values of the types where `place` puts them, for a call or a
           ||| return: `ARGS` first, through rax and rcx, then the floating-point
@@ -575,7 +570,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
           ||| A callee that is no function of the program is an error, which each
           ||| call meets first, looking up its label (`funLabel`, `runtimeRoutine`).
           paramTys : Name -> Render enc (List (IRCommon.Ty enc))
-          paramTys f = maybe (failWith ("no function " ++ show f)) pure (lookup f names.params)
+          paramTys f =
+            maybe (Data.Stateful.failWith ("no function " ++ show f)) pure (lookup f names.params)
 
           term : (LocatedIR.Label -> Asm.Label) -> (results : List (IRCommon.Ty enc)) ->
                  LocatedIR.Terminator enc ->
@@ -638,7 +634,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
             LocatedIR.Terminator.Crash msg => do
                                    l <- fresh
                                    let bytes = map (cast . ord) (unpack (msg ++ "\n"))
-                                   modify { rodata $= (:< (l, [Datum.Raw bytes])) }
+                                   Data.Stateful.modify { rodata $= (:< (l, [Datum.Raw bytes])) }
                                    emits [Asm.Lea Asm.RDI (Asm.MRip l 0),
                                           Asm.MovRI Asm.RSI (cast (length bytes)),
                                             Asm.Jmp (sym Linkage.Sym.SymCrash)]
@@ -650,7 +646,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                            (unpack
                                              ("idris: unsupported: " ++ what ++ ", in "
                                               ++ show f.name ++ "\n"))
-                                   modify { rodata $= (:< (l, [Datum.Raw bytes])) }
+                                   Data.Stateful.modify { rodata $= (:< (l, [Datum.Raw bytes])) }
                                    emits [Asm.Lea Asm.RDI (Asm.MRip l 0),
                                           Asm.MovRI Asm.RSI (cast (length bytes)),
                                             Asm.Jmp (sym Linkage.Sym.SymUnsupported)]
@@ -658,7 +654,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
               putValues res xs
               emits [Asm.AluI Asm.ADD Asm.RSP 8, Asm.Ret]
             t =>
-              failWith
+              Data.Stateful.failWith
                 ("the rendering does not support " ++ show (LocatedIR.Terminator.termName t)
                  ++ " yet")
             where
@@ -672,7 +668,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                 let vals = filter (IRCommon.Ty.gcVisible . LocatedIR.Reg.ty) c.live
                     raws = filter (not . IRCommon.Ty.gcVisible . LocatedIR.Reg.ty) c.live
                 when (length vals >= 16777216 || length raws >= 16777216) $
-                  failWith "a continuation keeps more values than its layout word counts"
+                  Data.Stateful.failWith
+                    "a continuation keeps more values than its layout word counts"
                 allocate (16 + 8 * length c.live) (c.live ++ alsoLive)
                 emits [ Asm.Lea Asm.RDX (Asm.MRip (blk c.resume) 0),
                        Asm.MovMR (Asm.MBase Asm.RAX 0) Asm.RDX
@@ -829,7 +826,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                   big <- fresh
                                   msg <- fresh
                                   let bytes = map (cast . ord) (unpack "object size out of range\n")
-                                  modify { rodata $= (:< (msg, [Datum.Raw bytes])) }
+                                  Data.Stateful.modify { rodata $= (:< (msg, [Datum.Raw bytes])) }
                                   traverse_ coldEmit
                                     [ Asm.Lbl big, Asm.Lea Asm.RDI (Asm.MRip msg 0),
                                      Asm.MovRI Asm.RSI (cast (length bytes))
@@ -974,7 +971,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                 -- rsi, rdx, r10, r8 and r9, the result in rax; the kernel keeps every
                 -- register but rcx and r11
                 LocatedIR.Instr.SystemCall d (n :: args) =>
-                  if length args > 6 then failWith "a system call of more than six arguments"
+                  if length args > 6
+                    then Data.Stateful.failWith "a system call of more than six arguments"
                     else do
                     traverse_ (\(r, x) => load r x)
                       (zip [Asm.RDI, Asm.RSI, Asm.RDX, Asm.R10, Asm.R8, Asm.R9] args)
@@ -984,7 +982,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                 LocatedIR.Instr.Loc _ => pure ()
                 LocatedIR.Instr.Comment s => emit (Asm.Comment s)
                 i =>
-                  failWith
+                  Data.Stateful.failWith
                     ("the rendering does not support " ++ LocatedIR.Instr.instrName i ++ " yet")
                 where
                   -- The register each pinned register is.
@@ -1010,7 +1008,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                   partSize Types.Header.StringCharsP =
                     pure (\r => Asm.ShiftI Asm.SHL r 2 :: bytesSize r)
                   partSize Types.Header.BytesLengthP = pure bytesSize
-                  partSize q = failWith ("AllocSized cannot size an object by " ++ show q)
+                  partSize q =
+                    Data.Stateful.failWith ("AllocSized cannot size an object by " ++ show q)
 
                   ||| Allocate an object whose size depends on `count`, as `allocate` does a
                   ||| fixed one: `size r` turns the count in `r` into the object's bytes. The
@@ -1045,7 +1044,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                   ||| given (`Lower.lowerProgram`), so a call of one ends here, and the
                   ||| compile with it.
                   runtimeRoutine : Name -> Render enc Asm.Label
-                  runtimeRoutine n = failWith ("no runtime routine " ++ show n)
+                  runtimeRoutine n = Data.Stateful.failWith ("no runtime routine " ++ show n)
 
                   ||| What a load or store through the register subtracts: the pointer tag if
                   ||| the register holds a pointer word, nothing if it holds an address.
@@ -1113,7 +1112,9 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                       IRCommon.Op.Shl => shift Asm.SHL
                       IRCommon.Op.Shr => shift Asm.SHR
                       IRCommon.Op.Sar => shift Asm.SAR
-                      _ => failWith ("the rendering does not support " ++ show o ++ " yet")
+                      _ =>
+                        Data.Stateful.failWith
+                          ("the rendering does not support " ++ show o ++ " yet")
                     where
                       jo : Render enc ()
                       jo = maybe (pure ()) (\l => emit (Asm.Jcc Asm.O l)) ov
@@ -1123,7 +1124,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                       loadValue : Asm.Reg64 -> LocatedIR.Opnd enc -> Render enc ()
                       loadValue r (LocatedIR.Opnd.Imm c) = emit (Asm.MovRI r (cast c))
                       loadValue r (LocatedIR.Opnd.StaticRef _) =
-                        failWith "a static where a fixnum is expected"
+                        Data.Stateful.failWith "a static where a fixnum is expected"
                       loadValue r (LocatedIR.Opnd.R x) = do loadReg r x
                                                             emit (Asm.ShiftI Asm.SAR r 1)
 
@@ -1139,7 +1140,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                       loadTwice : Asm.Reg64 -> LocatedIR.Opnd enc -> Render enc ()
                       loadTwice r (LocatedIR.Opnd.Imm c) = emit (Asm.MovRI r (2 * cast c))
                       loadTwice r (LocatedIR.Opnd.StaticRef _) =
-                        failWith "a static where a fixnum is expected"
+                        Data.Stateful.failWith "a static where a fixnum is expected"
                       loadTwice r (LocatedIR.Opnd.R x) = do
                         loadReg r x
                         when (HeapObj.ValEnc.fixnumTag enc.val /= 0) $
@@ -1208,16 +1209,16 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
       functionCode : Names enc -> (symbols : SortedMap Name Linkage.Sym) -> RS enc ->
                      LocatedIR.Function enc -> Either String (RS enc, List Asm.Instr)
       functionCode names symbols s f = do
-        (s', _) <- runStateT s (function names symbols f)
+        (s', _) <- Data.Stateful.toEither (Data.Stateful.outcome s (function names symbols f))
         pure ({ text := [<] } s', s'.text <>> [])
 
       -- the statics' data after what the rendering has made: the read-only
       -- data and the areas
       finished : Names enc -> List (LocatedIR.Static enc) -> RS enc -> Either String Rendered
       finished names statics s = do
-        (s', _) <- runStateT s $
+        (s', _) <- Data.Stateful.toEither $ Data.Stateful.outcome s $
           traverse_ (\st => do l <- staticLabel names st.sym
                                pieces <- staticData names st
-                               modify { rodata $= (:< (l, pieces)) })
+                               Data.Stateful.modify { rodata $= (:< (l, pieces)) })
             statics
         pure (MkRendered (s'.rodata <>> []) s'.areas)
