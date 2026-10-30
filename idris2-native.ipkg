@@ -94,6 +94,7 @@ modules =
     Native.Data.Distinct,
     Native.Data.GrowingBuffer,
     Native.Data.Inside,
+    Native.Data.Level,
     Native.Data.LittleEndian,
     Native.Data.Numbered,
     Native.Data.RAList,

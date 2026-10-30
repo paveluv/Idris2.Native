@@ -78,6 +78,7 @@ import Data.Vect
 import Data.Zippable
 import Native.Data.Builder as Data
 import Native.Data.Distinct
+import Native.Data.Level
 import Native.Data.RAList as Data
 import Native.HeapObj.ValEnc
 import Native.Types.Enc as Types
@@ -306,7 +307,7 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
         registersAt env depth lvs = foldl add empty (Prelude.toList lvs)
           where
             add : RegMap enc -> Level -> RegMap enc
-            add m l = case Data.RAList.lookup (minus depth (S l)) env of
+            add m l = case Data.RAList.lookup (Data.Level.position depth l) env of
               Just (Data.RAList.MkFound (InReg r) _) => insert (LocatedIR.Reg.slot r) r m
               _ => m
     body (TermIR.Body.Jump l xs) env li = do
@@ -698,11 +699,7 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
             TermIR.Body.Unsupported _ => (empty, id)
             where
               opLevel : (depth : Nat) -> TermIR.Opnd (TermIR.Var ctx'') t -> SortedSet Level
-              opLevel depth (TermIR.Opnd.V x) = singleton (level depth x)
-                where
-                  ||| The level of a variable in a context of `depth` entries.
-                  level : (depth : Nat) -> TermIR.Var ctx' t' -> Level
-                  level depth v = minus depth (S v.index)
+              opLevel depth (TermIR.Opnd.V x) = singleton (Data.Level.level depth x.index)
               opLevel _ _ = empty
 
               ||| The levels an instruction reads.

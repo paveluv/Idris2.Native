@@ -1,7 +1,7 @@
 ||| That a list has a value at a position (`AtIndex`), counted from its
-||| front: what a variable of the term IR proves of its context, and what a
-||| random-access list's lookups prove of the list they stand for. Proofs of
-||| it are erased wherever they are used, so they cost nothing at run time.
+||| front, as a random-access list's lookups prove it of the list they
+||| stand for. Proofs of it are erased wherever they are used, so they
+||| cost nothing at run time.
 |||
 ||| A position of a list made by `++` is one of either part: below the left
 ||| part's length it is the same position of the left part (`inLeft`,

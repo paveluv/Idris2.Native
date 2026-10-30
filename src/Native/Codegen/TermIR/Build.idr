@@ -342,10 +342,11 @@ levels d ts = go ts (length ts)
 -- The label context `ls` and the context `ctx` come as random-access lists
 -- of their own types (`RAList.fromList`), `labels` and `types`, each with
 -- its depth, which the erased proofs keep in step with it. The position of
--- level n in a context of d entries is d - 1 - n, and the type there is
--- read and compared with the level's in steps of the order of the
--- logarithm of d (`Var.varAt`): walking the list to the position, a body
--- whose instructions read binders far below cost the square of its length.
+-- level n in a context of d entries is d - 1 - n (`Level.position`), and
+-- the type there is read and compared with the level's in steps of the
+-- order of the logarithm of d (`Var.varAtLevel`): walking the list to the
+-- position, a body whose instructions read binders far below cost the
+-- square of its length.
 cases : {0 ls : List (List (IRCommon.Ty enc))} -> Data.RAList Singleton ls -> (dl : Nat) ->
         (0 _ : dl = length ls) ->
         {0 ctx : List (IRCommon.Ty enc)} -> Data.RAList Singleton ctx -> (dc : Nat) ->
@@ -417,7 +418,7 @@ toBody labels dl pl types dc pc body = case body of
   where
     label : {0 ls' : List (List (IRCommon.Ty enc))} -> Data.RAList Singleton ls' -> (dl : Nat) ->
             (0 _ : dl = length ls') -> LLvl ps -> Maybe (Var ls' ps)
-    label labels dl _ (MkLLvl n) = if n < dl then Var.varAt (minus dl (S n)) ps labels else Nothing
+    label labels dl _ (MkLLvl n) = Var.varAtLevel dl n ps labels
 
     opnd : {0 ctx' : List (IRCommon.Ty enc)} -> Data.RAList Singleton ctx' -> (dc : Nat) ->
            (0 _ : dc = length ctx') -> Opnd Lvl t -> Maybe (Opnd (Var ctx') t)
@@ -425,7 +426,7 @@ toBody labels dl pl types dc pc body = case body of
       where
         var : {0 ctx'' : List (IRCommon.Ty enc')} -> Data.RAList Singleton ctx'' -> (dc : Nat) ->
               (0 _ : dc = length ctx'') -> Lvl t' -> Maybe (Var ctx'' t')
-        var types dc _ (MkLvl n) = if n < dc then Var.varAt (minus dc (S n)) t' types else Nothing
+        var types dc _ (MkLvl n) = Var.varAtLevel dc n t' types
     opnd types dc _ (Opnd.W i) = Just (Opnd.W i)
     opnd types dc _ (Opnd.Fx {fx} {ok} i) = Just (Opnd.Fx {fx} {ok} i)
     opnd types dc _ (Opnd.Vx {fx} {ok} i) = Just (Opnd.Vx {fx} {ok} i)

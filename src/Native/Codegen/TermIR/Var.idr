@@ -8,6 +8,7 @@ import Data.Nat
 import Data.Singleton
 import Decidable.Equality.Core
 import Native.Data.AtIndex as Data
+import Native.Data.Level
 import Native.Data.RAList as Data
 
 %default total
@@ -45,18 +46,26 @@ public export
 entry : {0 xs : List a} -> Data.RAList Singleton xs -> Var xs x -> a
 entry entries v = unVal (fetch v entries)
 
-||| The variable at the position, if the context has the type there, from
-||| the context as a random-access list of its own types
-||| (`RAList.fromList`): in steps of the order of the logarithm of its
-||| length.
-public export
-varAt : DecEq a => {0 xs : List a} -> (i : Nat) -> (x : a) -> Data.RAList Singleton xs ->
-        Maybe (Var xs x)
-varAt i x types = case Data.RAList.lookup i types of
-  Just (Data.RAList.MkFound (Val y) at) => case decEq x y of
-    Yes Refl => Just (MkVar i at)
-    No _ => Nothing
-  Nothing => Nothing
+||| The variable at the level, in a context of `depth` entries
+||| (`Level.position`), if the level names one and the context has the
+||| type there (`varAt`).
+export
+varAtLevel : DecEq a => {0 xs : List a} -> (depth, level : Nat) -> (x : a) ->
+             Data.RAList Singleton xs -> Maybe (Var xs x)
+varAtLevel depth l x types =
+  if l < depth then varAt (Data.Level.position depth l) x types else Nothing
+  where
+    ||| The variable at the position, if the context has the type there, from
+    ||| the context as a random-access list of its own types
+    ||| (`RAList.fromList`): in steps of the order of the logarithm of its
+    ||| length.
+    varAt : {0 xs : List a} -> (i : Nat) -> (x : a) -> Data.RAList Singleton xs ->
+            Maybe (Var xs x)
+    varAt i x types = case Data.RAList.lookup i types of
+      Just (Data.RAList.MkFound (Val y) at) => case decEq x y of
+        Yes Refl => Just (MkVar i at)
+        No _ => Nothing
+      Nothing => Nothing
 
 ||| Every entry of a list with its variable, in one pass: the proofs are
 ||| erased, so building them costs nothing at run time.
