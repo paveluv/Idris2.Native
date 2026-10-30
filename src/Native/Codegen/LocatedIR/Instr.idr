@@ -271,12 +271,12 @@ instrRegs i = case i of
   WordToVal d x => [d, x]
   LoadHeader d x => [d, x]
   LoadPart _ d x => [d, x]
-  AllocObj d _ fs live => d :: foldr (\o, rs => Opnd.opRegs o ++ rs) live fs
+  AllocObj d _ fs live => d :: Opnd.opsRegs fs live
   AllocSized d _ count fill live => d :: count :: maybe [] Opnd.opRegs fill ++ live
-  DirectCall _ args ds _ live => ds ++ foldr (\o, rs => Opnd.opRegs o ++ rs) live args
+  DirectCall _ args ds _ live => ds ++ Opnd.opsRegs args live
   GetPinned _ d => [d]
   SetPinned _ x => Opnd.opRegs x
-  SystemCall d args => d :: foldr (\o, rs => Opnd.opRegs o ++ rs) [] args
+  SystemCall d args => d :: Opnd.opsRegs args []
   Move d x => [d, x]
   Loc _ => []
   Comment _ => []

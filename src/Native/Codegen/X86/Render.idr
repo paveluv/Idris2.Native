@@ -88,7 +88,6 @@ import Native.Codegen.LocatedIR.Reg as LocatedIR
 import Native.Codegen.LocatedIR.Static as LocatedIR
 import Native.Codegen.LocatedIR.Terminator as LocatedIR
 import Native.Codegen.Target
-import Native.Data.Builder as Data
 import Native.Data.LittleEndian
 import Native.Data.Numbered
 import Native.HeapObj.LayoutWord
@@ -599,7 +598,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                    emit (Asm.Jmp (blk d))
             LocatedIR.Terminator.Call f args c => do
               l <- funLabel names f
-              pushCont blk c (argRegs args)
+              pushCont blk c (LocatedIR.Opnd.opsRegs args [])
               putValues !(paramTys f) args
               emit (Asm.Jmp l)
             LocatedIR.Terminator.TailCall f args => do
@@ -645,9 +644,6 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                 ("the rendering does not support " ++ show (LocatedIR.Terminator.termName t)
                  ++ " yet")
             where
-              argRegs : List (LocatedIR.Opnd enc) -> List (LocatedIR.Reg enc)
-              argRegs = Data.Builder.joinMap LocatedIR.Opnd.opRegs
-
               ||| Allocate and initialise the continuation of a non-tail call, and make it
               ||| the current one. Its layout word counts fewer than 2^24 GC-visible and
               ||| fewer than 2^24 raw values (`layoutWord`); a continuation keeping more

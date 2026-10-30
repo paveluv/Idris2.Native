@@ -90,13 +90,13 @@ termRegs t = case t of
   IfFixnums rs _ _ => rs
   Branch _ x y _ _ => Opnd.opRegs x ++ Opnd.opRegs y
   Switch r _ _ => [r]
-  Call _ args c => foldr (\o, rs => Opnd.opRegs o ++ rs) c.live args
-  TailCall _ args => foldr (\o, rs => Opnd.opRegs o ++ rs) [] args
+  Call _ args c => Opnd.opsRegs args c.live
+  TailCall _ args => Opnd.opsRegs args []
   Apply f x c => f :: x :: c.live
   TailApply f x => [f, x]
   Return x => Opnd.opRegs x
-  Enter f args => f :: foldr (\o, rs => Opnd.opRegs o ++ rs) [] args
-  Ret args => foldr (\o, rs => Opnd.opRegs o ++ rs) [] args
+  Enter f args => f :: Opnd.opsRegs args []
+  Ret args => Opnd.opsRegs args []
   Crash _ => []
   Unsupported _ => []
 

@@ -40,3 +40,11 @@ opRegs : Opnd enc -> List (Reg enc)
 opRegs (R r) = [r]
 opRegs (Imm _) = []
 opRegs (StaticRef _) = []
+
+||| The registers of the operands, in their order, in front of `rest`.
+export
+opsRegs : List (Opnd enc) -> (rest : List (Reg enc)) -> List (Reg enc)
+opsRegs [] rest = rest
+opsRegs (R r :: os) rest = r :: opsRegs os rest
+opsRegs (Imm _ :: os) rest = opsRegs os rest
+opsRegs (StaticRef _ :: os) rest = opsRegs os rest
