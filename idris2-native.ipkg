@@ -93,6 +93,7 @@ modules =
     Native.Data.Distinct,
     Native.Data.GrowingBuffer,
     Native.Data.LittleEndian,
+    Native.Data.Numbered,
     Native.Data.RAList,
     Native.Data.WriteBuilder,
     Native.Failure,

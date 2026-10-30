@@ -15,13 +15,14 @@ import Data.List
 import Groups
 import Native.Codegen.X86.Asm
 import Native.Codegen.X86.Encode
+import Native.Data.Numbered
 import System.File
 
 writeBytes : String -> List Bits8 -> IO ()
 writeBytes path bs = do
   let n = length bs
   Just buf <- newBuffer (cast n) | Nothing => putStrLn "buffer allocation failed"
-  traverse_ (\(i, b) => setBits8 buf (cast i) b) (zip [0 .. minus n 1] bs)
+  traverse_ (\(i, b) => setBits8 buf (cast i) b) (numbered bs)
   Right () <- writeBufferToFile path buf (cast n)
     | Left err => putStrLn ("write failed: " ++ show err)
   pure ()

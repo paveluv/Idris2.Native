@@ -43,7 +43,6 @@ import Core.TTC
 import Core.UnifyState
 import Data.List
 import Data.Maybe
-import Data.Zippable
 import Idris.Error
 import Idris.Pretty
 import Idris.REPL.Opts
@@ -53,6 +52,7 @@ import Libraries.Data.NameMap
 import Libraries.Text.PrettyPrint.Prettyprinter.Doc
 import Libraries.Text.PrettyPrint.Prettyprinter.Render.String
 import Libraries.Utils.Binary
+import Native.Data.Numbered
 import System.File
 
 %default covering
@@ -78,15 +78,12 @@ report errs
          case reverse es of
               [] => pure ()
               (e :: earlier) =>
-                do texts <- traverse rendered (numbered (reverse earlier))
+                do texts <- traverse rendered (Data.Numbered.numbered (reverse earlier))
                    let (fc, msg) = errorMessage e
                    throw
                      (GenericMsg fc
                       (fastConcat (map (++ "\n") texts) ++ prefixed (length earlier) msg))
   where
-    numbered : List a -> List (Nat, a)
-    numbered xs = zip [0 .. length xs] xs
-
     -- Idris prefixes the whole with "Error:", so only the errors after the
     -- first carry their own.
     prefixed : Nat -> String -> String

@@ -113,6 +113,7 @@ import Libraries.Data.List.Thin
 import Libraries.Data.NameMap
 import Libraries.Data.WithDefault
 import Native.Data.Builder as Data
+import Native.Data.Numbered
 import Native.Data.WriteBuilder
 import Native.Rep
 import System.File
@@ -472,7 +473,7 @@ mutual
           = do defs <- get Ctxt
                vals <- traverse (evalClosure defs . snd) res
                pure (mapMaybe (\kv => map (\b => (b, fst kv)) (given (snd kv)))
-                              (zip [0 .. length vals] vals))
+                              (Data.Numbered.numbered vals))
       resultPositions i _ = pure []
 
       argAt : Nat -> List x -> Maybe x

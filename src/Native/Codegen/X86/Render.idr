@@ -90,6 +90,7 @@ import Native.Codegen.LocatedIR.Terminator as LocatedIR
 import Native.Codegen.Target
 import Native.Data.Builder as Data
 import Native.Data.LittleEndian
+import Native.Data.Numbered
 import Native.HeapObj.LayoutWord
 import Native.HeapObj.ValEnc
 import Native.Primitive.DoubleBits
@@ -233,7 +234,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
       staticData : Names enc -> LocatedIR.Static enc -> Render enc (List Datum)
       staticData names s = do
         fields <- traverse field s.fields
-        pure (Datum.Raw (Data.LittleEndian.le64 (cast (Types.Header.encodeHeader s.header))) :: fields)
+        pure
+          (Datum.Raw (Data.LittleEndian.le64 (cast (Types.Header.encodeHeader s.header))) :: fields)
         where
           field : LocatedIR.Static.SField -> Render enc Datum
           field (LocatedIR.Static.SWord w) = pure (Datum.Raw (Data.LittleEndian.le64 (cast w)))
@@ -465,18 +467,12 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                          (Asm.MovMR
                                            (Asm.MBase Asm.RDI (cast (Area.rootOffset (cast j))))
                                           Asm.RCX))
-                        (zip (indices gc) gc)
+                        (Data.Numbered.numbered gc)
               out (Asm.AluI Asm.ADD Asm.RDX (cast (length gc)))
               out (Asm.MovMR (Asm.MBase Asm.RSI 0) Asm.RDX)
             traverse_ (\r => do out (Asm.MovRM Asm.RCX (slotMem r))
                                 out (Asm.Push Asm.RCX)) raw
             when (isOdd (length raw)) $ out (Asm.Push Asm.RCX)
-            where
-              indices : List x -> List Nat
-              indices xs = go 0 xs
-                where go : Nat -> List x -> List Nat
-                      go _ [] = []
-                      go i (_ :: ys) = i :: go (S i) ys
 
           setBase : List Asm.Instr
           setBase = [Asm.Lea Asm.RBX (Asm.MRip (sym Linkage.Sym.SymScratch) 0)]
@@ -502,13 +498,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                          (Asm.MovRM Asm.RCX
                                           (Asm.MBase Asm.RDI (cast (Area.rootOffset (cast j)))))
                                        out (Asm.MovMR (slotMem r) Asm.RCX))
-                        (zip (indices gc) gc)
-            where
-              indices : List x -> List Nat
-              indices xs = go 0 xs
-                where go : Nat -> List x -> List Nat
-                      go _ [] = []
-                      go i (_ :: ys) = i :: go (S i) ys
+                        (Data.Numbered.numbered gc)
 
           ||| Allocate `bytes` into rax: the fast path inline, the slow path cold, with
           ||| `live` saved across it. Leaves rax pointing at the uninitialised object.
@@ -677,7 +667,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                          emit
                                            (Asm.MovMR (Asm.MBase Asm.RAX (cast (16 + 8 * i)))
                                             Asm.RDX))
-                          (zip [0 .. length c.live] (vals ++ raws))
+                          (Data.Numbered.numbered (vals ++ raws))
                 emits (tagPointer Asm.R12 Asm.RAX)
 
           block : (LocatedIR.Label -> Asm.Label) -> (results : List (IRCommon.Ty enc)) ->
@@ -695,7 +685,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                            (Asm.MovRM Asm.RCX
                                             (Asm.MBase Asm.R12 (cast (16 + 8 * i) - ptag)))
                                          emit (Asm.MovMR (slotMem r) Asm.RCX))
-                          (zip [0 .. length live] live)
+                          (Data.Numbered.numbered live)
                 emit (Asm.MovRM Asm.R12 (Asm.MBase Asm.R12 (8 - ptag)))
               Nothing => emit (Asm.Lbl (blk b.label))
             traverse_ (instr blk) b.body
@@ -813,7 +803,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                                                (Asm.MBase Asm.RAX
                                                                 (cast (8 * (S i))))
                                                                Asm.RDX))
-                                            (zip [0 .. length fs] fs)
+                                            (Data.Numbered.numbered fs)
                                   emits (tagPointer Asm.RAX Asm.RAX)
                                   store d Asm.RAX
                 -- The count is checked against its part's bits first, so the size cannot

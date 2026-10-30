@@ -17,10 +17,9 @@ import Native.Codegen.X86.Asm
 import Native.Codegen.X86.Datum as X86
 import Native.Codegen.X86.Target
 
-import Data.List
-import Data.Zippable
 import Native.Area
 import Native.Data.LittleEndian
+import Native.Data.Numbered
 import Native.HeapObj.LayoutWord
 import Native.HeapObj.ValEnc as HeapObj
 import Native.Types.Enc as Types
@@ -240,7 +239,8 @@ seedText enc window = startText enc.val window ++ haltText enc.val ++ unsupporte
         -- arguments in SCRATCH, at r9.
         loads : (X86.Asm.Reg64 -> Bool) -> List X86.Asm.Instr
         loads which = [ X86.Asm.MovRM r (X86.Asm.MBase X86.Asm.R9 (cast (8 * i)))
-                      | (i, r) <- zip [0 .. nregs] (map X86.Asm.regOfNum abi.wordRegs), which r ]
+                      | (i, r) <- Data.Numbered.numbered (map X86.Asm.regOfNum abi.wordRegs),
+                        which r ]
 
         ||| A part of the closure header in `rax`, extracted into a register.
         part : X86.Asm.Reg64 -> Types.Header.HeaderPart Types.Kind.CLOSURE -> List X86.Asm.Instr

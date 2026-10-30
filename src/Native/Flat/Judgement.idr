@@ -52,9 +52,9 @@ import Core.TT.Term
 import Core.Value
 import Data.List
 import Data.Maybe
-import Data.Zippable
 import Libraries.Data.NameMap
 import Native.Data.Builder
+import Native.Data.Numbered
 import Native.Rep
 
 %default covering
@@ -105,7 +105,7 @@ conFields args conTy
         = do defs <- get Ctxt
              vals <- traverse (evalClosure defs . snd) res
              pure (mapMaybe (\(k, v) => map (\b => (b, k)) (given v))
-                            (zip [0 .. length vals] vals))
+                            (Data.Numbered.numbered vals))
     resultPositions i _ = pure []
 
     argAt : Nat -> List a -> Maybe a

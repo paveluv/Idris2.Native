@@ -123,6 +123,7 @@ import Native.Area
 import Native.Carrier
 import Native.Data.Builder as Data
 import Native.Data.Distinct
+import Native.Data.Numbered
 import Native.Field
 import Native.Flat.Exp
 import Native.HeapObj.Shape as HeapObj
@@ -568,7 +569,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
             -- registers
             Flat.Exp.AsField k =>
               traverse (\(j, s) => unbox s (if j == k then x else TermIR.Opnd.Erased))
-                (numbered c.fields)
+                (Data.Numbered.numbered c.fields)
             Flat.Exp.AsObject _ => case c.fields of
                        [] => pure []
                        fs => do
@@ -578,15 +579,7 @@ parameters {enc : Types.Enc} {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val}
                                                     (TermIR.MkMem (TermIR.Mem.AtPtr q) Nothing
                                                       (8 + 8 * cast j)))
                                                  unbox s f)
-                                  (numbered fs)
-            where
-              ||| Each element with its position.
-              numbered : List a -> List (Nat, a)
-              numbered = go 0
-                where
-                  go : Nat -> List a -> List (Nat, a)
-                  go _ [] = []
-                  go i (x :: xs) = (i, x) :: go (S i) xs
+                                  (Data.Numbered.numbered fs)
 
       ||| The ordinary value of the shape, from its registers.
       box : Flat.Exp.Shape -> LowerFlat.Value enc v -> B (TermIR.Opnd v IRCommon.Ty.Val)
@@ -2219,7 +2212,7 @@ lowerProgram enc platform realised _ forms shapes staticReads staticObjects cons
     answered d = d
 
     -- The type constructors the program builds or matches as values, each
-    -- numbered by its place in the order of their names.
+    -- Data.Numbered.numbered by its place in the order of their names.
     typeCons : SortedMap Name Int
     typeCons = let ns = Prelude.toList (foldl defNames empty vmdefs0)
                in fromList (zip ns (map cast [0 .. length ns]))
