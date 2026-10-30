@@ -228,11 +228,15 @@ Env : (IRCommon.Ty enc -> Type) -> Type
 Env v = SortedMap Int (TermIR.Opnd v IRCommon.Ty.Val, Maybe Constant)
 
 ||| Each instruction with what is read after it, given what is read after
-||| the list: one pass, from the end, so that a case does not compute what
-||| the code after it reads again, which made a function of n cases cost the
-||| cube of n.
+||| the list, where that is read: only a case reads it (`lower`), and a case
+||| that ends the list has `later`. So the instructions before the list's
+||| first case that does not end it, which nothing asks, carry `later` too,
+||| and their sets are not made: most cases of VMCode end their lists. From
+||| that case on, one pass, from the end, so that a case does not compute
+||| what the code after it reads again, which made a function of n cases
+||| cost the cube of n.
 annotate : SortedSet Int -> List VMInst -> List (VMInst, SortedSet Int)
-annotate later is = snd (go is)
+annotate later is = untilCase is
   where
     reads1 : VMInst -> SortedSet Int
     reads1 inst = case inst of
@@ -265,6 +269,14 @@ annotate later is = snd (go is)
     go : List VMInst -> (SortedSet Int, List (VMInst, SortedSet Int))
     go [] = (later, [])
     go (i :: is) = let (r, ais) = go is in (union r (reads1 i), (i, r) :: ais)
+
+    untilCase : List VMInst -> List (VMInst, SortedSet Int)
+    untilCase [] = []
+    untilCase [i] = [(i, later)]
+    untilCase (i :: is) = case i of
+      CASE _ _ _ => let (r, ais) = go is in (i, r) :: ais
+      CONSTCASE _ _ _ => let (r, ais) = go is in (i, r) :: ais
+      _ => (i, later) :: untilCase is
 
 get : Env v -> Reg -> TermIR.Opnd v IRCommon.Ty.Val
 get env r = maybe TermIR.Opnd.Erased fst (key r >>= \k => lookup k env)
