@@ -2128,6 +2128,7 @@ lowerProgram enc platform realised _ forms shapes staticReads staticObjects cons
       -- `where` block would be made again at each use
       byName = the (SortedMap Name Flat.Exp.FlatDef) (fromList [(fd.name, fd) | fd <- forms])
       cells = the (SortedMap Name Nat) (fromList (zip constants [0 .. length constants]))
+      typeCons = numberedTypeCons vmdefs0
   traverse_ (agrees byName) (mapMaybe boundForeign vmdefs)
   let entryPlan = case Data.List.lookup mainExpression vmdefs of
                     Just (MkVMFun [] body) => FromVM [] body
@@ -2152,7 +2153,7 @@ lowerProgram enc platform realised _ forms shapes staticReads staticObjects cons
       -- the image lays them out in: so the image is the same, byte for
       -- byte, whatever order the statics were collected in
       statics = Data.SortedMap.toList
-                  (foldl mergeLeft boxing (staticObjects :: mapMaybe bodyStatics vmdefs))
+                  (foldl mergeLeft boxing (staticObjects :: mapMaybe (bodyStatics typeCons) vmdefs))
       rs = mapMaybe ready statics
       laid = Data.SortedSet.fromList (map (\(s ** _) => s.sym) rs)
   -- the static object each constant marked static is read by, if it is
@@ -2211,11 +2212,11 @@ lowerProgram enc platform realised _ forms shapes staticReads staticObjects cons
         inst i = i
     answered d = d
 
-    -- The type constructors the program builds or matches as values, each
+    -- The type constructors the definitions build or match as values, each
     -- numbered by its place in the order of their names.
-    typeCons : SortedMap Name Int
-    typeCons = let ns = Prelude.toList (foldl defNames empty vmdefs0)
-               in fromList (zip ns (map cast [0 .. length ns]))
+    numberedTypeCons : List (Name, VMDef) -> SortedMap Name Int
+    numberedTypeCons defs = let ns = Prelude.toList (foldl defNames empty defs)
+                            in fromList (zip ns (map cast [0 .. length ns]))
       where
         mutual
           names : SortedSet Name -> List VMInst -> SortedSet Name
@@ -2343,8 +2344,9 @@ lowerProgram enc platform realised _ forms shapes staticReads staticObjects cons
     ||| local holding a constant is folded while compiling, so every constant
     ||| a local may hold is followed through casts; the result may name
     ||| statics the lowering does not use, which costs only their bytes.
-    instructionStatics : List VMInst -> SortedMap Name ConstantWord.StaticPlan
-    instructionStatics body = snd (go body (empty, note (Str "") empty))
+    instructionStatics : (typeCons : SortedMap Name Int) -> List VMInst ->
+                         SortedMap Name ConstantWord.StaticPlan
+    instructionStatics typeCons body = snd (go body (empty, note (Str "") empty))
       where
         note : Constant -> SortedMap Name ConstantWord.StaticPlan ->
                SortedMap Name ConstantWord.StaticPlan
@@ -2397,9 +2399,10 @@ lowerProgram enc platform realised _ forms shapes staticReads staticObjects cons
                (foldl (\(known, ss), alt => go (snd alt) (known, note (fst alt) ss)) acc alts))
           one _ acc = acc
 
-    bodyStatics : (Name, VMDef) -> Maybe (SortedMap Name ConstantWord.StaticPlan)
-    bodyStatics (_, MkVMFun _ body) = Just (instructionStatics body)
-    bodyStatics _ = Nothing
+    bodyStatics : (typeCons : SortedMap Name Int) -> (Name, VMDef) ->
+                  Maybe (SortedMap Name ConstantWord.StaticPlan)
+    bodyStatics typeCons (_, MkVMFun _ body) = Just (instructionStatics typeCons body)
+    bodyStatics _ _ = Nothing
 
     ||| A static object whose words name no other static: its definition, the
     ||| same whatever the declarations.
