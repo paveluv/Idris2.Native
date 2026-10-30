@@ -14,6 +14,7 @@
 module Native.Data.GrowingBuffer
 
 import Native.Data.ByteSink
+import Native.Data.Inside
 
 import Data.Buffer
 
@@ -75,35 +76,34 @@ export
 filledTo : GrowingBuffer -> (used : Int) -> GrowingBuffer
 filledTo g n = { used := max 0 (min n g.capacity) } g
 
-||| Whether the `width` bytes from `at` lie in the buffer.
-within : GrowingBuffer -> (at, width : Int) -> Bool
-within g at width = 0 <= at && at <= g.capacity - width
-
 ||| The byte at `at`; 0 past the buffer.
 export
 getBits8 : GrowingBuffer -> (at : Int) -> IO Bits8
-getBits8 g at = if within g at 1 then Data.Buffer.getBits8 g.buffer at else pure 0
+getBits8 g at = if Inside.isInside g.capacity at 1 then Data.Buffer.getBits8 g.buffer at else pure 0
 
 ||| The word at `at`, as an `Int`, low byte first; 0 past the buffer.
 export
 getInt : GrowingBuffer -> (at : Int) -> IO Int
-getInt g at = if within g at 8 then Data.Buffer.getInt g.buffer at else pure 0
+getInt g at = if Inside.isInside g.capacity at 8 then Data.Buffer.getInt g.buffer at else pure 0
 
 ||| The byte written at `at`, if it lies in the buffer.
 export
 setBits8 : GrowingBuffer -> (at : Int) -> Bits8 -> IO ()
-setBits8 g at v = if within g at 1 then Data.Buffer.setBits8 g.buffer at v else pure ()
+setBits8 g at v =
+  if Inside.isInside g.capacity at 1 then Data.Buffer.setBits8 g.buffer at v else pure ()
 
 ||| The number's four bytes written at `at`, low byte first, if they lie in
 ||| the buffer.
 export
 setBits32 : GrowingBuffer -> (at : Int) -> Bits32 -> IO ()
-setBits32 g at v = if within g at 4 then Data.Buffer.setBits32 g.buffer at v else pure ()
+setBits32 g at v =
+  if Inside.isInside g.capacity at 4 then Data.Buffer.setBits32 g.buffer at v else pure ()
 
 ||| The word written at `at`, low byte first, if it lies in the buffer.
 export
 setInt : GrowingBuffer -> (at : Int) -> Int -> IO ()
-setInt g at v = if within g at 8 then Data.Buffer.setInt g.buffer at v else pure ()
+setInt g at v =
+  if Inside.isInside g.capacity at 8 then Data.Buffer.setInt g.buffer at v else pure ()
 
 ||| A sink over the room past the filled bytes.
 export
@@ -116,7 +116,8 @@ export
 put : ByteSink -> GrowingBuffer -> IO (Maybe ByteSink)
 put s g = copied (cast g.used) (ByteSink.fits s (ByteSink.start s) (cast g.used + 0)) Refl
   where
-    copied : (k : Nat) -> (fit : Bool) -> (0 _ : ByteSink.fits s (ByteSink.start s) (k + 0) = fit) ->
+    copied : (k : Nat) -> (fit : Bool) ->
+             (0 _ : ByteSink.fits s (ByteSink.start s) (k + 0) = fit) ->
              IO (Maybe ByteSink)
     copied k False _ = pure Nothing
     copied k True fit = do

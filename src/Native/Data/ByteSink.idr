@@ -22,6 +22,8 @@
 ||| platform in scope is.
 module Native.Data.ByteSink
 
+import Native.Data.Inside
+
 import Data.Buffer
 
 %default total
@@ -37,14 +39,12 @@ record ByteSink where
   end : Int
 
 ||| A sink over the `size` bytes of the buffer from `at`, if they lie inside
-||| it.
+||| it (`isInside`).
 export
 sink : Buffer -> (at, size : Int) -> IO (Maybe ByteSink)
 sink buf at size = do
   n <- rawSize buf
-  -- the size compared with the bytes left past `at`: `at + size` could
-  -- wrap past the largest `Int`
-  pure (if 0 <= at && 0 <= size && at <= n && size <= n - at then Just (MkByteSink buf at (at + size))
+  pure (if Inside.isInside n at size then Just (MkByteSink buf at (at + size))
           else Nothing)
 
 ||| Whether the stretch is written to its end.
@@ -119,14 +119,16 @@ putBytes s bs sp = fromPrim (go bs sp)
       MkIORes sp' w' => go rest sp' w'
 
 ||| The `k` bytes of `src` from `from` copied at the span's next byte, by one
-||| copy of the buffer's, if they lie inside `src`: the span past them, or
-||| none, with nothing written. Compared as `Nat`s, as `fits` compares.
+||| copy of the buffer's, if they lie inside `src` (`isInside`): the span
+||| past them, or none, with nothing written. The count made an `Int` does
+||| not wrap: the span holds its bytes, and a span is made only over bytes
+||| that fit before the sink's end (`fits`).
 export
 putBuffer : (s : ByteSink) -> (src : Buffer) -> (from : Int) -> (k : Nat) -> Span s (k + n) ->
             IO (Maybe (Span s n))
 putBuffer s src from k (MkSpan i) = do
   m <- rawSize src
-  if 0 <= from && from <= m && k <= cast (m - from)
+  if Inside.isInside m from (cast k)
     then do copyData src from (cast k) s.buffer i; pure (Just (MkSpan (i + cast k)))
     else pure Nothing
 
