@@ -33,12 +33,13 @@
 ||| ends the program with a message, so that deep recursion in direct code
 ||| is reported rather than a fault.
 |||
-||| Allocation. An object or a continuation is a bump of r15 checked against
-||| r14; the slow path, placed after the function, saves what is live across
-||| it (the GC-visible values in `ROOTS`, the raw ones on the stack, kept
-||| 16-aligned, since `SCRATCH` is dead across the call), calls
-||| `idris_alloc_slow`, restores them, and rejoins the initialisation. A
-||| direct call that cannot collect saves what is live on the stack alone.
+||| Allocation. An object or a continuation is a bump of r15, then a check of
+||| it against r14; the slow path, placed after the function, puts r15 back,
+||| saves what is live across it (the GC-visible values in `ROOTS`, the raw
+||| ones on the stack, kept 16-aligned, since `SCRATCH` is dead across the
+||| call), calls `idris_alloc_slow`, restores them, and rejoins the
+||| initialisation. A direct call that cannot collect saves what is live on
+||| the stack alone.
 |||
 ||| Areas. The rendering records the most of each per-thread area its code
 ||| uses: the arguments and results passed in `ARGS`, the entries of a rooting
@@ -512,16 +513,17 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                         (Data.Numbered.numbered gc)
 
           ||| Allocate `bytes` into rax: the fast path inline, the slow path cold, with
-          ||| `live` saved across it. Leaves rax pointing at the uninitialised object.
+          ||| `live` saved across it. The fast path bumps r15 before it checks it
+          ||| against r14, so the slow path finds it past the limit and puts it back.
+          ||| Leaves rax pointing at the uninitialised object.
           allocate : (bytes : Nat) -> (live : List (LocatedIR.Reg enc)) -> Render enc ()
           allocate bytes live = do
             slow <- fresh
             done <- fresh
-            emits [ Asm.MovRR Asm.RAX Asm.R15,
-                   Asm.Lea Asm.RCX (Asm.MBase Asm.R15 (cast bytes)),
-                     Asm.Alu Asm.CMP Asm.RCX Asm.R14, Asm.Jcc Asm.A slow
-                  , Asm.MovRR Asm.R15 Asm.RCX, Asm.Lbl done ]
+            emits [ Asm.MovRR Asm.RAX Asm.R15, Asm.AluI Asm.ADD Asm.R15 (cast bytes),
+                   Asm.Alu Asm.CMP Asm.R15 Asm.R14, Asm.Jcc Asm.A slow, Asm.Lbl done ]
             coldEmit (Asm.Lbl slow)
+            coldEmit (Asm.MovRR Asm.R15 Asm.RAX)
             saveLive True coldEmit live
             coldEmit (Asm.MovRI Asm.RDI (cast bytes))
             coldEmit (Asm.Call (sym Linkage.Sym.SymAllocSlow))
@@ -1024,12 +1026,10 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                     done <- fresh
                     loadReg Asm.RDX count
                     emits (size Asm.RDX)
-                    emits [ Asm.MovRR Asm.RAX Asm.R15,
-                      Asm.MovRR Asm.RCX Asm.R15, Asm.Alu Asm.ADD Asm.RCX Asm.RDX,
-                        Asm.Alu Asm.CMP Asm.RCX Asm.R14,
-                           Asm.Jcc Asm.A slow
-                          , Asm.MovRR Asm.R15 Asm.RCX, Asm.Lbl done ]
+                    emits [ Asm.MovRR Asm.RAX Asm.R15, Asm.Alu Asm.ADD Asm.R15 Asm.RDX,
+                           Asm.Alu Asm.CMP Asm.R15 Asm.R14, Asm.Jcc Asm.A slow, Asm.Lbl done ]
                     coldEmit (Asm.Lbl slow)
+                    coldEmit (Asm.MovRR Asm.R15 Asm.RAX)
                     saveLive True coldEmit live
                     coldEmit (Asm.MovRM Asm.RDI (slotMem count))
                     traverse_ coldEmit (size Asm.RDI)
