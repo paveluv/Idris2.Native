@@ -70,7 +70,8 @@ start entry window = do
 
     ||| What the stack check leaves below the limit, for the arguments and the
     ||| environment above the stack pointer at entry and for the frames of code
-    ||| that does not check, such as a direct call's saved values: 256 KiB.
+    ||| that does not check, such as the slow path the allocation sites share:
+    ||| 256 KiB.
     stackMargin : Bits64
     stackMargin = 262144
 

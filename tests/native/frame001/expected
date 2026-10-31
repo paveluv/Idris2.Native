@@ -1,0 +1,41 @@
+1124
+exit status: 0
+# _flat.Main.mix
+L64:
+sub rsp, 72
+mov rax, qword ptr [rip+L17]
+cmp rsp, rax
+jb L18
+mov rbx, rsp
+mov qword ptr [rbx], rdi
+mov qword ptr [rbx+8], rsi
+mov qword ptr [rbx+16], rdx
+mov qword ptr [rbx+24], rcx
+jmp L65
+L65:
+mov rdi, qword ptr [rbx]
+mov rsi, qword ptr [rbx+8]
+call L66
+mov rbx, rsp
+mov qword ptr [rbx+32], rdi
+mov rdi, qword ptr [rbx+16]
+mov rsi, qword ptr [rbx+24]
+call L66
+mov rbx, rsp
+mov qword ptr [rbx+40], rdi
+mov rdi, qword ptr [rbx+32]
+mov rsi, qword ptr [rbx+40]
+call L66
+mov rbx, rsp
+mov qword ptr [rbx+48], rdi
+mov rax, qword ptr [rbx+48]
+mov rcx, qword ptr [rbx]
+add rax, rcx
+mov qword ptr [rbx+56], rax
+mov rax, qword ptr [rbx+56]
+mov rcx, qword ptr [rbx+16]
+add rax, rcx
+mov qword ptr [rbx+64], rax
+mov rdi, qword ptr [rbx+64]
+add rsp, 72
+ret

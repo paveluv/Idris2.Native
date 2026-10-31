@@ -1,0 +1,22 @@
+. ../../testutils.sh
+
+# Direct functions keep their values in frames of their own on the machine
+# stack: a flat function whose values are live across three calls of
+# another computes the right result, and its listing saves nothing around
+# the calls. Program labels (64 and up) are renumbered in order of
+# appearance, so that the rest of the program does not shift them; the
+# seed's are fixed and kept.
+idris2 --cg native --directive dump-asm=build/frames.s Frames.idr -o frames > /dev/null
+./build/exec/frames
+echo "exit status: $?"
+awk '/^# / { on = ($0 == "# _flat.Main.mix") }
+     on {
+       out = ""
+       while (match($0, /L[0-9]+/)) {
+         l = substr($0, RSTART, RLENGTH)
+         if (substr(l, 2) + 0 >= 64 && !(l in name)) name[l] = "L" (64 + n++)
+         out = out substr($0, 1, RSTART - 1) (l in name ? name[l] : l)
+         $0 = substr($0, RSTART + RLENGTH)
+       }
+       print out $0
+     }' build/frames.s

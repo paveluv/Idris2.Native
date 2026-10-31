@@ -13,10 +13,9 @@
 --
 -- Each allocation here takes the slow path: the allocation window is 8
 -- bytes, and the program's own `allocSlow` leaves it empty. That
--- `allocSlow` overwrites SCRATCH far past the callers' slots, as the
--- runtime's code overwrites its callers' slots from slot 0, so a slot the
--- shared slow path does not restore comes back with `allocSlow`'s word, and
--- the check after the allocation fails. It collects nothing: what a
+-- `allocSlow` overwrites every slot of SCRATCH the callers have, so a slot
+-- the shared slow path does not restore comes back with `allocSlow`'s word,
+-- and the check after the allocation fails. It collects nothing: what a
 -- collection does to the saved values is native/alloc002's.
 --
 -- The program prints each function's tables, as the code generator wrote
@@ -32,6 +31,7 @@ import Data.List.Quantifiers
 import Data.So
 import Data.SortedMap
 import Data.SortedSet
+import Native.Area
 import Native.Codegen.ELF
 import Native.Codegen.IRCommon.ConIds
 import Native.Codegen.IRCommon.Conv
@@ -110,9 +110,10 @@ realised =
 deepValues : Nat
 deepValues = 65537
 
-||| The values `allocSlow` binds, overwriting every slot `deep` has.
+||| The slots of SCRATCH `allocSlow` overwrites: `deep`'s parameter, its
+||| values and the two after them, and fewer than SCRATCH holds.
 clobbers : Nat
-clobbers = 65600
+clobbers = deepValues + 3
 
 T : Decls TestEnc
 T = MkDecls
@@ -157,21 +158,25 @@ startBody = build $ \[entry, window] => do
   ret []
 
 ||| The runtime's allocation slow path, reduced to what this program needs,
-||| after overwriting SCRATCH: `bytes` fresh from the system, the object at
-||| their start, and the window left empty, so that the next allocation
-||| comes here too. Nothing is collected.
+||| after overwriting the callers' slots: `bytes` fresh from the system, the
+||| object at their start, and the window left empty, so that the next
+||| allocation comes here too. Nothing is collected.
 allocSlowBody : Closed T (Direct [W64] False) False [W64]
 allocSlowBody = build $ \[bytes] => do
-  -- a value in each of `clobbers` slots, each its slot's number plus `bytes`
-  last <- count clobbers bytes
-  over <- emit1 (Arith Sub last bytes)
-  leaveIf NeR over (W (cast clobbers)) (crash "allocSlow: miscounted")
-  w <- emit1 (SystemCall 6 [W 9, W 0, bytes, W 3, W 0x22, W (-1), W 0])
-  base <- emit1 (WordToByteAddr w)
-  hp <- emit1 (Offset base bytes)
-  emit0 (SetPinned Hp hp)
-  emit0 (SetPinned HpLim hp)
-  ret [w]
+  scratch <- emit1 (AreaAddr SCRATCH)
+  -- slot i of SCRATCH, for i below `clobbers`, set to i + bytes
+  loop [W64] [W 0] $ \again, [i] =>
+    branch EqR i (W (cast clobbers))
+      (do w <- emit1 (SystemCall 6 [W 9, W 0, bytes, W 3, W 0x22, W (-1), W 0])
+          base <- emit1 (WordToByteAddr w)
+          hp <- emit1 (Offset base bytes)
+          emit0 (SetPinned Hp hp)
+          emit0 (SetPinned HpLim hp)
+          ret [w]) $ do
+      v <- emit1 (Arith Add i bytes)
+      emit0 (Store W64 (MkMem (AtBytes scratch) (Just i) 0) v)
+      i' <- emit1 (Arith Add i (W 1))
+      again [i']
 
 ||| The runtime's `allocMutable`: the slow path's body.
 allocMutableBody : Closed T (Direct [W64] False) False [W64]

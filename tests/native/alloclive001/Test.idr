@@ -2,7 +2,7 @@
 -- (Native.Codegen.X86.AllocLive).
 --
 -- Generated code keeps every value of a function in a register, and every
--- register in a slot of SCRATCH, a per-thread area: in
+-- register of ordinary code in a slot of SCRATCH, a per-thread area: in
 --
 --   pair : Nat -> List Nat -> (Nat, List Nat)
 --   pair n xs = (n, n :: xs)
@@ -10,12 +10,11 @@
 -- `n` and `xs` are in slots when `n :: xs` is allocated. An allocation
 -- bumps the allocation pointer past the object; when that goes past the
 -- window's limit, the site's slow path runs `idris_alloc_slow`, which may
--- collect and move objects, and which, being runtime code with registers
--- of its own in SCRATCH, overwrites the slots. So whatever is live across
--- the allocation must be saved first and reloaded after: the GC-visible
--- values (pointers to objects, like `xs`) in ROOTS, where the collector
--- forwards them, and the raw ones (a Bits64, a Double, a code address)
--- where the collector never looks.
+-- collect and move objects. So the GC-visible values live across the
+-- allocation (pointers to objects, like `xs`) go where the collector finds
+-- and forwards them, ROOTS, and are reloaded from there after it; the slow
+-- path keeps the raw ones (a Bits64, a Double, a code address) where the
+-- collector never looks.
 --
 -- Every site shares one routine for that. Its cold code is a call of the
 -- routine, a jump back, and the site's live table: how many GC-visible

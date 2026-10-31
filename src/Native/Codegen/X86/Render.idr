@@ -1,10 +1,12 @@
 ||| The rendering of the IR as x86-64 instructions, under the heap lowering of
 ||| continuations.
 |||
-||| Registers. Every IR register is a `SCRATCH` slot (`Native.Codegen.LocatedIR.Reg`);
-||| `rbx` holds `SCRATCH`'s address, so slot n is `[rbx + 8n]`, and is set at
-||| every function entry, every resume point and after every runtime call,
-||| since no register survives a transfer or a direct call. An instruction
+||| Registers. Every IR register is a slot (`Native.Codegen.LocatedIR.Reg`):
+||| CPS code's in `SCRATCH`, since a CPS function never nests, a Direct
+||| function's in its own frame on the machine stack. `rbx` holds the
+||| slots' base, so slot n is `[rbx + 8n]`, and is set at every function
+||| entry, every resume point and after every runtime call, since no
+||| register survives a transfer or a direct call. An instruction
 ||| loads its operands into `rax`, `rcx` and `rdx` and stores its result back.
 ||| `r15` and `r14` are the allocation window and `r12` the current
 ||| continuation, as `Native.Codegen.X86.Target.x86_64` pins them.
@@ -22,26 +24,27 @@
 ||| return puts the value in rax and jumps through r12. An application, tail
 ||| or not, goes through the runtime's `idris_apply`.
 |||
-||| Direct functions. A direct call saves what is live, passes the arguments
-||| as a call does and executes a machine call; the callee's `Ret` passes its
+||| Direct functions. A Direct function lowers the stack on entry by its
+||| frame, its registers' slots, an odd number of words, so that the stack
+||| stays 16-aligned inside it since the call pushed one, and raises it again
+||| before it returns. On entry it also compares the stack pointer with the
+||| limit the seed sets at start-up (`STACK_LIMIT`), and below it ends the
+||| program with a message, so that deep recursion in direct code is
+||| reported rather than a fault. A direct call passes the arguments as a
+||| call does and executes a machine call; the callee's `Ret` passes its
 ||| results where `place` puts arguments, and the caller stores them in its
-||| result registers' slots, `ARGS` first emptied, before restoring what it
-||| saved. A Direct function keeps the stack 16-aligned inside it by
-||| lowering it by a word on entry, since the call pushed one, and raising it
-||| again before it returns. On entry it also compares the stack pointer
-||| with the limit the seed sets at start-up (`STACK_LIMIT`), and below it
-||| ends the program with a message, so that deep recursion in direct code
-||| is reported rather than a fault.
+||| result registers' slots, `ARGS` first emptied. No callee writes its
+||| caller's slots, so a direct call saves nothing, but one that can collect
+||| puts the GC-visible values live across it in `ROOTS`, where the
+||| collector forwards them, and reloads them from there (`saveLive`).
 |||
 ||| Allocation. An object or a continuation is a bump of r15, then a check of
 ||| it against r14. Past the limit, the site's cold code, placed after the
 ||| function, calls the slow path every site shares, with the site's live
 ||| table after the call (`Native.Codegen.X86.AllocLive`): it saves what is
-||| live across `idris_alloc_slow` (the GC-visible values in `ROOTS`, the raw
-||| ones on the stack, since `SCRATCH` is dead across the call), restores
-||| it, and returns to the jump back to the initialisation. A direct call
-||| saves what is live itself, around the call (`saveLive`), on the stack
-||| alone if it cannot collect.
+||| live across `idris_alloc_slow` (the GC-visible values in `ROOTS`, where
+||| the collector forwards them, the raw ones in its own frame), restores
+||| it, and returns to the jump back to the initialisation.
 |||
 ||| Areas. The rendering records the most of each per-thread area its code
 ||| uses: the arguments and results passed in `ARGS`, the entries of a rooting
@@ -290,27 +293,31 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
             blk : LocatedIR.Label -> Asm.Label
             blk n = fromMaybe 0 (lookup n table)
         emits [Asm.Comment (show f.name), Asm.Lbl fl]
-        -- the slots of SCRATCH the function's registers take, recorded once
-        uses (Linkage.MkAreas 0 0 (slots f) 0)
         -- a routine reached by symbol: the symbol is its entry too
         whenJust (lookup f.name symbols) $ \s =>
           emit (Asm.Lbl (sym s))
-        -- a machine call pushed a word: keep the stack 16-aligned inside; and
-        -- below the stack limit, end the program
+        -- the slots the function's registers take, counted once: CPS code's in
+        -- SCRATCH, recorded; a Direct function's its frame, which the call
+        -- pushed a word below, so an odd number of words keeps the stack
+        -- 16-aligned inside; and below the stack limit, end the program
+        let n = slots f
+            frame = case f.conv of
+              IRCommon.Conv.Direct _ _ => 8 * cast (oddUp n)
+              IRCommon.Conv.CPS => 0
         case f.conv of
           IRCommon.Conv.Direct _ _ =>
-            emits [ Asm.AluI Asm.SUB Asm.RSP 8,
+            emits [ Asm.AluI Asm.SUB Asm.RSP frame,
                    Asm.MovRM Asm.RAX (Asm.MRip (sym Linkage.Sym.SymStackLimit) 0),
                      Asm.Alu Asm.CMP Asm.RSP Asm.RAX
                                             , Asm.Jcc Asm.B (sym Linkage.Sym.SymStackOverflow) ]
-          IRCommon.Conv.CPS => pure ()
+          IRCommon.Conv.CPS => uses (Linkage.MkAreas 0 0 n 0)
         emits setBase
         takeValues f.params
         emit (Asm.Jmp (blk f.entry))
         -- bound once: an argument of a partial application is evaluated again
         -- at every call of it, which read the function's blocks once per block
         let rs = resumes f
-        traverse_ (block blk (IRCommon.Conv.results f.conv) rs) f.blocks
+        traverse_ (block blk (IRCommon.Conv.results f.conv) frame rs) f.blocks
         Data.Stateful.modify (\s => { text := s.text ++ s.cold, cold := [<] } s)
         where
           ||| The live values a resume block reloads, in the order its continuation
@@ -465,24 +472,23 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
           isOdd (S Z) = True
           isOdd (S (S n)) = isOdd n
 
-          ||| The live slots a call saves in ROOTS, and those it saves on the stack.
-          ||| Across a call that can collect, the GC-visible ones go to ROOTS, where
-          ||| the collector updates them; across one that cannot, every one goes to
-          ||| the stack, since nothing moves.
-          saved : (collects : Bool) -> List (LocatedIR.Reg enc) ->
-                  (List (LocatedIR.Reg enc), List (LocatedIR.Reg enc))
-          saved False live = ([], live)
-          saved True live =
-            (filter (IRCommon.Ty.gcVisible . LocatedIR.Reg.ty) live,
-             filter (not . IRCommon.Ty.gcVisible . LocatedIR.Reg.ty) live)
+          ||| The odd number at or just above `n`.
+          oddUp : Nat -> Nat
+          oddUp n = if isOdd n then n else S n
 
-          ||| Save the live slots across a call, as `saved` divides them, the ones on
-          ||| the stack with a padding word when their number is odd so the call sees
-          ||| a 16-aligned stack.
+          ||| The live slots a call saves in `ROOTS`: the GC-visible ones across a
+          ||| call that can collect, which the collector forwards there; none
+          ||| across one that cannot. No callee writes its caller's slots, CPS
+          ||| code's being in `SCRATCH` and a Direct function's in its own frame.
+          saved : (collects : Bool) -> List (LocatedIR.Reg enc) -> List (LocatedIR.Reg enc)
+          saved False _ = []
+          saved True live = filter (IRCommon.Ty.gcVisible . LocatedIR.Reg.ty) live
+
+          ||| Save the live slots across a call in `ROOTS`, as `saved` chooses them.
           saveLive : (collects : Bool) -> (Asm.Instr -> Render enc ()) ->
                      List (LocatedIR.Reg enc) -> Render enc ()
           saveLive collects out live = do
-            let (gc, raw) = saved collects live
+            let gc = saved collects live
             uses (Linkage.MkAreas 0 (length gc) 0 0)
             when (not (null gc)) $ do
               out (Asm.Lea Asm.RSI (Asm.MRip (sym Linkage.Sym.SymNRoots) 0))
@@ -499,22 +505,19 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                         (Data.Numbered.numbered gc)
               out (Asm.AluI Asm.ADD Asm.RDX (cast (length gc)))
               out (Asm.MovMR (Asm.MBase Asm.RSI 0) Asm.RDX)
-            traverse_ (\r => do out (Asm.MovRM Asm.RCX (slotMem r))
-                                out (Asm.Push Asm.RCX)) raw
-            when (isOdd (length raw)) $ out (Asm.Push Asm.RCX)
 
+          ||| The slots' base into rbx: `SCRATCH` for CPS code; for a Direct
+          ||| function its frame, at the stack pointer its prologue left.
           setBase : List Asm.Instr
-          setBase = [Asm.Lea Asm.RBX (Asm.MRip (sym Linkage.Sym.SymScratch) 0)]
+          setBase = case f.conv of
+            IRCommon.Conv.CPS => [Asm.Lea Asm.RBX (Asm.MRip (sym Linkage.Sym.SymScratch) 0)]
+            IRCommon.Conv.Direct _ _ => [Asm.MovRR Asm.RBX Asm.RSP]
 
-          ||| Restore what `saveLive` saved, leaving rax alone.
+          ||| Restore what `saveLive` saved, with rbx set, leaving rax alone.
           restoreLive : (collects : Bool) -> (Asm.Instr -> Render enc ()) ->
                         List (LocatedIR.Reg enc) -> Render enc ()
           restoreLive collects out live = do
-            let (gc, raw) = saved collects live
-            traverse_ out setBase
-            when (isOdd (length raw)) $ out (Asm.Pop Asm.RCX)
-            traverse_ (\r => do out (Asm.Pop Asm.RCX)
-                                out (Asm.MovMR (slotMem r) Asm.RCX)) (reverse raw)
+            let gc = saved collects live
             when (not (null gc)) $ do
               out (Asm.Lea Asm.RSI (Asm.MRip (sym Linkage.Sym.SymNRoots) 0))
               out (Asm.MovRM Asm.RDX (Asm.MBase Asm.RSI 0))
@@ -535,7 +538,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
           ||| allocation.
           slowStub : (slow, done : Asm.Label) -> (live : List (LocatedIR.Reg enc)) -> Render enc ()
           slowStub slow done live = do
-            let (gc, raw) = saved True live
+            let gc = filter (IRCommon.Ty.gcVisible . LocatedIR.Reg.ty) live
+                raw = filter (not . IRCommon.Ty.gcVisible . LocatedIR.Reg.ty) live
             uses (Linkage.MkAreas 0 (length gc) 0 0)
             case LiveTable.table (map LocatedIR.Reg.slot gc) (map LocatedIR.Reg.slot raw) of
               Just t => Data.Stateful.modify { cold $= (<>< (Asm.Lbl slow :: AllocLive.stub done t)) }
@@ -599,9 +603,9 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
             maybe (Data.Stateful.failWith ("no function " ++ show f)) pure (lookup f names.params)
 
           term : (LocatedIR.Label -> Asm.Label) -> (results : List (IRCommon.Ty enc)) ->
-                 LocatedIR.Terminator enc ->
+                 (frame : Int) -> LocatedIR.Terminator enc ->
                  Render enc ()
-          term blk res terminator = case terminator of
+          term blk res frame terminator = case terminator of
             LocatedIR.Terminator.Jump l => emit (Asm.Jmp (blk l))
             -- Several tags in one test: under fixnum tag 1 every word is odd exactly
             -- when their `and` is, and under fixnum tag 0 every word is even exactly
@@ -677,7 +681,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                             Asm.Jmp (sym Linkage.Sym.SymUnsupported)]
             LocatedIR.Terminator.Ret xs => do
               putValues res xs
-              emits [Asm.AluI Asm.ADD Asm.RSP 8, Asm.Ret]
+              emits [Asm.AluI Asm.ADD Asm.RSP frame, Asm.Ret]
             t =>
               Data.Stateful.failWith
                 ("the rendering does not support " ++ show (LocatedIR.Terminator.termName t)
@@ -717,9 +721,10 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                       else r :: besides (r :: live) rs
 
           block : (LocatedIR.Label -> Asm.Label) -> (results : List (IRCommon.Ty enc)) ->
+                  (frame : Int) ->
                   SortedMap LocatedIR.Label (List (LocatedIR.Reg enc), Integer) ->
                   LocatedIR.Block enc -> Render enc ()
-          block blk res rs b = do
+          block blk res frame rs b = do
             case lookup b.label rs of
               Just (live, word) => do
                 emits (Linkage.ResumePoint.resumePoint (blk b.label) word)
@@ -735,7 +740,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                 emit (Asm.MovRM Asm.R12 (Asm.MBase Asm.R12 (8 - ptag)))
               Nothing => emit (Asm.Lbl (blk b.label))
             traverse_ (instr blk) b.body
-            term blk res b.term
+            term blk res frame b.term
             where
               instr : (LocatedIR.Label -> Asm.Label) -> LocatedIR.Instr enc -> Render enc ()
               instr blk instr' = case instr' of
@@ -1201,6 +1206,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                     bytesInto Asm.RDI
                     emit (Asm.Call (sym Linkage.Sym.SymAllocMutable))
                     emit (Asm.MovRR Asm.RAX Asm.RDI)
+                    emits setBase
                     restoreLive True emit live
 
                   ||| The base of a memory operand into `r`, plus its index scaled by `width`,

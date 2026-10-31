@@ -30,11 +30,11 @@
 4
 # _flat.Main.pick
 L64:
-sub rsp, 8
+sub rsp, 40
 mov rax, qword ptr [rip+L17]
 cmp rsp, rax
 jb L18
-lea rbx, [rip+L13]
+mov rbx, rsp
 mov qword ptr [rbx], rdi
 mov qword ptr [rbx+8], rsi
 jmp L65
@@ -48,16 +48,16 @@ add rax, rdx
 mov rcx, qword ptr [rax+16]
 mov qword ptr [rbx+24], rcx
 mov rdi, qword ptr [rbx+24]
-add rsp, 8
+add rsp, 40
 ret
 pick calls nothing
 # _flat.Main.at
 L64:
-sub rsp, 8
+sub rsp, 56
 mov rax, qword ptr [rip+L17]
 cmp rsp, rax
 jb L18
-lea rbx, [rip+L13]
+mov rbx, rsp
 mov qword ptr [rbx], rdi
 mov qword ptr [rbx+8], rsi
 mov qword ptr [rbx+16], rdx
@@ -76,16 +76,16 @@ add rax, rdx
 mov rcx, qword ptr [rax+8]
 mov qword ptr [rbx+40], rcx
 mov rdi, qword ptr [rbx+40]
-add rsp, 8
+add rsp, 56
 ret
 at calls nothing
 # _flat.Main.far
 L64:
-sub rsp, 8
+sub rsp, 56
 mov rax, qword ptr [rip+L17]
 cmp rsp, rax
 jb L18
-lea rbx, [rip+L13]
+mov rbx, rsp
 mov qword ptr [rbx], rdi
 mov qword ptr [rbx+8], rsi
 jmp L65
@@ -107,17 +107,17 @@ add rax, rdx
 mov rcx, qword ptr [rax+8]
 mov qword ptr [rbx+40], rcx
 mov rdi, qword ptr [rbx+40]
-add rsp, 8
+add rsp, 56
 ret
 far calls nothing
 == val-encoding=tag0
 # _flat.Main.pick
 L64:
-sub rsp, 8
+sub rsp, 40
 mov rax, qword ptr [rip+L17]
 cmp rsp, rax
 jb L18
-lea rbx, [rip+L13]
+mov rbx, rsp
 mov qword ptr [rbx], rdi
 mov qword ptr [rbx+8], rsi
 jmp L65
@@ -131,7 +131,7 @@ add rax, rdx
 mov rcx, qword ptr [rax+15]
 mov qword ptr [rbx+24], rcx
 mov rdi, qword ptr [rbx+24]
-add rsp, 8
+add rsp, 40
 ret
 pick calls nothing
 Refused.idr checked

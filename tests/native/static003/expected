@@ -82,7 +82,7 @@ sub rsp, 8
 mov rax, qword ptr [rip+L17]
 cmp rsp, rax
 jb L18
-lea rbx, [rip+L13]
+mov rbx, rsp
 mov qword ptr [rbx], rdi
 jmp L65
 L65:
@@ -101,7 +101,7 @@ sub rsp, 8
 mov rax, qword ptr [rip+L17]
 cmp rsp, rax
 jb L18
-lea rbx, [rip+L13]
+mov rbx, rsp
 mov qword ptr [rbx], rdi
 jmp L65
 L65:
