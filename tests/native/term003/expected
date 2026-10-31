@@ -1,0 +1,11 @@
+Main.main:
+  8-bit, 0 GC-visible, 0 raw
+  8-bit, 1 GC-visible, 0 raw
+Main.deep:
+  32-bit, 2 GC-visible, 1 raw
+  32-bit, 1 GC-visible, 2 raw
+Main.raws:
+  8-bit, 1 GC-visible, 3 raw
+  8-bit, 1 GC-visible, 2 raw
+  8-bit, 0 GC-visible, 0 raw
+exit status: 0

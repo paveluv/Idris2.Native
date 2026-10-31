@@ -37,7 +37,9 @@ tableAt = Encode.instrSize 0 (Asm.Jmp 0)
 export
 stub : (done : Asm.Label) -> (Width.SubWord, List Bits8) -> List Asm.Instr
 stub done (w, bytes) =
-  [Asm.Call (Linkage.Sym.label (Linkage.Sym.SymAllocLive w)), Asm.Jmp done, Asm.Bytes bytes]
+  [ Asm.Call (Linkage.Sym.label (Linkage.Sym.SymAllocLive w))
+  , Asm.Jmp done
+  , Asm.Bytes bytes ]
 
 ||| The labels a routine takes for itself.
 export
@@ -59,45 +61,75 @@ routineLabels = 8
 export
 routine : Width.SubWord -> (first : Asm.Label) -> List Asm.Instr
 routine w first =
-  [ Asm.Align 16, Asm.Lbl (Linkage.Sym.label (Linkage.Sym.SymAllocLive w))
+  [ Asm.Align 16
+  , Asm.Lbl (Linkage.Sym.label (Linkage.Sym.SymAllocLive w))
   -- the bytes, as `idris_alloc_slow` takes them, and the window as the
   -- fast path found it
-  , Asm.MovRR Asm.RDI Asm.R15, Asm.Alu Asm.SUB Asm.RDI Asm.RAX, Asm.MovRR Asm.R15 Asm.RAX
+  , Asm.MovRR Asm.RDI Asm.R15
+  , Asm.Alu Asm.SUB Asm.RDI Asm.RAX
+  , Asm.MovRR Asm.R15 Asm.RAX
   , Asm.Lea Asm.RBX (area Linkage.Sym.SymScratch)
-  , Asm.MovRM Asm.RSI (Asm.MBase Asm.RSP 0), Asm.AluI Asm.ADD Asm.RSI tableAt
+  -- the table
+  , Asm.MovRM Asm.RSI (Asm.MBase Asm.RSP 0)
+  , Asm.AluI Asm.ADD Asm.RSI tableAt
   -- the GC-visible slots onto ROOTS from entry n, then NROOTS raised to n + g
-  , Asm.Lea Asm.R10 (area Linkage.Sym.SymNRoots), Asm.MovRM Asm.R8 (Asm.MBase Asm.R10 0)
-  , Asm.MovRR Asm.R9 Asm.R8, Asm.ShiftI Asm.SHL Asm.R9 (cast Area.rootShift)
-  , Asm.Lea Asm.RDX (area Linkage.Sym.SymRoots), Asm.Alu Asm.ADD Asm.R9 Asm.RDX
-  , entry Asm.RCX gcCount, Asm.Alu Asm.ADD Asm.R8 Asm.RCX
+  , Asm.Lea Asm.R10 (area Linkage.Sym.SymNRoots)
+  , Asm.MovRM Asm.R8 (Asm.MBase Asm.R10 0)
+  , Asm.MovRR Asm.R9 Asm.R8
+  , Asm.ShiftI Asm.SHL Asm.R9 (cast Area.rootShift)
+  , Asm.Lea Asm.RDX (area Linkage.Sym.SymRoots)
+  , Asm.Alu Asm.ADD Asm.R9 Asm.RDX
+  , entry Asm.RCX gcCount
+  , Asm.Alu Asm.ADD Asm.R8 Asm.RCX
   , Asm.Lea Asm.RDX (Asm.MBase Asm.RSI (cast (LiveTable.slotsAt w)))
-  , Asm.Test Asm.RCX Asm.RCX, Asm.Jcc Asm.E rooted ]
+  , Asm.Test Asm.RCX Asm.RCX
+  , Asm.Jcc Asm.E rooted ]
   ++ walk roots rootBytes save ++
-  [ Asm.Lbl rooted, Asm.MovMR (Asm.MBase Asm.R10 0) Asm.R8
+  [ Asm.Lbl rooted
+  , Asm.MovMR (Asm.MBase Asm.R10 0) Asm.R8
   -- the frame: the table's address, then the raw slots
-  , entry Asm.RCX rawCount, Asm.Lea Asm.R11 (Asm.MBase Asm.RCX 1), Asm.AluI Asm.OR Asm.R11 1
-  , Asm.ShiftI Asm.SHL Asm.R11 wordShift, Asm.Alu Asm.SUB Asm.RSP Asm.R11
+  , entry Asm.RCX rawCount
+  , Asm.Lea Asm.R11 (Asm.MBase Asm.RCX 1)
+  , Asm.AluI Asm.OR Asm.R11 1
+  , Asm.ShiftI Asm.SHL Asm.R11 wordShift
+  , Asm.Alu Asm.SUB Asm.RSP Asm.R11
   , Asm.MovMR (Asm.MBase Asm.RSP 0) Asm.RSI
-  , Asm.Test Asm.RCX Asm.RCX, Asm.Jcc Asm.E framed, Asm.Lea Asm.R9 (Asm.MBase Asm.RSP 8) ]
+  , Asm.Test Asm.RCX Asm.RCX
+  , Asm.Jcc Asm.E framed
+  , Asm.Lea Asm.R9 (Asm.MBase Asm.RSP 8) ]
   ++ walk raws 8 save ++
-  [ Asm.Lbl framed, Asm.Call (Linkage.Sym.label Linkage.Sym.SymAllocSlow)
-  , Asm.MovRR Asm.RAX Asm.RDI, Asm.Lea Asm.RBX (area Linkage.Sym.SymScratch)
+  [ Asm.Lbl framed
+  , Asm.Call (Linkage.Sym.label Linkage.Sym.SymAllocSlow)
+  , Asm.MovRR Asm.RAX Asm.RDI
+  , Asm.Lea Asm.RBX (area Linkage.Sym.SymScratch)
   , Asm.MovRM Asm.RSI (Asm.MBase Asm.RSP 0)
   -- NROOTS back to n, and the GC-visible slots reloaded from there
   , entry Asm.RCX gcCount
-  , Asm.Lea Asm.R10 (area Linkage.Sym.SymNRoots), Asm.MovRM Asm.R8 (Asm.MBase Asm.R10 0)
-  , Asm.Alu Asm.SUB Asm.R8 Asm.RCX, Asm.MovMR (Asm.MBase Asm.R10 0) Asm.R8
+  , Asm.Lea Asm.R10 (area Linkage.Sym.SymNRoots)
+  , Asm.MovRM Asm.R8 (Asm.MBase Asm.R10 0)
+  , Asm.Alu Asm.SUB Asm.R8 Asm.RCX
+  , Asm.MovMR (Asm.MBase Asm.R10 0) Asm.R8
   , Asm.ShiftI Asm.SHL Asm.R8 (cast Area.rootShift)
-  , Asm.Lea Asm.R9 (area Linkage.Sym.SymRoots), Asm.Alu Asm.ADD Asm.R9 Asm.R8
+  , Asm.Lea Asm.R9 (area Linkage.Sym.SymRoots)
+  , Asm.Alu Asm.ADD Asm.R9 Asm.R8
   , Asm.Lea Asm.RDX (Asm.MBase Asm.RSI (cast (LiveTable.slotsAt w)))
-  , Asm.Test Asm.RCX Asm.RCX, Asm.Jcc Asm.E unrooted ]
+  , Asm.Test Asm.RCX Asm.RCX
+  , Asm.Jcc Asm.E unrooted ]
   ++ walk unroots rootBytes reload ++
-  [ Asm.Lbl unrooted, entry Asm.RCX rawCount
-  , Asm.Test Asm.RCX Asm.RCX, Asm.Jcc Asm.E unframed, Asm.Lea Asm.R9 (Asm.MBase Asm.RSP 8) ]
+  [ Asm.Lbl unrooted
+  , entry Asm.RCX rawCount
+  , Asm.Test Asm.RCX Asm.RCX
+  , Asm.Jcc Asm.E unframed
+  , Asm.Lea Asm.R9 (Asm.MBase Asm.RSP 8) ]
   ++ walk unraws 8 reload ++
-  [ Asm.Lbl unframed, entry Asm.RCX rawCount, Asm.AluI Asm.ADD Asm.RCX 1
-  , Asm.AluI Asm.OR Asm.RCX 1, Asm.ShiftI Asm.SHL Asm.RCX wordShift
-  , Asm.Alu Asm.ADD Asm.RSP Asm.RCX, Asm.Ret ]
+  [ Asm.Lbl unframed
+  -- the frame given back
+  , entry Asm.RCX rawCount
+  , Asm.AluI Asm.ADD Asm.RCX 1
+  , Asm.AluI Asm.OR Asm.RCX 1
+  , Asm.ShiftI Asm.SHL Asm.RCX wordShift
+  , Asm.Alu Asm.ADD Asm.RSP Asm.RCX
+  , Asm.Ret ]
   where
     rooted, framed, unrooted, unframed, roots, raws, unroots, unraws : Asm.Label
     rooted = first
@@ -133,13 +165,20 @@ routine w first =
     -- which moves on by `stride` each time
     walk : Asm.Label -> (stride : Int) -> (move : List Asm.Instr) -> List Asm.Instr
     walk l stride move =
-      [ Asm.Lbl l, entry Asm.R11 (Asm.MBase Asm.RDX 0)
-      , Asm.ShiftI Asm.SHL Asm.R11 (cast Area.slotShift), Asm.Alu Asm.ADD Asm.R11 Asm.RBX ]
+      [ Asm.Lbl l
+      , entry Asm.R11 (Asm.MBase Asm.RDX 0)
+      , Asm.ShiftI Asm.SHL Asm.R11 (cast Area.slotShift)
+      , Asm.Alu Asm.ADD Asm.R11 Asm.RBX ]
       ++ move ++
       [ Asm.AluI Asm.ADD Asm.R9 stride
-      , Asm.AluI Asm.ADD Asm.RDX (cast (Width.subWordBytes w)), Asm.AluI Asm.SUB Asm.RCX 1
+      , Asm.AluI Asm.ADD Asm.RDX (cast (Width.subWordBytes w))
+      , Asm.AluI Asm.SUB Asm.RCX 1
       , Asm.Jcc Asm.NE l ]
 
     save, reload : List Asm.Instr
-    save = [Asm.MovRM Asm.R11 (Asm.MBase Asm.R11 0), Asm.MovMR (Asm.MBase Asm.R9 0) Asm.R11]
-    reload = [Asm.MovRM Asm.R8 (Asm.MBase Asm.R9 0), Asm.MovMR (Asm.MBase Asm.R11 0) Asm.R8]
+    save =
+      [ Asm.MovRM Asm.R11 (Asm.MBase Asm.R11 0)
+      , Asm.MovMR (Asm.MBase Asm.R9 0) Asm.R11 ]
+    reload =
+      [ Asm.MovRM Asm.R8 (Asm.MBase Asm.R9 0)
+      , Asm.MovMR (Asm.MBase Asm.R11 0) Asm.R8 ]

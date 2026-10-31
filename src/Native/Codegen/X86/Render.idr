@@ -34,12 +34,14 @@
 ||| is reported rather than a fault.
 |||
 ||| Allocation. An object or a continuation is a bump of r15, then a check of
-||| it against r14; the slow path, placed after the function, puts r15 back,
-||| saves what is live across it (the GC-visible values in `ROOTS`, the raw
-||| ones on the stack, kept 16-aligned, since `SCRATCH` is dead across the
-||| call), calls `idris_alloc_slow`, restores them, and rejoins the
-||| initialisation. A direct call that cannot collect saves what is live on
-||| the stack alone.
+||| it against r14. Past the limit, the site's cold code, placed after the
+||| function, calls the slow path every site shares, with the site's live
+||| table after the call (`Native.Codegen.X86.AllocLive`): it saves what is
+||| live across `idris_alloc_slow` (the GC-visible values in `ROOTS`, the raw
+||| ones on the stack, since `SCRATCH` is dead across the call), restores
+||| it, and returns to the jump back to the initialisation. A direct call
+||| saves what is live itself, around the call (`saveLive`), on the stack
+||| alone if it cannot collect.
 |||
 ||| Areas. The rendering records the most of each per-thread area its code
 ||| uses: the arguments and results passed in `ARGS`, the entries of a rooting
@@ -93,6 +95,7 @@ import Native.Data.Numbered
 import Native.Data.Stateful as Data
 import Native.HeapObj.LayoutWord
 import Native.HeapObj.ValEnc
+import Native.LiveTable
 import Native.Primitive.DoubleBits
 import Native.Rep
 import Native.Types.Enc as Types
@@ -526,24 +529,30 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                        out (Asm.MovMR (slotMem r) Asm.RCX))
                         (Data.Numbered.numbered gc)
 
-          ||| Allocate `bytes` into rax: the fast path inline, the slow path cold, with
-          ||| `live` saved across it. The fast path bumps r15 before it checks it
-          ||| against r14, so the slow path finds it past the limit and puts it back.
-          ||| Leaves rax pointing at the uninitialised object.
+          ||| A site's cold code, at `slow`: the call of the slow path the sites
+          ||| share, the jump back to `done` it returns to, and the site's live
+          ||| table, of `live`'s slots, which the slow path saves across the
+          ||| allocation.
+          slowStub : (slow, done : Asm.Label) -> (live : List (LocatedIR.Reg enc)) -> Render enc ()
+          slowStub slow done live = do
+            let (gc, raw) = saved True live
+            uses (Linkage.MkAreas 0 (length gc) 0 0)
+            case LiveTable.table (map LocatedIR.Reg.slot gc) (map LocatedIR.Reg.slot raw) of
+              Just t => Data.Stateful.modify { cold $= (<>< (Asm.Lbl slow :: AllocLive.stub done t)) }
+              Nothing => Data.Stateful.failWith "a live table's entry needs more than 32 bits"
+
+          ||| Allocate `bytes` into rax: the fast path inline, the shared slow path
+          ||| called from the site's cold code, with `live` saved across it. The
+          ||| fast path bumps r15 before it checks it against r14, so the slow path
+          ||| finds the bytes as r15 less rax, and puts r15 back. Leaves rax
+          ||| pointing at the uninitialised object.
           allocate : (bytes : Nat) -> (live : List (LocatedIR.Reg enc)) -> Render enc ()
           allocate bytes live = do
             slow <- fresh
             done <- fresh
             emits [ Asm.MovRR Asm.RAX Asm.R15, Asm.AluI Asm.ADD Asm.R15 (cast bytes),
                    Asm.Alu Asm.CMP Asm.R15 Asm.R14, Asm.Jcc Asm.A slow, Asm.Lbl done ]
-            coldEmit (Asm.Lbl slow)
-            coldEmit (Asm.MovRR Asm.R15 Asm.RAX)
-            saveLive True coldEmit live
-            coldEmit (Asm.MovRI Asm.RDI (cast bytes))
-            coldEmit (Asm.Call (sym Linkage.Sym.SymAllocSlow))
-            coldEmit (Asm.MovRR Asm.RAX Asm.RDI) -- the routine's result, where a Direct result goes
-            restoreLive True coldEmit live
-            coldEmit (Asm.Jmp done)
+            slowStub slow done live
 
           ||| Load an operand into a floating-point register: a slot's bits, or an
           ||| immediate's word, through rax.
@@ -686,7 +695,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                 when (length vals >= 16777216 || length raws >= 16777216) $
                   Data.Stateful.failWith
                     "a continuation keeps more values than its layout word counts"
-                allocate (16 + 8 * length c.live) (c.live ++ alsoLive)
+                -- the call's operands live across the allocation too, each once
+                allocate (16 + 8 * length c.live) (c.live ++ besides c.live alsoLive)
                 emits [ Asm.Lea Asm.RDX (Asm.MRip (blk c.resume) 0),
                        Asm.MovMR (Asm.MBase Asm.RAX 0) Asm.RDX
                       , Asm.MovMR (Asm.MBase Asm.RAX 8) Asm.R12 ]
@@ -696,6 +706,15 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                             Asm.RDX))
                           (Data.Numbered.numbered (vals ++ raws))
                 emits (tagPointer Asm.R12 Asm.RAX)
+                where
+                  -- the registers of `more` that are not in `live`, each once: the
+                  -- slow path would save a register listed twice twice
+                  besides : (live, more : List (LocatedIR.Reg enc)) -> List (LocatedIR.Reg enc)
+                  besides live [] = []
+                  besides live (r :: rs) =
+                    if any (\l => LocatedIR.Reg.slot l == LocatedIR.Reg.slot r) live
+                      then besides live rs
+                      else r :: besides (r :: live) rs
 
           block : (LocatedIR.Label -> Asm.Label) -> (results : List (IRCommon.Ty enc)) ->
                   SortedMap LocatedIR.Label (List (LocatedIR.Reg enc), Integer) ->
@@ -1028,10 +1047,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                     Data.Stateful.failWith ("AllocSized cannot size an object by " ++ show q)
 
                   ||| Allocate an object whose size depends on `count`, as `allocate` does a
-                  ||| fixed one: `size r` turns the count in `r` into the object's bytes. The
-                  ||| slow path computes the size again from the count's slot, after saving
-                  ||| `live`, which holds the count. Leaves rax pointing at the uninitialised
-                  ||| object.
+                  ||| fixed one: `size r` turns the count in `r` into the object's bytes.
+                  ||| Leaves rax pointing at the uninitialised object.
                   allocateSized : (count : LocatedIR.Reg enc) ->
                                   (size : Asm.Reg64 -> List Asm.Instr) ->
                                   (live : List (LocatedIR.Reg enc)) -> Render enc ()
@@ -1042,15 +1059,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                     emits (size Asm.RDX)
                     emits [ Asm.MovRR Asm.RAX Asm.R15, Asm.Alu Asm.ADD Asm.R15 Asm.RDX,
                            Asm.Alu Asm.CMP Asm.R15 Asm.R14, Asm.Jcc Asm.A slow, Asm.Lbl done ]
-                    coldEmit (Asm.Lbl slow)
-                    coldEmit (Asm.MovRR Asm.R15 Asm.RAX)
-                    saveLive True coldEmit live
-                    coldEmit (Asm.MovRM Asm.RDI (slotMem count))
-                    traverse_ coldEmit (size Asm.RDI)
-                    coldEmit (Asm.Call (sym Linkage.Sym.SymAllocSlow))
-                    coldEmit (Asm.MovRR Asm.RAX Asm.RDI)
-                    restoreLive True coldEmit live
-                    coldEmit (Asm.Jmp done)
+                    slowStub slow done live
 
                   ||| A callee of a direct call that is no function of the program: an
                   ||| error, which names it. The lowering declares outside the program

@@ -8,7 +8,9 @@
 ||| A table is entries of one sub-word width, little-endian: the number of
 ||| GC-visible slots, the number of raw ones, then the GC-visible slots and
 ||| the raw ones. The width is the narrowest that holds every entry
-||| (`tableWidth`); a slot is listed once.
+||| (`tableWidth`). A slot listed twice is saved twice and reloaded twice,
+||| the same word each time, which only takes room: the code generator
+||| lists each once.
 |||
 ||| Part of the contract between compiled code and the runtime, with the
 ||| heap-object model (`HeapObj.Shape` says what it is): the code generator
@@ -38,21 +40,24 @@ tableWidth ns =
     else if most < 4294967296 then Just Width.Sub32
     else Nothing
 
-||| The table of the GC-visible slots and the raw ones, each listed once:
-||| its width and its bytes; none if an entry needs more than 32 bits.
+||| The table of the GC-visible slots and the raw ones: its width and its
+||| bytes; none if an entry needs more than 32 bits.
 public export
 table : (gc, raw : List Nat) -> Maybe (Width.SubWord, List Bits8)
 table gc raw = do
   let entries = length gc :: length raw :: gc ++ raw
   w <- tableWidth entries
-  pure (w, foldr (\n, rest => entry w (cast n) ++ rest) [] entries)
+  pure (w, foldr (entry w) [] entries)
   where
-    -- the entry's bytes, the low first
-    entry : Width.SubWord -> Bits64 -> List Bits8
-    entry w n = map (\i => cast (prim__shr_Bits64 n (8 * cast i))) (indices w)
-      where
-        indices : Width.SubWord -> List Nat
-        indices w' = [0 .. minus (Width.subWordBytes w') 1]
+    -- the entry's bytes, the low first, before the rest
+    entry : Width.SubWord -> Nat -> List Bits8 -> List Bits8
+    entry Width.Sub8 n rest = cast n :: rest
+    entry Width.Sub16 n rest =
+      let v = the Bits64 (cast n) in cast v :: cast (prim__shr_Bits64 v 8) :: rest
+    entry Width.Sub32 n rest =
+      let v = the Bits64 (cast n) in
+      cast v :: cast (prim__shr_Bits64 v 8) :: cast (prim__shr_Bits64 v 16)
+        :: cast (prim__shr_Bits64 v 24) :: rest
 
 ||| The GC-visible slots and the raw ones of a table of the width, its bytes
 ||| read as `table` writes them; none if they are not a table's.

@@ -1,0 +1,29 @@
+. ../../testutils.sh
+
+# The shared allocation slow path under an 8-byte window, where every
+# allocation takes it and the collector runs over and over: ordinary
+# programs whose sites keep nothing, one value, a few, 300 (a table of
+# 16-bit entries, slots past 255) and a raw double or word, live.
+idris2 --cg native -p idris2-native-runtime -p idris2-native --directive nursery=8 \
+  --directive dump-asm=build/alloc.s -o alloc Main.idr > /dev/null
+./build/exec/alloc
+echo "status: $?"
+# what the tables of the program's own functions cover, from the listing:
+# a stub calls the routine for its table's width (L6 for 8-bit entries, L8
+# for 16-bit), and its table follows: the GC-visible count, the raw count
+awk '/^# /{ on = ($0 ~ /^# Main\./ || $0 ~ /^# Wide\./) }
+     on && /^call L(6|8)$/ { w = $2; next }
+     on && /^\.byte / && w != "" {
+       sub(/^\.byte /, ""); split($0, b, ", ")
+       if (w == "L6") { g = b[1]; r = b[2] } else { g = b[1] + 256 * b[2]; r = b[3] + 256 * b[4]; wide = 1 }
+       if (g == 0 && r == 0) none = 1
+       if (g >= 2 && g <= 5) few = 1
+       if (g >= 256) many = 1
+       if (r >= 1) raw = 1
+       w = "" }
+     END {
+       print "a table with nothing live: " (none ? "yes" : "no")
+       print "a table with 2 to 5 GC-visible slots: " (few ? "yes" : "no")
+       print "a table with 256 GC-visible slots or more: " (many ? "yes" : "no")
+       print "a table of 16-bit entries: " (wide ? "yes" : "no")
+       print "a table with a raw slot: " (raw ? "yes" : "no") }' build/alloc.s
