@@ -31,6 +31,7 @@ import Native.Types.Header
 import Native.Types.IntegerRoutine
 import Native.Types.Kind
 import Native.Types.StringRoutine
+import Native.Width
 import System
 
 %language ElabReflection
@@ -70,6 +71,9 @@ Sample Arch where
 
 Sample OS where
   sample = Linux
+
+Sample SubWord where
+  sample = Sub8
 
 ||| The fully qualified name a short name refers to; `getCons` needs one.
 resolve : TT.Name -> Elab TT.Name
@@ -235,11 +239,15 @@ shiftOps = %runElab enumerate `{ShiftOp}
 sseOps : List (String, SseOp)
 sseOps = %runElab enumerate `{SseOp}
 
-widths : List (String, Width)
-widths = %runElab enumerate `{Width}
+widths : List (String, Asm.Width)
+widths = %runElab enumerate `{Asm.Width}
 
+||| Every symbol: the constructors, and `SymAllocLive` at the widths its
+||| sample leaves out.
 syms : List (String, Sym)
-syms = %runElab enumerate `{Sym}
+syms =
+  (%runElab enumerate `{Sym})
+  ++ [("SymAllocLive Sub16", SymAllocLive Sub16), ("SymAllocLive Sub32", SymAllocLive Sub32)]
 
 brokens : List (String, Broken)
 brokens = %runElab enumerate `{Broken}

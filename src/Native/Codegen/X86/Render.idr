@@ -55,6 +55,8 @@
 ||| collection can see a partial one.
 module Native.Codegen.X86.Render
 
+import Native.Codegen.X86.AccessWidth
+import Native.Codegen.X86.AllocLive
 import Native.Codegen.X86.Asm
 import Native.Codegen.X86.Datum
 import Native.Codegen.X86.Target
@@ -137,7 +139,8 @@ record RS (enc : Types.Enc) where
   areas : Linkage.Areas
 
 ||| A program's rendering, a function at a time: the code the seed enters,
-||| `main`, which jumps to the entry function (`mainCode`); then each
+||| `main`, which jumps to the entry function, and the slow path the
+||| allocation sites share (`mainCode`); then each
 ||| function's code, its slow paths after it (`functionCode`), each step
 ||| taking what the steps before it made and giving it on, so that each
 ||| function's code is a list of its own, to be encoded and forgotten
@@ -146,8 +149,8 @@ record RS (enc : Types.Enc) where
 public export
 record Renderer (enc : Types.Enc) where
   constructor MkRenderer
-  ||| The labels numbered before any function's code: each function's and
-  ||| each static's, and the seed's below them.
+  ||| The labels numbered before any function's code: each function's, each
+  ||| static's and those of `mainCode`, and the seed's below them.
   labelsBefore : Nat
   mainCode : List Asm.Instr
   ||| What the rendering has made before the first function.
@@ -205,10 +208,12 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
       do
       entry <- funLabel names p.entry
       emits [Asm.Lbl (sym Linkage.Sym.SymMain), Asm.Jmp entry]
+      traverse_ sharedSlowPath [Width.Sub8, Width.Sub16, Width.Sub32]
     pure
-      (MkRenderer next2 (s.text <>> []) ({ text := [<] } s) p.functions
+      (MkRenderer s.nextLabel (s.text <>> []) ({ text := [<] } s) p.functions
          (functionCode names symbols) (finished names p.statics))
     where
+
       Render : Types.Enc -> Type -> Type
       Render enc = Data.Stateful (RS enc) String
 
@@ -224,6 +229,15 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
       -- the instructions put at the code's end in one step, not one each
       emits : List Asm.Instr -> Render enc ()
       emits is = Data.Stateful.modify { text $= (<>< is) }
+
+      ||| The slow path the allocation sites share, for live tables of the
+      ||| width, with labels of its own.
+      sharedSlowPath : Width.SubWord -> Render enc ()
+      sharedSlowPath w = do
+        first <-
+          Data.Stateful.state
+            (\s => ({ nextLabel := s.nextLabel + AllocLive.routineLabels } s, s.nextLabel))
+        emits (AllocLive.routine w first)
 
       sym : Linkage.Sym -> Asm.Label
       sym = Linkage.Sym.label
@@ -333,7 +347,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
 
           ||| The register's slot in `SCRATCH`.
           slotMem : LocatedIR.Reg enc -> Asm.Mem
-          slotMem r = Asm.MBase Asm.RBX (cast (8 * LocatedIR.Reg.slot r))
+          slotMem r = Asm.MBase Asm.RBX (cast (Area.slotOffset (cast (LocatedIR.Reg.slot r))))
 
           store : LocatedIR.Reg enc -> Asm.Reg64 -> Render enc ()
           store d r = emit (Asm.MovMR (slotMem d) r)
@@ -779,7 +793,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                 -- A narrowing reads the low part of the slot, which a little-endian word
                 -- keeps first, extending it as it loads.
                 LocatedIR.Instr.Ext sw s d x => do
-                                  emit (Asm.Load (width sw) s Asm.RAX (slotMem x))
+                                  emit (Asm.Load (AccessWidth.accessWidth sw) s Asm.RAX (slotMem x))
                                   store d Asm.RAX
                 LocatedIR.Instr.Narrow _ d x => do loadReg Asm.RAX x; store d Asm.RAX
                 LocatedIR.Instr.Widen d x => do loadReg Asm.RAX x; store d Asm.RAX
@@ -954,14 +968,14 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                 LocatedIR.Instr.LoadN sw s d m => do
                                   address Asm.RAX m (Width.subWordBytes sw)
                                   emit
-                                    (Asm.Load (width sw) s Asm.RCX
+                                    (Asm.Load (AccessWidth.accessWidth sw) s Asm.RCX
                                      (Asm.MBase Asm.RAX (m.offset - baseTag m.base)))
                                   store d Asm.RCX
                 LocatedIR.Instr.StoreN sw m x => do
                                   address Asm.RAX m (Width.subWordBytes sw)
                                   loadReg Asm.RCX x
                                   emit
-                                    (Asm.Store (width sw)
+                                    (Asm.Store (AccessWidth.accessWidth sw)
                                      (Asm.MBase Asm.RAX (m.offset - baseTag m.base)) Asm.RCX)
                 LocatedIR.Instr.AreaAddr d a => do
                                   emit (Asm.Lea Asm.RAX (Asm.MRip (sym (Linkage.Sym.areaSym a)) 0))
@@ -1197,12 +1211,6 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                       shiftFor 2 = 1
                       shiftFor 4 = 2
                       shiftFor _ = 3
-
-                  ||| The width of a sub-word access.
-                  width : Width.SubWord -> Asm.Width
-                  width Width.Sub8 = Asm.W8
-                  width Width.Sub16 = Asm.W16
-                  width Width.Sub32 = Asm.W32
 
       -- a function's code, its slow paths after it, rendered after what
       -- the rendering has made

@@ -1,8 +1,8 @@
 ||| The memory areas the runtime keeps outside the heap (`Area`), and what
 ||| generated code and the runtime agree on of them: the words of the
 ||| runtime's state (`runtimeWords`), where the root buffer holds an entry
-||| (`rootOffset`), and where a top-level constant's cell is
-||| (`constantOffset`).
+||| (`rootOffset`), where `SCRATCH` holds a slot (`slotOffset`), and where a
+||| top-level constant's cell is (`constantOffset`).
 |||
 ||| Part of the contract between compiled code and the runtime, with the
 ||| heap-object model (`HeapObj.Shape` says what it is), and like it of
@@ -69,6 +69,18 @@ rootShift = 3
 public export %inline
 rootOffset : (i : Bits64) -> Bits64
 rootOffset i = prim__shl_Bits64 i rootShift
+
+||| The bytes of a slot of `SCRATCH`, as the power of two they are: a slot,
+||| where a register of generated code lives, is a word.
+public export
+slotShift : Bits64
+slotShift = 3
+
+||| Where `SCRATCH` holds slot `n`, in bytes from its start: the slots in
+||| order from the start, `2 ^ slotShift` bytes each.
+public export %inline
+slotOffset : (n : Bits64) -> Bits64
+slotOffset n = prim__shl_Bits64 n slotShift
 
 ||| The bytes of a cell of `CONSTANTS`, as the power of two they are: two
 ||| words, whether the constant is evaluated, then its value.

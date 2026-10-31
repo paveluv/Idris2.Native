@@ -1,0 +1,8 @@
+. ../../testutils.sh
+
+# The live table an allocation site's cold code carries, and the shared
+# slow path that reads it: the table round-trips at the widths' boundaries,
+# its bytes are as the format says, and a site's stub and the routines have
+# the shape and the sizes the slow path depends on.
+idris2 -p idris2-native -p idris2 Test.idr -o test > /dev/null
+./build/exec/test

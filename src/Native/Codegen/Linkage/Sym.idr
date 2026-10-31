@@ -7,6 +7,7 @@ module Native.Codegen.Linkage.Sym
 
 import Native.Area
 import Native.Codegen.X86.Asm
+import Native.Width
 
 %default total
 
@@ -27,6 +28,10 @@ data Sym
     SymUnsupported
   | ||| `idris_alloc_slow(n)`: the allocation slow path, the runtime's
     SymAllocSlow
+  | ||| `idris_alloc_live8`, `16`, `32`: the slow path every allocation site
+    ||| of generated code shares, reading the site's live table
+    ||| (`Native.LiveTable`) of entries of the width
+    SymAllocLive Width.SubWord
   | ||| rodata: the static HALT continuation, the bottom of every
     ||| continuation chain
     SymHALT
@@ -70,6 +75,9 @@ label SymHalt = 2
 label SymCrash = 3
 label SymUnsupported = 4
 label SymAllocSlow = 5
+label (SymAllocLive Width.Sub8) = 6
+label (SymAllocLive Width.Sub16) = 8
+label (SymAllocLive Width.Sub32) = 9
 label SymHALT = 7
 label SymArgs = 10
 label SymRoots = 11
@@ -94,6 +102,9 @@ symName SymHalt = "idris_halt"
 symName SymCrash = "idris_crash"
 symName SymUnsupported = "idris_unsupported"
 symName SymAllocSlow = "idris_alloc_slow"
+symName (SymAllocLive Width.Sub8) = "idris_alloc_live8"
+symName (SymAllocLive Width.Sub16) = "idris_alloc_live16"
+symName (SymAllocLive Width.Sub32) = "idris_alloc_live32"
 symName SymHALT = "HALT"
 symName SymArgs = "ARGS"
 symName SymRoots = "ROOTS"
