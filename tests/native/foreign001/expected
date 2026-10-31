@@ -8,7 +8,6 @@ lowered  System.Info.prim__codegen
 lowered  System.Info.prim__os
 missing  Prelude.IO.prim__fork
 missing  Prelude.IO.prim__getChar
-missing  Prelude.IO.prim__getStr
 missing  Prelude.IO.prim__onCollect
 missing  Prelude.IO.prim__onCollectAny
 missing  Prelude.IO.prim__threadWait
@@ -107,6 +106,7 @@ runtime  Data.Buffer.prim__setInt64
 runtime  Data.Buffer.prim__setInt8
 runtime  Data.Buffer.prim__setString
 runtime  Data.Buffer.stringByteLength
+runtime  Prelude.IO.prim__getStr
 runtime  Prelude.IO.prim__getString
 runtime  Prelude.IO.prim__putChar
 runtime  Prelude.IO.prim__putStr
@@ -162,4 +162,4 @@ runtime  System.prim__getEnv
 runtime  System.prim__getEnvPair
 runtime  System.prim__setEnv
 runtime  System.prim__unsetEnv
-83 by the runtime, 8 lowered inline, 73 missing
+84 by the runtime, 8 lowered inline, 72 missing

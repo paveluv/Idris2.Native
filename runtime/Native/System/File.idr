@@ -256,10 +256,13 @@ takeBytes f n = do
   getString b s n
 
 ||| The file's text through the next newline, or to its end, or to a read
-||| that fails: the C library's `getline`.
+||| that fails, the newline kept if `newline` is true: the C library's
+||| `getline`. With the newline dropped, a carriage return before it is
+||| dropped too, as a line's end: the line `getLine` gives, as the Chez
+||| backend's and the C support's.
 export covering
-readLine : File -> IO String
-readLine f = from 0
+readLine : (newline : Bool) -> File -> IO String
+readLine newline f = from 0
   where
     -- the line's bytes searched from `i` past the file's first unread byte
     covering
@@ -269,12 +272,18 @@ readLine f = from 0
       e <- end f
       b <- input f
       nl <- Call.newlineFrom (Flat.MkUniform b) (s + i) e
-      if nl < e then takeBytes f (nl + 1 - s) else do
-        got <- more f
-        if got then from (e - s) else do
-          s' <- start f
-          e' <- end f
-          takeBytes f (e' - s')
+      if nl < e
+        then if newline then takeBytes f (nl + 1 - s) else do
+          cr <- if nl > s then map (== 13) (getBits8 b (nl - 1)) else pure False
+          line <- takeBytes f (nl - s - (if cr then 1 else 0))
+          setStart f (nl + 1)
+          pure line
+        else do
+          got <- more f
+          if got then from (e - s) else do
+            s' <- start f
+            e' <- end f
+            takeBytes f (e' - s')
 
 ||| At most `n` bytes of the file's text, as many as there are before its
 ||| end or a read that fails: the C library's `fread`.

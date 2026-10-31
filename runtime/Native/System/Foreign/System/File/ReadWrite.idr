@@ -25,7 +25,7 @@ prim__seekLine p = toPrim $ File.withFile p (-1) (\_, f => do
 export covering
 prim__readLine : AnyPtr -> PrimIO (Ptr String)
 prim__readLine p = toPrim $ File.withFile p Call.nullString.value (\_, f => do
-  s <- File.readLine f
+  s <- File.readLine True f
   pure (Call.stringPointer (Flat.MkUniform s)).value)
 
 ||| `fGetChars`: at most `n` bytes of the file's text, as many as there are

@@ -1,0 +1,15 @@
+. ../../testutils.sh
+
+# getLine natively: lines of the standard input, the empty line, a line
+# longer than the runtime's 64 KiB reads, a carriage return before the
+# newline, text that is not ASCII, a last line without a newline, and
+# reads past the end, which give the empty string.
+idris2 --cg native -o input Input.idr > /dev/null
+{
+  printf 'first\n\n'
+  printf '\303\251t\303\251\n'
+  awk 'BEGIN { s = "a"; for (i = 0; i < 17; i++) s = s s; print s "z" }'
+  printf 'dos\r\n'
+  printf 'last, no newline'
+} > build/input.txt
+./build/exec/input < build/input.txt

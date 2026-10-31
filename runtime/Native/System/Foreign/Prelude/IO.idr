@@ -1,8 +1,8 @@
 ||| The foreign functions of the prelude's `Prelude.IO` that write to the
-||| standard output, as the system tier implements them: each a flat
-||| function of the foreign one's name and type (`Native.System` says how
-||| they are bound). A string is the system's text through `Support.Text`,
-||| for every encoding.
+||| standard output or read the standard input, as the system tier
+||| implements them: each a function of the foreign one's name and type
+||| (`Native.System` says how they are bound). A string is the system's text
+||| through `Support.Text`, for every encoding.
 module Native.System.Foreign.Prelude.IO
 
 import Native.Flat.Uniform as Flat
@@ -13,6 +13,7 @@ import Native.Runtime.OS
 import Native.Runtime.State
 import Native.Support.CodePoint
 import Native.Support.Text
+import Native.System.File
 
 %hide Prelude.Interfaces.(>>=)
 %hide Prelude.Interfaces.(>>)
@@ -49,3 +50,10 @@ prim__putStr str w = let (Runtime.MkOrdo # ()) = putOp str Runtime.MkOrdo in MkI
         (\p, n => do
           _ <- Runtime.OS.osWriteAll Runtime.OS.stdout p n
           Runtime.Ordo.pure ())
+
+||| `getLine`: the standard input's text through the next newline, without
+||| it, or to its end; the empty string there, as the Chez backend's
+||| `get-line` gives.
+export covering
+prim__getStr : PrimIO String
+prim__getStr = toPrim $ File.withFile (File.standard 0) "" (\_, f => File.readLine False f)
