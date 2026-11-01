@@ -23,8 +23,9 @@ import Native.Width
 
 %default total
 
-||| An instruction. Each defines at most one register, its destination,
-||| which comes first. The types stated here are the term's
+||| An instruction. Most define one register, their destination, which
+||| comes first; `Mul128` and `Div128` define two, and `DirectCall` the
+||| callee's results. The types stated here are the term's
 ||| (`Native.Codegen.TermIR.Program`), which the conversion keeps.
 public export
 data Instr : Types.Enc -> Type where
@@ -53,10 +54,12 @@ data Instr : Types.Enc -> Type where
   ||| an identity for it. There is no arithmetic on `Val`s: a `Val` is narrowed
   ||| to a `Fix` first.
   Arith      : IRCommon.Op.ArithOp -> Reg enc -> Opnd enc -> Opnd enc -> Instr enc
-  ||| Negation or complement of a `W64`.
   ||| The 128-bit product of two words, into its high word and its low word.
   Mul128     : (high, low : Reg enc) -> Opnd enc -> Opnd enc -> Instr enc
+  ||| The quotient and the remainder of the 128-bit number of the high and
+  ||| the low word by the divisor.
   Div128     : (quotient, remainder : Reg enc) -> (high, low, divisor : Opnd enc) -> Instr enc
+  ||| Negation or complement of a `W64`.
   Unary      : IRCommon.Op.UnOp -> Reg enc -> Reg enc -> Instr enc
   ||| `Add`, `Sub` or `Mul`, with the operand types of `Arith`, then a branch
   ||| to the label if the result does not fit: in 64 signed bits for `W64`s,
@@ -165,11 +168,10 @@ data Instr : Types.Enc -> Type where
   ||| type. The runtime's primitives never collect: when the nursery is full
   ||| they take a fresh window, and the next allocation slow path of
   ||| generated code collects. `live` is every register live across the
-  ||| call, its results excluded. The rendering saves `live` around every
-  ||| direct call, since a direct call clobbers every register that is not
-  ||| pinned: across one that may collect, the GC-visible members in `ROOTS`,
-  ||| where the collector updates them, and the rest on the stack; across one
-  ||| that cannot, all of them on the stack, since nothing moves.
+  ||| call, its results excluded. The callee's slots are in a frame of its
+  ||| own, so the call keeps every slot of its caller's; across a call that
+  ||| may collect, the rendering keeps the GC-visible members of `live` in
+  ||| `ROOTS`, where the collector forwards them, and reloads them after.
   DirectCall : Name -> List (Opnd enc) -> (results : List (Reg enc)) -> (mayCollect : Bool) ->
                (live : List (Reg enc)) -> Instr enc
   ||| A pinned register's value, and setting it.

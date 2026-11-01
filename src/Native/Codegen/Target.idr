@@ -146,7 +146,9 @@ record Target where
   ||| The continuation register, holding the current continuation. Pinned
   ||| under the heap lowering only; scratch otherwise.
   k : TargetReg
-  ||| The machine stack pointer. Generated code never moves it.
+  ||| The machine stack pointer. CPS code never moves it; a `Direct`
+  ||| function lowers it by its frame and raises it again before it
+  ||| returns, and the allocation slow path's routine by a frame of its own.
   stackPointer : TargetReg
   ||| Register names, for dumps and messages.
   regName : TargetReg -> String

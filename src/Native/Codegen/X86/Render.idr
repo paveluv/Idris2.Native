@@ -166,6 +166,15 @@ record Renderer (enc : Types.Enc) where
   functionCode : RS enc -> LocatedIR.Function enc -> Either String (RS enc, List Asm.Instr)
   finished : RS enc -> Either String Rendered
 
+||| A continuation's live values in the order it keeps them: the GC-visible
+||| ones, which the collector forwards, then the raw ones, as its layout word
+||| counts them. The resume block reloads them in the order its call stored
+||| them.
+contFields : List (LocatedIR.Reg enc) -> (List (LocatedIR.Reg enc), List (LocatedIR.Reg enc))
+contFields live =
+  (filter (IRCommon.Ty.gcVisible . LocatedIR.Reg.ty) live,
+   filter (not . IRCommon.Ty.gcVisible . LocatedIR.Reg.ty) live)
+
 -- Everything below renders for the program's encodings, and the contract as
 -- the loaded runtime realises it. The value encoding decides how a `Val`
 -- immediate and a fixnum are words, and the pointer tag every access
@@ -330,8 +339,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                        Maybe (LocatedIR.Label, (List (LocatedIR.Reg enc), Integer))
               resume b = do
                 c <- LocatedIR.Terminator.termCont b.term
-                let vals = filter (IRCommon.Ty.gcVisible . LocatedIR.Reg.ty) c.live
-                    raws = filter (not . IRCommon.Ty.gcVisible . LocatedIR.Reg.ty) c.live
+                let (vals, raws) = contFields c.live
                 pure (c.resume,
                   (vals ++ raws,
                    HeapObj.LayoutWord.layoutWord (cast (length vals)) (cast (length raws))))
@@ -694,8 +702,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
               pushCont : (LocatedIR.Label -> Asm.Label) -> LocatedIR.Cont enc ->
                          (alsoLive : List (LocatedIR.Reg enc)) -> Render enc ()
               pushCont blk c alsoLive = do
-                let vals = filter (IRCommon.Ty.gcVisible . LocatedIR.Reg.ty) c.live
-                    raws = filter (not . IRCommon.Ty.gcVisible . LocatedIR.Reg.ty) c.live
+                let (vals, raws) = contFields c.live
                 when (length vals >= 16777216 || length raws >= 16777216) $
                   Data.Stateful.failWith
                     "a continuation keeps more values than its layout word counts"

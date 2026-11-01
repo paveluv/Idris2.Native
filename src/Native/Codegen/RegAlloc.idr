@@ -10,8 +10,9 @@
 ||| machine register, so none of the target's reserved ones can occur; an
 ||| allocator that assigns registers will take them from the target's
 ||| allocatable ones. A join point becomes a block, and its parameters
-||| registers that each jump assigns: every argument first into a fresh
-||| register, then into the parameters, so that no argument is overwritten
+||| registers that each jump assigns: each argument into its parameter, or,
+||| when an argument reads one of the parameters, every argument first into
+||| a fresh register, then into the parameters, so that none is overwritten
 ||| before it is read. A call's continuation becomes a resume block. An
 ||| immediate where the IR wants a register is materialised just before its
 ||| use.
