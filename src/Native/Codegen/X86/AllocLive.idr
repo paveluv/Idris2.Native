@@ -18,6 +18,7 @@ module Native.Codegen.X86.AllocLive
 import Native.Codegen.X86.AccessWidth
 import Native.Codegen.X86.Asm
 import Native.Codegen.X86.Encode
+import Native.Codegen.X86.RegSet
 
 import Native.Area
 import Native.Codegen.Linkage.Sym as Linkage
@@ -41,6 +42,17 @@ stub done (w, bytes) =
   , Asm.Jmp done
   , Asm.Bytes bytes ]
 
+||| What the routine may leave changed: rax, the object's room; rbx,
+||| `SCRATCH`; r12, the continuation, which the collector may move; r14 and
+||| r15, the window; and rcx, rdx, rsi, rdi and r8 to r11, which it and
+||| `idris_alloc_slow` use. The rendering checks it against what the routine
+||| and every function `idris_alloc_slow` reaches write (`Clobbers`).
+export
+clobbers : RegSet
+clobbers =
+  RegSet.gprs [ Asm.RAX, Asm.RCX, Asm.RDX, Asm.RBX, Asm.RSI, Asm.RDI, Asm.R8, Asm.R9, Asm.R10
+              , Asm.R11, Asm.R12, Asm.R14, Asm.R15 ]
+
 ||| The labels a routine takes for itself.
 export
 routineLabels : Nat
@@ -54,10 +66,10 @@ routineLabels = 8
 ||| 16, the call having pushed a word. The frame is an odd number of words,
 ||| the table's address and the raw slots, so that the stack is 16-aligned
 ||| at the call of `idris_alloc_slow`. Leaves rax the object's room, r15 and
-||| r14 the window `idris_alloc_slow` left, rbx `SCRATCH`, every slot the
-||| table lists as it was or as the collector forwarded it, and `NROOTS` and
-||| the stack as they were. Clobbers rcx, rdx, rsi, rdi, r8 to r11 and the
-||| flags.
+||| r14 the window `idris_alloc_slow` left, rbx `SCRATCH`, r12 and every
+||| slot the table lists as they were or as the collector forwarded them,
+||| and `NROOTS` and the stack as they were. Clobbers rcx, rdx, rsi, rdi, r8
+||| to r11 and the flags (`clobbers`).
 export
 routine : Width.SubWord -> (first : Asm.Label) -> List Asm.Instr
 routine w first =

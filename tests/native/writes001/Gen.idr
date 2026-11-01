@@ -211,7 +211,8 @@ make = do
   (text, missing) <- assemble textBase (program area (labelled (area + bss - 4096)))
   let True = byteCount text == byteCount text0
     | False => putStrLn "the text's size depends on the area's address"
-  Right () <- writeImage "oracle" (elfImage X86_64 lay (bytes (text <>> [])) (bytes []) bss textBase)
+  Right () <- writeImage "oracle"
+                 (elfImage X86_64 lay (bytes (text <>> [])) (bytes []) bss textBase)
     | Left err => putStrLn ("write failed: " ++ show err)
   putStrLn ("\{show n} samples, missing labels: \{show (length missing)}")
 
@@ -236,8 +237,9 @@ check file = do
                                b <- getBits64 buf (before + 8 * dumpWords + 8 * cast (regNum r))
                                pure (if a /= b && not (hasGpr r w) then [show r] else []))
                      gprsAll
-      xs <- traverse (\x => do a <- getBits64 buf (before + 128 + 8 * cast (xmmNum x))
-                               b <- getBits64 buf (before + 8 * dumpWords + 128 + 8 * cast (xmmNum x))
+      xs <- traverse (\x => do let at = 128 + 8 * cast (xmmNum x)
+                               a <- getBits64 buf (before + at)
+                               b <- getBits64 buf (before + 8 * dumpWords + at)
                                pure (if a /= b && not (hasXmm x w) then [show x] else []))
                      xmmsAll
       pure (concat gs ++ concat xs)

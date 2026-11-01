@@ -54,3 +54,20 @@ hasGpr r s = within (gpr r) s
 export
 hasXmm : Asm.Xmm -> RegSet -> Bool
 hasXmm x s = within (xmm x) s
+
+||| The registers of the first set that are not in the second.
+export
+minus : RegSet -> RegSet -> RegSet
+minus a b = MkRegSet (a.bits .&. complement b.bits)
+
+||| The set's registers' names, the general ones first, each in its order.
+export
+names : RegSet -> List String
+names s =
+  [ show r | r <- [ Asm.RAX, Asm.RCX, Asm.RDX, Asm.RBX, Asm.RSP, Asm.RBP, Asm.RSI, Asm.RDI
+                  , Asm.R8, Asm.R9, Asm.R10, Asm.R11, Asm.R12, Asm.R13, Asm.R14, Asm.R15 ]
+           , hasGpr r s ] ++
+  [ show x | x <- [ Asm.XMM0, Asm.XMM1, Asm.XMM2, Asm.XMM3, Asm.XMM4, Asm.XMM5, Asm.XMM6
+                  , Asm.XMM7, Asm.XMM8, Asm.XMM9, Asm.XMM10, Asm.XMM11, Asm.XMM12, Asm.XMM13
+                  , Asm.XMM14, Asm.XMM15 ]
+           , hasXmm x s ]

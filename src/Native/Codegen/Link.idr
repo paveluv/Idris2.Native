@@ -10,8 +10,10 @@ import Native.Codegen.Linkage.Sym as Linkage
 import Native.Codegen.LocatedIR.Function as LocatedIR
 import Native.Codegen.Platform
 import Native.Codegen.Seed
+import Native.Codegen.X86.AllocLive as X86
 import Native.Codegen.X86.Asm
 import Native.Codegen.X86.Assembler as X86
+import Native.Codegen.X86.Clobbers as X86
 import Native.Codegen.X86.Datum as X86
 import Native.Codegen.X86.Encode
 import Native.Codegen.X86.LabelTable as X86
@@ -22,6 +24,7 @@ import Native.Data.ByteSink as Data
 import Native.Data.LittleEndian
 import Native.HeapObj.ValEnc
 import Native.Types.Enc as Types
+import Native.Width
 
 %default total
 
@@ -50,21 +53,29 @@ renderInto : X86.Assembler -> (dump : List X86.Asm.Instr -> IO ()) -> X86.Render
              IO (Either String X86.Render.Rendered)
 renderInto asm dump r = do
   encoded r.mainCode
-  functions r.first r.functions
+  functions r.first X86.Clobbers.none r.functions
   where
     encoded : List X86.Asm.Instr -> IO ()
     encoded is = do
       dump is
       X86.Assembler.encode asm is
 
-    functions : X86.Render.RS enc -> List (LocatedIR.Function enc) ->
+    -- the shared allocation slow path at each width, which generated code
+    -- calls, against what it declares it may change
+    slowPaths : X86.Clobbers -> Either String ()
+    slowPaths c =
+      traverse_ (\w => X86.Clobbers.conforms c "the shared allocation slow path"
+                         X86.AllocLive.clobbers (X86.AllocLive.routine w 0))
+        [Width.Sub8, Width.Sub16, Width.Sub32]
+
+    functions : X86.Render.RS enc -> X86.Clobbers -> List (LocatedIR.Function enc) ->
                 IO (Either String X86.Render.Rendered)
-    functions s [] = pure (r.finished s)
-    functions s (f :: fs) = case r.functionCode s f of
+    functions s c [] = pure (slowPaths c >>= \() => r.finished s)
+    functions s c (f :: fs) = case r.functionCode s f of
       Left err => pure (Left err)
       Right (s', is) => do
         encoded is
-        functions s' fs
+        functions s' (X86.Clobbers.add is c) fs
 
 ||| A static executable from the seed's text and the program's code, which
 ||| the assembler holds (`seeded`, then the program's), and the read-only
