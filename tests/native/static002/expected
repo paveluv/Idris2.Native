@@ -326,8 +326,8 @@ mov rbx, rsp
 mov qword ptr [rbx], rdi
 jmp L65
 L65:
-mov rax, -9223372036854775801
 mov rcx, qword ptr [rbx]
+mov rax, -9223372036854775801
 add rax, rcx
 mov qword ptr [rbx+8], rax
 mov rdi, qword ptr [rbx+8]

@@ -25,9 +25,9 @@ mov rax, qword ptr [rbx+32]
 mov qword ptr [rbx+72], rax
 jmp L66
 L66:
-xor rdx, rdx
 mov rax, qword ptr [rbx+40]
 mov rcx, qword ptr [rbx+48]
+xor rdx, rdx
 cmp rax, rcx
 setge dl
 mov qword ptr [rbx+80], rdx
@@ -59,9 +59,9 @@ mov rax, qword ptr [rbx+40]
 mov rcx, 1
 add rax, rcx
 mov qword ptr [rbx+96], rax
-xor rdx, rdx
 mov rax, qword ptr [rbx+40]
 mov rcx, qword ptr [rbx+56]
+xor rdx, rdx
 cmp rax, rcx
 setge dl
 mov qword ptr [rbx+104], rdx
@@ -92,9 +92,9 @@ test rax, rax
 je L81
 jmp L82
 L76:
-xor rdx, rdx
 mov rax, qword ptr [rbx+40]
 mov rcx, qword ptr [rbx+64]
+xor rdx, rdx
 cmp rax, rcx
 setle dl
 mov qword ptr [rbx+128], rdx

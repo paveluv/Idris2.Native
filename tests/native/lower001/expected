@@ -11,12 +11,18 @@ function Main.wrap CPS [slot0:Val] entry 0
 function Main.first CPS [slot0:Val] entry 0
   0:
     slot1:Ptr CON := Narrow Ptr CON slot0:Val
-    slot2:W64 := LoadPart ConIdP slot1:Ptr CON
-    Switch slot2:W64 [1 -> 1, 0 -> 2] else 3
+    reg0:Ptr CON := slot1:Ptr CON
+    reg0:W64 := LoadPart ConIdP reg0:Ptr CON
+    slot2:W64 := reg0:W64
+    reg0:W64 := slot2:W64
+    Switch reg0:W64 [1 -> 1, 0 -> 2] else 3
   1:
     slot3:Ptr CON := Narrow Ptr CON slot0:Val
-    slot4:Val := Load Val [slot3:Ptr CON + 8]
-    Return slot4:Val
+    reg0:Ptr CON := slot3:Ptr CON
+    reg1:Val := Load Val [reg0:Ptr CON + 8]
+    slot4:Val := reg1:Val
+    reg0:Val := slot4:Val
+    Return reg0:Val
   2:
     Return #0
   3:
@@ -24,47 +30,68 @@ function Main.first CPS [slot0:Val] entry 0
 
 function Main.count CPS [slot0:Val, slot1:Val] entry 0
   0:
-    IfFixnums [slot0:Val] 3 2
+    reg0:Val := slot0:Val
+    IfFixnums [reg0:Val] 3 2
   1:
-    Return slot1:Val
+    reg0:Val := slot1:Val
+    Return reg0:Val
   2:
-    IfFixnums [slot0:Val] 6 8
+    reg0:Val := slot0:Val
+    IfFixnums [reg0:Val] 6 8
   3:
     slot2:Fix := Narrow Fix slot0:Val
-    Switch slot2:Fix [0 -> 1] else 2
+    reg0:Fix := slot2:Fix
+    Switch reg0:Fix [0 -> 1] else 2
   4:
-    IfFixnums [slot1:Val] 16 18
+    reg0:Val := slot1:Val
+    IfFixnums [reg0:Val] 16 18
   5:
-    slot15:W64 := Sub slot4:W64, slot5:W64
-    slot17:Fix := TagOv slot15:W64 overflow 13
+    reg0:W64 := slot4:W64
+    reg1:W64 := slot5:W64
+    reg0:W64 := Sub reg0:W64, reg1:W64
+    slot15:W64 := reg0:W64
+    reg0:W64 := slot15:W64
+    reg0:Fix := TagOv reg0:W64 overflow 13
+    slot17:Fix := reg0:Fix
     slot18:Val := Widen slot17:Fix
     slot16:Val := slot18:Val
     Jump 12
   6:
     slot6:Fix := Narrow Fix slot0:Val
-    slot7:Fix := SubOv slot6:Fix, #1 overflow 7
+    reg0:Fix := slot6:Fix
+    reg0:Fix := SubOv reg0:Fix, #1 overflow 7
+    slot7:Fix := reg0:Fix
     slot8:Val := Widen slot7:Fix
     slot3:Val := slot8:Val
     Jump 4
   7:
-    slot9:W64 := Untag slot6:Fix
+    reg0:Fix := slot6:Fix
+    reg0:W64 := Untag reg0:Fix
+    slot9:W64 := reg0:W64
     slot4:W64 := slot9:W64
-    slot5:W64 := Const 1
+    reg0:W64 := Const 1
+    slot5:W64 := reg0:W64
     Jump 5
   8:
-    IfFixnums [slot0:Val] 10 11
+    reg0:Val := slot0:Val
+    IfFixnums [reg0:Val] 10 11
   9:
     slot4:W64 := slot10:W64
-    slot5:W64 := Const 1
+    reg0:W64 := Const 1
+    slot5:W64 := reg0:W64
     Jump 5
   10:
     slot11:Fix := Narrow Fix slot0:Val
-    slot12:W64 := Untag slot11:Fix
+    reg0:Fix := slot11:Fix
+    reg0:W64 := Untag reg0:Fix
+    slot12:W64 := reg0:W64
     slot10:W64 := slot12:W64
     Jump 9
   11:
     slot13:Ptr INT64 := Narrow Ptr INT64 slot0:Val
-    slot14:W64 := Load W64 [slot13:Ptr INT64 + 8]
+    reg0:Ptr INT64 := slot13:Ptr INT64
+    reg1:W64 := Load W64 [reg0:Ptr INT64 + 8]
+    slot14:W64 := reg1:W64
     slot10:W64 := slot14:W64
     Jump 9
   12:
@@ -78,36 +105,52 @@ function Main.count CPS [slot0:Val, slot1:Val] entry 0
   14:
     TailCall Main.count (slot3:Val, slot21:Val)
   15:
-    slot33:W64 := Add slot22:W64, slot23:W64
-    slot35:Fix := TagOv slot33:W64 overflow 23
+    reg0:W64 := slot22:W64
+    reg1:W64 := slot23:W64
+    reg0:W64 := Add reg0:W64, reg1:W64
+    slot33:W64 := reg0:W64
+    reg0:W64 := slot33:W64
+    reg0:Fix := TagOv reg0:W64 overflow 23
+    slot35:Fix := reg0:Fix
     slot36:Val := Widen slot35:Fix
     slot34:Val := slot36:Val
     Jump 22
   16:
     slot24:Fix := Narrow Fix slot1:Val
-    slot25:Fix := AddOv slot24:Fix, #1 overflow 17
+    reg0:Fix := slot24:Fix
+    reg0:Fix := AddOv reg0:Fix, #1 overflow 17
+    slot25:Fix := reg0:Fix
     slot26:Val := Widen slot25:Fix
     slot21:Val := slot26:Val
     Jump 14
   17:
-    slot27:W64 := Untag slot24:Fix
+    reg0:Fix := slot24:Fix
+    reg0:W64 := Untag reg0:Fix
+    slot27:W64 := reg0:W64
     slot22:W64 := slot27:W64
-    slot23:W64 := Const 1
+    reg0:W64 := Const 1
+    slot23:W64 := reg0:W64
     Jump 15
   18:
-    IfFixnums [slot1:Val] 20 21
+    reg0:Val := slot1:Val
+    IfFixnums [reg0:Val] 20 21
   19:
     slot22:W64 := slot28:W64
-    slot23:W64 := Const 1
+    reg0:W64 := Const 1
+    slot23:W64 := reg0:W64
     Jump 15
   20:
     slot29:Fix := Narrow Fix slot1:Val
-    slot30:W64 := Untag slot29:Fix
+    reg0:Fix := slot29:Fix
+    reg0:W64 := Untag reg0:Fix
+    slot30:W64 := reg0:W64
     slot28:W64 := slot30:W64
     Jump 19
   21:
     slot31:Ptr INT64 := Narrow Ptr INT64 slot1:Val
-    slot32:W64 := Load W64 [slot31:Ptr INT64 + 8]
+    reg0:Ptr INT64 := slot31:Ptr INT64
+    reg1:W64 := Load W64 [reg0:Ptr INT64 + 8]
+    slot32:W64 := reg1:W64
     slot28:W64 := slot32:W64
     Jump 19
   22:

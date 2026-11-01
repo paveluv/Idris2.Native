@@ -897,7 +897,16 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                   store d Asm.RAX
                 LocatedIR.Instr.Narrow _ d x => do loadReg Asm.RAX x; store d Asm.RAX
                 LocatedIR.Instr.Widen d x => do loadReg Asm.RAX x; store d Asm.RAX
-                LocatedIR.Instr.Move d x => do loadReg Asm.RAX x; store d Asm.RAX
+                -- a move with a register at either end moves directly; one
+                -- between slots goes through rax
+                LocatedIR.Instr.Move d x => case (d, x) of
+                  (LocatedIR.Location.Register i t, _) => case IRCommon.Ty.class t of
+                    Rep.FloatClass => do r <- floatRegister i; getFloat r x
+                    Rep.WordClass => do r <- wordRegister i; getWord r x
+                  (_, LocatedIR.Location.Register i t) => case IRCommon.Ty.class t of
+                    Rep.FloatClass => do r <- floatRegister i; putFloat d r
+                    Rep.WordClass => do r <- wordRegister i; store d r
+                  _ => do loadReg Asm.RAX x; store d Asm.RAX
                 -- a pointer word and an address are the same word
                 LocatedIR.Instr.AddrToWord d x => do loadReg Asm.RAX x; store d Asm.RAX
                 LocatedIR.Instr.WordToAddr _ d x => do loadReg Asm.RAX x; store d Asm.RAX

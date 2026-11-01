@@ -11,6 +11,9 @@ import Native.Codegen.LocatedIR.Opnd
 
 import Core.FC
 import Core.Name
+import Data.List
+import Data.Maybe
+import Data.Zippable
 import Native.Area
 import Native.Codegen.IRCommon.Op
 import Native.Codegen.IRCommon.Pinned as IRCommon
@@ -285,3 +288,173 @@ instrRegs i = case i of
   where
     memRegs : Mem enc -> List (Location enc)
     memRegs m = m.base :: maybe [] (\r => [r]) m.index
+
+||| What an instruction reads, its register operands, in the order of its
+||| fields, a memory operand's base before its index: not the registers its
+||| `live` list keeps.
+export
+operands : Instr enc -> List (Location enc)
+operands i = case i of
+  Arith _ _ x y => Opnd.opsRegs [x, y] []
+  Mul128 _ _ x y => Opnd.opsRegs [x, y] []
+  Div128 _ _ h l x => Opnd.opsRegs [h, l, x] []
+  Unary _ _ x => [x]
+  ArithOv _ _ x y _ => Opnd.opsRegs [x, y] []
+  Ext _ _ _ x => [x]
+  FArith _ _ x y => [x, y]
+  FNeg _ x => [x]
+  FSqrt _ x => [x]
+  FCmp _ _ x y => [x, y]
+  Convert _ _ x => [x]
+  Cmp _ _ x y => Opnd.opsRegs [x, y] []
+  Load _ _ m => memRegs m
+  Store _ m x => x :: memRegs m
+  LoadN _ _ _ m => memRegs m
+  StoreN _ m x => x :: memRegs m
+  Tag _ x => [x]
+  Untag _ x => [x]
+  TagOv _ x _ => [x]
+  Narrow _ _ x => [x]
+  Widen _ x => [x]
+  AddrToWord _ x => [x]
+  WordToAddr _ _ x => [x]
+  ValToWord _ x => [x]
+  WordToVal _ x => [x]
+  LoadHeader _ x => [x]
+  LoadPart _ _ x => [x]
+  AllocObj _ _ fs _ => Opnd.opsRegs fs []
+  AllocSized _ _ count fill _ => count :: maybe [] Opnd.opRegs fill
+  DirectCall _ args _ _ _ => Opnd.opsRegs args []
+  SetPinned _ x => Opnd.opRegs x
+  SystemCall _ args => Opnd.opsRegs args []
+  Move _ x => [x]
+  _ => []
+  where
+    memRegs : Mem enc -> List (Location enc)
+    memRegs m = m.base :: maybe [] (\r => [r]) m.index
+
+||| What an instruction writes, in the order of its fields.
+export
+results : Instr enc -> List (Location enc)
+results i = case i of
+  Mul128 h l _ _ => [h, l]
+  Div128 q r _ _ _ => [q, r]
+  Store _ _ _ => []
+  StoreN _ _ _ => []
+  DirectCall _ _ ds _ _ => ds
+  SetPinned _ _ => []
+  Loc _ => []
+  Comment _ => []
+  _ => take 1 (instrRegs i)
+
+||| The instruction with its register operands replaced, in the order
+||| `operands` lists them, by as many locations; a register operand the list
+||| has no location for stays.
+export
+withOperands : List (Location enc) -> Instr enc -> Instr enc
+withOperands rs i = case i of
+  Arith o d x y => let (x', rs1) = opnd rs x; (y', _) = opnd rs1 y in Arith o d x' y'
+  Mul128 h l x y => let (x', rs1) = opnd rs x; (y', _) = opnd rs1 y in Mul128 h l x' y'
+  Div128 q r h l x =>
+    let (h', rs1) = opnd rs h; (l', rs2) = opnd rs1 l; (x', _) = opnd rs2 x in Div128 q r h' l' x'
+  Unary o d x => Unary o d (loc rs x)
+  ArithOv o d x y l => let (x', rs1) = opnd rs x; (y', _) = opnd rs1 y in ArithOv o d x' y' l
+  Ext w s d x => Ext w s d (loc rs x)
+  FArith o d x y => FArith o d (loc rs x) (loc (drop 1 rs) y)
+  FNeg d x => FNeg d (loc rs x)
+  FSqrt d x => FSqrt d (loc rs x)
+  FCmp r d x y => FCmp r d (loc rs x) (loc (drop 1 rs) y)
+  Convert c d x => Convert c d (loc rs x)
+  Cmp r d x y => let (x', rs1) = opnd rs x; (y', _) = opnd rs1 y in Cmp r d x' y'
+  Load t d m => Load t d (fst (mem rs m))
+  Store t m x => Store t (fst (mem (drop 1 rs) m)) (loc rs x)
+  LoadN w s d m => LoadN w s d (fst (mem rs m))
+  StoreN w m x => StoreN w (fst (mem (drop 1 rs) m)) (loc rs x)
+  Tag d x => Tag d (loc rs x)
+  Untag d x => Untag d (loc rs x)
+  TagOv d x l => TagOv d (loc rs x) l
+  Narrow t d x => Narrow t d (loc rs x)
+  Widen d x => Widen d (loc rs x)
+  AddrToWord d x => AddrToWord d (loc rs x)
+  WordToAddr k d x => WordToAddr k d (loc rs x)
+  ValToWord d x => ValToWord d (loc rs x)
+  WordToVal d x => WordToVal d (loc rs x)
+  LoadHeader d x => LoadHeader d (loc rs x)
+  LoadPart p d x => LoadPart p d (loc rs x)
+  AllocObj d h fs live => AllocObj d h (opnds rs fs) live
+  AllocSized d p count fill live =>
+    AllocSized d p (loc rs count) (map (fst . opnd (drop 1 rs)) fill) live
+  DirectCall f args ds m live => DirectCall f (opnds rs args) ds m live
+  SetPinned p x => SetPinned p (fst (opnd rs x))
+  SystemCall d args => SystemCall d (opnds rs args)
+  Move d x => Move d (loc rs x)
+  _ => i
+  where
+    -- the next location for a register, the rest of the list after it
+    loc : List (Location enc) -> Location enc -> Location enc
+    loc (r :: _) _ = r
+    loc [] x = x
+
+    opnd : List (Location enc) -> Opnd enc -> (Opnd enc, List (Location enc))
+    opnd (r :: rs') (Opnd.R _) = (Opnd.R r, rs')
+    opnd rs' o = (o, rs')
+
+    opnds : List (Location enc) -> List (Opnd enc) -> List (Opnd enc)
+    opnds _ [] = []
+    opnds rs' (o :: os) = let (o', rs'') = opnd rs' o in o' :: opnds rs'' os
+
+    mem : List (Location enc) -> Mem enc -> (Mem enc, List (Location enc))
+    mem [] m = (m, [])
+    mem (b :: rs') m = case m.index of
+      Nothing => ({ base := b } m, rs')
+      Just _ => case rs' of
+        (ix :: rs'') => ({ base := b, index := Just ix } m, rs'')
+        [] => ({ base := b } m, [])
+
+||| The instruction with its results replaced, in the order `results` lists
+||| them, by as many locations; a result the list has no location for stays.
+export
+withResults : List (Location enc) -> Instr enc -> Instr enc
+withResults [] i = i
+withResults rs@(r :: _) i = case i of
+  Mul128 h l x y => Mul128 r (fromMaybe l (getAt 1 rs)) x y
+  Div128 q rm h l x => Div128 r (fromMaybe rm (getAt 1 rs)) h l x
+  Store _ _ _ => i
+  StoreN _ _ _ => i
+  DirectCall f args ds m live => DirectCall f args (zipWith const rs ds ++ drop (length rs) ds) m live
+  SetPinned _ _ => i
+  Loc _ => i
+  Comment _ => i
+  Const _ c => Const r c
+  FConst _ c => FConst r c
+  CodeOf _ n => CodeOf r n
+  StaticAddr _ n => StaticAddr r n
+  AreaAddr _ a => AreaAddr r a
+  Arith o _ x y => Arith o r x y
+  Unary o _ x => Unary o r x
+  ArithOv o _ x y l => ArithOv o r x y l
+  Ext w s _ x => Ext w s r x
+  FArith o _ x y => FArith o r x y
+  FNeg _ x => FNeg r x
+  FSqrt _ x => FSqrt r x
+  FCmp rl _ x y => FCmp rl r x y
+  Convert c _ x => Convert c r x
+  Cmp rl _ x y => Cmp rl r x y
+  Load t _ m => Load t r m
+  LoadN w s _ m => LoadN w s r m
+  Tag _ x => Tag r x
+  Untag _ x => Untag r x
+  TagOv _ x l => TagOv r x l
+  Narrow t _ x => Narrow t r x
+  Widen _ x => Widen r x
+  AddrToWord _ x => AddrToWord r x
+  WordToAddr k _ x => WordToAddr k r x
+  ValToWord _ x => ValToWord r x
+  WordToVal _ x => WordToVal r x
+  LoadHeader _ x => LoadHeader r x
+  LoadPart p _ x => LoadPart p r x
+  AllocObj _ h fs live => AllocObj r h fs live
+  AllocSized _ p count fill live => AllocSized r p count fill live
+  GetPinned p _ => GetPinned p r
+  SystemCall _ args => SystemCall r args
+  Move _ x => Move r x

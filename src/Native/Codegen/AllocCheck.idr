@@ -10,7 +10,8 @@
 |||   are the same word, or raw words only, as a byte address and its word,
 |||   whose retyping has no code. A slot that held a value the collector
 |||   must see under one name and a raw word under another would hide one
-|||   from the collector, or show it a word that is not a value.
+|||   from the collector, or show it a word that is not a value. A register
+|||   holds values in turn, of either kind, none across a collection.
 ||| * **Defined before used.** On every path from the function's entry,
 |||   or from a resume block, a register is written before it is read: by an
 |||   instruction, as a parameter of the function, or as a resume block's
@@ -48,7 +49,6 @@ import Native.Codegen.LocatedIR.Function as LocatedIR
 import Native.Codegen.LocatedIR.Instr as LocatedIR
 import Native.Codegen.LocatedIR.Label as LocatedIR
 import Native.Codegen.LocatedIR.Location as LocatedIR
-import Native.Codegen.LocatedIR.Mem as LocatedIR
 import Native.Codegen.LocatedIR.Opnd as LocatedIR
 import Native.Codegen.LocatedIR.Program as LocatedIR
 import Native.Codegen.LocatedIR.Terminator as LocatedIR
@@ -186,30 +186,6 @@ check p = traverse_ checkFunction p.functions
         opnds : List (LocatedIR.Opnd enc) -> List (LocatedIR.Location enc)
         opnds os = LocatedIR.Opnd.opsRegs os []
 
-        ||| What an instruction reads: its operands, not the registers its `live`
-        ||| list keeps.
-        uses : LocatedIR.Instr enc -> List (LocatedIR.Location enc)
-        uses i = case i of
-          LocatedIR.Instr.Mul128 _ _ x y => opnds [x, y]
-          LocatedIR.Instr.Div128 _ _ h l x => opnds [h, l, x]
-          LocatedIR.Instr.Store _ m x => x :: memRegs m
-          LocatedIR.Instr.StoreN _ m x => x :: memRegs m
-          LocatedIR.Instr.Load _ _ m => memRegs m
-          LocatedIR.Instr.LoadN _ _ _ m => memRegs m
-          LocatedIR.Instr.AllocObj _ _ fs _ => opnds fs
-          LocatedIR.Instr.AllocSized _ _ count fill _ => count
-            :: maybe [] LocatedIR.Opnd.opRegs fill
-          LocatedIR.Instr.DirectCall _ args _ _ _ => opnds args
-          LocatedIR.Instr.SetPinned _ x => LocatedIR.Opnd.opRegs x
-          LocatedIR.Instr.SystemCall _ args => opnds args
-          LocatedIR.Instr.Loc _ => []
-          LocatedIR.Instr.Comment _ => []
-          _ => drop 1 (LocatedIR.Instr.instrRegs i)
-          where
-            ||| The registers a memory operand reads.
-            memRegs : LocatedIR.Mem enc -> List (LocatedIR.Location enc)
-            memRegs m = m.base :: maybe [] (\r => [r]) m.index
-
         ||| The block an instruction may leave to, an overflow's.
         side : LocatedIR.Instr enc -> Maybe LocatedIR.Label
         side (LocatedIR.Instr.ArithOv _ _ _ _ l) = Just l
@@ -302,14 +278,14 @@ check p = traverse_ checkFunction p.functions
 
             summary : LocatedIR.Block enc -> Summary enc
             summary b =
-              let steps = map (\i => (i, slots (uses i), slots (defs i))) b.body
+              let steps = map (\i => (i, slots (LocatedIR.Instr.operands i), slots (LocatedIR.Instr.results i))) b.body
                   (r, w, as) =
                     foldr (\(_, u, d), (r', w', as') => (minus r' d .|. u, w' .|. d, r' :: as'))
                                      (slots (termUses b.term), 0, []) steps
                   (sds, ls) = forward 0 steps
                   named =
                     foldl (\acc,
-                           i => foldl kind acc (defs i ++ uses i ++ fromMaybe [] (listedIn i)))
+                           i => foldl kind acc (LocatedIR.Instr.results i ++ LocatedIR.Instr.operands i ++ fromMaybe [] (listedIn i)))
                             (foldl kind (0, 0, []) (b.params ++ termUses b.term)) b.body
                   (gcNamed, rawNamed, undescribed) = named
               in MkSummary (minus r (slots b.params)) (w .|. slots b.params) sds steps as ls
@@ -343,24 +319,15 @@ check p = traverse_ checkFunction p.functions
                 -- no index for
                 kind : (Slots, Slots, List (LocatedIR.Location enc)) -> LocatedIR.Location enc ->
                        (Slots, Slots, List (LocatedIR.Location enc))
+                kind (gc, raw, out) (LocatedIR.Location.Register i t) =
+                  -- a register holds values in turn, of either kind, none of
+                  -- them across a collection: only a slot keeps one kind
+                  if described (LocatedIR.Location.Register i t) then (gc, raw, out)
+                  else (gc, raw, LocatedIR.Location.Register i t :: out)
                 kind (gc, raw, out) r =
-                  if not (described r) then (gc, raw, r :: out)
-                  else if IRCommon.Ty.gcVisible (LocatedIR.Location.ty r)
+                  if IRCommon.Ty.gcVisible (LocatedIR.Location.ty r)
                     then (gc .|. bit (number r), raw, out)
                   else (gc, raw .|. bit (number r), out)
-
-                ||| What an instruction writes.
-                defs : LocatedIR.Instr enc -> List (LocatedIR.Location enc)
-                defs i = case i of
-                  LocatedIR.Instr.Mul128 h l _ _ => [h, l]
-                  LocatedIR.Instr.Div128 q r _ _ _ => [q, r]
-                  LocatedIR.Instr.Store _ _ _ => []
-                  LocatedIR.Instr.StoreN _ _ _ => []
-                  LocatedIR.Instr.DirectCall _ _ ds _ _ => ds
-                  LocatedIR.Instr.SetPinned _ _ => []
-                  LocatedIR.Instr.Loc _ => []
-                  LocatedIR.Instr.Comment _ => []
-                  _ => take 1 (LocatedIR.Instr.instrRegs i)
 
         ||| The lowest slot of a set that is not empty.
         lowest : Slots -> Nat
@@ -500,7 +467,7 @@ check p = traverse_ checkFunction p.functions
             -- a rejection for what it reads or lists before it is written
             definedAt : Slots -> (LocatedIR.Instr enc, Slots, Slots) -> Either String Slots
             definedAt d (i, u, w) = do
-              when (minus u d /= 0) $ traverse_ (defined d "an instruction reads") (uses i)
+              when (minus u d /= 0) $ traverse_ (defined d "an instruction reads") (LocatedIR.Instr.operands i)
               whenJust (collecting i) $ \listed =>
                 when (minus (slots listed) d /= 0) $
                   traverse_ (defined d "a live list names") listed

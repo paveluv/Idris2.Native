@@ -10,6 +10,8 @@ import Native.Codegen.LocatedIR.Location
 import Native.Codegen.LocatedIR.Opnd
 
 import Core.Name
+import Data.List
+import Data.Zippable
 import Native.Codegen.IRCommon.Op
 import Native.HeapObj.ValEnc
 import Native.Types.Enc as Types
@@ -105,3 +107,42 @@ termCont : Terminator enc -> Maybe (Cont enc)
 termCont (Call _ _ c) = Just c
 termCont (Apply _ _ c) = Just c
 termCont _ = Nothing
+
+||| What a terminator reads, its register operands, in the order of its
+||| fields: not the registers its continuation keeps.
+export
+termOperands : Terminator enc -> List (Location enc)
+termOperands t = case t of
+  IfFixnums rs _ _ => rs
+  Branch _ x y _ _ => Opnd.opRegs x ++ Opnd.opRegs y
+  Switch r _ _ => [r]
+  Call _ args _ => Opnd.opsRegs args []
+  TailCall _ args => Opnd.opsRegs args []
+  Apply f x _ => [f, x]
+  TailApply f x => [f, x]
+  Return x => Opnd.opRegs x
+  Enter f args => f :: Opnd.opsRegs args []
+  Ret args => Opnd.opsRegs args []
+  _ => []
+
+||| The terminator with its register operands replaced, in the order
+||| `termOperands` lists them, by as many locations; an operand the list has
+||| no location for stays.
+export
+withTermOperands : List (Location enc) -> Terminator enc -> Terminator enc
+withTermOperands rs t = case t of
+  IfFixnums rs' y n => IfFixnums (zipWith const rs rs' ++ drop (length rs) rs') y n
+  Branch r x y yes no => let (x', rs1) = opnd rs x; (y', _) = opnd rs1 y in Branch r x' y' yes no
+  Switch r cs d => Switch (loc rs r) cs d
+  Apply f x c => Apply (loc rs f) (loc (drop 1 rs) x) c
+  TailApply f x => TailApply (loc rs f) (loc (drop 1 rs) x)
+  Return x => Return (fst (opnd rs x))
+  _ => t
+  where
+    loc : List (Location enc) -> Location enc -> Location enc
+    loc (r :: _) _ = r
+    loc [] x = x
+
+    opnd : List (Location enc) -> Opnd enc -> (Opnd enc, List (Location enc))
+    opnd (r :: rs') (Opnd.R _) = (Opnd.R r, rs')
+    opnd rs' o = (o, rs')

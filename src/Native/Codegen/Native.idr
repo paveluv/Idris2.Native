@@ -36,6 +36,7 @@ import Native.Codegen.Linkage.Routine
 import Native.Codegen.Linkage.RuntimeModule
 import Native.Codegen.Linkage.Sym as Linkage
 import Native.Codegen.Linkage.SystemLibrary as Linkage
+import Native.Codegen.LocalAssign
 import Native.Codegen.LocatedIR.Dump
 import Native.Codegen.LocatedIR.Program as LocatedIR
 import Native.Codegen.LocatedIR.Reach
@@ -50,6 +51,7 @@ import Native.Codegen.X86.Asm
 import Native.Codegen.X86.Assembler
 import Native.Codegen.X86.Encode
 import Native.Codegen.X86.Render
+import Native.Codegen.X86.Rows
 import Native.Codegen.X86.Target
 
 import Compiler.Common
@@ -580,8 +582,12 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
               (Lower.lowerProgram enc settings.platform realised checked reach.forms shapes
                  staticReads staticObjects constants flat bound defs))
             | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
-          allocated <- phase "register allocation"
+          slotted <- phase "register allocation"
             (later (RegAlloc.allocRegs X86.Target.x86_64 term))
+          -- each instruction's operands and results moved into the
+          -- registers its rendering reads and writes them in
+          allocated <- phase "local assignment"
+            (later (LocalAssign.localAssign X86.Rows.row X86.Rows.termRow slotted))
           -- what the allocation made, checked by a reading of its own
           Right () <- phase "allocation checked" (later (AllocCheck.check allocated))
             | Left err => throw (InternalError ("native: " ++ err))
