@@ -72,7 +72,7 @@ lea rax, [rip+L70]
 jmp qword ptr [r12]
 L68:
 lea rdi, [rip+L71]
-mov rsi, 28
+mov esi, 28
 jmp L3
 table calls nothing
 # Main.word
@@ -93,11 +93,11 @@ L66:
 lea rax, [rip+L69]
 jmp qword ptr [r12]
 L67:
-mov rax, 85
+mov eax, 85
 jmp qword ptr [r12]
 L68:
 lea rdi, [rip+L70]
-mov rsi, 28
+mov esi, 28
 jmp L3
 word calls nothing
 # Main.wider
@@ -118,11 +118,11 @@ L66:
 lea rax, [rip+L69]
 jmp qword ptr [r12]
 L67:
-mov rax, 1
+mov eax, 1
 jmp qword ptr [r12]
 L68:
 lea rdi, [rip+L70]
-mov rsi, 28
+mov esi, 28
 jmp L3
 wider calls nothing
 == val-encoding=tag0
@@ -148,7 +148,7 @@ lea rax, [rip+L70+1]
 jmp qword ptr [r12-1]
 L68:
 lea rdi, [rip+L71]
-mov rsi, 28
+mov esi, 28
 jmp L3
 table calls nothing
 # Main.word
@@ -169,11 +169,11 @@ L66:
 lea rax, [rip+L69+1]
 jmp qword ptr [r12-1]
 L67:
-mov rax, 84
+mov eax, 84
 jmp qword ptr [r12-1]
 L68:
 lea rdi, [rip+L70]
-mov rsi, 28
+mov esi, 28
 jmp L3
 word calls nothing
 # Main.wider
@@ -194,11 +194,11 @@ L66:
 lea rax, [rip+L69+1]
 jmp qword ptr [r12-1]
 L67:
-mov rax, 0
+mov eax, 0
 jmp qword ptr [r12-1]
 L68:
 lea rdi, [rip+L70]
-mov rsi, 28
+mov esi, 28
 jmp L3
 wider calls nothing
 Error: native: refused as static constants:
@@ -279,9 +279,7 @@ mov rax, qword ptr [rbx+24]
 mov qword ptr [rbx+8], rax
 mov rax, qword ptr [rbx+8]
 mov rdx, qword ptr [rbx]
-shl rdx, 3
-add rax, rdx
-mov rcx, qword ptr [rax+8]
+mov rcx, qword ptr [rax+rdx*8+8]
 mov qword ptr [rbx+16], rcx
 mov rdi, qword ptr [rbx+16]
 add rsp, 40
@@ -308,12 +306,12 @@ lea rdi, [rip+L69]
 add rsp, 8
 ret
 L67:
-mov rdi, 31
+mov edi, 31
 add rsp, 8
 ret
 L68:
 lea rdi, [rip+L70]
-mov rsi, 28
+mov esi, 28
 jmp L3
 pick calls nothing
 # _flat.Main.pastLimit
@@ -345,7 +343,7 @@ mov qword ptr [rbx], rdi
 jmp L65
 L65:
 mov rax, qword ptr [rbx]
-mov rcx, 42
+mov ecx, 42
 add rax, rcx
 mov qword ptr [rbx+8], rax
 mov rdi, qword ptr [rbx+8]
@@ -382,7 +380,7 @@ mov rbx, rsp
 mov qword ptr [rbx], rdi
 jmp L65
 L65:
-mov rdi, 1
+mov edi, 1
 add rsp, 8
 ret
 unitAt calls nothing
@@ -402,9 +400,7 @@ mov rax, qword ptr [rbx+24]
 mov qword ptr [rbx+8], rax
 mov rax, qword ptr [rbx+8]
 mov rdx, qword ptr [rbx]
-shl rdx, 3
-add rax, rdx
-mov rcx, qword ptr [rax+8]
+mov rcx, qword ptr [rax+rdx*8+8]
 mov qword ptr [rbx+16], rcx
 mov rdi, qword ptr [rbx+16]
 add rsp, 40
@@ -428,9 +424,7 @@ mov rax, qword ptr [rbx+24]
 mov qword ptr [rbx+8], rax
 mov rax, qword ptr [rbx+8]
 mov rdx, qword ptr [rbx]
-shl rdx, 3
-add rax, rdx
-mov rcx, qword ptr [rax+7]
+mov rcx, qword ptr [rax+rdx*8+7]
 mov qword ptr [rbx+16], rcx
 mov rdi, qword ptr [rbx+16]
 add rsp, 40
@@ -457,12 +451,12 @@ lea rdi, [rip+L69+1]
 add rsp, 8
 ret
 L67:
-mov rdi, 30
+mov edi, 30
 add rsp, 8
 ret
 L68:
 lea rdi, [rip+L70]
-mov rsi, 28
+mov esi, 28
 jmp L3
 pick calls nothing
 # _flat.Main.unitAt
@@ -475,7 +469,7 @@ mov rbx, rsp
 mov qword ptr [rbx], rdi
 jmp L65
 L65:
-mov rdi, 0
+mov edi, 0
 add rsp, 8
 ret
 unitAt calls nothing

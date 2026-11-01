@@ -11,6 +11,7 @@
 module Groups
 
 import Data.List
+import Data.So
 import Native.Codegen.X86.Asm
 
 regs : List Reg64
@@ -44,8 +45,10 @@ disps = [0, 1, -1, 8, -8, 127, -128, 128, -129, 4096, -4096, 2147483647, -214748
 imms32 : List Int
 imms32 = [0, 1, -1, 127, -128, 128, -129, 1000, -1000, 2147483647, -2147483648]
 
+||| Immediates at every encoding boundary: below 2^32 a 32-bit move, which
+||| zero-extends; a negative one in 32 bits, sign-extended; the rest in 64.
 imms64 : List Integer
-imms64 = [0, 1, -1, 2147483647, -2147483648, 2147483648, -2147483649,
+imms64 = [0, 1, -1, 2147483647, -2147483648, 2147483648, -2147483649, 4294967295,
           4294967296, 0x0000020000010001, 0x1DC0000000000001, 9223372036854775807,
             -9223372036854775808]
 
@@ -54,6 +57,21 @@ shiftCounts = [2, 3, 7, 31, 32, 33, 63]      -- 1 is group B (as uses D1)
 
 mems : List Mem
 mems = [MBase b d | b <- regs, d <- disps]
+
+||| A scaled index over every base, every index but rsp, which the SIB
+||| byte cannot name, every scale, and a displacement of each class.
+imems : List Mem
+imems =
+  concat [scaled b x sc d | b <- regs, x <- regs, sc <- [S1, S2, S4, S8], d <- [0, 1, -128, 128]]
+  where
+    scaled : Reg64 -> Reg64 -> Scale -> Int -> List Mem
+    scaled b x sc d = case choose (x /= RSP) of
+      Left _ => [MIndex b x sc d]
+      Right _ => []
+
+||| Every form of a memory operand, a sample of each.
+allMems : List Mem
+allMems = take 26 mems ++ take 64 imems
 
 ||| Group A. Labels: 1 = data target, 2 = far code target (placed at the
 ||| very end).
@@ -68,13 +86,18 @@ groupA =
   ++ [JmpM (MRip 1 0),
     MovsdRM XMM4 (MRip 1 0), MovsdMR (MRip 1 0) XMM12, MovMI (MRip 1 0) 5, AluRM ADD RBX (MRip 1 0),
       AluMR CMP (MRip 1 0) R9,
-      Load W8 False RCX (MRip 1 0), Store W16 (MRip 1 0) R10, LockCmpxchg (MRip 1 0) RDX]
+      Load W8 False RCX (MRip 1 0), Store W16 (MRip 1 0) R10, LockCmpxchg (MRip 1 0) RDX,
+      AluMI CMP (MRip 1 0) 5, AluMI ADD (MRip 1 0) 1000, ImulRM RCX (MRip 1 0), IdivM (MRip 1 0),
+      DivUM (MRip 1 0), MulM (MRip 1 0), PushM (MRip 1 0), PopM (MRip 1 0),
+      SseRM ADDSD XMM3 (MRip 1 0), UcomisdRM XMM5 (MRip 1 0)]
   -- a displacement from the label, as a static's pointer tag needs
   ++ [Lea r (MRip 1 1) | r <- regs]
     ++ [MovRM RAX (MRip 1 (-8)), MovMR (MRip 1 15) R11, JmpM (MRip 1 (-1))]
   ++ [MovRR d s | d <- regs, s <- regs]
   ++ [MovRI r i | r <- regs, i <- imms64]
   ++ [MovRM r m | r <- regs, m <- mems]
+  ++ [MovRM r m | r <- take 4 regs, m <- imems] ++ [MovMR m r | m <- imems, r <- [RCX, R9]]
+  ++ [Lea r m | r <- [RAX, R11], m <- imems]
   ++ [MovMR m r | m <- mems, r <- regs]
   ++ [MovMI m i | m <- mems, i <- imms32]
   ++ [Lea r m | r <- regs, m <- mems]
@@ -85,25 +108,32 @@ groupA =
   ++ [AluI op RAX i | op <- alus, i <- [0, 1, -1, 127, -128]]        -- rax with imm8 is canonical
   ++ [AluRM op r m | op <- alus, r <- regs, m <- take 26 mems]
   ++ [AluMR op m r | op <- alus, m <- take 26 mems, r <- regs]
+  ++ [AluMI op m i | op <- alus, m <- allMems, i <- imms32]
   ++ [Test a b | a <- regs, b <- regs]
   ++ [TestI r i | r <- nonAcc, i <- imms32]
   ++ [Imul d s | d <- regs, s <- regs]
   ++ [ImulI d s i | d <- regs, s <- regs, i <- [1, -1, 127, -128, 128, 1000, 2147483647]]
+  ++ [ImulRM r m | r <- regs, m <- allMems]
   ++ [Cqo]
   ++ [Idiv r | r <- regs] ++ [DivU r | r <- regs] ++ [Mul r | r <- regs] ++ [Neg r | r <- regs]
     ++ [Not r | r <- regs]
+  ++ [IdivM m | m <- allMems] ++ [DivUM m | m <- allMems] ++ [MulM m | m <- allMems]
   ++ [ShiftI op r n | op <- shifts, r <- regs, n <- shiftCounts]
   ++ [ShiftCl op r | op <- shifts, r <- regs]
   ++ [JmpR r | r <- regs] ++ [CallR r | r <- regs] ++ [JmpM m | m <- mems]
   ++ [Ret]
   ++ [Push r | r <- regs] ++ [Pop r | r <- regs]
+  ++ [PushM m | m <- mems ++ take 64 imems] ++ [PopM m | m <- mems ++ take 64 imems]
+  ++ [Xchg a b | a <- regs, b <- regs]
   ++ [Setcc c r | c <- conds, r <- regs]
   ++ [Cmov c d s | c <- conds, d <- regs, s <- take 4 regs]
     ++ [Cmov E d s | d <- take 4 regs, s <- regs]
   ++ [MovsdRM x m | x <- xmms, m <- take 26 mems] ++ [MovsdMR m x | m <- take 26 mems, x <- xmms]
   ++ [MovsdRR d s | d <- xmms, s <- xmms]
   ++ [Sse op d s | op <- sses, d <- xmms, s <- xmms]
+  ++ [SseRM op x m | op <- sses, x <- xmms, m <- allMems]
   ++ [Ucomisd a b | a <- xmms, b <- xmms]
+  ++ [UcomisdRM x m | x <- xmms, m <- allMems]
   ++ [Cvtsi2sd x r | x <- xmms, r <- regs] ++ [Cvttsd2si r x | r <- regs, x <- xmms]
   ++ [MovqXR x r | x <- xmms, r <- regs] ++ [MovqRX r x | r <- regs, x <- xmms]
   ++ [Syscall, Nop, Int3]

@@ -72,15 +72,22 @@ instrFormat pc rel instr = case instr of
   Asm.AluMR op m s =>
     memForm noLegacy True (0x01 + 8 * cast (Asm.aluDigit op)) (Asm.regNum s) m False
       InstrFormat.NoImm 0
+  Asm.AluMI op m i =>
+    if fitsInt8 i then memForm noLegacy True 0x83 (Asm.aluDigit op) m False InstrFormat.Imm8 i
+    else memForm noLegacy True 0x81 (Asm.aluDigit op) m False InstrFormat.Imm32 i
   Asm.Test a b => regForm noLegacy True 0x85 (Asm.regNum b) (Asm.regNum a) False InstrFormat.NoImm 0
   Asm.TestI a i => regForm noLegacy True 0xF7 0 (Asm.regNum a) False InstrFormat.Imm32 i
   Asm.Imul d s =>
     regForm noLegacy True 0x0FAF (Asm.regNum d) (Asm.regNum s) False InstrFormat.NoImm 0
   Asm.ImulI d s i => immForm 0x6B 0x69 (Asm.regNum d) (Asm.regNum s) i
+  Asm.ImulRM d m => memForm noLegacy True 0x0FAF (Asm.regNum d) m False InstrFormat.NoImm 0
   Asm.Cqo => opcodeForm (OptionalByte.byte 0x48) 0x99 InstrFormat.NoImm 0
   Asm.Idiv r => regForm noLegacy True 0xF7 7 (Asm.regNum r) False InstrFormat.NoImm 0
   Asm.DivU r => regForm noLegacy True 0xF7 6 (Asm.regNum r) False InstrFormat.NoImm 0
   Asm.Mul r => regForm noLegacy True 0xF7 4 (Asm.regNum r) False InstrFormat.NoImm 0
+  Asm.IdivM m => memForm noLegacy True 0xF7 7 m False InstrFormat.NoImm 0
+  Asm.DivUM m => memForm noLegacy True 0xF7 6 m False InstrFormat.NoImm 0
+  Asm.MulM m => memForm noLegacy True 0xF7 4 m False InstrFormat.NoImm 0
   Asm.Neg r => regForm noLegacy True 0xF7 3 (Asm.regNum r) False InstrFormat.NoImm 0
   Asm.Not r => regForm noLegacy True 0xF7 2 (Asm.regNum r) False InstrFormat.NoImm 0
   Asm.ShiftI op r n =>
@@ -100,6 +107,15 @@ instrFormat pc rel instr = case instr of
   Asm.Pop r =>
     opcodeForm (rex False 0 0 (Asm.regNum r) False) (0x58 + cast (lo (Asm.regNum r)))
       InstrFormat.NoImm 0
+  Asm.PushM m => memForm noLegacy False 0xFF 6 m False InstrFormat.NoImm 0
+  Asm.PopM m => memForm noLegacy False 0x8F 0 m False InstrFormat.NoImm 0
+  -- with rax, the short form of the other register in the opcode, as GNU as
+  -- writes it, and rax with itself as `nop`
+  Asm.Xchg a b => case (a, b) of
+    (Asm.RAX, Asm.RAX) => opcodeForm OptionalByte.none 0x90 InstrFormat.NoImm 0
+    (Asm.RAX, _) => xchgAx b
+    (_, Asm.RAX) => xchgAx a
+    _ => regForm noLegacy True 0x87 (Asm.regNum b) (Asm.regNum a) False InstrFormat.NoImm 0
   Asm.Setcc c r =>
     regForm noLegacy False (0x0F90 + cast (Asm.condCode c)) 0 (Asm.regNum r) (byteRegNeedsRex r)
       InstrFormat.NoImm 0
@@ -114,8 +130,13 @@ instrFormat pc rel instr = case instr of
     regForm scalarDouble False (0x0F00 + cast (Asm.sseOpcode op)) (Asm.xmmNum d) (Asm.xmmNum s)
       False
       InstrFormat.NoImm 0
+  Asm.SseRM op x m =>
+    memForm scalarDouble False (0x0F00 + cast (Asm.sseOpcode op)) (Asm.xmmNum x) m False
+      InstrFormat.NoImm 0
   Asm.Ucomisd a b =>
     regForm operandSize False 0x0F2E (Asm.xmmNum a) (Asm.xmmNum b) False InstrFormat.NoImm 0
+  Asm.UcomisdRM x m =>
+    memForm operandSize False 0x0F2E (Asm.xmmNum x) m False InstrFormat.NoImm 0
   Asm.Cvtsi2sd x r =>
     regForm scalarDouble True 0x0F2A (Asm.xmmNum x) (Asm.regNum r) False InstrFormat.NoImm 0
   Asm.Cvttsd2si r x =>
@@ -213,13 +234,22 @@ instrFormat pc rel instr = case instr of
       if fitsInt8 i then regForm noLegacy True o8 reg rm False InstrFormat.Imm8 i
       else regForm noLegacy True o32 reg rm False InstrFormat.Imm32 i
 
-    ||| An immediate moved into a 64-bit register, by its number: in 32 bits,
-    ||| sign-extended (C7 /0), if it fits them, else in 64 (B8+r), as the
-    ||| `Int` of its 64 bits, read as signed or not.
+    ||| An immediate moved into a 64-bit register, by its number: from 0 to
+    ||| 2^32 - 1 into its low 32 bits, which zero-extends (B8+r without REX.W);
+    ||| else in 32 bits, sign-extended (C7 /0), if it fits them; else in 64
+    ||| (REX.W B8+r), as the `Int` of its 64 bits, read as signed or not.
     movImmForm : (reg : Bits8) -> Integer -> InstrFormat
     movImmForm r i =
-      if fitsInt32 i then regForm noLegacy True 0xC7 0 r False InstrFormat.Imm32 (cast i)
+      if i >= 0 && i < 4294967296
+        then opcodeForm (rex False 0 0 r False) (0xB8 + cast (lo r)) InstrFormat.Imm32 (cast i)
+      else if fitsInt32 i then regForm noLegacy True 0xC7 0 r False InstrFormat.Imm32 (cast i)
       else opcodeForm (rex True 0 0 r False) (0xB8 + cast (lo r)) InstrFormat.Imm64 (cast i)
+
+    ||| `xchg rax, r`, of the other register in the opcode (REX.W 90+r).
+    xchgAx : Asm.Reg64 -> InstrFormat
+    xchgAx r =
+      opcodeForm (rex True 0 0 (Asm.regNum r) False) (0x90 + cast (lo (Asm.regNum r)))
+        InstrFormat.NoImm 0
 
     ||| An instruction of the form
     ||| legacy prefix · REX · opcode · ModRM[·SIB·disp] · imm, of a memory
@@ -240,6 +270,18 @@ instrFormat pc rel instr = case instr of
            else if fitsInt8 d
              then parts p r o (OptionalByte.byte (modrm 1 reg b)) sib InstrFormat.Disp8 d iw i
            else parts p r o (OptionalByte.byte (modrm 2 reg b)) sib InstrFormat.Disp32 d iw i
+      -- ModRM's rm 100 for a SIB byte of the scale, the index and the base;
+      -- a base of rbp or r13 again needs a displacement
+      Asm.MIndex base index sc d =>
+        let b = Asm.regNum base
+            x = Asm.regNum index
+            r = rex w reg x b forceRex
+            sib = OptionalByte.byte (shiftL (Asm.scaleBits sc) 6 .|. shiftL (lo x) 3 .|. lo b)
+        in if d == 0 && lo b /= 5
+             then parts p r o (OptionalByte.byte (modrm 0 reg 4)) sib InstrFormat.NoDisp 0 iw i
+           else if fitsInt8 d
+             then parts p r o (OptionalByte.byte (modrm 1 reg 4)) sib InstrFormat.Disp8 d iw i
+           else parts p r o (OptionalByte.byte (modrm 2 reg 4)) sib InstrFormat.Disp32 d iw i
 
 ||| Encode with label-relative displacements already resolved to `rel`: the
 ||| instruction's bytes (`instrFormat`). For `Align`, `pc` is the address
@@ -270,6 +312,15 @@ fieldsFit instr = case instr of
   Asm.AluI _ _ i => fitsInt32 (cast i)
   Asm.AluRM _ _ m => memFits m
   Asm.AluMR _ m _ => memFits m
+  Asm.AluMI _ m i => memFits m && fitsInt32 (cast i)
+  Asm.ImulRM _ m => memFits m
+  Asm.IdivM m => memFits m
+  Asm.DivUM m => memFits m
+  Asm.MulM m => memFits m
+  Asm.PushM m => memFits m
+  Asm.PopM m => memFits m
+  Asm.SseRM _ _ m => memFits m
+  Asm.UcomisdRM _ m => memFits m
   Asm.TestI _ i => fitsInt32 (cast i)
   Asm.ImulI _ _ i => fitsInt32 (cast i)
   Asm.JmpM m => memFits m
@@ -285,6 +336,7 @@ fieldsFit instr = case instr of
 
     memFits : Asm.Mem -> Bool
     memFits (Asm.MBase _ d) = fitsInt32 (cast d)
+    memFits (Asm.MIndex _ _ _ d) = fitsInt32 (cast d)
     memFits (Asm.MRip _ d) = fitsInt32 (cast d)
 
 ||| What the assembler could not encode faithfully
@@ -344,6 +396,15 @@ instrLabel (Asm.Load _ _ _ (Asm.MRip l d)) = Just (l, d)
 instrLabel (Asm.Store _ (Asm.MRip l d) _) = Just (l, d)
 instrLabel (Asm.AluRM _ _ (Asm.MRip l d)) = Just (l, d)
 instrLabel (Asm.AluMR _ (Asm.MRip l d) _) = Just (l, d)
+instrLabel (Asm.AluMI _ (Asm.MRip l d) _) = Just (l, d)
+instrLabel (Asm.ImulRM _ (Asm.MRip l d)) = Just (l, d)
+instrLabel (Asm.IdivM (Asm.MRip l d)) = Just (l, d)
+instrLabel (Asm.DivUM (Asm.MRip l d)) = Just (l, d)
+instrLabel (Asm.MulM (Asm.MRip l d)) = Just (l, d)
+instrLabel (Asm.PushM (Asm.MRip l d)) = Just (l, d)
+instrLabel (Asm.PopM (Asm.MRip l d)) = Just (l, d)
+instrLabel (Asm.SseRM _ _ (Asm.MRip l d)) = Just (l, d)
+instrLabel (Asm.UcomisdRM _ (Asm.MRip l d)) = Just (l, d)
 instrLabel (Asm.JmpM (Asm.MRip l d)) = Just (l, d)
 instrLabel (Asm.MovsdRM _ (Asm.MRip l d)) = Just (l, d)
 instrLabel (Asm.MovsdMR (Asm.MRip l d) _) = Just (l, d)

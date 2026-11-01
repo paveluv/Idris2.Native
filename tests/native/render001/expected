@@ -63,7 +63,7 @@ sar rax, 1
 mov qword ptr [rbx+72], rax
 mov rax, qword ptr [rbx+72]
 mov qword ptr [rbx+32], rax
-mov rax, 1
+mov eax, 1
 mov qword ptr [rbx+40], rax
 jmp L74
 L70:
@@ -74,7 +74,7 @@ jmp L79
 L80:
 mov rax, qword ptr [rbx+80]
 mov qword ptr [rbx+32], rax
-mov rax, 1
+mov eax, 1
 mov qword ptr [rbx+40], rax
 jmp L74
 L78:
@@ -105,7 +105,7 @@ add r15, 16
 cmp r15, r14
 ja L81
 L82:
-mov rdx, 524290
+mov edx, 524290
 mov qword ptr [rax], rdx
 mov rdx, qword ptr [rbx+120]
 mov qword ptr [rax+8], rdx
@@ -152,7 +152,7 @@ sar rax, 1
 mov qword ptr [rbx+216], rax
 mov rax, qword ptr [rbx+216]
 mov qword ptr [rbx+176], rax
-mov rax, 1
+mov eax, 1
 mov qword ptr [rbx+184], rax
 jmp L84
 L73:
@@ -163,7 +163,7 @@ jmp L89
 L90:
 mov rax, qword ptr [rbx+224]
 mov qword ptr [rbx+176], rax
-mov rax, 1
+mov eax, 1
 mov qword ptr [rbx+184], rax
 jmp L84
 L88:
@@ -194,7 +194,7 @@ add r15, 16
 cmp r15, r14
 ja L91
 L92:
-mov rdx, 524290
+mov edx, 524290
 mov qword ptr [rax], rdx
 mov rdx, qword ptr [rbx+264]
 mov qword ptr [rax+8], rdx
@@ -276,7 +276,7 @@ sar rax, 1
 mov qword ptr [rbx+72], rax
 mov rax, qword ptr [rbx+72]
 mov qword ptr [rbx+32], rax
-mov rax, 1
+mov eax, 1
 mov qword ptr [rbx+40], rax
 jmp L74
 L70:
@@ -287,7 +287,7 @@ jmp L79
 L80:
 mov rax, qword ptr [rbx+80]
 mov qword ptr [rbx+32], rax
-mov rax, 1
+mov eax, 1
 mov qword ptr [rbx+40], rax
 jmp L74
 L78:
@@ -318,7 +318,7 @@ add r15, 16
 cmp r15, r14
 ja L81
 L82:
-mov rdx, 524290
+mov edx, 524290
 mov qword ptr [rax], rdx
 mov rdx, qword ptr [rbx+120]
 mov qword ptr [rax+8], rdx
@@ -365,7 +365,7 @@ sar rax, 1
 mov qword ptr [rbx+216], rax
 mov rax, qword ptr [rbx+216]
 mov qword ptr [rbx+176], rax
-mov rax, 1
+mov eax, 1
 mov qword ptr [rbx+184], rax
 jmp L84
 L73:
@@ -376,7 +376,7 @@ jmp L89
 L90:
 mov rax, qword ptr [rbx+224]
 mov qword ptr [rbx+176], rax
-mov rax, 1
+mov eax, 1
 mov qword ptr [rbx+184], rax
 jmp L84
 L88:
@@ -407,7 +407,7 @@ add r15, 16
 cmp r15, r14
 ja L91
 L92:
-mov rdx, 524290
+mov edx, 524290
 mov qword ptr [rax], rdx
 mov rdx, qword ptr [rbx+264]
 mov qword ptr [rax+8], rdx

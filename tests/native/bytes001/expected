@@ -43,9 +43,7 @@ mov rax, qword ptr [rbx]
 mov qword ptr [rbx+16], rax
 mov rax, qword ptr [rbx+16]
 mov rdx, qword ptr [rbx+8]
-shl rdx, 3
-add rax, rdx
-mov rcx, qword ptr [rax+16]
+mov rcx, qword ptr [rax+rdx*8+16]
 mov qword ptr [rbx+24], rcx
 mov rdi, qword ptr [rbx+24]
 add rsp, 40
@@ -71,9 +69,7 @@ add rax, rcx
 mov qword ptr [rbx+32], rax
 mov rax, qword ptr [rbx+24]
 mov rdx, qword ptr [rbx+32]
-shl rdx, 3
-add rax, rdx
-mov rcx, qword ptr [rax+8]
+mov rcx, qword ptr [rax+rdx*8+8]
 mov qword ptr [rbx+40], rcx
 mov rdi, qword ptr [rbx+40]
 add rsp, 56
@@ -91,20 +87,18 @@ mov qword ptr [rbx+8], rsi
 jmp L65
 L65:
 mov rax, qword ptr [rbx+8]
-mov rcx, 134217728
+mov ecx, 134217728
 sub rax, rcx
 mov qword ptr [rbx+16], rax
 mov rax, qword ptr [rbx]
 mov qword ptr [rbx+24], rax
 mov rax, qword ptr [rbx+16]
-mov rcx, 134217728
+mov ecx, 134217728
 add rax, rcx
 mov qword ptr [rbx+32], rax
 mov rax, qword ptr [rbx+24]
 mov rdx, qword ptr [rbx+32]
-shl rdx, 3
-add rax, rdx
-mov rcx, qword ptr [rax+8]
+mov rcx, qword ptr [rax+rdx*8+8]
 mov qword ptr [rbx+40], rcx
 mov rdi, qword ptr [rbx+40]
 add rsp, 56
@@ -126,9 +120,7 @@ mov rax, qword ptr [rbx]
 mov qword ptr [rbx+16], rax
 mov rax, qword ptr [rbx+16]
 mov rdx, qword ptr [rbx+8]
-shl rdx, 3
-add rax, rdx
-mov rcx, qword ptr [rax+15]
+mov rcx, qword ptr [rax+rdx*8+15]
 mov qword ptr [rbx+24], rcx
 mov rdi, qword ptr [rbx+24]
 add rsp, 40

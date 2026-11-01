@@ -73,6 +73,10 @@ atScratch scratch = [MovRI memBase (cast scratch)]
 mem : Mem
 mem = MBase memBase 8
 
+||| 7 into the memory operand, then 100 as the dividend in rdx:rax.
+sevenAt : List Instr
+sevenAt = [MovRI RAX 7, MovMR mem RAX, MovRI RAX 100, MovRI RDX 0]
+
 ||| A sample that jumps nowhere.
 plain : List Instr -> Instr -> Label -> Sample
 plain su i _ = MkSample su i Nothing
@@ -88,7 +92,12 @@ samples : (scratch : Int) -> List (Label -> Sample)
 samples scratch =
   [ plain [] (MovRR d s) | d <- operands, s <- [RAX, RSP, R15] ] ++
   [ plain [] (MovRI d 12345678901) | d <- operands ] ++
+  -- below 2^32, a 32-bit move, which zero-extends: the whole register
+  [ plain [] (MovRI d 4000000000) | d <- operands ] ++
   [ plain (atScratch scratch) (MovRM d mem) | d <- operands ] ++
+  -- a scaled index, word 1 of the scratch area past the base
+  [ plain (atScratch scratch ++ [MovRI RBX 1]) (MovRM d (MIndex memBase RBX S8 0))
+  | d <- operands ] ++
   [ plain (atScratch scratch) (MovMR mem s) | s <- operands ] ++
   [ plain (atScratch scratch) (MovMI mem 77) ] ++
   [ plain (atScratch scratch) (Lea d mem) | d <- operands ] ++
@@ -101,16 +110,22 @@ samples scratch =
   | op <- [ADD, OR, AND, SUB, XOR, CMP], d <- operands ] ++
   [ plain (atScratch scratch) (AluMR op mem s)
   | op <- [ADD, OR, AND, SUB, XOR, CMP], s <- operands ] ++
+  [ plain (atScratch scratch) (AluMI op mem 5) | op <- [ADD, OR, AND, SUB, XOR, CMP] ] ++
   [ plain [] (Test d RSI) | d <- operands ] ++
   [ plain [] (TestI d 3) | d <- operands ] ++
   [ plain [] (Imul d R10) | d <- operands ] ++
   [ plain [] (ImulI d R11 9) | d <- operands ] ++
+  [ plain (atScratch scratch) (ImulRM d mem) | d <- operands ] ++
   [ plain [] Cqo ] ++
   [ plain [MovRI RAX 100, MovRI RDX 0, MovRI v 7] (Idiv v)
   | v <- filter (\r => r /= RAX && r /= RDX) operands ] ++
   [ plain [MovRI RAX 100, MovRI RDX 0, MovRI v 7] (DivU v)
   | v <- filter (\r => r /= RAX && r /= RDX) operands ] ++
   [ plain [] (Mul v) | v <- operands ] ++
+  -- a divisor of 7 in memory
+  [ plain (atScratch scratch ++ sevenAt) (IdivM mem) ] ++
+  [ plain (atScratch scratch ++ sevenAt) (DivUM mem) ] ++
+  [ plain (atScratch scratch) (MulM mem) ] ++
   [ plain [] (Neg d) | d <- operands ] ++
   [ plain [] (Not d) | d <- operands ] ++
   [ plain [] (ShiftI op d 3) | op <- [SHL, SHR, SAR], d <- operands ] ++
@@ -124,6 +139,10 @@ samples scratch =
   [ jumping (\l => [Lea RAX (MRip l 0), Push RAX]) (const Ret) ] ++
   [ plain [] (Push s) | s <- operands ] ++
   [ plain [] (Pop d) | d <- operands ] ++
+  [ plain (atScratch scratch) (PushM mem) ] ++
+  [ plain (atScratch scratch) (PopM mem) ] ++
+  [ plain [] (Xchg d R9) | d <- operands ] ++
+  [ plain [] (Xchg RAX d) | d <- operands ] ++
   [ plain [] (Setcc c d) | c <- [E, NE, B], d <- operands ] ++
   [ plain [] (Cmov c d R8) | c <- [E, NE], d <- operands ] ++
   [ plain (atScratch scratch) (MovsdRM x mem) | x <- xmmsAll ] ++
@@ -131,7 +150,10 @@ samples scratch =
   [ plain [] (MovsdRR x XMM3) | x <- xmmsAll ] ++
   [ plain [] (Sse op x XMM5)
   | op <- [ADDSD, SUBSD, MULSD, DIVSD, SQRTSD], x <- xmmsAll ] ++
+  [ plain (atScratch scratch) (SseRM op x mem)
+  | op <- [ADDSD, SUBSD, MULSD, DIVSD, SQRTSD], x <- xmmsAll ] ++
   [ plain [] (Ucomisd x XMM1) | x <- xmmsAll ] ++
+  [ plain (atScratch scratch) (UcomisdRM x mem) | x <- xmmsAll ] ++
   [ plain [] (Cvtsi2sd x RBX) | x <- xmmsAll ] ++
   [ plain [] (Cvttsd2si d XMM2) | d <- operands ] ++
   [ plain [] (MovqXR x RDI) | x <- xmmsAll ] ++

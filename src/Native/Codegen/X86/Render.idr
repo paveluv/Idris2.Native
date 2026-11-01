@@ -78,6 +78,7 @@ import Core.Name
 import Data.Bits
 import Data.List
 import Data.Maybe
+import Data.So
 import Data.SortedMap
 import Data.Zippable
 import Native.Area
@@ -972,13 +973,13 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                   emit (Asm.Setcc (cond r) Asm.RDX)
                                   store d Asm.RDX
                 LocatedIR.Instr.Load _ d m => do
-                  address Asm.RAX m 8
-                  emit (Asm.MovRM Asm.RCX (Asm.MBase Asm.RAX (m.offset - baseTag m.base)))
+                  a <- address m 8
+                  emit (Asm.MovRM Asm.RCX a)
                   store d Asm.RCX
                 LocatedIR.Instr.Store _ m x => do
-                  address Asm.RAX m 8
+                  a <- address m 8
                   loadReg Asm.RCX x
-                  emit (Asm.MovMR (Asm.MBase Asm.RAX (m.offset - baseTag m.base)) Asm.RCX)
+                  emit (Asm.MovMR a Asm.RCX)
                 LocatedIR.Instr.Tag {fx} d x => do
                                   loadReg Asm.RAX x
                                   emits (Asm.ShiftI Asm.SHL Asm.RAX 1 :: addTag Asm.RAX)
@@ -1185,17 +1186,13 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                       [Asm.Ucomisd Asm.XMM0 Asm.XMM1, Asm.Setcc Asm.AE Asm.RDX]
                                   store d Asm.RDX
                 LocatedIR.Instr.LoadN sw s d m => do
-                                  address Asm.RAX m (Width.subWordBytes sw)
-                                  emit
-                                    (Asm.Load (AccessWidth.accessWidth sw) s Asm.RCX
-                                     (Asm.MBase Asm.RAX (m.offset - baseTag m.base)))
+                                  a <- address m (Width.subWordBytes sw)
+                                  emit (Asm.Load (AccessWidth.accessWidth sw) s Asm.RCX a)
                                   store d Asm.RCX
                 LocatedIR.Instr.StoreN sw m x => do
-                                  address Asm.RAX m (Width.subWordBytes sw)
+                                  a <- address m (Width.subWordBytes sw)
                                   loadReg Asm.RCX x
-                                  emit
-                                    (Asm.Store (AccessWidth.accessWidth sw)
-                                     (Asm.MBase Asm.RAX (m.offset - baseTag m.base)) Asm.RCX)
+                                  emit (Asm.Store (AccessWidth.accessWidth sw) a Asm.RCX)
                 LocatedIR.Instr.AreaAddr d a => do
                                   emit (Asm.Lea Asm.RAX (Asm.MRip (sym (Linkage.Sym.areaSym a)) 0))
                                   store d Asm.RAX
@@ -1405,25 +1402,35 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                     emits setBase
                     restoreLive True emit live
 
-                  ||| The base of a memory operand into `r`, plus its index scaled by `width`,
-                  ||| the access's width in bytes: an address that lives only within the
-                  ||| instruction that computes it.
-                  address : Asm.Reg64 -> LocatedIR.Mem enc -> (width : Nat) -> Render enc ()
-                  address r m width = do
-                    case m.base of
-                      LocatedIR.Mem.AtBytes b => loadReg r b
-                      LocatedIR.Mem.AtPtr b => loadReg r b
+                  ||| A memory operand as the machine addresses it, for an access `width`
+                  ||| bytes wide: its base's register, plus its index's scaled by the width,
+                  ||| plus its offset less the base's pointer tag. A location in a register
+                  ||| is read there; one in a slot, which no row leaves, through rax, or rdx
+                  ||| for the index. The address lives only within the instruction.
+                  address : LocatedIR.Mem enc -> (width : Nat) -> Render enc Asm.Mem
+                  address m width = do
+                    b <- case m.base of
+                           LocatedIR.Mem.AtBytes l => held Asm.RAX l
+                           LocatedIR.Mem.AtPtr l => held Asm.RAX l
+                    let d = m.offset - baseTag m.base
                     case m.index of
-                      Nothing => pure ()
-                      Just i => do loadReg Asm.RDX i
-                                   emits [Asm.ShiftI Asm.SHL Asm.RDX (shiftFor width),
-                                          Asm.Alu Asm.ADD r Asm.RDX]
+                      Nothing => pure (Asm.MBase b d)
+                      Just i => do
+                        x <- held Asm.RDX i
+                        -- the description has no index for rsp
+                        case choose (x /= Asm.RSP) of
+                          Left ok => pure (Asm.MIndex b x (scale width) d)
+                          Right _ => Data.Stateful.failWith "an index in the stack pointer"
                     where
-                      shiftFor : Nat -> Bits8
-                      shiftFor 1 = 0
-                      shiftFor 2 = 1
-                      shiftFor 4 = 2
-                      shiftFor _ = 3
+                      held : Asm.Reg64 -> LocatedIR.Location enc t -> Render enc Asm.Reg64
+                      held _ (LocatedIR.Location.Register i _) = wordRegister i
+                      held r l = do loadReg r l; pure r
+
+                      scale : Nat -> Asm.Scale
+                      scale 1 = Asm.S1
+                      scale 2 = Asm.S2
+                      scale 4 = Asm.S4
+                      scale _ = Asm.S8
 
       -- a function's code, its slow paths after it, rendered after what
       -- the rendering has made

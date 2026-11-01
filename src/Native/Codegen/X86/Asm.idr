@@ -18,6 +18,7 @@ module Native.Codegen.X86.Asm
 -- puts a target's assembler behind an interface)
 
 import Data.List
+import Data.So
 
 %default total
 
@@ -302,15 +303,40 @@ public export
 Label : Type
 Label = Nat
 
-||| Memory operands are a base register plus a constant displacement, the
-||| IR's only memory operand, or RIP plus a label plus a constant, for code
-||| and static addresses: the constant is a static's pointer tag, when the
-||| encoding of uniform values has one. An instruction names a label only
-||| relative to RIP, here or as a jump's or a call's target, so the code
-||| holds no absolute address: a static's is formed by `lea` of its label.
+||| How a memory operand scales its index: by 1, 2, 4 or 8, the width in
+||| bytes of the elements it counts.
 public export
-data Mem = MBase Reg64 Int
-         | MRip Label Int
+data Scale = S1 | S2 | S4 | S8
+
+public export
+Show Scale where
+  show S1 = "1"
+  show S2 = "2"
+  show S4 = "4"
+  show S8 = "8"
+
+||| The scale's two bits in the SIB byte.
+public export
+scaleBits : Scale -> Bits8
+scaleBits S1 = 0
+scaleBits S2 = 1
+scaleBits S4 = 2
+scaleBits S8 = 3
+
+||| Memory operands are a base register plus a constant displacement; a
+||| base register plus an index register, scaled, plus a constant, for an
+||| element of an object or a run of bytes; or RIP plus a label plus a
+||| constant, for code and static addresses: the constant is a static's
+||| pointer tag, when the encoding of uniform values has one. An index is
+||| never rsp, whose number in the SIB byte means none. An instruction names
+||| a label only relative to RIP, here or as a jump's or a call's target, so
+||| the code holds no absolute address: a static's is formed by `lea` of its
+||| label.
+public export
+data Mem : Type where
+  MBase : Reg64 -> Int -> Mem
+  MIndex : (base, index : Reg64) -> {auto 0 notRsp : So (index /= RSP)} -> Scale -> Int -> Mem
+  MRip : Label -> Int -> Mem
 
 export
 showLabel : Label -> String
@@ -321,6 +347,8 @@ Show Mem where
   show (MBase r d) = if d == 0 then "[" ++ show r ++ "]"
                      else if d < 0 then "[" ++ show r ++ "-" ++ show (negate d) ++ "]"
                      else "[" ++ show r ++ "+" ++ show d ++ "]"
+  show (MIndex b x sc d) = "[" ++ show b ++ "+" ++ show x ++ "*" ++ show sc
+    ++ (if d == 0 then "" else if d < 0 then "-" ++ show (negate d) else "+" ++ show d) ++ "]"
   show (MRip l d) = "[rip+" ++ showLabel l
     ++ (if d == 0 then "" else if d < 0 then "-" ++ show (negate d) else "+" ++ show d) ++ "]"
 
@@ -331,9 +359,10 @@ public export
 data Instr : Type where
   -- 64-bit moves
   MovRR  : Reg64 -> Reg64 -> Instr
-  ||| Materialise a constant: imm32 sign-extended when it fits, else imm64.
-  ||| `mov r64, imm64` is the only x86-64 form that takes a full 64-bit
-  ||| immediate, which a header word needs.
+  ||| Materialise a constant: from 0 to 2^32 - 1 as `mov r32, imm32`, which
+  ||| zero-extends, in 5 bytes or 6; else imm32 sign-extended when it fits,
+  ||| else imm64. `mov r64, imm64` is the only x86-64 form that takes a full
+  ||| 64-bit immediate, which a header word needs.
   MovRI  : Reg64 -> Integer -> Instr
   MovRM  : Reg64 -> Mem -> Instr
   MovMR  : Mem -> Reg64 -> Instr
@@ -348,15 +377,23 @@ data Instr : Type where
   AluI   : AluOp -> Reg64 -> Int -> Instr
   AluRM  : AluOp -> Reg64 -> Mem -> Instr
   AluMR  : AluOp -> Mem -> Reg64 -> Instr
+  ||| An operation of a memory word and a sign-extended immediate, in 8 bits
+  ||| when it fits them, else 32.
+  AluMI  : AluOp -> Mem -> Int -> Instr
   Test   : Reg64 -> Reg64 -> Instr
   TestI  : Reg64 -> Int -> Instr
   Imul   : Reg64 -> Reg64 -> Instr
   ImulI  : Reg64 -> Reg64 -> Int -> Instr
+  ImulRM : Reg64 -> Mem -> Instr
   Cqo    : Instr
   Idiv   : Reg64 -> Instr
   DivU   : Reg64 -> Instr
   ||| rdx:rax := rax * the register, unsigned.
   Mul    : Reg64 -> Instr
+  ||| The divisions and the unsigned product by a memory word.
+  IdivM  : Mem -> Instr
+  DivUM  : Mem -> Instr
+  MulM   : Mem -> Instr
   Neg    : Reg64 -> Instr
   Not    : Reg64 -> Instr
   ShiftI : ShiftOp -> Reg64 -> Bits8 -> Instr
@@ -374,6 +411,10 @@ data Instr : Type where
   Ret    : Instr
   Push   : Reg64 -> Instr
   Pop    : Reg64 -> Instr
+  PushM  : Mem -> Instr
+  PopM   : Mem -> Instr
+  ||| Swap two registers.
+  Xchg   : Reg64 -> Reg64 -> Instr
   Setcc  : Cond -> Reg64 -> Instr
   Cmov   : Cond -> Reg64 -> Reg64 -> Instr
   -- scalar double
@@ -381,7 +422,9 @@ data Instr : Type where
   MovsdMR : Mem -> Xmm -> Instr
   MovsdRR : Xmm -> Xmm -> Instr
   Sse    : SseOp -> Xmm -> Xmm -> Instr
+  SseRM  : SseOp -> Xmm -> Mem -> Instr
   Ucomisd : Xmm -> Xmm -> Instr
+  UcomisdRM : Xmm -> Mem -> Instr
   Cvtsi2sd : Xmm -> Reg64 -> Instr
   Cvttsd2si : Reg64 -> Xmm -> Instr
   MovqXR : Xmm -> Reg64 -> Instr
@@ -404,7 +447,9 @@ public export
 Show Instr where
   show y = case y of
     MovRR d s => "mov " ++ show d ++ ", " ++ show s
-    MovRI d i => "mov " ++ show d ++ ", " ++ show i
+    MovRI d i =>
+      if i >= 0 && i < 4294967296 then "mov " ++ showReg32 d ++ ", " ++ show i
+      else "mov " ++ show d ++ ", " ++ show i
     MovRM d m => "mov " ++ show d ++ ", " ++ sizedMem "qword" m
     MovMR m s => "mov " ++ sizedMem "qword" m ++ ", " ++ show s
     MovMI m i => "mov " ++ sizedMem "qword" m ++ ", " ++ show i
@@ -416,14 +461,19 @@ Show Instr where
     AluI op d i => show op ++ " " ++ show d ++ ", " ++ show i
     AluRM op d m => show op ++ " " ++ show d ++ ", " ++ sizedMem "qword" m
     AluMR op m s => show op ++ " " ++ sizedMem "qword" m ++ ", " ++ show s
+    AluMI op m i => show op ++ " " ++ sizedMem "qword" m ++ ", " ++ show i
     Test a b => "test " ++ show a ++ ", " ++ show b
     TestI a i => "test " ++ show a ++ ", " ++ show i
     Imul d s => "imul " ++ show d ++ ", " ++ show s
     ImulI d s i => "imul " ++ show d ++ ", " ++ show s ++ ", " ++ show i
+    ImulRM d m => "imul " ++ show d ++ ", " ++ sizedMem "qword" m
     Cqo => "cqo"
     Idiv r => "idiv " ++ show r
     DivU r => "div " ++ show r
     Mul r => "mul " ++ show r
+    IdivM m => "idiv " ++ sizedMem "qword" m
+    DivUM m => "div " ++ sizedMem "qword" m
+    MulM m => "mul " ++ sizedMem "qword" m
     Neg r => "neg " ++ show r
     Not r => "not " ++ show r
     ShiftI op r n => show op ++ " " ++ show r ++ ", " ++ show (cast {to = Nat} n)
@@ -437,13 +487,18 @@ Show Instr where
     Ret => "ret"
     Push r => "push " ++ show r
     Pop r => "pop " ++ show r
+    PushM m => "push " ++ sizedMem "qword" m
+    PopM m => "pop " ++ sizedMem "qword" m
+    Xchg a b => "xchg " ++ show a ++ ", " ++ show b
     Setcc c r => "set" ++ show c ++ " " ++ showReg8 r
     Cmov c d s => "cmov" ++ show c ++ " " ++ show d ++ ", " ++ show s
     MovsdRM x m => "movsd " ++ show x ++ ", " ++ sizedMem "qword" m
     MovsdMR m x => "movsd " ++ sizedMem "qword" m ++ ", " ++ show x
     MovsdRR d s => "movsd " ++ show d ++ ", " ++ show s
     Sse op d s => show op ++ " " ++ show d ++ ", " ++ show s
+    SseRM op x m => show op ++ " " ++ show x ++ ", " ++ sizedMem "qword" m
     Ucomisd a b => "ucomisd " ++ show a ++ ", " ++ show b
+    UcomisdRM x m => "ucomisd " ++ show x ++ ", " ++ sizedMem "qword" m
     Cvtsi2sd x r => "cvtsi2sd " ++ show x ++ ", " ++ show r
     Cvttsd2si r x => "cvttsd2si " ++ show r ++ ", " ++ show x
     MovqXR x r => "movq " ++ show x ++ ", " ++ show r

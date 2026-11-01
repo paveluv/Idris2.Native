@@ -85,12 +85,9 @@ clobbers called i = case i of
   LocatedIR.Instr.FCmp _ _ _ _ => Row.clobbering [rcx]
   -- an immediate or a static into rax or rcx
   LocatedIR.Instr.Cmp _ _ _ _ => Row.clobbering [rax, rcx]
-  -- the address computed in the base's register, from the index shifted in
-  -- its own; a double through rcx, which no want of a word register moves
-  LocatedIR.Instr.Load _ _ _ => Row.clobbering [rax, rcx, rdx]
-  LocatedIR.Instr.Store _ _ _ => Row.clobbering [rax, rcx, rdx]
-  LocatedIR.Instr.LoadN _ _ _ _ => Row.clobbering [rax, rdx]
-  LocatedIR.Instr.StoreN _ _ _ => Row.clobbering [rax, rdx]
+  -- a double through rcx, which no want of a word register moves
+  LocatedIR.Instr.Load _ _ _ => Row.clobbering [rcx]
+  LocatedIR.Instr.Store _ _ _ => Row.clobbering [rcx]
   -- the collector may run, by a call
   LocatedIR.Instr.AllocObj _ _ _ _ => called
   LocatedIR.Instr.AllocSized _ _ _ _ _ => called

@@ -43,11 +43,11 @@ test rax, rax
 je L71
 jmp L72
 L67:
-mov rax, 0
+mov eax, 0
 mov qword ptr [rbx+88], rax
 jmp L69
 L68:
-mov rax, 1
+mov eax, 1
 mov qword ptr [rbx+88], rax
 jmp L69
 L70:
@@ -56,7 +56,7 @@ add rsp, 184
 ret
 L71:
 mov rax, qword ptr [rbx+40]
-mov rcx, 1
+mov ecx, 1
 add rax, rcx
 mov qword ptr [rbx+96], rax
 mov rax, qword ptr [rbx+40]
@@ -77,11 +77,11 @@ test rax, rax
 je L77
 jmp L78
 L73:
-mov rax, 0
+mov eax, 0
 mov qword ptr [rbx+112], rax
 jmp L75
 L74:
-mov rax, 1
+mov eax, 1
 mov qword ptr [rbx+112], rax
 jmp L75
 L79:
@@ -107,20 +107,20 @@ mov rax, qword ptr [rbx+136]
 mov qword ptr [rbx+120], rax
 jmp L79
 L83:
-mov rax, 0
+mov eax, 0
 mov qword ptr [rbx+136], rax
 jmp L85
 L84:
-mov rax, 1
+mov eax, 1
 mov qword ptr [rbx+136], rax
 jmp L85
 L77:
-mov rax, 0
+mov eax, 0
 mov qword ptr [rbx+120], rax
 jmp L79
 L78:
 lea rdi, [rip+L86]
-mov rsi, 28
+mov esi, 28
 jmp L3
 L87:
 mov rax, qword ptr [rbx+96]
@@ -130,7 +130,7 @@ mov qword ptr [rbx+72], rax
 jmp L66
 L80:
 mov rax, qword ptr [rbx+72]
-mov rcx, 1
+mov ecx, 1
 add rax, rcx
 mov qword ptr [rbx+152], rax
 mov rax, qword ptr [rbx+152]
@@ -150,10 +150,10 @@ mov qword ptr [rbx+144], rax
 jmp L87
 L82:
 lea rdi, [rip+L90]
-mov rsi, 28
+mov esi, 28
 jmp L3
 L72:
 lea rdi, [rip+L91]
-mov rsi, 28
+mov esi, 28
 jmp L3
 inRange calls nothing
