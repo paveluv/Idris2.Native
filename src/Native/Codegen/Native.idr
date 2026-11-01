@@ -22,6 +22,7 @@
 ||| that a call of one stops the compile.
 module Native.Codegen.Native
 
+import Native.Codegen.AllocCheck
 import Native.Codegen.ConstantWord
 import Native.Codegen.ELF
 import Native.Codegen.Evaluate
@@ -581,6 +582,9 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
             | Left err => throw (GenericMsg EmptyFC ("native: " ++ err))
           allocated <- phase "register allocation"
             (later (RegAlloc.allocRegs X86.Target.x86_64 term))
+          -- what the allocation made, checked by a reading of its own
+          Right () <- phase "allocation checked" (later (AllocCheck.check allocated))
+            | Left err => throw (InternalError ("native: " ++ err))
           -- the image holds what the entry and the routines the seed reaches
           -- by symbol reach
           let symbols = Linkage.Routine.routineSymbols {enc} realised

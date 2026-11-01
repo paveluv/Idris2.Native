@@ -15,6 +15,7 @@ modules =
     Native.AllocationMargin,
     Native.Area,
     Native.Carrier,
+    Native.Codegen.AllocCheck,
     Native.Codegen.CastWay,
     Native.Codegen.ConstantWord,
     Native.Codegen.Doubles,
