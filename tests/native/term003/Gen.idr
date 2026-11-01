@@ -43,8 +43,11 @@ import Native.Codegen.Linkage.Realised
 import Native.Codegen.Linkage.Routine
 import Native.Codegen.Linkage.RuntimeModule
 import Native.Codegen.Linkage.Sym
+import Native.Codegen.LocalAssign
 import Native.Codegen.LocatedIR.Program
 import Native.Codegen.RegAlloc
+import Native.Codegen.RegMask
+import Native.Codegen.Target
 import Native.Codegen.TermIR.Body
 import Native.Codegen.TermIR.Build
 import Native.Codegen.TermIR.Decls
@@ -64,6 +67,7 @@ import Native.Codegen.X86.Asm
 import Native.Codegen.X86.Assembler
 import Native.Codegen.X86.Encode
 import Native.Codegen.X86.Render
+import Native.Codegen.X86.Rows
 import Native.Codegen.X86.Target
 import Native.Data.Distinct
 import Native.HeapObj.Shape
@@ -112,8 +116,8 @@ deepValues = 65537
 
 ||| The slots of SCRATCH `allocSlow` overwrites: `deep`'s parameter, its
 ||| values and the two after them, and fewer than SCRATCH holds.
-clobbers : Nat
-clobbers = deepValues + 3
+overwritten : Nat
+overwritten = deepValues + 3
 
 T : Decls TestEnc
 T = MkDecls
@@ -164,9 +168,9 @@ startBody = build $ \[entry, window] => do
 allocSlowBody : Closed T (Direct [W64] False) False [W64]
 allocSlowBody = build $ \[bytes] => do
   scratch <- emit1 (AreaAddr SCRATCH)
-  -- slot i of SCRATCH, for i below `clobbers`, set to i + bytes
+  -- slot i of SCRATCH, for i below `overwritten`, set to i + bytes
   loop [W64] [W 0] $ \again, [i] =>
-    branch EqR i (W (cast clobbers))
+    branch EqR i (W (cast overwritten))
       (do w <- emit1 (SystemCall 6 [W 9, W 0, bytes, W 3, W 0x22, W (-1), W 0])
           base <- emit1 (WordToByteAddr w)
           hp <- emit1 (Offset base bytes)
@@ -312,8 +316,12 @@ program = do
   st <- startClosed
   al <- allocSlowClosed
   am <- allocMutableClosed
+  -- allocated as the code generator allocates: a slot for every value,
+  -- then each instruction's operands moved into the registers its
+  -- rendering reads them in, and its results out of them
+  let called = callClobbers x86_64
   pure
-    (allocRegs x86_64
+    (localAssign (row called) (termRow called) $ allocRegs x86_64
       (MkProgram {d = T}
         [Defined m, Defined d, Defined r, Defined cr, Defined st, Defined al, Defined am]
         [] (MkEntry here) noConIds))

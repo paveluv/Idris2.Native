@@ -33,6 +33,7 @@
 module Native.Codegen.Target
 
 import Native.Codegen.RegDesc
+import Native.Codegen.RegMask
 
 import Native.Rep
 
@@ -166,6 +167,17 @@ public export
 reserved : Target -> List TargetReg
 reserved t =
   [t.hp, t.hplim, t.stackPointer, t.slotBase] ++ (if t.lowering == HeapLowering then [t.k] else [])
+
+||| The call model: what a call may write of its caller's allocatable
+||| registers, by how continuations are realised. Every one under the heap
+||| lowering, where what is live across a call is kept in its continuation,
+||| or across a direct call in the caller's slots; every one under the
+||| stack lowering too, until it is implemented.
+public export
+callClobbers : Target -> RegMask
+callClobbers t = case t.lowering of
+  HeapLowering => RegMask.every t.allocatable
+  StackLowering => RegMask.every t.allocatable
 
 ||| Whether the target's description of its registers is sound: no
 ||| allocatable register reserved or named twice, the argument and return

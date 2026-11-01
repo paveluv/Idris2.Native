@@ -70,17 +70,21 @@ import Native.Codegen.Linkage.Realised
 import Native.Codegen.Linkage.Routine
 import Native.Codegen.Linkage.RuntimeModule
 import Native.Codegen.Linkage.Sym
+import Native.Codegen.LocalAssign
 import Native.Codegen.LocatedIR.Function
 import Native.Codegen.LocatedIR.Program
 import Native.Codegen.LocatedIR.Reach
 import Native.Codegen.Lower
 import Native.Codegen.Platform
 import Native.Codegen.RegAlloc
+import Native.Codegen.RegMask
 import Native.Codegen.StaticRead
+import Native.Codegen.Target
 import Native.Codegen.TermIR.Decls
 import Native.Codegen.TermIR.Program
 import Native.Codegen.X86.Asm
 import Native.Codegen.X86.Render
+import Native.Codegen.X86.Rows
 import Native.Codegen.X86.Target
 import Native.Flat.Exp
 import Native.HeapObj.ValEnc
@@ -192,7 +196,12 @@ rendered : (runtime, program : List FlatDef) -> List (Name, VMDef) -> String
 rendered runtime program vmdefs = either id (const "rendered") $ do
   (_ ** term) <- lowered runtime program empty [] vmdefs
   let symbols = routineSymbols {enc = TestEnc} realised
-      ir = reach (\n => isJust (lookup n symbols)) (allocRegs x86_64 term)
+      called = callClobbers x86_64
+      -- allocated as the code generator allocates: a slot for every value,
+      -- then each instruction's operands moved into the registers its
+      -- rendering reads them in, and its results out of them
+      ir = reach (\n => isJust (lookup n symbols))
+             (localAssign (row called) (termRow called) (allocRegs x86_64 term))
   r <- render TestEnc realised ir
   -- every function rendered in turn, the code itself not kept
   s <- foldlM (\s, f => map fst (r.functionCode s f)) r.first r.functions

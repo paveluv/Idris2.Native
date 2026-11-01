@@ -1,0 +1,6 @@
+Main.inRax: rendered
+Main.inSlot: the rendering of Const writes rax, which its row does not name
+Main.inRcx: the rendering of Const writes rax, which its row does not name
+Main.slotToSlot: a move between two slots
+Main.inSlot, assigned: rendered
+Main.slotToSlot, assigned: rendered

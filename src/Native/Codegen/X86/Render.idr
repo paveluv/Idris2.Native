@@ -8,8 +8,12 @@
 ||| `rbx` holds the slots' base, so slot n is `[rbx + 8n]`, and is set at
 ||| every function entry, every resume point and after every runtime call,
 ||| since no register survives a transfer or a direct call. An instruction
-||| loads its operands into `rax`, `rcx` and `rdx` and stores its result
-||| back, an operand or a result in a register moved in place.
+||| finds its operands in the registers its row (`Native.Codegen.X86.Rows`)
+||| wants them in, where register allocation moved them, or reads them where
+||| they are, and writes its results where they go. Every allocatable
+||| register its code writes is a result's or one its row names, checked as
+||| it is rendered (`conforming`), so that register allocation, which reads
+||| the rows, keeps no value in a register the code destroys.
 ||| `r15` and `r14` are the allocation window and `r12` the current
 ||| continuation, as `Native.Codegen.X86.Target.x86_64` pins them.
 |||
@@ -66,9 +70,12 @@ import Native.Codegen.X86.AccessWidth
 import Native.Codegen.X86.AllocLive
 import Native.Codegen.X86.Asm
 import Native.Codegen.X86.Datum
-import Native.Codegen.X86.Target
+import Native.Codegen.X86.RegSet
+import Native.Codegen.X86.Rows
+import Native.Codegen.X86.Writes
 
 import Core.Name
+import Data.Bits
 import Data.List
 import Data.Maybe
 import Data.SortedMap
@@ -95,6 +102,7 @@ import Native.Codegen.LocatedIR.Program as LocatedIR
 import Native.Codegen.LocatedIR.Static as LocatedIR
 import Native.Codegen.LocatedIR.Terminator as LocatedIR
 import Native.Codegen.RegDesc
+import Native.Codegen.RegMask
 import Native.Codegen.Target
 import Native.Data.LittleEndian
 import Native.Data.Numbered
@@ -146,6 +154,9 @@ record RS (enc : Types.Enc) where
   rodata : SnocList (Asm.Label, List Datum)
   ||| The most of each per-thread area the code so far uses.
   areas : Linkage.Areas
+  ||| The registers the code written since the rendering of the current
+  ||| instruction began writes, in `text` and `cold` (`Writes.writes`).
+  written : RegSet
 
 ||| A program's rendering, a function at a time: the code the seed enters,
 ||| `main`, which jumps to the entry function, and the slow path the
@@ -169,14 +180,15 @@ record Renderer (enc : Types.Enc) where
   functionCode : RS enc -> LocatedIR.Function enc -> Either String (RS enc, List Asm.Instr)
   finished : RS enc -> Either String Rendered
 
-||| A continuation's live values in the order it keeps them: the GC-visible
-||| ones, which the collector forwards, then the raw ones, as its layout word
-||| counts them. The resume block reloads them in the order its call stored
-||| them.
-contFields : List (LocatedIR.Location enc) -> (List (LocatedIR.Location enc), List (LocatedIR.Location enc))
-contFields live =
-  (filter (IRCommon.Ty.gcVisible . LocatedIR.Location.ty) live,
-   filter (not . IRCommon.Ty.gcVisible . LocatedIR.Location.ty) live)
+||| A target's allocatable registers as machine registers: each class's by
+||| its index in the description, and all of them. Made once a function,
+||| so that a set of allocatable registers (`RegMask`) becomes machine
+||| registers without decoding a register's number.
+record MachineRegs where
+  constructor MkMachineRegs
+  words : List RegSet
+  floats : List RegSet
+  registers : RegSet
 
 -- Everything below renders for the program's encodings, and the contract as
 -- the loaded runtime realises it. The value encoding decides how a `Val`
@@ -222,7 +234,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
         arity = foldl max 0 [length f.params | f <- p.functions, f.conv == IRCommon.Conv.CPS]
         applyAreas =
           Linkage.MkAreas (Target.argsWords abi (replicate arity Rep.WordClass)) 0 arity 0
-    (s, _) <- Data.Stateful.toEither $ Data.Stateful.outcome (MkRS next2 [<] [<] [<] applyAreas) $
+    (s, _) <- Data.Stateful.toEither $
+      Data.Stateful.outcome (MkRS next2 [<] [<] [<] applyAreas RegSet.none) $
       do
       entry <- funLabel names p.entry
       emits [Asm.Lbl (sym Linkage.Sym.SymMain), Asm.Jmp entry]
@@ -242,11 +255,14 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
       ptag = cast (HeapObj.ValEnc.pointerTag enc.val)
 
       emit : Asm.Instr -> Render enc' ()
-      emit i = Data.Stateful.modify { text $= (:< i) }
+      emit i = Data.Stateful.modify { text $= (:< i), written $= RegSet.union (Writes.writes i) }
 
       -- the instructions put at the code's end in one step, not one each
       emits : List Asm.Instr -> Render enc ()
-      emits is = Data.Stateful.modify { text $= (<>< is) }
+      emits is =
+        Data.Stateful.modify
+          { text $= (<>< is)
+          , written $= \w => foldl (\v, i => RegSet.union (Writes.writes i) v) w is }
 
       ||| The slow path the allocation sites share, for live tables of the
       ||| width, with labels of its own.
@@ -261,7 +277,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
       sym = Linkage.Sym.label
 
       abi : Target.Abi
-      abi = Target.x86_64.abi
+      abi = p.target.abi
 
       ||| The registers the located IR may name, by their index.
       allocatable : RegDesc
@@ -300,6 +316,34 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
           field (LocatedIR.Static.SCode f) = do l <- funLabel names f
                                                 pure (Datum.AddressOf l 0)
 
+      ||| A continuation's live values in the order it keeps them: the GC-visible
+      ||| ones, which the collector forwards, then the raw ones, as its layout word
+      ||| counts them. The resume block reloads them in the order its call stored
+      ||| them.
+      contFields : List (LocatedIR.Location enc') ->
+                   (List (LocatedIR.Location enc'), List (LocatedIR.Location enc'))
+      contFields live =
+        (filter (IRCommon.Ty.gcVisible . LocatedIR.Location.ty) live,
+         filter (not . IRCommon.Ty.gcVisible . LocatedIR.Location.ty) live)
+
+      ||| The description's registers as machine registers.
+      machineRegs : RegDesc -> MachineRegs
+      machineRegs d =
+        let ws = map (RegSet.gpr . Asm.regOfNum) d.words
+            fs = map (RegSet.xmm . Asm.xmmOfNum) d.floats
+        in MkMachineRegs ws fs (foldl RegSet.union (foldl RegSet.union RegSet.none ws) fs)
+
+      ||| The machine registers of a set of allocatable ones.
+      machine : MachineRegs -> RegMask -> RegSet
+      machine mr m = RegSet.union (from m.words mr.words) (from m.floats mr.floats)
+        where
+          from : Bits64 -> List RegSet -> RegSet
+          from bits (r :: rs) =
+            if bits == 0 then RegSet.none
+              else RegSet.union (if bits .&. 1 == 0 then RegSet.none else r)
+                     (from (prim__shr_Bits64 bits 1) rs)
+          from _ [] = RegSet.none
+
       function : Names enc -> (symbols : SortedMap Name Linkage.Sym) ->
                  LocatedIR.Function enc -> Render enc ()
       function names symbols f = do
@@ -317,7 +361,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
         -- pushed a word below, so an odd number of words keeps the stack
         -- 16-aligned inside; and below the stack limit, end the program
         let n = slots f
-            frame = case f.conv of
+            frame = the Int $ case f.conv of
               IRCommon.Conv.Direct _ _ => 8 * cast (oddUp n)
               IRCommon.Conv.CPS => 0
         case f.conv of
@@ -333,7 +377,9 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
         -- bound once: an argument of a partial application is evaluated again
         -- at every call of it, which read the function's blocks once per block
         let rs = resumes f
-        traverse_ (block blk (IRCommon.Conv.results f.conv) frame rs) f.blocks
+            called = Target.callClobbers p.target
+            mr = machineRegs allocatable
+        traverse_ (block blk (IRCommon.Conv.results f.conv) frame rs called mr) f.blocks
         Data.Stateful.modify (\s => { text := s.text ++ s.cold, cold := [<] } s)
         where
           ||| The live values a resume block reloads, in the order its continuation
@@ -388,23 +434,34 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
           floatRegister : Nat -> Render enc Asm.Xmm
           floatRegister i = case getAt i allocatable.floats of
             Just r => pure (Asm.xmmOfNum r)
-            Nothing => Data.Stateful.failWith "a floating-point register the target does not describe"
+            Nothing =>
+              Data.Stateful.failWith "a floating-point register the target does not describe"
 
-          ||| A location's word into the register, by `out`.
+          ||| A location's word into the register, by `out`: from an XMM
+          ||| register, a double's bits.
           getWordBy : (Asm.Instr -> Render enc ()) -> Asm.Reg64 -> LocatedIR.Location enc ->
                       Render enc ()
           getWordBy out r (LocatedIR.Location.Slot n _) = out (Asm.MovRM r (slotMem n))
-          getWordBy out r (LocatedIR.Location.Register i _) = do
-            s <- wordRegister i
-            when (s /= r) $ out (Asm.MovRR r s)
+          getWordBy out r (LocatedIR.Location.Register i t) = case IRCommon.Ty.class t of
+            Rep.WordClass => do
+              s <- wordRegister i
+              when (s /= r) $ out (Asm.MovRR r s)
+            Rep.FloatClass => do
+              x <- floatRegister i
+              out (Asm.MovqRX r x)
 
-          ||| The register's word into a location, by `out`.
+          ||| The register's word into a location, by `out`: into an XMM
+          ||| register, as a double's bits.
           putWordBy : (Asm.Instr -> Render enc ()) -> LocatedIR.Location enc -> Asm.Reg64 ->
                       Render enc ()
           putWordBy out (LocatedIR.Location.Slot n _) r = out (Asm.MovMR (slotMem n) r)
-          putWordBy out (LocatedIR.Location.Register i _) r = do
-            d <- wordRegister i
-            when (d /= r) $ out (Asm.MovRR d r)
+          putWordBy out (LocatedIR.Location.Register i t) r = case IRCommon.Ty.class t of
+            Rep.WordClass => do
+              d <- wordRegister i
+              when (d /= r) $ out (Asm.MovRR d r)
+            Rep.FloatClass => do
+              x <- floatRegister i
+              out (Asm.MovqXR x r)
 
           getWord : Asm.Reg64 -> LocatedIR.Location enc -> Render enc ()
           getWord r x = getWordBy emit r x
@@ -425,6 +482,47 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
           putFloat (LocatedIR.Location.Register i _) x = do
             d <- floatRegister i
             when (Asm.xmmNum d /= Asm.xmmNum x) $ emit (Asm.MovsdRR d x)
+
+          ||| A location's value into another of its class: directly when
+          ||| either is a register. Never between two slots, which a move's row
+          ||| gives a register for.
+          move : (d, x : LocatedIR.Location enc) -> Render enc ()
+          move d x = case (d, x) of
+            (LocatedIR.Location.Register i t, _) => case IRCommon.Ty.class t of
+              Rep.FloatClass => do r <- floatRegister i; getFloat r x
+              Rep.WordClass => do r <- wordRegister i; getWord r x
+            (_, LocatedIR.Location.Register i t) => case IRCommon.Ty.class t of
+              Rep.FloatClass => do r <- floatRegister i; putFloat d r
+              Rep.WordClass => do r <- wordRegister i; store d r
+            _ => Data.Stateful.failWith "a move between two slots"
+
+          ||| The allocatable registers among the locations.
+          registersIn : List (LocatedIR.Location enc) -> RegMask
+          registersIn = foldr add RegMask.none
+            where
+              add : LocatedIR.Location enc -> RegMask -> RegMask
+              add (LocatedIR.Location.Register i t) m =
+                RegMask.union (RegMask.single (IRCommon.Ty.class t) i) m
+              add (LocatedIR.Location.Slot _ _) m = m
+
+          ||| Render an instruction or a terminator, `act`, and check what its
+          ||| code writes of the allocatable registers (`mr`): the registers
+          ||| `allowed`, its results' and those its row says it clobbers
+          ||| (`X86.Rows`), no other, so that a value register allocation keeps
+          ||| in any other is still there after.
+          conforming : (mr : MachineRegs) -> (what : Lazy String) -> (allowed : Lazy RegMask) ->
+                       Render enc () -> Render enc ()
+          conforming mr what allowed act = do
+            Data.Stateful.modify { written := RegSet.none }
+            act
+            s <- Data.Stateful.get
+            let wrote = RegSet.intersection mr.registers s.written
+            unless (RegSet.within wrote RegSet.none || RegSet.within wrote (machine mr allowed)) $
+              Data.Stateful.failWith
+                ("the rendering of " ++ what ++ " writes "
+                 ++ fastConcat
+                   (intersperse ", " (RegSet.names (RegSet.minus wrote (machine mr allowed))))
+                 ++ ", which its row does not name")
 
           reg64 : Target.TargetReg -> Asm.Reg64
           reg64 = Asm.regOfNum
@@ -526,7 +624,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                                                  Asm.Alu Asm.CMP Asm.RAX Asm.RCX]
 
           coldEmit : Asm.Instr -> Render enc ()
-          coldEmit i = Data.Stateful.modify { cold $= (:< i) }
+          coldEmit i =
+            Data.Stateful.modify { cold $= (:< i), written $= RegSet.union (Writes.writes i) }
 
           fresh : Render enc Asm.Label
           fresh = Data.Stateful.state (\s => ({ nextLabel := S s.nextLabel } s, s.nextLabel))
@@ -544,7 +643,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
           ||| call that can collect, which the collector forwards there; none
           ||| across one that cannot. No callee writes its caller's slots, CPS
           ||| code's being in `SCRATCH` and a Direct function's in its own frame.
-          saved : (collects : Bool) -> List (LocatedIR.Location enc) -> List (LocatedIR.Location enc)
+          saved : (collects : Bool) -> List (LocatedIR.Location enc) ->
+                  List (LocatedIR.Location enc)
           saved False _ = []
           saved True live = filter (IRCommon.Ty.gcVisible . LocatedIR.Location.ty) live
 
@@ -600,15 +700,18 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
           ||| share, the jump back to `done` it returns to, and the site's live
           ||| table, of `live`'s slots, which the slow path saves across the
           ||| allocation.
-          slowStub : (slow, done : Asm.Label) -> (live : List (LocatedIR.Location enc)) -> Render enc ()
+          slowStub : (slow, done : Asm.Label) -> (live : List (LocatedIR.Location enc)) ->
+                     Render enc ()
           slowStub slow done live = do
             let gc = filter (IRCommon.Ty.gcVisible . LocatedIR.Location.ty) live
                 raw = filter (not . IRCommon.Ty.gcVisible . LocatedIR.Location.ty) live
             uses (Linkage.MkAreas 0 (length gc) 0 0)
             -- the slow path saves slots: a value in a register across it is lost
-            case (traverse LocatedIR.Location.slotNumber gc, traverse LocatedIR.Location.slotNumber raw) of
+            case (traverse LocatedIR.Location.slotNumber gc,
+                  traverse LocatedIR.Location.slotNumber raw) of
               (Just gs, Just rs) => case LiveTable.table gs rs of
-                Just t => Data.Stateful.modify { cold $= (<>< (Asm.Lbl slow :: AllocLive.stub done t)) }
+                Just t =>
+                  Data.Stateful.modify { cold $= (<>< (Asm.Lbl slow :: AllocLive.stub done t)) }
                 Nothing => Data.Stateful.failWith "a live table's entry needs more than 32 bits"
               _ => Data.Stateful.failWith "a register live across an allocation"
 
@@ -779,7 +882,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                 where
                   -- the registers of `more` that are not in `live`, each once: the
                   -- slow path would save a register listed twice twice
-                  besides : (live, more : List (LocatedIR.Location enc)) -> List (LocatedIR.Location enc)
+                  besides : (live, more : List (LocatedIR.Location enc)) ->
+                            List (LocatedIR.Location enc)
                   besides live [] = []
                   besides live (r :: rs) =
                     if any (\l => LocatedIR.Location.key allocatable l
@@ -790,8 +894,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
           block : (LocatedIR.Label -> Asm.Label) -> (results : List (IRCommon.Ty enc)) ->
                   (frame : Int) ->
                   SortedMap LocatedIR.Label (List (LocatedIR.Location enc), Integer) ->
-                  LocatedIR.Block enc -> Render enc ()
-          block blk res frame rs b = do
+                  (called : RegMask) -> MachineRegs -> LocatedIR.Block enc -> Render enc ()
+          block blk res frame rs called mr b = do
             case lookup b.label rs of
               Just (live, word) => do
                 emits (Linkage.ResumePoint.resumePoint (blk b.label) word)
@@ -806,8 +910,15 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                           (Data.Numbered.numbered live)
                 emit (Asm.MovRM Asm.R12 (Asm.MBase Asm.R12 (8 - ptag)))
               Nothing => emit (Asm.Lbl (blk b.label))
-            traverse_ (instr blk) b.body
-            term blk res frame b.term
+            traverse_
+              (\i => conforming mr (LocatedIR.Instr.instrName i)
+                       (RegMask.union (Rows.clobbers called i)
+                         (registersIn (LocatedIR.Instr.results i)))
+                       (instr blk i))
+              b.body
+            conforming mr (LocatedIR.Terminator.termName b.term)
+              (Rows.termClobbers called b.term)
+              (term blk res frame b.term)
             where
               instr : (LocatedIR.Label -> Asm.Label) -> LocatedIR.Instr enc -> Render enc ()
               instr blk instr' = case instr' of
@@ -886,32 +997,28 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                 LocatedIR.Instr.Ext sw s d x => do
                                   case x of
                                     LocatedIR.Location.Slot n _ =>
-                                      emit (Asm.Load (AccessWidth.accessWidth sw) s Asm.RAX (slotMem n))
+                                      emit
+                                        (Asm.Load (AccessWidth.accessWidth sw) s Asm.RAX
+                                         (slotMem n))
                                     -- from a register, by shifting its low part to the top
                                     -- and back
                                     LocatedIR.Location.Register _ _ => do
-                                      let by = the Bits8 (cast (minus 64 (8 * Width.subWordBytes sw)))
+                                      let by =
+                                            the Bits8 (cast (minus 64 (8 * Width.subWordBytes sw)))
                                       getWord Asm.RAX x
                                       emits [ Asm.ShiftI Asm.SHL Asm.RAX by
-                                            , Asm.ShiftI (if s then Asm.SAR else Asm.SHR) Asm.RAX by ]
+                                            , Asm.ShiftI (if s then Asm.SAR else Asm.SHR) Asm.RAX
+                                              by ]
                                   store d Asm.RAX
-                LocatedIR.Instr.Narrow _ d x => do loadReg Asm.RAX x; store d Asm.RAX
-                LocatedIR.Instr.Widen d x => do loadReg Asm.RAX x; store d Asm.RAX
-                -- a move with a register at either end moves directly; one
-                -- between slots goes through rax
-                LocatedIR.Instr.Move d x => case (d, x) of
-                  (LocatedIR.Location.Register i t, _) => case IRCommon.Ty.class t of
-                    Rep.FloatClass => do r <- floatRegister i; getFloat r x
-                    Rep.WordClass => do r <- wordRegister i; getWord r x
-                  (_, LocatedIR.Location.Register i t) => case IRCommon.Ty.class t of
-                    Rep.FloatClass => do r <- floatRegister i; putFloat d r
-                    Rep.WordClass => do r <- wordRegister i; store d r
-                  _ => do loadReg Asm.RAX x; store d Asm.RAX
-                -- a pointer word and an address are the same word
-                LocatedIR.Instr.AddrToWord d x => do loadReg Asm.RAX x; store d Asm.RAX
-                LocatedIR.Instr.WordToAddr _ d x => do loadReg Asm.RAX x; store d Asm.RAX
-                LocatedIR.Instr.ValToWord d x => do loadReg Asm.RAX x; store d Asm.RAX
-                LocatedIR.Instr.WordToVal d x => do loadReg Asm.RAX x; store d Asm.RAX
+                LocatedIR.Instr.Move d x => move d x
+                -- a retyping is a move: a pointer word and an address, a value
+                -- and its word, are the same word
+                LocatedIR.Instr.Narrow _ d x => move d x
+                LocatedIR.Instr.Widen d x => move d x
+                LocatedIR.Instr.AddrToWord d x => move d x
+                LocatedIR.Instr.WordToAddr _ d x => move d x
+                LocatedIR.Instr.ValToWord d x => move d x
+                LocatedIR.Instr.WordToVal d x => move d x
                 LocatedIR.Instr.LoadPart p d o => do
                                   loadReg Asm.RAX o
                                   emit (Asm.MovRM Asm.RAX (Asm.MBase Asm.RAX (negate (baseTag o))))

@@ -44,7 +44,9 @@ import Native.Codegen.Lower
 import Native.Codegen.Platform
 import Native.Codegen.ProgramReach
 import Native.Codegen.RegAlloc
+import Native.Codegen.RegMask
 import Native.Codegen.StaticRead
+import Native.Codegen.Target
 import Native.Codegen.TermIR.Decls as TermIR
 import Native.Codegen.TermIR.Program as TermIR
 import Native.Codegen.X86.Asm
@@ -585,9 +587,12 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
           slotted <- phase "register allocation"
             (later (RegAlloc.allocRegs X86.Target.x86_64 term))
           -- each instruction's operands and results moved into the
-          -- registers its rendering reads and writes them in
+          -- registers its rendering reads and writes them in, by the rows
+          -- of the target's call model
+          let called = Target.callClobbers X86.Target.x86_64
           allocated <- phase "local assignment"
-            (later (LocalAssign.localAssign X86.Rows.row X86.Rows.termRow slotted))
+            (later
+              (LocalAssign.localAssign (X86.Rows.row called) (X86.Rows.termRow called) slotted))
           -- what the allocation made, checked by a reading of its own
           Right () <- phase "allocation checked" (later (AllocCheck.check allocated))
             | Left err => throw (InternalError ("native: " ++ err))

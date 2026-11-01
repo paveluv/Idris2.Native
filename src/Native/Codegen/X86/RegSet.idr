@@ -40,6 +40,11 @@ export
 union : RegSet -> RegSet -> RegSet
 union a b = MkRegSet (a.bits .|. b.bits)
 
+||| The registers of both sets.
+export
+intersection : RegSet -> RegSet -> RegSet
+intersection a b = MkRegSet (a.bits .&. b.bits)
+
 ||| Whether every register of the first set is in the second.
 export
 within : RegSet -> RegSet -> Bool

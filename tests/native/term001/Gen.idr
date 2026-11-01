@@ -38,9 +38,12 @@ import Native.Codegen.Link
 import Native.Codegen.Linkage.Realised
 import Native.Codegen.Linkage.Routine
 import Native.Codegen.Linkage.RuntimeModule
+import Native.Codegen.LocalAssign
 import Native.Codegen.LocatedIR.Dump
 import Native.Codegen.LocatedIR.Program
 import Native.Codegen.RegAlloc
+import Native.Codegen.RegMask
+import Native.Codegen.Target
 import Native.Codegen.TermIR.Body
 import Native.Codegen.TermIR.Build
 import Native.Codegen.TermIR.Decls
@@ -61,6 +64,7 @@ import Native.Codegen.X86.Asm
 import Native.Codegen.X86.Assembler
 import Native.Codegen.X86.Encode
 import Native.Codegen.X86.Render
+import Native.Codegen.X86.Rows
 import Native.Codegen.X86.Target
 import Native.Data.Builder
 import Native.Data.Distinct
@@ -615,8 +619,12 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
     let Left ok = choose (distinct (map (.name) (sigs (Run {enc})))
                           && distinct (map (.sym) (statics (Run {enc}))))
       | Right _ => putStrLn "the running program: names repeat"
-    let run =
-          allocRegs x86_64
+    -- allocated as the code generator allocates: a slot for every value,
+    -- then each instruction's operands moved into the registers its
+    -- rendering reads them in, and its results out of them
+    let called = callClobbers x86_64
+        run =
+          localAssign (row called) (termRow called) $ allocRegs x86_64
             (MkProgram {d = Run {enc}}
               [Defined m, Defined p, Defined s, Defined sa, Defined at, Defined sm, Defined dm,
                Defined fl, Defined by, Defined fs, Defined cr, Defined st, Defined al, Defined am]

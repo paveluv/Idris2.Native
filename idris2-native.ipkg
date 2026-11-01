@@ -58,6 +58,7 @@ modules =
     Native.Codegen.Native,
     Native.Codegen.Platform,
     Native.Codegen.RegDesc,
+    Native.Codegen.RegMask,
     Native.Codegen.Row,
     Native.Codegen.ProgramReach,
     Native.Codegen.RegAlloc,
