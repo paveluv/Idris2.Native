@@ -29,6 +29,13 @@
 |||   else from before it, since no register survives the call. What is read
 |||   after a point is a may analysis, backward to its fixed point.
 |||
+||| * **No register across what overwrites it.** A value may be in one of the
+|||   target's allocatable registers, named by its index among those of its
+|||   class in the target's description; an index past them is rejected.
+|||   No register survives the allocation slow path, which keeps the slots,
+|||   nor a direct call, whose callee may write any: none is live where a
+|||   collection can start or across a direct call.
+|||
 ||| What this does not check is that a register holds the value the term IR
 ||| means at its use: the located IR alone does not say which value that
 ||| is. Each rejection names the function and the block.
@@ -40,11 +47,13 @@ import Native.Codegen.LocatedIR.Cont as LocatedIR
 import Native.Codegen.LocatedIR.Function as LocatedIR
 import Native.Codegen.LocatedIR.Instr as LocatedIR
 import Native.Codegen.LocatedIR.Label as LocatedIR
+import Native.Codegen.LocatedIR.Location as LocatedIR
 import Native.Codegen.LocatedIR.Mem as LocatedIR
 import Native.Codegen.LocatedIR.Opnd as LocatedIR
 import Native.Codegen.LocatedIR.Program as LocatedIR
-import Native.Codegen.LocatedIR.Reg as LocatedIR
 import Native.Codegen.LocatedIR.Terminator as LocatedIR
+import Native.Codegen.RegDesc
+import Native.Codegen.Target
 
 import Core.Name
 import Data.Bits
@@ -53,6 +62,7 @@ import Data.Maybe
 import Data.SortedMap
 import Data.SortedSet
 import Data.Zippable
+import Native.Rep
 import Native.Types.Enc as Types
 
 %default total
@@ -89,6 +99,8 @@ record Summary (enc : Types.Enc) where
   ||| The slots the block names under a GC-visible type, and under a raw one.
   gcNamed : Slots
   rawNamed : Slots
+  ||| The registers the block names past the target's description.
+  undescribed : List (LocatedIR.Location enc)
 
 ||| One function's blocks by label, with each block's predecessors, summary,
 ||| and an order to compute in.
@@ -110,6 +122,40 @@ export covering
 check : LocatedIR.Program enc -> Either String ()
 check p = traverse_ checkFunction p.functions
   where
+    ||| The target's registers, which locations are numbered by.
+    rd : RegDesc
+    rd = p.target.allocatable
+
+    ||| A location's number, for sets of them.
+    number : LocatedIR.Location enc -> Nat
+    number = LocatedIR.Location.key rd
+
+    ||| Whether the location is a slot, or a register the description has an
+    ||| index for in its class.
+    described : LocatedIR.Location enc -> Bool
+    described (LocatedIR.Location.Slot _ _) = True
+    described (LocatedIR.Location.Register i t) = case IRCommon.Ty.class t of
+      Rep.WordClass => i < rd.wordCount
+      Rep.FloatClass => i < rd.floatCount
+
+    ||| The numbers of the registers.
+    registers : Slots
+    registers = bit (rd.wordCount + rd.floatCount) - 1
+
+    ||| A direct call, after which a callee has written any register.
+    directCall : LocatedIR.Instr enc -> Bool
+    directCall (LocatedIR.Instr.DirectCall _ _ _ _ _) = True
+    directCall _ = False
+
+    ||| What a location's number names, for a rejection.
+    named : Nat -> String
+    named k =
+      let w = rd.wordCount
+          f = rd.floatCount
+      in if k < w then "word register " ++ show k
+         else if k < w + f then "floating-point register " ++ show (minus k w)
+         else "slot " ++ show (minus k (w + f))
+
     ||| One function checked.
     covering
     checkFunction : LocatedIR.Function enc -> Either String ()
@@ -117,16 +163,19 @@ check p = traverse_ checkFunction p.functions
       let sh = shape f
           sums = map snd (values sh.blocks)
           gcs = foldl (\s, sm => s .|. sm.gcNamed)
-                  (slots (filter (IRCommon.Ty.gcVisible . LocatedIR.Reg.ty) f.params)) sums
+                  (slots (filter (IRCommon.Ty.gcVisible . LocatedIR.Location.ty) f.params)) sums
           raws = foldl (\s, sm => s .|. sm.rawNamed)
-                   (slots (filter (not . IRCommon.Ty.gcVisible . LocatedIR.Reg.ty) f.params)) sums
+                   (slots (filter (not . IRCommon.Ty.gcVisible . LocatedIR.Location.ty) f.params)) sums
           both = gcs .&. raws
+      case concatMap (.undescribed) sums of
+        (r :: _) => reject f f.entry (show r ++ " is a register the target does not describe")
+        [] => Right ()
       when (both /= 0) $ do
         let n = lowest both
             names : (LocatedIR.Label, (LocatedIR.Block enc, Summary enc)) -> Bool
             names (_, (_, sm)) = testBit (sm.gcNamed .|. sm.rawNamed) n
         reject f (fromMaybe f.entry (map fst (find names (SortedMap.toList sh.blocks))))
-          ("slot " ++ show n ++ " holds a value the collector sees and a raw word")
+          (named n ++ " holds a value the collector sees and a raw word")
       let live = liveIn sh
           defined = definedIn f sh
       traverse_
@@ -134,12 +183,12 @@ check p = traverse_ checkFunction p.functions
         (SortedMap.toList sh.blocks)
       where
         ||| The registers of the operands.
-        opnds : List (LocatedIR.Opnd enc) -> List (LocatedIR.Reg enc)
+        opnds : List (LocatedIR.Opnd enc) -> List (LocatedIR.Location enc)
         opnds os = LocatedIR.Opnd.opsRegs os []
 
         ||| What an instruction reads: its operands, not the registers its `live`
         ||| list keeps.
-        uses : LocatedIR.Instr enc -> List (LocatedIR.Reg enc)
+        uses : LocatedIR.Instr enc -> List (LocatedIR.Location enc)
         uses i = case i of
           LocatedIR.Instr.Mul128 _ _ x y => opnds [x, y]
           LocatedIR.Instr.Div128 _ _ h l x => opnds [h, l, x]
@@ -158,7 +207,7 @@ check p = traverse_ checkFunction p.functions
           _ => drop 1 (LocatedIR.Instr.instrRegs i)
           where
             ||| The registers a memory operand reads.
-            memRegs : LocatedIR.Mem enc -> List (LocatedIR.Reg enc)
+            memRegs : LocatedIR.Mem enc -> List (LocatedIR.Location enc)
             memRegs m = m.base :: maybe [] (\r => [r]) m.index
 
         ||| The block an instruction may leave to, an overflow's.
@@ -169,7 +218,7 @@ check p = traverse_ checkFunction p.functions
 
         ||| What a terminator reads: a non-tail call's continuation reads its
         ||| registers, to keep them.
-        termUses : LocatedIR.Terminator enc -> List (LocatedIR.Reg enc)
+        termUses : LocatedIR.Terminator enc -> List (LocatedIR.Location enc)
         termUses t = case t of
           LocatedIR.Terminator.Jump _ => []
           LocatedIR.Terminator.IfFixnums rs _ _ => rs
@@ -201,8 +250,8 @@ check p = traverse_ checkFunction p.functions
         continuation (LocatedIR.Terminator.Apply _ _ c) = Just c
         continuation _ = Nothing
 
-        slots : List (LocatedIR.Reg enc) -> Slots
-        slots = foldl (\s, r => s .|. bit (LocatedIR.Reg.slot r)) 0
+        slots : List (LocatedIR.Location enc) -> Slots
+        slots = foldl (\s, r => s .|. bit (number r)) 0
 
         ||| The slots of the first set that are not in the second.
         minus : Slots -> Slots -> Slots
@@ -261,13 +310,14 @@ check p = traverse_ checkFunction p.functions
                   named =
                     foldl (\acc,
                            i => foldl kind acc (defs i ++ uses i ++ fromMaybe [] (listedIn i)))
-                            (foldl kind (0, 0) (b.params ++ termUses b.term)) b.body
+                            (foldl kind (0, 0, []) (b.params ++ termUses b.term)) b.body
+                  (gcNamed, rawNamed, undescribed) = named
               in MkSummary (minus r (slots b.params)) (w .|. slots b.params) sds steps as ls
-                   (fst named) (snd named)
+                   gcNamed rawNamed undescribed
               where
                 -- the registers a `live` list names, whether or not a
                 -- collection can start there
-                listedIn : LocatedIR.Instr enc -> Maybe (List (LocatedIR.Reg enc))
+                listedIn : LocatedIR.Instr enc -> Maybe (List (LocatedIR.Location enc))
                 listedIn i = case i of
                   LocatedIR.Instr.AllocObj _ _ _ live => Just live
                   LocatedIR.Instr.AllocSized _ _ _ _ live => Just live
@@ -275,7 +325,7 @@ check p = traverse_ checkFunction p.functions
                   _ => Nothing
 
                 -- the `live` list of an instruction where a collection can start
-                collectingHere : LocatedIR.Instr enc -> Maybe (List (LocatedIR.Reg enc))
+                collectingHere : LocatedIR.Instr enc -> Maybe (List (LocatedIR.Location enc))
                 collectingHere (LocatedIR.Instr.DirectCall _ _ _ False _) = Nothing
                 collectingHere i = listedIn i
 
@@ -289,14 +339,18 @@ check p = traverse_ checkFunction p.functions
                   in (maybe rest (\l => (l, w) :: rest) (side i),
                       maybe ls (\l => ls .|. minus (slots l) w) (collectingHere i))
 
-                kind : (Slots, Slots) -> LocatedIR.Reg enc -> (Slots, Slots)
-                kind (gc, raw) r =
-                  if IRCommon.Ty.gcVisible (LocatedIR.Reg.ty r)
-                    then (gc .|. bit (LocatedIR.Reg.slot r), raw)
-                  else (gc, raw .|. bit (LocatedIR.Reg.slot r))
+                -- the slots by kind, and the registers the description has
+                -- no index for
+                kind : (Slots, Slots, List (LocatedIR.Location enc)) -> LocatedIR.Location enc ->
+                       (Slots, Slots, List (LocatedIR.Location enc))
+                kind (gc, raw, out) r =
+                  if not (described r) then (gc, raw, r :: out)
+                  else if IRCommon.Ty.gcVisible (LocatedIR.Location.ty r)
+                    then (gc .|. bit (number r), raw, out)
+                  else (gc, raw .|. bit (number r), out)
 
                 ||| What an instruction writes.
-                defs : LocatedIR.Instr enc -> List (LocatedIR.Reg enc)
+                defs : LocatedIR.Instr enc -> List (LocatedIR.Location enc)
                 defs i = case i of
                   LocatedIR.Instr.Mul128 h l _ _ => [h, l]
                   LocatedIR.Instr.Div128 q r _ _ _ => [q, r]
@@ -407,7 +461,7 @@ check p = traverse_ checkFunction p.functions
         checkBlock f sh gcs live inn (b, sm) = do
           let at = \l => fromMaybe 0 (lookup l live)
               out = foldl (\s, l => s .|. at l) 0 (succs b.term)
-              afters = if not (any (\(i, _, _) => isJust (collecting i)) sm.steps)
+              afters = if not (any (\(i, _, _) => isJust (collecting i) || directCall i) sm.steps)
                           then map (const 0) sm.steps
                           else if out == 0 && null sm.sides then sm.afters
                           else snd (lives at sm.steps (out .|. slots (termUses b.term)))
@@ -429,13 +483,13 @@ check p = traverse_ checkFunction p.functions
             has : Nat -> Slots -> Bool
             has n s = testBit s n
 
-            defined : Slots -> String -> LocatedIR.Reg enc -> Either String ()
+            defined : Slots -> String -> LocatedIR.Location enc -> Either String ()
             defined d what r =
-              if has (LocatedIR.Reg.slot r) d then Right ()
+              if has (number r) d then Right ()
               else reject f b.label (what ++ " " ++ show r ++ " before it is written")
 
             ||| Where a collection can start at the instruction: its `live` list.
-            collecting : LocatedIR.Instr enc -> Maybe (List (LocatedIR.Reg enc))
+            collecting : LocatedIR.Instr enc -> Maybe (List (LocatedIR.Location enc))
             collecting i = case i of
               LocatedIR.Instr.AllocObj _ _ _ live => Just live
               LocatedIR.Instr.AllocSized _ _ _ _ live => Just live
@@ -453,13 +507,21 @@ check p = traverse_ checkFunction p.functions
               Right (d .|. w)
 
             instr : ((LocatedIR.Instr enc, Slots, Slots), Slots) -> Either String ()
-            instr ((i, u, w), after) =
+            instr ((i, u, w), after) = do
               whenJust (collecting i) $ \listed => do
                 let kept = minus after w .|. u
                     missing = minus (kept .&. gcs) (slots listed)
                 if missing == 0 then Right ()
-                   else reject f b.label ("slot " ++ show (lowest missing)
+                   else reject f b.label (named (lowest missing)
                           ++ " is GC-visible and live where a collection can start, but not listed")
+                -- the slow path keeps the slots, and no register
+                let held = kept .&. registers
+                when (held /= 0) $ reject f b.label (named (lowest held)
+                  ++ " is live where a collection can start, which no register survives")
+              when (directCall i) $ do
+                let across = minus after w .&. registers
+                when (across /= 0) $ reject f b.label (named (lowest across)
+                  ++ " is live across a direct call, which no register survives")
 
             resumed : LocatedIR.Cont enc -> Either String ()
             resumed c = do
@@ -467,13 +529,13 @@ check p = traverse_ checkFunction p.functions
                 Nothing =>
                   reject f b.label ("resumes at block " ++ show c.resume ++ ", which is not there")
                 Just (r, _) => do
-                  let ps = map LocatedIR.Reg.slot r.params
-                  if take (length c.live) ps == map LocatedIR.Reg.slot c.live
+                  let ps = map number r.params
+                  if take (length c.live) ps == map number c.live
                         && length ps == S (length c.live)
                      then Right ()
                      else reject f r.label
                             "a resume block's parameters are not its continuation's and the result"
                   let reads = fromMaybe 0 (lookup c.resume live)
                   if reads == 0 then Right ()
-                     else reject f r.label ("a resume block reads slot " ++ show (lowest reads)
+                     else reject f r.label ("a resume block reads " ++ named (lowest reads)
                                             ++ ", which its continuation does not keep")

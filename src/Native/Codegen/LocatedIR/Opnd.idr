@@ -5,7 +5,7 @@
 ||| is).
 module Native.Codegen.LocatedIR.Opnd
 
-import Native.Codegen.LocatedIR.Reg
+import Native.Codegen.LocatedIR.Location
 
 import Core.Name
 import Native.Types.Enc as Types
@@ -22,7 +22,7 @@ import Native.Types.Enc as Types
 ||| encoding.
 public export
 data Opnd : Types.Enc -> Type where
-  R : Reg enc -> Opnd enc
+  R : Location enc -> Opnd enc
   Imm : Int64 -> Opnd enc
   ||| The address of a static object, as a value. A static never moves, so
   ||| its address needs no register, no slot and no rooting: the rendering
@@ -36,14 +36,14 @@ Show (Opnd enc) where
   show (StaticRef n) = "@" ++ show n
 
 public export
-opRegs : Opnd enc -> List (Reg enc)
+opRegs : Opnd enc -> List (Location enc)
 opRegs (R r) = [r]
 opRegs (Imm _) = []
 opRegs (StaticRef _) = []
 
 ||| The registers of the operands, in their order, in front of `rest`.
 export
-opsRegs : List (Opnd enc) -> (rest : List (Reg enc)) -> List (Reg enc)
+opsRegs : List (Opnd enc) -> (rest : List (Location enc)) -> List (Location enc)
 opsRegs [] rest = rest
 opsRegs (R r :: os) rest = r :: opsRegs os rest
 opsRegs (Imm _ :: os) rest = opsRegs os rest

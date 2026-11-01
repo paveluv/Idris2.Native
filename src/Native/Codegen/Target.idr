@@ -32,6 +32,8 @@
 ||| so that code following that convention leaves them intact.
 module Native.Codegen.Target
 
+import Native.Codegen.RegDesc
+
 import Native.Rep
 
 %default total
@@ -152,9 +154,34 @@ record Target where
   stackPointer : TargetReg
   ||| Register names, for dumps and messages.
   regName : TargetReg -> String
+  ||| The registers register allocation may keep values in.
+  allocatable : RegDesc
+  ||| The register the slots are addressed from, which allocation never
+  ||| uses.
+  slotBase : TargetReg
 
-||| The registers register allocation may never use: the pinned ones and the
-||| stack pointer.
-export
+||| The registers register allocation may never use: the pinned ones, the
+||| stack pointer and the slots' base.
+public export
 reserved : Target -> List TargetReg
-reserved t = [t.hp, t.hplim, t.stackPointer] ++ (if t.lowering == HeapLowering then [t.k] else [])
+reserved t =
+  [t.hp, t.hplim, t.stackPointer, t.slotBase] ++ (if t.lowering == HeapLowering then [t.k] else [])
+
+||| Whether the target's description of its registers is sound: no
+||| allocatable register reserved or named twice, the argument and return
+||| registers allocatable, and fewer than 64 registers a class, so that a
+||| set of them is a word. Each target proves it of its value.
+public export
+wellFormed : Target -> Bool
+wellFormed t =
+  let ws = t.allocatable.words
+      fs = t.allocatable.floats
+  in all (\r => not (r `elem` reserved t)) ws
+     && distinct ws && distinct fs
+     && all (`elem` ws) (t.returnReg :: t.abi.wordRegs) && all (`elem` fs) t.abi.floatRegs
+     && length ws < 64 && length fs < 64
+     && t.allocatable.wordCount == length ws && t.allocatable.floatCount == length fs
+  where
+    distinct : List Nat -> Bool
+    distinct [] = True
+    distinct (x :: xs) = not (x `elem` xs) && distinct xs

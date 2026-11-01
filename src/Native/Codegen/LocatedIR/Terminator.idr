@@ -6,8 +6,8 @@ module Native.Codegen.LocatedIR.Terminator
 
 import Native.Codegen.LocatedIR.Cont
 import Native.Codegen.LocatedIR.Label
+import Native.Codegen.LocatedIR.Location
 import Native.Codegen.LocatedIR.Opnd
-import Native.Codegen.LocatedIR.Reg
 
 import Core.Name
 import Native.Codegen.IRCommon.Op
@@ -25,7 +25,7 @@ data Terminator : Types.Enc -> Type where
   ||| Branch on whether every one of the `Val`s is a fixnum, that is, on their
   ||| fixnum tags; the yes branch may narrow them to `Fix`es. The renderings
   ||| test the tags of several at once.
-  IfFixnums    : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> List (Reg enc) ->
+  IfFixnums    : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> List (Location enc) ->
     (ifYes, ifNo : Label) ->
     Terminator enc
   ||| Compare and branch, with the operand types of `Cmp`. Renderings fuse
@@ -36,7 +36,7 @@ data Terminator : Types.Enc -> Type where
   ||| default. The scrutinee is a `W64`, such as a constructor id from
   ||| `LoadPart`, or a `Fix`, whose cases are fixnums, as integers; the
   ||| rendering compares the words. The cases are distinct.
-  Switch      : Reg enc -> List (Int64, Label) -> (dflt : Label) -> Terminator enc
+  Switch      : Location enc -> List (Int64, Label) -> (dflt : Label) -> Terminator enc
   ||| A non-tail call, CPS only: run the function, then continue at the
   ||| continuation's resume block, with its live registers and the result.
   Call        : Name -> List (Opnd enc) -> Cont enc -> Terminator enc
@@ -44,16 +44,16 @@ data Terminator : Types.Enc -> Type where
   TailCall    : Name -> List (Opnd enc) -> Terminator enc
   ||| A non-tail application of a closure to one argument, both `Val`s, CPS
   ||| only. It renders as a call to the runtime's apply routine.
-  Apply       : (fn, arg : Reg enc) -> Cont enc -> Terminator enc
+  Apply       : (fn, arg : Location enc) -> Cont enc -> Terminator enc
   ||| A tail application, CPS only.
-  TailApply   : (fn, arg : Reg enc) -> Terminator enc
+  TailApply   : (fn, arg : Location enc) -> Terminator enc
   ||| Deliver a `Val` to the current continuation, CPS only.
   Return      : Opnd enc -> Terminator enc
   ||| Jump to a code address held in a `W64`, with arguments, under the
   ||| current continuation. Allowed in both conventions; a `Direct`
   ||| function uses it only inside the runtime's `enterIdris` wrapper, the
   ||| one way from the runtime into Idris code.
-  Enter       : Reg enc -> List (Opnd enc) -> Terminator enc
+  Enter       : Location enc -> List (Opnd enc) -> Terminator enc
   ||| A machine return, `Direct` only, with the function's results, which
   ||| match its `results` in number and type.
   Ret         : List (Opnd enc) -> Terminator enc
@@ -84,7 +84,7 @@ termName (Unsupported _) = "Unsupported"
 ||| continuation keeps live: each as often as it names it, in no order to
 ||| rely on.
 export
-termRegs : Terminator enc -> List (Reg enc)
+termRegs : Terminator enc -> List (Location enc)
 termRegs t = case t of
   Jump _ => []
   IfFixnums rs _ _ => rs

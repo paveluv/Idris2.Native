@@ -22,6 +22,13 @@
 -- * a resume block reading a slot its continuation does not keep, which
 --   the call does not preserve;
 -- * a join reached from two blocks, only one of which writes what it reads.
+--
+-- A value may also be in a register, named by its index among the target's
+-- allocatable ones of its class (on x86-64 word register 0 is rax). One is
+-- accepted between two instructions; but no register survives the
+-- allocation slow path or a direct call's callee, so a value in one must
+-- not be live across either, and a register the target does not describe
+-- (index 99) cannot be named.
 module Main
 
 import Core.FC
@@ -38,9 +45,9 @@ import Native.Codegen.LocatedIR.Cont
 import Native.Codegen.LocatedIR.Function
 import Native.Codegen.LocatedIR.Instr
 import Native.Codegen.LocatedIR.Label
+import Native.Codegen.LocatedIR.Location
 import Native.Codegen.LocatedIR.Opnd
 import Native.Codegen.LocatedIR.Program
-import Native.Codegen.LocatedIR.Reg
 import Native.Codegen.LocatedIR.Terminator
 import Native.Codegen.X86.Target
 import Native.HeapObj.Shape
@@ -59,13 +66,13 @@ TestEnc = defaultEnc
 nm : String -> Name
 nm s = NS (mkNamespace "Main") (UN (Basic s))
 
-val : Nat -> Reg TestEnc
+val : Nat -> Location TestEnc
 val n = Slot n Val
 
-word : Nat -> Reg TestEnc
+word : Nat -> Location TestEnc
 word n = Slot n W64
 
-cons : Nat -> Reg TestEnc
+cons : Nat -> Location TestEnc
 cons n = Slot n (PtrTo CON)
 
 ||| A CPS function of one parameter, slot 0, from its blocks; block 0 its
@@ -74,7 +81,7 @@ fn : String -> List (Block TestEnc) -> Function TestEnc
 fn name bs = MkFunction (nm name) CPS [val 0] 0 bs EmptyFC
 
 ||| The cons cell of `x` and the empty list, as a `Val`.
-cell : (live : List (Reg TestEnc)) -> List (Instr TestEnc)
+cell : (live : List (Location TestEnc)) -> List (Instr TestEnc)
 cell live =
   [ AllocObj (cons 1) (ConH 1 2) [R (val 0), Imm 0] live
   , Widen (val 2) (cons 1) ]
@@ -117,6 +124,31 @@ resumeReads =
     [ MkBlock 0 [] [] (Call (nm "f") [] (MkCont 1 []))
     , MkBlock 1 [val 3] [] (TailCall (nm "pair") [R (val 3), R (val 0)]) ]
 
+||| x moved into a register and returned from it.
+inRegister : Function TestEnc
+inRegister =
+  fn "inRegister" [MkBlock 0 [] [Move (Register 0 Val) (val 0)] (Return (R (Register 0 Val)))]
+
+||| x kept in a register across the allocation of its cell, its live list naming it.
+registerAcrossAllocation : Function TestEnc
+registerAcrossAllocation =
+  fn "registerAcrossAllocation"
+    [MkBlock 0 [] (Move (Register 0 Val) (val 0) :: cell [val 0, Register 0 Val])
+       (TailCall (nm "pair") [R (val 2), R (Register 0 Val)])]
+
+||| x kept in a register across a direct call.
+registerAcrossCall : Function TestEnc
+registerAcrossCall =
+  fn "registerAcrossCall"
+    [MkBlock 0 [] [ Move (Register 1 Val) (val 0)
+                  , DirectCall (nm "probe") [] [word 3] False [Register 1 Val] ]
+       (Return (R (Register 1 Val)))]
+
+||| A register past the target's description.
+undescribed : Function TestEnc
+undescribed =
+  fn "undescribed" [MkBlock 0 [] [Move (Register 99 Val) (val 0)] (Return (R (val 0)))]
+
 ||| A join, block 3, reading slot 4, which only one of its two
 ||| predecessors writes.
 joinHalf : Function TestEnc
@@ -130,7 +162,8 @@ joinHalf =
 covering
 main : IO ()
 main = traverse_ one
-  [keep, readUnwritten, twoKinds, liveLeftOut, listsUnwritten, resumeShape, resumeReads, joinHalf]
+  [ keep, readUnwritten, twoKinds, liveLeftOut, listsUnwritten, resumeShape, resumeReads, joinHalf
+  , inRegister, registerAcrossAllocation, registerAcrossCall, undescribed ]
   where
     covering
     one : Function TestEnc -> IO ()

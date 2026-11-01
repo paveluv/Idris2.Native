@@ -6,6 +6,7 @@ module Native.Codegen.X86.Target
 
 import Native.Codegen.X86.Asm
 
+import Native.Codegen.RegDesc
 import Native.Codegen.Target
 
 %default total
@@ -30,7 +31,19 @@ x86_64 = MkTarget
   , k = reg Asm.R12
   , stackPointer = reg Asm.RSP
   , regName = \r => if r < 16 then show (Asm.regOfNum r) else "reg" ++ show r
+  , allocatable = RegDesc.regDesc
+                    (map reg [ Asm.RAX, Asm.RCX, Asm.RDX, Asm.RSI, Asm.RDI, Asm.R8, Asm.R9
+                             , Asm.R10, Asm.R11, Asm.R13, Asm.RBP ])
+                    (map (cast . Asm.xmmNum)
+                      [ Asm.XMM0, Asm.XMM1, Asm.XMM2, Asm.XMM3, Asm.XMM4, Asm.XMM5, Asm.XMM6
+                      , Asm.XMM7, Asm.XMM8, Asm.XMM9, Asm.XMM10, Asm.XMM11, Asm.XMM12, Asm.XMM13
+                      , Asm.XMM14, Asm.XMM15 ])
+  , slotBase = reg Asm.RBX
   }
   where
     reg : Asm.Reg64 -> Target.TargetReg
     reg r = cast (Asm.regNum r)
+
+||| The description is sound: checked here, by the typechecker.
+0 x86_64WellFormed : Target.wellFormed X86.Target.x86_64 = True
+x86_64WellFormed = Refl

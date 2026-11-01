@@ -6,3 +6,7 @@ allocation check: Main.listsUnwritten, block 0: a live list names slot7:Val befo
 allocation check: Main.resumeShape, block 1: a resume block's parameters are not its continuation's and the result
 allocation check: Main.resumeReads, block 1: a resume block reads slot 0, which its continuation does not keep
 allocation check: Main.joinHalf, block 3: the terminator reads slot4:Val before it is written
+Main.inRegister: accepted
+allocation check: Main.registerAcrossAllocation, block 0: word register 0 is live where a collection can start, which no register survives
+allocation check: Main.registerAcrossCall, block 0: word register 1 is live across a direct call, which no register survives
+allocation check: Main.undescribed, block 0: reg99:Val is a register the target does not describe

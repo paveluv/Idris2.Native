@@ -5,9 +5,9 @@
 module Native.Codegen.LocatedIR.Instr
 
 import Native.Codegen.LocatedIR.Label
+import Native.Codegen.LocatedIR.Location
 import Native.Codegen.LocatedIR.Mem
 import Native.Codegen.LocatedIR.Opnd
-import Native.Codegen.LocatedIR.Reg
 
 import Core.FC
 import Core.Name
@@ -35,17 +35,17 @@ data Instr : Types.Enc -> Type where
   ||| `HeapObj.ValEnc`), so that the IR is the same under every value
   ||| encoding; as a `Val`, 0 is also the erased value. No constant is a
   ||| pointer.
-  Const      : Reg enc -> Int64 -> Instr enc
+  Const      : Location enc -> Int64 -> Instr enc
   ||| A double constant, into an `F64`.
-  FConst     : Reg enc -> Double -> Instr enc
+  FConst     : Location enc -> Double -> Instr enc
   ||| The entry address of a function of this program, into a `CodeAddr`: a
   ||| closure's code pointer.
-  CodeOf     : Reg enc -> Name -> Instr enc
+  CodeOf     : Location enc -> Name -> Instr enc
   ||| The address of a static object of this program, into a `Val`, or into a
   ||| `PtrTo k` of the static's kind.
-  StaticAddr : Reg enc -> Name -> Instr enc
+  StaticAddr : Location enc -> Name -> Instr enc
   ||| The address of a per-thread area, into a `ByteAddr`.
-  AreaAddr   : Reg enc -> Area -> Instr enc
+  AreaAddr   : Location enc -> Area -> Instr enc
   ||| Integer arithmetic: the operands and the result are all `W64`s, or all
   ||| `Fix`es; or a byte address moved by a `W64`, an `Add` into a
   ||| `ByteAddr`. On `Fix`es it is the operation on the fixnums' values, which
@@ -53,82 +53,82 @@ data Instr : Types.Enc -> Type where
   ||| computes it on the words, without untagging where the value encoding has
   ||| an identity for it. There is no arithmetic on `Val`s: a `Val` is narrowed
   ||| to a `Fix` first.
-  Arith      : IRCommon.Op.ArithOp -> Reg enc -> Opnd enc -> Opnd enc -> Instr enc
+  Arith      : IRCommon.Op.ArithOp -> Location enc -> Opnd enc -> Opnd enc -> Instr enc
   ||| The 128-bit product of two words, into its high word and its low word.
-  Mul128     : (high, low : Reg enc) -> Opnd enc -> Opnd enc -> Instr enc
+  Mul128     : (high, low : Location enc) -> Opnd enc -> Opnd enc -> Instr enc
   ||| The quotient and the remainder of the 128-bit number of the high and
   ||| the low word by the divisor.
-  Div128     : (quotient, remainder : Reg enc) -> (high, low, divisor : Opnd enc) -> Instr enc
+  Div128     : (quotient, remainder : Location enc) -> (high, low, divisor : Opnd enc) -> Instr enc
   ||| Negation or complement of a `W64`.
-  Unary      : IRCommon.Op.UnOp -> Reg enc -> Reg enc -> Instr enc
+  Unary      : IRCommon.Op.UnOp -> Location enc -> Location enc -> Instr enc
   ||| `Add`, `Sub` or `Mul`, with the operand types of `Arith`, then a branch
   ||| to the label if the result does not fit: in 64 signed bits for `W64`s,
   ||| in the fixnum range for `Fix`es, which is the fixnum fast path. The
   ||| label is a successor of the block at this instruction, not at the
   ||| block's end.
-  ArithOv    : IRCommon.Op.ArithOp -> Reg enc -> Opnd enc -> Opnd enc -> Label -> Instr enc
+  ArithOv    : IRCommon.Op.ArithOp -> Location enc -> Opnd enc -> Opnd enc -> Label -> Instr enc
   ||| Narrow a `W64` to the width, then sign- or zero-extend it back to 64
   ||| bits.
-  Ext        : Width.SubWord -> (signed : Bool) -> Reg enc -> Reg enc -> Instr enc
+  Ext        : Width.SubWord -> (signed : Bool) -> Location enc -> Location enc -> Instr enc
   ||| Double arithmetic on `F64`s.
-  FArith     : IRCommon.Op.FOp -> Reg enc -> Reg enc -> Reg enc -> Instr enc
+  FArith     : IRCommon.Op.FOp -> Location enc -> Location enc -> Location enc -> Instr enc
   ||| Double negation.
-  FNeg       : Reg enc -> Reg enc -> Instr enc
-  FSqrt      : Reg enc -> Reg enc -> Instr enc
+  FNeg       : Location enc -> Location enc -> Instr enc
+  FSqrt      : Location enc -> Location enc -> Instr enc
   ||| Compare two `F64`s; the destination, a `W64`, is 1 or 0.
-  FCmp       : IRCommon.Op.Rel -> Reg enc -> Reg enc -> Reg enc -> Instr enc
+  FCmp       : IRCommon.Op.Rel -> Location enc -> Location enc -> Location enc -> Instr enc
   ||| Convert between a `W64` and an `F64`.
-  Convert    : IRCommon.Op.ConvOp -> Reg enc -> Reg enc -> Instr enc
+  Convert    : IRCommon.Op.ConvOp -> Location enc -> Location enc -> Instr enc
   ||| Compare two integers; the destination, a `W64`, is 1 or 0. The operands
   ||| are both `W64`s or both `Fix`es, compared as `Rel` says; a comparison
   ||| never makes a value.
-  Cmp        : IRCommon.Op.Rel -> Reg enc -> Opnd enc -> Opnd enc -> Instr enc
+  Cmp        : IRCommon.Op.Rel -> Location enc -> Opnd enc -> Opnd enc -> Instr enc
   ||| Load a word of the given type.
-  Load       : IRCommon.Ty enc -> Reg enc -> Mem enc -> Instr enc
+  Load       : IRCommon.Ty enc -> Location enc -> Mem enc -> Instr enc
   ||| Store a register of the given type.
-  Store      : IRCommon.Ty enc -> Mem enc -> Reg enc -> Instr enc
+  Store      : IRCommon.Ty enc -> Mem enc -> Location enc -> Instr enc
   ||| Load 8, 16 or 32 bits into a `W64`, zero- or sign-extended: the bytes
   ||| of strings and buffers, the limbs of bignums.
-  LoadN      : Width.SubWord -> (signed : Bool) -> Reg enc -> Mem enc -> Instr enc
+  LoadN      : Width.SubWord -> (signed : Bool) -> Location enc -> Mem enc -> Instr enc
   ||| Store the low 8, 16 or 32 bits of a `W64`.
-  StoreN     : Width.SubWord -> Mem enc -> Reg enc -> Instr enc
+  StoreN     : Width.SubWord -> Mem enc -> Location enc -> Instr enc
   ||| The fixnum of a `W64`, as a `Fix`. The producer guarantees that the
   ||| value is in the fixnum range.
-  Tag        : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Reg enc -> Reg enc -> Instr enc
+  Tag        : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Location enc -> Location enc -> Instr enc
   ||| The value of a `Fix`, as a `W64`.
-  Untag      : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Reg enc -> Reg enc -> Instr enc
+  Untag      : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Location enc -> Location enc -> Instr enc
   ||| The fixnum of a `W64`, as a `Fix`, or a branch to the label if the value
   ||| is outside the fixnum range. The label is a successor of the block at
   ||| this instruction, as for `ArithOv`.
-  TagOv      : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Reg enc -> Reg enc -> Label ->
+  TagOv      : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Location enc -> Location enc -> Label ->
     Instr enc
   ||| A `Val` as the type given, a `Fix` or a `PtrTo k`, which is the
   ||| destination's. No code: the producer guarantees it, after an `IfFixnums`
   ||| or a `Switch` on a header, or from static typing. The only way from a
   ||| `Val` to a fixnum or a pointer.
-  Narrow     : IRCommon.Ty enc -> Reg enc -> Reg enc -> Instr enc
+  Narrow     : IRCommon.Ty enc -> Location enc -> Location enc -> Instr enc
   ||| A `Fix` or a `PtrTo k` as a `Val`. No code.
-  Widen      : Reg enc -> Reg enc -> Instr enc
+  Widen      : Location enc -> Location enc -> Instr enc
   ||| A `PtrTo k` as a `W64`. No code. Only the functions of the module that
   ||| implements the runtime's memory interface make one (the term's
   ||| capability index): everywhere else no word can be derived from a
   ||| pointer, which is what lets the rooting stubs cover every pointer
   ||| there is.
-  AddrToWord : Reg enc -> Reg enc -> Instr enc
+  AddrToWord : Location enc -> Location enc -> Instr enc
   ||| A `W64` as a `PtrTo k`. No code. Restricted as `AddrToWord` is.
-  WordToAddr : Types.Kind -> Reg enc -> Reg enc -> Instr enc
+  WordToAddr : Types.Kind -> Location enc -> Location enc -> Instr enc
   ||| A `Val` as a `W64`, and a `W64` as a `Val`. No code. Restricted as
   ||| `AddrToWord` is.
-  ValToWord : Reg enc -> Reg enc -> Instr enc
-  WordToVal : Reg enc -> Reg enc -> Instr enc
+  ValToWord : Location enc -> Location enc -> Instr enc
+  WordToVal : Location enc -> Location enc -> Instr enc
   ||| The header word of the object a `PtrTo k` points to, as a `W64`. For a
   ||| `CONT`, which has no header, it is the layout word.
-  LoadHeader : Reg enc -> Reg enc -> Instr enc
+  LoadHeader : Location enc -> Location enc -> Instr enc
   ||| A part of the header of the object a `PtrTo k` points to, as a `W64`:
   ||| the constructor id of a `CON`, for instance. The pointer's kind is the
   ||| part's kind, which the instruction keeps, so that a pass reads it here
   ||| instead of rebuilding it from the part.
-  LoadPart   : {0 k : Types.Kind} -> Types.Header.HeaderPart k -> Reg enc -> Reg enc -> Instr enc
+  LoadPart   : {0 k : Types.Kind} -> Types.Header.HeaderPart k -> Location enc -> Location enc -> Instr enc
   ||| A whole object in one step: the destination, a `PtrTo k` of the
   ||| header's kind, becomes a new object with this header and these initial
   ||| fields. Since one instruction makes the whole object, no collection can
@@ -144,8 +144,8 @@ data Instr : Types.Enc -> Type where
   ||| across includes the field registers, because the fields are written
   ||| after the slow path's collection. The rendering may rematerialise a
   ||| static's address instead of saving it.
-  AllocObj   : {k : Types.Kind} -> Reg enc -> Types.Header enc k -> (fields : List (Opnd enc)) ->
-               (live : List (Reg enc)) -> Instr enc
+  AllocObj   : {k : Types.Kind} -> Location enc -> Types.Header enc k -> (fields : List (Opnd enc)) ->
+               (live : List (Location enc)) -> Instr enc
   ||| A whole object whose size is known only at run time: the destination, a
   ||| `PtrTo k`, becomes a new object of the part's kind, whose size part is
   ||| `count`, a `W64`: an `ARRAY`'s elements, a `STRING`'s or a `BYTES`'s
@@ -159,8 +159,8 @@ data Instr : Types.Enc -> Type where
   ||| A count that does not fit the part's bits ends the program, as `Crash`
   ||| does. The rendering checks it, so no count can make an object smaller
   ||| than its header claims, a negative `Int` read as a word included.
-  AllocSized : {k : Types.Kind} -> Reg enc -> Types.Header.HeaderPart k -> (count : Reg enc) ->
-               (fill : Maybe (Opnd enc)) -> (live : List (Reg enc)) -> Instr enc
+  AllocSized : {k : Types.Kind} -> Location enc -> Types.Header.HeaderPart k -> (count : Location enc) ->
+               (fill : Maybe (Opnd enc)) -> (live : List (Location enc)) -> Instr enc
   ||| A machine call to a `Direct` function: one of the program's, or a
   ||| routine of the runtime. The registers receive the callee's results, in
   ||| order, where its `results` declares any. `mayCollect` says whether the callee may
@@ -172,17 +172,17 @@ data Instr : Types.Enc -> Type where
   ||| own, so the call keeps every slot of its caller's; across a call that
   ||| may collect, the rendering keeps the GC-visible members of `live` in
   ||| `ROOTS`, where the collector forwards them, and reloads them after.
-  DirectCall : Name -> List (Opnd enc) -> (results : List (Reg enc)) -> (mayCollect : Bool) ->
-               (live : List (Reg enc)) -> Instr enc
+  DirectCall : Name -> List (Opnd enc) -> (results : List (Location enc)) -> (mayCollect : Bool) ->
+               (live : List (Location enc)) -> Instr enc
   ||| A pinned register's value, and setting it.
-  GetPinned  : IRCommon.Pinned -> (result : Reg enc) -> Instr enc
+  GetPinned  : IRCommon.Pinned -> (result : Location enc) -> Instr enc
   SetPinned  : IRCommon.Pinned -> Opnd enc -> Instr enc
   ||| A system call: its number, then its arguments, giving its result, by
   ||| the platform's convention; never a call of a function.
-  SystemCall : (result : Reg enc) -> List (Opnd enc) -> Instr enc
+  SystemCall : (result : Location enc) -> List (Opnd enc) -> Instr enc
   ||| Copy a register to another of the same type: a jump's arguments into
   ||| its block's parameters.
-  Move       : Reg enc -> Reg enc -> Instr enc
+  Move       : Location enc -> Location enc -> Instr enc
   ||| The source location of what follows, for dumps and, later, debugging
   ||| information.
   Loc        : FC -> Instr enc
@@ -239,7 +239,7 @@ instrName (Comment _) = "Comment"
 ||| and its memory operands', and those it keeps live: each as often as it
 ||| names it, in no order to rely on.
 export
-instrRegs : Instr enc -> List (Reg enc)
+instrRegs : Instr enc -> List (Location enc)
 instrRegs i = case i of
   Const d _ => [d]
   FConst d _ => [d]
@@ -283,5 +283,5 @@ instrRegs i = case i of
   Loc _ => []
   Comment _ => []
   where
-    memRegs : Mem enc -> List (Reg enc)
+    memRegs : Mem enc -> List (Location enc)
     memRegs m = m.base :: maybe [] (\r => [r]) m.index

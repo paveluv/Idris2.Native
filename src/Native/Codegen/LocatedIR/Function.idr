@@ -6,7 +6,7 @@ module Native.Codegen.LocatedIR.Function
 
 import Native.Codegen.LocatedIR.Block
 import Native.Codegen.LocatedIR.Label
-import Native.Codegen.LocatedIR.Reg
+import Native.Codegen.LocatedIR.Location
 
 import Core.FC
 import Core.Name
@@ -26,7 +26,7 @@ record Function (enc : Types.Enc) where
   constructor MkFunction
   name : Name
   conv : IRCommon.Conv enc
-  params : List (Reg enc)
+  params : List (Location enc)
   entry : Label
   blocks : List (Block enc)
   fc : FC

@@ -21,9 +21,9 @@
 ||| * Target-independent. No instruction of any machine appears. Operations
 |||   whose machine instructions differ per machine, such as materialising a constant,
 |||   comparing and branching, or taking a code address, are IR instructions.
-||| * Located. Every register is a `SCRATCH` slot, holding values of one type;
-|||   the IR names no machine register, so none the target reserves can
-|||   occur. Liveness is in the IR, in the `live` lists of `Cont`,
+||| * Located. Every value is in a location, a slot or an allocatable
+|||   register of the target, by its index in the target's description, so
+|||   a register the target reserves cannot be named. Liveness is in the IR, in the `live` lists of `Cont`,
 |||   `AllocObj`, `AllocSized` and `DirectCall`, and in a resume block's
 |||   parameters, as the conversion computed it.
 |||

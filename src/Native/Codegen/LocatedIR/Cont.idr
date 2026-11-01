@@ -6,7 +6,7 @@
 module Native.Codegen.LocatedIR.Cont
 
 import Native.Codegen.LocatedIR.Label
-import Native.Codegen.LocatedIR.Reg
+import Native.Codegen.LocatedIR.Location
 
 import Native.Types.Enc as Types
 
@@ -21,4 +21,4 @@ public export
 record Cont (enc : Types.Enc) where
   constructor MkCont
   resume : Label
-  live : List (Reg enc)
+  live : List (Location enc)

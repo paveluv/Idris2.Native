@@ -4,7 +4,7 @@
 ||| is).
 module Native.Codegen.LocatedIR.Mem
 
-import Native.Codegen.LocatedIR.Reg
+import Native.Codegen.LocatedIR.Location
 
 import Native.Types.Enc as Types
 
@@ -24,6 +24,6 @@ import Native.Types.Enc as Types
 public export
 record Mem (enc : Types.Enc) where
   constructor MkMem
-  base : Reg enc
-  index : Maybe (Reg enc)
+  base : Location enc
+  index : Maybe (Location enc)
   offset : Int

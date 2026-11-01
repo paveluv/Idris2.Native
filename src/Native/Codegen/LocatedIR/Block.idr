@@ -6,7 +6,7 @@ module Native.Codegen.LocatedIR.Block
 
 import Native.Codegen.LocatedIR.Instr
 import Native.Codegen.LocatedIR.Label
-import Native.Codegen.LocatedIR.Reg
+import Native.Codegen.LocatedIR.Location
 import Native.Codegen.LocatedIR.Terminator
 
 import Native.Types.Enc as Types
@@ -21,6 +21,6 @@ public export
 record Block (enc : Types.Enc) where
   constructor MkBlock
   label : Label
-  params : List (Reg enc)
+  params : List (Location enc)
   body : List (Instr enc)
   term : Terminator enc

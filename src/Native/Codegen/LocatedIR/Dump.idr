@@ -8,10 +8,10 @@ import Native.Codegen.LocatedIR.Cont
 import Native.Codegen.LocatedIR.Function
 import Native.Codegen.LocatedIR.Instr
 import Native.Codegen.LocatedIR.Label
+import Native.Codegen.LocatedIR.Location
 import Native.Codegen.LocatedIR.Mem
 import Native.Codegen.LocatedIR.Opnd
 import Native.Codegen.LocatedIR.Program
-import Native.Codegen.LocatedIR.Reg
 import Native.Codegen.LocatedIR.Static
 import Native.Codegen.LocatedIR.Terminator
 
@@ -37,7 +37,7 @@ functionPieces f =
           ++ " entry " ++ show f.entry ++ "\n")
   <+> concatMap blockPieces f.blocks
   where
-    regs : List (Reg enc') -> String
+    regs : List (Location enc') -> String
     regs rs = "[" ++ joinBy ", " (map show rs) ++ "]"
 
     -- A block's text, a line a piece.
@@ -116,7 +116,7 @@ functionPieces f =
           Instr.Comment s => "-- " ++ s
           where
             -- The registers an instruction defines, before its `:=`.
-            assigned : List (Reg enc) -> String
+            assigned : List (Location enc) -> String
             assigned [] = ""
             assigned ds = joinBy ", " (map show ds) ++ " := "
 
