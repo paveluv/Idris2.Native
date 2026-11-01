@@ -27,8 +27,10 @@
 ||| a call is what lowering the code after it returned, in the same pass. A
 ||| join point's block is the exception: its jumps need its free variables
 ||| before it is lowered, so `frees` computes them first, once for the whole
-||| body, as levels; a jump to the block itself contributes nothing, the
-||| least fixed point.
+||| body, as levels. A jump to the block itself contributes nothing to the
+||| block's own set, the least fixed point, but a join inside a loop's block
+||| that jumps back to the loop reads the loop's set, so its set is
+||| completed with it once that is known.
 module Native.Codegen.RegAlloc
 
 import Native.Codegen.IRCommon.Conv as IRCommon
@@ -153,11 +155,19 @@ usesAll env (x :: xs) = mergeLeft (uses env x) (usesAll env xs)
 Level : Type
 Level = Nat
 
+||| What code reads from outside it, as `frees` computes it: `Left` a
+||| variable, by its level; `Right`, through a jump to a join whose block is
+||| still being computed (a loop's, from the loop's block or a join's inside
+||| it), whatever that block reads, by the level of the join's label among
+||| the labels in scope.
+Read : Type
+Read = Either Level Nat
+
 ||| What a join's block reads from outside: the depth of the join's context
 ||| and the levels below it, which the lowering of the join turns into the
 ||| registers of its environment.
 JoinFrees : Type
-JoinFrees = (Nat, SortedSet Level)
+JoinFrees = (Nat, SortedSet Read)
 
 ------------------------------------------------------------------------------
 -- The conversion's state
@@ -296,13 +306,14 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
             [] => pure (0, empty)
 
         ||| The registers of the environment, `depth` deep, at the levels.
-        registersAt : Data.RAList (HV enc) ctx -> (depth : Nat) -> SortedSet Level -> RegMap enc
+        registersAt : Data.RAList (HV enc) ctx -> (depth : Nat) -> SortedSet Read -> RegMap enc
         registersAt env depth lvs = foldl add empty (Prelude.toList lvs)
           where
-            add : RegMap enc -> Level -> RegMap enc
-            add m l = case Data.RAList.lookup (Data.Level.position depth l) env of
+            add : RegMap enc -> Read -> RegMap enc
+            add m (Left l) = case Data.RAList.lookup (Data.Level.position depth l) env of
               Just (Data.RAList.MkFound (InReg r) _) => insert (LocatedIR.Reg.slot r) r m
               _ => m
+            add m (Right _) = m
     body (TermIR.Body.Jump l xs) env li = do
       let info = TermIR.Var.fetch l li
       code <- jump env info xs
@@ -629,7 +640,7 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
         let run : M enc (List (LocatedIR.Reg enc))
             run = do
               ps <- freshAll s.params
-              Data.Stateful.modify { joins := snd (frees b (length s.params) []) [] }
+              Data.Stateful.modify { joins := snd (frees b (length s.params) 0 []) [] }
               (_, code) <- body b (Data.RAList.fromAll (held ps)) []
               addBlock 0 [] code
               pure (regs ps)
@@ -637,55 +648,65 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
              (st, ps) => LocatedIR.MkFunction s.name s.conv ps 0 (values st.blocks) EmptyFC
         where
           ||| The levels a body reads of the variables bound outside it, directly or
-          ||| through the blocks it jumps to (`lf` is what each label in scope reads);
-          ||| and what each join's block reads, in the order the lowering meets the
-          ||| joins: a join, then those in the code that reaches it, then those in
-          ||| its block. Once for a whole body: computing a block's at its join read
+          ||| through the blocks it jumps to (`lf` is what each of the `labels`
+          ||| labels in scope reads); and what each join's block reads, in the order
+          ||| the lowering meets the joins: a join, then those in the code that
+          ||| reaches it, then those in its block. A join's block is computed with
+          ||| its own label reading only itself (`Right`), the least fixed point;
+          ||| if the block reaches the label, a loop, every join inside it whose set
+          ||| reaches the label reads the block's set too, which is known once the
+          ||| block is done. Once for a whole body: computing a block's at its join read
           ||| the rest of the function again at every join, the square of its length.
           ||| `union s t` inserts each level of `t` into `s`, so what the code after a
           ||| binder or a branch reads, which can be most of the function's levels,
           ||| comes first, and a node's own few levels second: the other way, a body
           ||| that keeps many levels in use paid for all of them at every binder.
-          frees : TermIR.Body d'' c m ls ctx -> (depth : Nat) ->
-                  Data.RAList (\_ => SortedSet Level) ls ->
-                  (SortedSet Level, List JoinFrees -> List JoinFrees)
-          frees body' depth lf = case body' of
+          frees : TermIR.Body d'' c m ls ctx -> (depth, labels : Nat) ->
+                  Data.RAList (\_ => SortedSet Read) ls ->
+                  (SortedSet Read, List JoinFrees -> List JoinFrees)
+          frees body' depth labels lf = case body' of
             TermIR.Body.Bind {ts} i k =>
-                          let (fk, jk) = frees k (depth + length ts) lf
+                          let (fk, jk) = frees k (depth + length ts) labels lf
                           in (union (outside depth (length ts) fk) (instrLevels depth i), jk)
             TermIR.Body.Join ps b r =>
-                          let (fb, jb) = frees b (depth + length ps) (empty :: lf)
-                              block = outside depth (length ps) fb
-                              (fr, jr) = frees r depth (block :: lf)
-                          in (fr, \rest => (depth, block) :: jr (jb rest))
+                          let self = Right labels
+                              (fb, jb) =
+                                frees b (depth + length ps) (S labels) (singleton self :: lf)
+                              block = delete self (outside depth (length ps) fb)
+                              (fr, jr) = frees r depth (S labels) (block :: lf)
+                              inner = if contains self fb
+                                         then (map (completed self block) (jb []) ++)
+                                         else jb
+                          in (fr, \rest => (depth, block) :: jr (inner rest))
             TermIR.Body.Jump l xs => (union (TermIR.Var.fetch l lf) (opsLevels depth xs), id)
             TermIR.Body.Branch _ x y a b =>
-              let (fa, ja) = frees a depth lf
-                  (fb, jb) = frees b depth lf
+              let (fa, ja) = frees a depth labels lf
+                  (fb, jb) = frees b depth labels lf
               in (union (union fb fa) (union (opLevel depth x) (opLevel depth y)), ja . jb)
             TermIR.Body.IfFixnums {n} vs y no =>
-              let (fy, jy) = frees y (depth + S n) lf
-                  (fn, jn) = frees no depth lf
+              let (fy, jy) = frees y (depth + S n) labels lf
+                  (fn, jn) = frees no depth labels lf
               in (union (union (outside depth (S n) fy) fn) (vectLevels depth vs), jy . jn)
             TermIR.Body.ArithOv _ x y ok ovf =>
-              let (fo, jo) = frees ok (S depth) lf
-                  (fv, jv) = frees ovf depth lf
+              let (fo, jo) = frees ok (S depth) labels lf
+                  (fv, jv) = frees ovf depth labels lf
               in (union (union (outside depth 1 fo) fv) (union (opLevel depth x) (opLevel depth y)),
                   jo . jv)
             TermIR.Body.TagOv x ok ovf =>
-              let (fo, jo) = frees ok (S depth) lf
-                  (fv, jv) = frees ovf depth lf
+              let (fo, jo) = frees ok (S depth) labels lf
+                  (fv, jv) = frees ovf depth labels lf
               in (union (union (outside depth 1 fo) fv) (opLevel depth x), jo . jv)
             TermIR.Body.Switch x _ bs dflt =>
-              let (fc, jc) = freesCases bs depth lf
-                  (fd, jd) = frees dflt depth lf
+              let (fc, jc) = freesCases bs depth labels lf
+                  (fd, jd) = frees dflt depth labels lf
               in (union (union fd fc) (opLevel depth x), jc . jd)
             TermIR.Body.Call _ xs k =>
               let (fk, jk) =
-                    frees k (S depth) lf in (union (outside depth 1 fk) (opsLevels depth xs), jk)
+                    frees k (S depth) labels lf in
+                      (union (outside depth 1 fk) (opsLevels depth xs), jk)
             TermIR.Body.TailCall _ xs => (opsLevels depth xs, id)
             TermIR.Body.Apply f x k =>
-              let (fk, jk) = frees k (S depth) lf
+              let (fk, jk) = frees k (S depth) labels lf
               in (union (outside depth 1 fk) (union (opLevel depth f) (opLevel depth x)), jk)
             TermIR.Body.TailApply f x => (union (opLevel depth f) (opLevel depth x), id)
             TermIR.Body.Return x => (opLevel depth x, id)
@@ -694,13 +715,13 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
             TermIR.Body.Crash _ => (empty, id)
             TermIR.Body.Unsupported _ => (empty, id)
             where
-              opLevel : (depth : Nat) -> TermIR.Opnd (TermIR.Var ctx'') t -> SortedSet Level
-              opLevel depth (TermIR.Opnd.V x) = singleton (Data.Level.level depth x.index)
+              opLevel : (depth : Nat) -> TermIR.Opnd (TermIR.Var ctx'') t -> SortedSet Read
+              opLevel depth (TermIR.Opnd.V x) = singleton (Left (Data.Level.level depth x.index))
               opLevel _ _ = empty
 
               ||| The levels an instruction reads.
               instrLevels : (depth : Nat) -> TermIR.Instr d' m' (TermIR.Var ctx') ts' ->
-                            SortedSet Level
+                            SortedSet Read
               instrLevels depth i =
                 fst (Data.Stateful.toPair (Data.Stateful.outcome empty
                   (TermIR.Instr.traverseInstr (\x => do Data.Stateful.modify
@@ -708,30 +729,37 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
                                                         pure x) i)))
 
               vectLevels : (depth : Nat) -> Vect n' (TermIR.Opnd (TermIR.Var ctx) t) ->
-                           SortedSet Level
+                           SortedSet Read
               vectLevels depth = foldr (\x, s => union s (opLevel depth x)) empty
 
-              freesCases : All (\_ => TermIR.Body d' c' m' ls' ctx') ks -> (depth : Nat) ->
-                           Data.RAList (\_ => SortedSet Level) ls' ->
-                           (SortedSet Level, List JoinFrees -> List JoinFrees)
-              freesCases [] depth lf = (empty, id)
-              freesCases (b :: bs) depth lf =
-                let (fb, jb) = frees b depth lf
-                    (fs, js) = freesCases bs depth lf
+              freesCases : All (\_ => TermIR.Body d' c' m' ls' ctx') ks -> (depth, labels : Nat) ->
+                           Data.RAList (\_ => SortedSet Read) ls' ->
+                           (SortedSet Read, List JoinFrees -> List JoinFrees)
+              freesCases [] depth labels lf = (empty, id)
+              freesCases (b :: bs) depth labels lf =
+                let (fb, jb) = frees b depth labels lf
+                    (fs, js) = freesCases bs depth labels lf
                 in (union fs fb, jb . js)
 
-              listLevels : (depth : Nat) -> List (TermIR.Opnd (TermIR.Var ctx) t) -> SortedSet Level
+              listLevels : (depth : Nat) -> List (TermIR.Opnd (TermIR.Var ctx) t) -> SortedSet Read
               listLevels depth = foldr (\x, s => union s (opLevel depth x)) empty
 
-              opsLevels : (depth : Nat) -> All (TermIR.Opnd (TermIR.Var ctx)) ts -> SortedSet Level
+              opsLevels : (depth : Nat) -> All (TermIR.Opnd (TermIR.Var ctx)) ts -> SortedSet Read
               opsLevels depth [] = empty
               opsLevels depth (x :: xs) = union (opsLevels depth xs) (opLevel depth x)
 
               ||| The levels of a body's own first `n` binders, from `depth`, taken out of
               ||| what it reads: what is left, it reads from outside.
-              outside : (depth : Nat) -> (n : Nat) -> SortedSet Level -> SortedSet Level
+              outside : (depth : Nat) -> (n : Nat) -> SortedSet Read -> SortedSet Read
               outside depth Z s = s
-              outside depth (S n) s = outside (S depth) n (delete depth s)
+              outside depth (S n) s = outside (S depth) n (delete (Left depth) s)
+
+              ||| A join's set inside a loop's block, completed once the loop's
+              ||| block's is known: a join that reaches the loop reads what the
+              ||| loop's block reads.
+              completed : Read -> SortedSet Read -> JoinFrees -> JoinFrees
+              completed self block (d, s) =
+                if contains self s then (d, union (delete self s) block) else (d, s)
   functions (_ :: ss) (TermIR.Def.External :: ds) = functions ss ds
 
   statics : (ss : List TermIR.StaticSig) -> All (TermIR.StaticDef d) ss ->

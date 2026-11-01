@@ -1,0 +1,9 @@
+. ../../testutils.sh
+
+# The register allocator's liveness through a join inside a loop: a value
+# the loop's body reads from outside it is live at an allocation from which
+# the code reaches the loop only through the inner join. The program is
+# built from the term IR, with the code generator's modules (the package
+# `idris2-native`), and its located IR printed.
+idris2 -p idris2-native -p idris2 Gen.idr -o gen > /dev/null
+./build/exec/gen
