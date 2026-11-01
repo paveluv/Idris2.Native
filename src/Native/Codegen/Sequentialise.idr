@@ -27,40 +27,43 @@ import Native.Types.Enc as Types
 ||| The moves of the parallel move, one at a time; `temp` the index of the
 ||| register of each class a cycle is broken through.
 export
-sequential : (temp : Rep.RegClass -> Nat) ->
-             List (LocatedIR.Location enc, LocatedIR.Location enc) -> List (LocatedIR.Instr enc)
-sequential temp ms =
-  let moves = filter (\(d, x) => not (LocatedIR.Location.samePlace d x)) ms
+sequential : (temp : Rep.RegClass -> Nat) -> List (LocatedIR.Instr.Copy enc) ->
+             List (LocatedIR.Instr enc)
+sequential temp cs =
+  let moves = filter (\(LocatedIR.Instr.MkCopy d x) => not (LocatedIR.Location.samePlace d x)) cs
   in steps (length moves) moves
   where
-    -- whether a move of the list reads the place
-    read : LocatedIR.Location enc -> List (LocatedIR.Location enc, LocatedIR.Location enc) -> Bool
-    read p = any (\(_, x) => LocatedIR.Location.samePlace x p)
+    -- whether a copy of the list reads the place
+    read : LocatedIR.Location enc t -> List (LocatedIR.Instr.Copy enc) -> Bool
+    read p = any (\(LocatedIR.Instr.MkCopy _ x) => LocatedIR.Location.samePlace x p)
 
-    -- the first move whose destination no move of the list reads, and the
+    -- the first copy whose destination no copy of the list reads, and the
     -- others
-    free : List (LocatedIR.Location enc, LocatedIR.Location enc) ->
-           List (LocatedIR.Location enc, LocatedIR.Location enc) ->
-           Maybe ((LocatedIR.Location enc, LocatedIR.Location enc),
-                  List (LocatedIR.Location enc, LocatedIR.Location enc))
+    free : List (LocatedIR.Instr.Copy enc) -> List (LocatedIR.Instr.Copy enc) ->
+           Maybe (LocatedIR.Instr.Copy enc, List (LocatedIR.Instr.Copy enc))
     free _ [] = Nothing
-    free seen (m@(d, _) :: rest) =
-      if read d seen || read d rest then free (m :: seen) rest
-        else Just (m, reverse seen ++ rest)
+    free seen (c@(LocatedIR.Instr.MkCopy d _) :: rest) =
+      if read d seen || read d rest then free (c :: seen) rest
+        else Just (c, reverse seen ++ rest)
 
-    -- one move a step, so as many steps as moves
-    steps : Nat -> List (LocatedIR.Location enc, LocatedIR.Location enc) ->
-            List (LocatedIR.Instr enc)
+    -- the register a cycle is broken through, at the location's type
+    saved : LocatedIR.Location enc t -> LocatedIR.Location enc t
+    saved l = LocatedIR.Location.inRegister (temp (IRCommon.Ty.class (LocatedIR.Location.ty l))) l
+
+    -- a copy reading the place `d` reads the register it is saved in instead
+    reread : LocatedIR.Location enc t -> LocatedIR.Instr.Copy enc -> LocatedIR.Instr.Copy enc
+    reread d c@(LocatedIR.Instr.MkCopy d' x') =
+      if LocatedIR.Location.samePlace x' d then LocatedIR.Instr.MkCopy d' (saved x') else c
+
+    -- one copy a step, so as many steps as copies
+    steps : Nat -> List (LocatedIR.Instr.Copy enc) -> List (LocatedIR.Instr enc)
     steps _ [] = []
-    steps (S k) ms' = case free [] ms' of
-      Just ((d, x), rest) => LocatedIR.Instr.Move d x :: steps k rest
-      Nothing => case ms' of
-        ((d, x) :: rest) =>
-          let t = LocatedIR.Location.Register (temp (IRCommon.Ty.class (LocatedIR.Location.ty d)))
-                    (LocatedIR.Location.ty d)
-              rest' = map (\(d', x') => (d', if LocatedIR.Location.samePlace x' d then t else x'))
-                        rest
-          in LocatedIR.Instr.Move t d :: LocatedIR.Instr.Move d x :: steps k rest'
+    steps (S k) cs' = case free [] cs' of
+      Just (LocatedIR.Instr.MkCopy d x, rest) => LocatedIR.Instr.Move d x :: steps k rest
+      Nothing => case cs' of
+        (LocatedIR.Instr.MkCopy d x :: rest) =>
+          LocatedIR.Instr.Move (saved d) d :: LocatedIR.Instr.Move d x
+            :: steps k (map (reread d) rest)
         [] => []
-    -- not reached: each step takes one move
-    steps Z ms' = map (\(d, x) => LocatedIR.Instr.Move d x) ms'
+    -- not reached: each step takes one copy
+    steps Z cs' = map (\(LocatedIR.Instr.MkCopy d x) => LocatedIR.Instr.Move d x) cs'

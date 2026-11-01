@@ -26,7 +26,7 @@ record Function (enc : Types.Enc) where
   constructor MkFunction
   name : Name
   conv : IRCommon.Conv enc
-  params : List (Location enc)
+  params : List (Location.Place enc)
   entry : Label
   blocks : List (Block enc)
   fc : FC

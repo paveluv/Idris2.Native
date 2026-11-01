@@ -66,29 +66,29 @@ TestEnc = defaultEnc
 nm : String -> Name
 nm s = NS (mkNamespace "Main") (UN (Basic s))
 
-val : Nat -> Location TestEnc
+val : Nat -> Location TestEnc Val
 val n = Slot n Val
 
-word : Nat -> Location TestEnc
+word : Nat -> Location TestEnc W64
 word n = Slot n W64
 
-cons : Nat -> Location TestEnc
+cons : Nat -> Location TestEnc (PtrTo CON)
 cons n = Slot n (PtrTo CON)
 
 ||| A CPS function of one parameter, slot 0, from its blocks; block 0 its
 ||| entry.
 fn : String -> List (Block TestEnc) -> Function TestEnc
-fn name bs = MkFunction (nm name) CPS [val 0] 0 bs EmptyFC
+fn name bs = MkFunction (nm name) CPS [At (val 0)] 0 bs EmptyFC
 
 ||| The cons cell of `x` and the empty list, as a `Val`.
-cell : (live : List (Location TestEnc)) -> List (Instr TestEnc)
+cell : (live : List (Place TestEnc)) -> List (Instr TestEnc)
 cell live =
-  [ AllocObj (cons 1) (ConH 1 2) [R (val 0), Imm 0] live
+  [ AllocObj (cons 1) (ConH 1 2) [MkArg (R (val 0)), MkArg (Imm {t = Val} 0)] live
   , Widen (val 2) (cons 1) ]
 
 ||| `keep`, right: x is a field, so live across its own allocation.
 keep : Function TestEnc
-keep = fn "keep" [MkBlock 0 [] (cell [val 0]) (Return (R (val 2)))]
+keep = fn "keep" [MkBlock 0 [] (cell [At (val 0)]) (Return (R (val 2)))]
 
 ||| A slot read before anything writes it: slot 5.
 readUnwritten : Function TestEnc
@@ -104,25 +104,27 @@ twoKinds =
 ||| x read after the allocation, its live list empty.
 liveLeftOut : Function TestEnc
 liveLeftOut =
-  fn "liveLeftOut" [MkBlock 0 [] (cell []) (TailCall (nm "pair") [R (val 2), R (val 0)])]
+  fn "liveLeftOut"
+    [MkBlock 0 [] (cell []) (TailCall (nm "pair") [MkArg (R (val 2)), MkArg (R (val 0))])]
 
 ||| The live list names slot 7, which nothing writes.
 listsUnwritten : Function TestEnc
-listsUnwritten = fn "listsUnwritten" [MkBlock 0 [] (cell [val 0, val 7]) (Return (R (val 2)))]
+listsUnwritten =
+  fn "listsUnwritten" [MkBlock 0 [] (cell [At (val 0), At (val 7)]) (Return (R (val 2)))]
 
 ||| A call keeping x, whose resume block takes no x.
 resumeShape : Function TestEnc
 resumeShape =
   fn "resumeShape"
-    [ MkBlock 0 [] [] (Call (nm "f") [] (MkCont 1 [val 0]))
-    , MkBlock 1 [val 3] [] (Return (R (val 3))) ]
+    [ MkBlock 0 [] [] (Call (nm "f") [] (MkCont 1 [At (val 0)]))
+    , MkBlock 1 [At (val 3)] [] (Return (R (val 3))) ]
 
 ||| A call keeping nothing, whose resume block reads x.
 resumeReads : Function TestEnc
 resumeReads =
   fn "resumeReads"
     [ MkBlock 0 [] [] (Call (nm "f") [] (MkCont 1 []))
-    , MkBlock 1 [val 3] [] (TailCall (nm "pair") [R (val 3), R (val 0)]) ]
+    , MkBlock 1 [At (val 3)] [] (TailCall (nm "pair") [MkArg (R (val 3)), MkArg (R (val 0))]) ]
 
 ||| x moved into a register and returned from it.
 inRegister : Function TestEnc
@@ -133,15 +135,15 @@ inRegister =
 registerAcrossAllocation : Function TestEnc
 registerAcrossAllocation =
   fn "registerAcrossAllocation"
-    [MkBlock 0 [] (Move (Register 0 Val) (val 0) :: cell [val 0, Register 0 Val])
-       (TailCall (nm "pair") [R (val 2), R (Register 0 Val)])]
+    [MkBlock 0 [] (Move (Register 0 Val) (val 0) :: cell [At (val 0), At (Register 0 Val)])
+       (TailCall (nm "pair") [MkArg (R (val 2)), MkArg (R (Register 0 Val))])]
 
 ||| x kept in a register across a direct call.
 registerAcrossCall : Function TestEnc
 registerAcrossCall =
   fn "registerAcrossCall"
     [MkBlock 0 [] [ Move (Register 1 Val) (val 0)
-                  , DirectCall (nm "probe") [] [word 3] False [Register 1 Val] ]
+                  , DirectCall (nm "probe") [] [At (word 3)] False [At (Register 1 Val)] ]
        (Return (R (Register 1 Val)))]
 
 ||| A register past the target's description.

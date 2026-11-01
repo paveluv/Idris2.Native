@@ -6,6 +6,9 @@
 ||| (`Native.Codegen.IRCommon.Ty` says what it is).
 module Native.Codegen.IRCommon.Op
 
+import Native.Codegen.IRCommon.Ty
+import Native.Types.Enc as Types
+
 %default total
 
 ||| Integer operations, on `W64`s or on `Fix`es (`Arith`). A shift takes its
@@ -44,6 +47,22 @@ data ConvOp
     FBits
   | ||| A `W64`'s 64 bits, reinterpreted as an `F64`.
     BitsF
+
+||| What a conversion takes.
+public export
+convFrom : ConvOp -> Ty enc
+convFrom I2F = Ty.W64
+convFrom F2I = Ty.F64
+convFrom FBits = Ty.F64
+convFrom BitsF = Ty.W64
+
+||| What a conversion makes.
+public export
+convTo : ConvOp -> Ty enc
+convTo I2F = Ty.F64
+convTo F2I = Ty.W64
+convTo FBits = Ty.W64
+convTo BitsF = Ty.F64
 
 ||| Double arithmetic.
 public export

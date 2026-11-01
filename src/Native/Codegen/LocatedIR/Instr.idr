@@ -11,9 +11,6 @@ import Native.Codegen.LocatedIR.Opnd
 
 import Core.FC
 import Core.Name
-import Data.List
-import Data.Maybe
-import Data.Zippable
 import Native.Area
 import Native.Codegen.IRCommon.Op
 import Native.Codegen.IRCommon.Pinned as IRCommon
@@ -26,10 +23,17 @@ import Native.Width
 
 %default total
 
+||| One copy of a parallel move (`Par`): a destination, and its source, of
+||| one type.
+public export
+data Copy : Types.Enc -> Type where
+  MkCopy : {0 t : IRCommon.Ty enc} -> (dest, source : Location enc t) -> Copy enc
+
 ||| An instruction. Most define one register, their destination, which
 ||| comes first; `Mul128` and `Div128` define two, and `DirectCall` the
-||| callee's results. The types stated here are the term's
-||| (`Native.Codegen.TermIR.Program`), which the conversion keeps.
+||| callee's results. The types of its locations and operands are its
+||| index's, the term's (`Native.Codegen.TermIR.Program`), which the
+||| conversion keeps.
 public export
 data Instr : Types.Enc -> Type where
   ||| A constant, into a `W64`, a `Val` or a `Fix`. Into a `W64` it is the
@@ -38,100 +42,130 @@ data Instr : Types.Enc -> Type where
   ||| `HeapObj.ValEnc`), so that the IR is the same under every value
   ||| encoding; as a `Val`, 0 is also the erased value. No constant is a
   ||| pointer.
-  Const      : Location enc -> Int64 -> Instr enc
+  Const      : {0 t : IRCommon.Ty enc} -> Location enc t -> Int64 -> Instr enc
   ||| A double constant, into an `F64`.
-  FConst     : Location enc -> Double -> Instr enc
+  FConst     : Location enc IRCommon.Ty.F64 -> Double -> Instr enc
   ||| The entry address of a function of this program, into a `CodeAddr`: a
   ||| closure's code pointer.
-  CodeOf     : Location enc -> Name -> Instr enc
+  CodeOf     : Location enc IRCommon.Ty.CodeAddr -> Name -> Instr enc
   ||| The address of a static object of this program, into a `Val`, or into a
   ||| `PtrTo k` of the static's kind.
-  StaticAddr : Location enc -> Name -> Instr enc
+  StaticAddr : {0 t : IRCommon.Ty enc} -> Location enc t -> Name -> Instr enc
   ||| The address of a per-thread area, into a `ByteAddr`.
-  AreaAddr   : Location enc -> Area -> Instr enc
+  AreaAddr   : Location enc IRCommon.Ty.ByteAddr -> Area -> Instr enc
+  ||| A byte address moved by a count of bytes, into a `ByteAddr`.
+  Offset     : Location enc IRCommon.Ty.ByteAddr -> Opnd enc IRCommon.Ty.ByteAddr ->
+    Opnd enc IRCommon.Ty.W64 ->
+               Instr enc
   ||| Integer arithmetic: the operands and the result are all `W64`s, or all
-  ||| `Fix`es; or a byte address moved by a `W64`, an `Add` into a
-  ||| `ByteAddr`. On `Fix`es it is the operation on the fixnums' values, which
+  ||| `Fix`es. On `Fix`es it is the operation on the fixnums' values, which
   ||| the producer guarantees is in the fixnum range, and the rendering
   ||| computes it on the words, without untagging where the value encoding has
   ||| an identity for it. There is no arithmetic on `Val`s: a `Val` is narrowed
   ||| to a `Fix` first.
-  Arith      : IRCommon.Op.ArithOp -> Location enc -> Opnd enc -> Opnd enc -> Instr enc
+  Arith      : {0 t : IRCommon.Ty enc} -> IRCommon.Op.ArithOp -> Location enc t -> Opnd enc t ->
+    Opnd enc t ->
+               Instr enc
   ||| The 128-bit product of two words, into its high word and its low word.
-  Mul128     : (high, low : Location enc) -> Opnd enc -> Opnd enc -> Instr enc
+  Mul128     : (high, low : Location enc IRCommon.Ty.W64) -> Opnd enc IRCommon.Ty.W64 ->
+    Opnd enc IRCommon.Ty.W64 ->
+               Instr enc
   ||| The quotient and the remainder of the 128-bit number of the high and
   ||| the low word by the divisor.
-  Div128     : (quotient, remainder : Location enc) -> (high, low, divisor : Opnd enc) -> Instr enc
+  Div128     : (quotient, remainder : Location enc IRCommon.Ty.W64) ->
+               (high, low, divisor : Opnd enc IRCommon.Ty.W64) -> Instr enc
   ||| Negation or complement of a `W64`.
-  Unary      : IRCommon.Op.UnOp -> Location enc -> Location enc -> Instr enc
+  Unary      : IRCommon.Op.UnOp -> Location enc IRCommon.Ty.W64 -> Location enc IRCommon.Ty.W64 ->
+    Instr enc
   ||| `Add`, `Sub` or `Mul`, with the operand types of `Arith`, then a branch
   ||| to the label if the result does not fit: in 64 signed bits for `W64`s,
   ||| in the fixnum range for `Fix`es, which is the fixnum fast path. The
   ||| label is a successor of the block at this instruction, not at the
   ||| block's end.
-  ArithOv    : IRCommon.Op.ArithOp -> Location enc -> Opnd enc -> Opnd enc -> Label -> Instr enc
+  ArithOv    : {0 t : IRCommon.Ty enc} -> IRCommon.Op.ArithOp -> Location enc t -> Opnd enc t ->
+    Opnd enc t ->
+               Label -> Instr enc
   ||| Narrow a `W64` to the width, then sign- or zero-extend it back to 64
   ||| bits.
-  Ext        : Width.SubWord -> (signed : Bool) -> Location enc -> Location enc -> Instr enc
+  Ext        : Width.SubWord -> (signed : Bool) -> Location enc IRCommon.Ty.W64 ->
+    Location enc IRCommon.Ty.W64 ->
+               Instr enc
   ||| Double arithmetic on `F64`s.
-  FArith     : IRCommon.Op.FOp -> Location enc -> Location enc -> Location enc -> Instr enc
+  FArith     : IRCommon.Op.FOp -> Location enc IRCommon.Ty.F64 -> Location enc IRCommon.Ty.F64 ->
+    Location enc IRCommon.Ty.F64 ->
+               Instr enc
   ||| Double negation.
-  FNeg       : Location enc -> Location enc -> Instr enc
-  FSqrt      : Location enc -> Location enc -> Instr enc
+  FNeg       : Location enc IRCommon.Ty.F64 -> Location enc IRCommon.Ty.F64 -> Instr enc
+  FSqrt      : Location enc IRCommon.Ty.F64 -> Location enc IRCommon.Ty.F64 -> Instr enc
   ||| Compare two `F64`s; the destination, a `W64`, is 1 or 0.
-  FCmp       : IRCommon.Op.Rel -> Location enc -> Location enc -> Location enc -> Instr enc
+  FCmp       : IRCommon.Op.Rel -> Location enc IRCommon.Ty.W64 -> Location enc IRCommon.Ty.F64 ->
+    Location enc IRCommon.Ty.F64 ->
+               Instr enc
   ||| Convert between a `W64` and an `F64`.
-  Convert    : IRCommon.Op.ConvOp -> Location enc -> Location enc -> Instr enc
+  Convert    : (op : IRCommon.Op.ConvOp) -> Location enc (IRCommon.Op.convTo op) ->
+               Location enc (IRCommon.Op.convFrom op) -> Instr enc
   ||| Compare two integers; the destination, a `W64`, is 1 or 0. The operands
   ||| are both `W64`s or both `Fix`es, compared as `Rel` says; a comparison
   ||| never makes a value.
-  Cmp        : IRCommon.Op.Rel -> Location enc -> Opnd enc -> Opnd enc -> Instr enc
+  Cmp        : {0 t : IRCommon.Ty enc} -> IRCommon.Op.Rel -> Location enc IRCommon.Ty.W64 ->
+    Opnd enc t -> Opnd enc t -> Instr enc
   ||| Load a word of the given type.
-  Load       : IRCommon.Ty enc -> Location enc -> Mem enc -> Instr enc
+  Load       : (t : IRCommon.Ty enc) -> Location enc t -> Mem enc -> Instr enc
   ||| Store a register of the given type.
-  Store      : IRCommon.Ty enc -> Mem enc -> Location enc -> Instr enc
+  Store      : (t : IRCommon.Ty enc) -> Mem enc -> Location enc t -> Instr enc
   ||| Load 8, 16 or 32 bits into a `W64`, zero- or sign-extended: the bytes
   ||| of strings and buffers, the limbs of bignums.
-  LoadN      : Width.SubWord -> (signed : Bool) -> Location enc -> Mem enc -> Instr enc
+  LoadN      : Width.SubWord -> (signed : Bool) -> Location enc IRCommon.Ty.W64 -> Mem enc ->
+    Instr enc
   ||| Store the low 8, 16 or 32 bits of a `W64`.
-  StoreN     : Width.SubWord -> Mem enc -> Location enc -> Instr enc
+  StoreN     : Width.SubWord -> Mem enc -> Location enc IRCommon.Ty.W64 -> Instr enc
   ||| The fixnum of a `W64`, as a `Fix`. The producer guarantees that the
   ||| value is in the fixnum range.
-  Tag        : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Location enc -> Location enc -> Instr enc
+  Tag        : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} ->
+    Location enc (IRCommon.Ty.Fix {enc}) ->
+               Location enc IRCommon.Ty.W64 -> Instr enc
   ||| The value of a `Fix`, as a `W64`.
-  Untag      : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Location enc -> Location enc -> Instr enc
+  Untag      : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Location enc IRCommon.Ty.W64 ->
+               Location enc (IRCommon.Ty.Fix {enc}) -> Instr enc
   ||| The fixnum of a `W64`, as a `Fix`, or a branch to the label if the value
   ||| is outside the fixnum range. The label is a successor of the block at
   ||| this instruction, as for `ArithOv`.
-  TagOv      : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} -> Location enc -> Location enc -> Label ->
-    Instr enc
+  TagOv      : {auto 0 fx : HeapObj.ValEnc.HasFixnums enc.val} ->
+    Location enc (IRCommon.Ty.Fix {enc}) ->
+               Location enc IRCommon.Ty.W64 -> Label -> Instr enc
   ||| A `Val` as the type given, a `Fix` or a `PtrTo k`, which is the
   ||| destination's. No code: the producer guarantees it, after an `IfFixnums`
   ||| or a `Switch` on a header, or from static typing. The only way from a
   ||| `Val` to a fixnum or a pointer.
-  Narrow     : IRCommon.Ty enc -> Location enc -> Location enc -> Instr enc
+  Narrow     : (t : IRCommon.Ty enc) -> Location enc t -> Location enc IRCommon.Ty.Val -> Instr enc
   ||| A `Fix` or a `PtrTo k` as a `Val`. No code.
-  Widen      : Location enc -> Location enc -> Instr enc
+  Widen      : {0 t : IRCommon.Ty enc} -> Location enc IRCommon.Ty.Val -> Location enc t ->
+    Instr enc
   ||| A `PtrTo k` as a `W64`. No code. Only the functions of the module that
   ||| implements the runtime's memory interface make one (the term's
   ||| capability index): everywhere else no word can be derived from a
   ||| pointer, which is what lets the rooting stubs cover every pointer
   ||| there is.
-  AddrToWord : Location enc -> Location enc -> Instr enc
+  AddrToWord : {0 k : Types.Kind} -> Location enc IRCommon.Ty.W64 ->
+               Location enc (IRCommon.Ty.PtrTo k) -> Instr enc
   ||| A `W64` as a `PtrTo k`. No code. Restricted as `AddrToWord` is.
-  WordToAddr : Types.Kind -> Location enc -> Location enc -> Instr enc
+  WordToAddr : (k : Types.Kind) -> Location enc (IRCommon.Ty.PtrTo k) ->
+               Location enc IRCommon.Ty.W64 ->
+               Instr enc
   ||| A `Val` as a `W64`, and a `W64` as a `Val`. No code. Restricted as
   ||| `AddrToWord` is.
-  ValToWord : Location enc -> Location enc -> Instr enc
-  WordToVal : Location enc -> Location enc -> Instr enc
+  ValToWord  : Location enc IRCommon.Ty.W64 -> Location enc IRCommon.Ty.Val -> Instr enc
+  WordToVal  : Location enc IRCommon.Ty.Val -> Location enc IRCommon.Ty.W64 -> Instr enc
   ||| The header word of the object a `PtrTo k` points to, as a `W64`. For a
   ||| `CONT`, which has no header, it is the layout word.
-  LoadHeader : Location enc -> Location enc -> Instr enc
+  LoadHeader : {0 k : Types.Kind} -> Location enc IRCommon.Ty.W64 ->
+               Location enc (IRCommon.Ty.PtrTo k) -> Instr enc
   ||| A part of the header of the object a `PtrTo k` points to, as a `W64`:
   ||| the constructor id of a `CON`, for instance. The pointer's kind is the
   ||| part's kind, which the instruction keeps, so that a pass reads it here
   ||| instead of rebuilding it from the part.
-  LoadPart   : {0 k : Types.Kind} -> Types.Header.HeaderPart k -> Location enc -> Location enc -> Instr enc
+  LoadPart   : {0 k : Types.Kind} -> Types.Header.HeaderPart k -> Location enc IRCommon.Ty.W64 ->
+               Location enc (IRCommon.Ty.PtrTo k) -> Instr enc
   ||| A whole object in one step: the destination, a `PtrTo k` of the
   ||| header's kind, becomes a new object with this header and these initial
   ||| fields. Since one instruction makes the whole object, no collection can
@@ -147,8 +181,8 @@ data Instr : Types.Enc -> Type where
   ||| across includes the field registers, because the fields are written
   ||| after the slow path's collection. The rendering may rematerialise a
   ||| static's address instead of saving it.
-  AllocObj   : {k : Types.Kind} -> Location enc -> Types.Header enc k -> (fields : List (Opnd enc)) ->
-               (live : List (Location enc)) -> Instr enc
+  AllocObj   : {k : Types.Kind} -> Location enc (IRCommon.Ty.PtrTo k) -> Types.Header enc k ->
+               (fields : List (Opnd.Arg enc)) -> (live : List (Location.Place enc)) -> Instr enc
   ||| A whole object whose size is known only at run time: the destination, a
   ||| `PtrTo k`, becomes a new object of the part's kind, whose size part is
   ||| `count`, a `W64`: an `ARRAY`'s elements, a `STRING`'s or a `BYTES`'s
@@ -162,8 +196,10 @@ data Instr : Types.Enc -> Type where
   ||| A count that does not fit the part's bits ends the program, as `Crash`
   ||| does. The rendering checks it, so no count can make an object smaller
   ||| than its header claims, a negative `Int` read as a word included.
-  AllocSized : {k : Types.Kind} -> Location enc -> Types.Header.HeaderPart k -> (count : Location enc) ->
-               (fill : Maybe (Opnd enc)) -> (live : List (Location enc)) -> Instr enc
+  AllocSized : {k : Types.Kind} -> Location enc (IRCommon.Ty.PtrTo k) ->
+               Types.Header.HeaderPart k -> (count : Location enc IRCommon.Ty.W64) ->
+               (fill : Maybe (Opnd enc IRCommon.Ty.Val)) -> (live : List (Location.Place enc)) ->
+                 Instr enc
   ||| A machine call to a `Direct` function: one of the program's, or a
   ||| routine of the runtime. The registers receive the callee's results, in
   ||| order, where its `results` declares any. `mayCollect` says whether the callee may
@@ -175,22 +211,25 @@ data Instr : Types.Enc -> Type where
   ||| own, so the call keeps every slot of its caller's; across a call that
   ||| may collect, the rendering keeps the GC-visible members of `live` in
   ||| `ROOTS`, where the collector forwards them, and reloads them after.
-  DirectCall : Name -> List (Opnd enc) -> (results : List (Location enc)) -> (mayCollect : Bool) ->
-               (live : List (Location enc)) -> Instr enc
+  DirectCall : Name -> List (Opnd.Arg enc) -> (results : List (Location.Place enc)) ->
+               (mayCollect : Bool) ->
+               (live : List (Location.Place enc)) -> Instr enc
   ||| A pinned register's value, and setting it.
-  GetPinned  : IRCommon.Pinned -> (result : Location enc) -> Instr enc
-  SetPinned  : IRCommon.Pinned -> Opnd enc -> Instr enc
+  GetPinned  : (p : IRCommon.Pinned) -> (result : Location enc (IRCommon.Pinned.ty p)) ->
+               Instr enc
+  SetPinned  : (p : IRCommon.Pinned) -> Opnd enc (IRCommon.Pinned.ty p) -> Instr enc
   ||| A system call: its number, then its arguments, giving its result, by
   ||| the platform's convention; never a call of a function.
-  SystemCall : (result : Location enc) -> List (Opnd enc) -> Instr enc
+  SystemCall : (result : Location enc IRCommon.Ty.W64) -> List (Opnd enc IRCommon.Ty.W64) ->
+               Instr enc
   ||| Copy a location to another of the same type.
-  Move       : Location enc -> Location enc -> Instr enc
+  Move       : {0 t : IRCommon.Ty enc} -> Location enc t -> Location enc t -> Instr enc
   ||| Copy each location to another of its type, all at once: every
   ||| destination gets its source's value from before any destination is
   ||| written. The destinations are distinct places. A jump's arguments
   ||| into its block's parameters, which the local assignment makes moves
   ||| (`Native.Codegen.Sequentialise`), so that no rendering sees one.
-  Par        : List (Location enc, Location enc) -> Instr enc
+  Par        : List (Copy enc) -> Instr enc
   ||| The source location of what follows, for dumps and, later, debugging
   ||| information.
   Loc        : FC -> Instr enc
@@ -205,6 +244,7 @@ instrName (FConst _ _) = "FConst"
 instrName (CodeOf _ _) = "CodeOf"
 instrName (StaticAddr _ _) = "StaticAddr"
 instrName (AreaAddr _ _) = "AreaAddr"
+instrName (Offset _ _ _) = "Offset"
 instrName (Arith op _ _ _) = show op
 instrName (Unary IRCommon.Op.Negate _ _) = "Negate"
 instrName (Unary IRCommon.Op.Complement _ _) = "Complement"
@@ -244,228 +284,231 @@ instrName (Par _) = "Par"
 instrName (Loc _) = "Loc"
 instrName (Comment _) = "Comment"
 
-||| The registers the instruction names, its destinations, its operands'
-||| and its memory operands', and those it keeps live: each as often as it
-||| names it, in no order to rely on.
-export
-instrRegs : Instr enc -> List (Location enc)
-instrRegs i = case i of
-  Const d _ => [d]
-  FConst d _ => [d]
-  CodeOf d _ => [d]
-  StaticAddr d _ => [d]
-  AreaAddr d _ => [d]
-  Arith _ d x y => d :: Opnd.opRegs x ++ Opnd.opRegs y
-  Mul128 h l x y => h :: l :: Opnd.opRegs x ++ Opnd.opRegs y
-  Div128 q r h l x => q :: r :: Opnd.opRegs h ++ Opnd.opRegs l ++ Opnd.opRegs x
-  Unary _ d x => [d, x]
-  ArithOv _ d x y _ => d :: Opnd.opRegs x ++ Opnd.opRegs y
-  Ext _ _ d x => [d, x]
-  FArith _ d x y => [d, x, y]
-  FNeg d x => [d, x]
-  FSqrt d x => [d, x]
-  FCmp _ d x y => [d, x, y]
-  Convert _ d x => [d, x]
-  Cmp _ d x y => d :: Opnd.opRegs x ++ Opnd.opRegs y
-  Load _ d m => d :: memRegs m
-  Store _ m x => x :: memRegs m
-  LoadN _ _ d m => d :: memRegs m
-  StoreN _ m x => x :: memRegs m
-  Tag d x => [d, x]
-  Untag d x => [d, x]
-  TagOv d x _ => [d, x]
-  Narrow _ d x => [d, x]
-  Widen d x => [d, x]
-  AddrToWord d x => [d, x]
-  WordToAddr _ d x => [d, x]
-  ValToWord d x => [d, x]
-  WordToVal d x => [d, x]
-  LoadHeader d x => [d, x]
-  LoadPart _ d x => [d, x]
-  AllocObj d _ fs live => d :: Opnd.opsRegs fs live
-  AllocSized d _ count fill live => d :: count :: maybe [] Opnd.opRegs fill ++ live
-  DirectCall _ args ds _ live => ds ++ Opnd.opsRegs args live
-  GetPinned _ d => [d]
-  SetPinned _ x => Opnd.opRegs x
-  SystemCall d args => d :: Opnd.opsRegs args []
-  Move d x => [d, x]
-  Par ms => map fst ms ++ map snd ms
-  Loc _ => []
-  Comment _ => []
-  where
-    memRegs : Mem enc -> List (Location enc)
-    memRegs m = m.base :: maybe [] (\r => [r]) m.index
+||| A memory operand's registers, its base before its index.
+memRegs : Mem enc -> List (Location.Place enc)
+memRegs m = Mem.place m.base :: maybe [] (\r => [Location.At r]) m.index
 
 ||| What an instruction reads, its register operands, in the order of its
 ||| fields, a memory operand's base before its index: not the registers its
 ||| `live` list keeps.
 export
-operands : Instr enc -> List (Location enc)
+operands : Instr enc -> List (Location.Place enc)
 operands i = case i of
-  Arith _ _ x y => Opnd.opsRegs [x, y] []
-  Mul128 _ _ x y => Opnd.opsRegs [x, y] []
-  Div128 _ _ h l x => Opnd.opsRegs [h, l, x] []
-  Unary _ _ x => [x]
-  ArithOv _ _ x y _ => Opnd.opsRegs [x, y] []
-  Ext _ _ _ x => [x]
-  FArith _ _ x y => [x, y]
-  FNeg _ x => [x]
-  FSqrt _ x => [x]
-  FCmp _ _ x y => [x, y]
-  Convert _ _ x => [x]
-  Cmp _ _ x y => Opnd.opsRegs [x, y] []
+  Offset _ x y => Opnd.opRegs x ++ Opnd.opRegs y
+  Arith _ _ x y => Opnd.opRegs x ++ Opnd.opRegs y
+  Mul128 _ _ x y => Opnd.opRegs x ++ Opnd.opRegs y
+  Div128 _ _ h l x => Opnd.opRegs h ++ Opnd.opRegs l ++ Opnd.opRegs x
+  Unary _ _ x => [Location.At x]
+  ArithOv _ _ x y _ => Opnd.opRegs x ++ Opnd.opRegs y
+  Ext _ _ _ x => [Location.At x]
+  FArith _ _ x y => [Location.At x, Location.At y]
+  FNeg _ x => [Location.At x]
+  FSqrt _ x => [Location.At x]
+  FCmp _ _ x y => [Location.At x, Location.At y]
+  Convert _ _ x => [Location.At x]
+  Cmp _ _ x y => Opnd.opRegs x ++ Opnd.opRegs y
   Load _ _ m => memRegs m
-  Store _ m x => x :: memRegs m
+  Store _ m x => Location.At x :: memRegs m
   LoadN _ _ _ m => memRegs m
-  StoreN _ m x => x :: memRegs m
-  Tag _ x => [x]
-  Untag _ x => [x]
-  TagOv _ x _ => [x]
-  Narrow _ _ x => [x]
-  Widen _ x => [x]
-  AddrToWord _ x => [x]
-  WordToAddr _ _ x => [x]
-  ValToWord _ x => [x]
-  WordToVal _ x => [x]
-  LoadHeader _ x => [x]
-  LoadPart _ _ x => [x]
+  StoreN _ m x => Location.At x :: memRegs m
+  Tag _ x => [Location.At x]
+  Untag _ x => [Location.At x]
+  TagOv _ x _ => [Location.At x]
+  Narrow _ _ x => [Location.At x]
+  Widen _ x => [Location.At x]
+  AddrToWord _ x => [Location.At x]
+  WordToAddr _ _ x => [Location.At x]
+  ValToWord _ x => [Location.At x]
+  WordToVal _ x => [Location.At x]
+  LoadHeader _ x => [Location.At x]
+  LoadPart _ _ x => [Location.At x]
   AllocObj _ _ fs _ => Opnd.opsRegs fs []
-  AllocSized _ _ count fill _ => count :: maybe [] Opnd.opRegs fill
+  AllocSized _ _ count fill _ => Location.At count :: maybe [] Opnd.opRegs fill
   DirectCall _ args _ _ _ => Opnd.opsRegs args []
   SetPinned _ x => Opnd.opRegs x
-  SystemCall _ args => Opnd.opsRegs args []
-  Move _ x => [x]
-  Par ms => map snd ms
+  SystemCall _ args => concatMap Opnd.opRegs args
+  Move _ x => [Location.At x]
+  Par cs => map (\(MkCopy _ x) => Location.At x) cs
   _ => []
-  where
-    memRegs : Mem enc -> List (Location enc)
-    memRegs m = m.base :: maybe [] (\r => [r]) m.index
 
 ||| What an instruction writes, in the order of its fields.
 export
-results : Instr enc -> List (Location enc)
+results : Instr enc -> List (Location.Place enc)
 results i = case i of
-  Mul128 h l _ _ => [h, l]
-  Div128 q r _ _ _ => [q, r]
-  Store _ _ _ => []
-  StoreN _ _ _ => []
+  Const d _ => [Location.At d]
+  FConst d _ => [Location.At d]
+  CodeOf d _ => [Location.At d]
+  StaticAddr d _ => [Location.At d]
+  AreaAddr d _ => [Location.At d]
+  Offset d _ _ => [Location.At d]
+  Arith _ d _ _ => [Location.At d]
+  Mul128 h l _ _ => [Location.At h, Location.At l]
+  Div128 q r _ _ _ => [Location.At q, Location.At r]
+  Unary _ d _ => [Location.At d]
+  ArithOv _ d _ _ _ => [Location.At d]
+  Ext _ _ d _ => [Location.At d]
+  FArith _ d _ _ => [Location.At d]
+  FNeg d _ => [Location.At d]
+  FSqrt d _ => [Location.At d]
+  FCmp _ d _ _ => [Location.At d]
+  Convert _ d _ => [Location.At d]
+  Cmp _ d _ _ => [Location.At d]
+  Load _ d _ => [Location.At d]
+  LoadN _ _ d _ => [Location.At d]
+  Tag d _ => [Location.At d]
+  Untag d _ => [Location.At d]
+  TagOv d _ _ => [Location.At d]
+  Narrow _ d _ => [Location.At d]
+  Widen d _ => [Location.At d]
+  AddrToWord d _ => [Location.At d]
+  WordToAddr _ d _ => [Location.At d]
+  ValToWord d _ => [Location.At d]
+  WordToVal d _ => [Location.At d]
+  LoadHeader d _ => [Location.At d]
+  LoadPart _ d _ => [Location.At d]
+  AllocObj d _ _ _ => [Location.At d]
+  AllocSized d _ _ _ _ => [Location.At d]
   DirectCall _ _ ds _ _ => ds
-  SetPinned _ _ => []
-  Par ms => map fst ms
-  Loc _ => []
-  Comment _ => []
-  _ => take 1 (instrRegs i)
+  GetPinned _ d => [Location.At d]
+  SystemCall d _ => [Location.At d]
+  Move d _ => [Location.At d]
+  Par cs => map (\(MkCopy d _) => Location.At d) cs
+  _ => []
 
-||| The instruction with its register operands replaced, in the order
-||| `operands` lists them, by as many locations; a register operand the list
-||| has no location for stays.
+||| The registers the instruction names, its destinations, its operands'
+||| and its memory operands', and those it keeps live: each as often as it
+||| names it, in no order to rely on.
 export
-withOperands : List (Location enc) -> Instr enc -> Instr enc
-withOperands rs i = case i of
-  Arith o d x y => let (x', rs1) = opnd rs x; (y', _) = opnd rs1 y in Arith o d x' y'
-  Mul128 h l x y => let (x', rs1) = opnd rs x; (y', _) = opnd rs1 y in Mul128 h l x' y'
-  Div128 q r h l x =>
-    let (h', rs1) = opnd rs h; (l', rs2) = opnd rs1 l; (x', _) = opnd rs2 x in Div128 q r h' l' x'
-  Unary o d x => Unary o d (loc rs x)
-  ArithOv o d x y l => let (x', rs1) = opnd rs x; (y', _) = opnd rs1 y in ArithOv o d x' y' l
-  Ext w s d x => Ext w s d (loc rs x)
-  FArith o d x y => FArith o d (loc rs x) (loc (drop 1 rs) y)
-  FNeg d x => FNeg d (loc rs x)
-  FSqrt d x => FSqrt d (loc rs x)
-  FCmp r d x y => FCmp r d (loc rs x) (loc (drop 1 rs) y)
-  Convert c d x => Convert c d (loc rs x)
-  Cmp r d x y => let (x', rs1) = opnd rs x; (y', _) = opnd rs1 y in Cmp r d x' y'
-  Load t d m => Load t d (fst (mem rs m))
-  Store t m x => Store t (fst (mem (drop 1 rs) m)) (loc rs x)
-  LoadN w s d m => LoadN w s d (fst (mem rs m))
-  StoreN w m x => StoreN w (fst (mem (drop 1 rs) m)) (loc rs x)
-  Tag d x => Tag d (loc rs x)
-  Untag d x => Untag d (loc rs x)
-  TagOv d x l => TagOv d (loc rs x) l
-  Narrow t d x => Narrow t d (loc rs x)
-  Widen d x => Widen d (loc rs x)
-  AddrToWord d x => AddrToWord d (loc rs x)
-  WordToAddr k d x => WordToAddr k d (loc rs x)
-  ValToWord d x => ValToWord d (loc rs x)
-  WordToVal d x => WordToVal d (loc rs x)
-  LoadHeader d x => LoadHeader d (loc rs x)
-  LoadPart p d x => LoadPart p d (loc rs x)
-  AllocObj d h fs live => AllocObj d h (opnds rs fs) live
-  AllocSized d p count fill live =>
-    AllocSized d p (loc rs count) (map (fst . opnd (drop 1 rs)) fill) live
-  DirectCall f args ds m live => DirectCall f (opnds rs args) ds m live
-  SetPinned p x => SetPinned p (fst (opnd rs x))
-  SystemCall d args => SystemCall d (opnds rs args)
-  Move d x => Move d (loc rs x)
-  Par ms => Par (zipWith (\(d, _), x => (d, x)) ms rs ++ drop (length rs) ms)
-  _ => i
+instrRegs : Instr enc -> List (Location.Place enc)
+instrRegs i = results i ++ operands i ++ kept i
   where
-    -- the next location for a register, the rest of the list after it
-    loc : List (Location enc) -> Location enc -> Location enc
-    loc (r :: _) _ = r
-    loc [] x = x
+    -- the registers its `live` list keeps
+    kept : Instr enc -> List (Location.Place enc)
+    kept (AllocObj _ _ _ live) = live
+    kept (AllocSized _ _ _ _ live) = live
+    kept (DirectCall _ _ _ _ live) = live
+    kept _ = []
 
-    opnd : List (Location enc) -> Opnd enc -> (Opnd enc, List (Location enc))
-    opnd (r :: rs') (Opnd.R _) = (Opnd.R r, rs')
-    opnd rs' o = (o, rs')
-
-    opnds : List (Location enc) -> List (Opnd enc) -> List (Opnd enc)
-    opnds _ [] = []
-    opnds rs' (o :: os) = let (o', rs'') = opnd rs' o in o' :: opnds rs'' os
-
-    mem : List (Location enc) -> Mem enc -> (Mem enc, List (Location enc))
-    mem [] m = (m, [])
-    mem (b :: rs') m = case m.index of
-      Nothing => ({ base := b } m, rs')
-      Just _ => case rs' of
-        (ix :: rs'') => ({ base := b, index := Just ix } m, rs'')
-        [] => ({ base := b } m, [])
-
-||| The instruction with its results replaced, in the order `results` lists
-||| them, by as many locations; a result the list has no location for stays.
+||| The instruction with its register operands replaced by the step, in the
+||| order `operands` lists them.
 export
-withResults : List (Location enc) -> Instr enc -> Instr enc
-withResults [] i = i
-withResults rs@(r :: _) i = case i of
-  Mul128 h l x y => Mul128 r (fromMaybe l (getAt 1 rs)) x y
-  Div128 q rm h l x => Div128 r (fromMaybe rm (getAt 1 rs)) h l x
-  Store _ _ _ => i
-  StoreN _ _ _ => i
-  DirectCall f args ds m live => DirectCall f args (zipWith const rs ds ++ drop (length rs) ds) m live
-  SetPinned _ _ => i
-  Loc _ => i
-  Comment _ => i
-  Const _ c => Const r c
-  FConst _ c => FConst r c
-  CodeOf _ n => CodeOf r n
-  StaticAddr _ n => StaticAddr r n
-  AreaAddr _ a => AreaAddr r a
-  Arith o _ x y => Arith o r x y
-  Unary o _ x => Unary o r x
-  ArithOv o _ x y l => ArithOv o r x y l
-  Ext w s _ x => Ext w s r x
-  FArith o _ x y => FArith o r x y
-  FNeg _ x => FNeg r x
-  FSqrt _ x => FSqrt r x
-  FCmp rl _ x y => FCmp rl r x y
-  Convert c _ x => Convert c r x
-  Cmp rl _ x y => Cmp rl r x y
-  Load t _ m => Load t r m
-  LoadN w s _ m => LoadN w s r m
-  Tag _ x => Tag r x
-  Untag _ x => Untag r x
-  TagOv _ x l => TagOv r x l
-  Narrow t _ x => Narrow t r x
-  Widen _ x => Widen r x
-  AddrToWord _ x => AddrToWord r x
-  WordToAddr k _ x => WordToAddr k r x
-  ValToWord _ x => ValToWord r x
-  WordToVal _ x => WordToVal r x
-  LoadHeader _ x => LoadHeader r x
-  LoadPart p _ x => LoadPart p r x
-  AllocObj _ h fs live => AllocObj r h fs live
-  AllocSized _ p count fill live => AllocSized r p count fill live
-  GetPinned p _ => GetPinned p r
-  SystemCall _ args => SystemCall r args
-  Move _ x => Move r x
-  Par ms => Par (zipWith (\(_, x), d => (d, x)) ms rs ++ drop (length rs) ms)
+traverseOperands : Location.Step s enc -> s -> Instr enc -> (s, Instr enc)
+traverseOperands f st i = case i of
+  Offset d x y => let (s1, x') = opnd st x; (s2, y') = opnd s1 y in (s2, Offset d x' y')
+  Arith o d x y => let (s1, x') = opnd st x; (s2, y') = opnd s1 y in (s2, Arith o d x' y')
+  Mul128 h l x y => let (s1, x') = opnd st x; (s2, y') = opnd s1 y in (s2, Mul128 h l x' y')
+  Div128 q r h l x =>
+    let (s1, h') = opnd st h; (s2, l') = opnd s1 l; (s3, x') = opnd s2 x
+    in (s3, Div128 q r h' l' x')
+  Unary o d x => let (s1, x') = f st x in (s1, Unary o d x')
+  ArithOv o d x y l => let (s1, x') = opnd st x; (s2, y') = opnd s1 y in (s2, ArithOv o d x' y' l)
+  Ext w sg d x => let (s1, x') = f st x in (s1, Ext w sg d x')
+  FArith o d x y => let (s1, x') = f st x; (s2, y') = f s1 y in (s2, FArith o d x' y')
+  FNeg d x => let (s1, x') = f st x in (s1, FNeg d x')
+  FSqrt d x => let (s1, x') = f st x in (s1, FSqrt d x')
+  FCmp r d x y => let (s1, x') = f st x; (s2, y') = f s1 y in (s2, FCmp r d x' y')
+  Convert c d x => let (s1, x') = f st x in (s1, Convert c d x')
+  Cmp r d x y => let (s1, x') = opnd st x; (s2, y') = opnd s1 y in (s2, Cmp r d x' y')
+  Load t d m => let (s1, m') = mem st m in (s1, Load t d m')
+  Store t m x => let (s1, x') = f st x; (s2, m') = mem s1 m in (s2, Store t m' x')
+  LoadN w sg d m => let (s1, m') = mem st m in (s1, LoadN w sg d m')
+  StoreN w m x => let (s1, x') = f st x; (s2, m') = mem s1 m in (s2, StoreN w m' x')
+  Tag d x => let (s1, x') = f st x in (s1, Tag d x')
+  Untag d x => let (s1, x') = f st x in (s1, Untag d x')
+  TagOv d x l => let (s1, x') = f st x in (s1, TagOv d x' l)
+  Narrow t d x => let (s1, x') = f st x in (s1, Narrow t d x')
+  Widen d x => let (s1, x') = f st x in (s1, Widen d x')
+  AddrToWord d x => let (s1, x') = f st x in (s1, AddrToWord d x')
+  WordToAddr k d x => let (s1, x') = f st x in (s1, WordToAddr k d x')
+  ValToWord d x => let (s1, x') = f st x in (s1, ValToWord d x')
+  WordToVal d x => let (s1, x') = f st x in (s1, WordToVal d x')
+  LoadHeader d x => let (s1, x') = f st x in (s1, LoadHeader d x')
+  LoadPart p d x => let (s1, x') = f st x in (s1, LoadPart p d x')
+  AllocObj d h fs live => let (s1, fs') = Opnd.stepArgs f st fs in (s1, AllocObj d h fs' live)
+  AllocSized d p count fill live =>
+    let (s1, count') = f st count; (s2, fill') = maybeOpnd s1 fill
+    in (s2, AllocSized d p count' fill' live)
+  DirectCall n args ds m live => let (s1, args') =
+                                       Opnd.stepArgs f st args in (s1, DirectCall n args' ds m live)
+  SetPinned p x => let (s1, x') = opnd st x in (s1, SetPinned p x')
+  SystemCall d args => let (s1, args') = opnds st args in (s1, SystemCall d args')
+  Move d x => let (s1, x') = f st x in (s1, Move d x')
+  Par cs => let (s1, cs') = copies st cs in (s1, Par cs')
+  _ => (st, i)
+  where
+    opnd : {0 t : IRCommon.Ty enc} -> s -> Opnd enc t -> (s, Opnd enc t)
+    opnd = Opnd.stepOpnd f
+
+    opnds : {0 t : IRCommon.Ty enc} -> s -> List (Opnd enc t) -> (s, List (Opnd enc t))
+    opnds st' [] = (st', [])
+    opnds st' (o :: os) = let (s1, o') = opnd st' o; (s2, os') = opnds s1 os in (s2, o' :: os')
+
+    maybeOpnd : {0 t : IRCommon.Ty enc} -> s -> Maybe (Opnd enc t) -> (s, Maybe (Opnd enc t))
+    maybeOpnd st' (Just o) = let (s1, o') = opnd st' o in (s1, Just o')
+    maybeOpnd st' Nothing = (st', Nothing)
+
+    maybeLoc : {0 t : IRCommon.Ty enc} -> s -> Maybe (Location enc t) ->
+               (s, Maybe (Location enc t))
+    maybeLoc st' (Just l) = let (s1, l') = f st' l in (s1, Just l')
+    maybeLoc st' Nothing = (st', Nothing)
+
+    mem : s -> Mem enc -> (s, Mem enc)
+    mem st' m =
+      let (s1, b') = Mem.stepBase f st' m.base; (s2, ix') = maybeLoc s1 m.index
+      in (s2, { base := b', index := ix' } m)
+
+    copies : s -> List (Copy enc) -> (s, List (Copy enc))
+    copies st' [] = (st', [])
+    copies st' (MkCopy d x :: cs) =
+      let (s1, x') = f st' x; (s2, cs') = copies s1 cs in (s2, MkCopy d x' :: cs')
+
+||| The instruction with its results replaced by the step, in the order
+||| `results` lists them.
+export
+traverseResults : Location.Step s enc -> s -> Instr enc -> (s, Instr enc)
+traverseResults f st i = case i of
+  Const d c => let (s1, d') = f st d in (s1, Const d' c)
+  FConst d c => let (s1, d') = f st d in (s1, FConst d' c)
+  CodeOf d n => let (s1, d') = f st d in (s1, CodeOf d' n)
+  StaticAddr d n => let (s1, d') = f st d in (s1, StaticAddr d' n)
+  AreaAddr d a => let (s1, d') = f st d in (s1, AreaAddr d' a)
+  Offset d x y => let (s1, d') = f st d in (s1, Offset d' x y)
+  Arith o d x y => let (s1, d') = f st d in (s1, Arith o d' x y)
+  Mul128 h l x y => let (s1, h') = f st h; (s2, l') = f s1 l in (s2, Mul128 h' l' x y)
+  Div128 q r h l x => let (s1, q') = f st q; (s2, r') = f s1 r in (s2, Div128 q' r' h l x)
+  Unary o d x => let (s1, d') = f st d in (s1, Unary o d' x)
+  ArithOv o d x y l => let (s1, d') = f st d in (s1, ArithOv o d' x y l)
+  Ext w sg d x => let (s1, d') = f st d in (s1, Ext w sg d' x)
+  FArith o d x y => let (s1, d') = f st d in (s1, FArith o d' x y)
+  FNeg d x => let (s1, d') = f st d in (s1, FNeg d' x)
+  FSqrt d x => let (s1, d') = f st d in (s1, FSqrt d' x)
+  FCmp r d x y => let (s1, d') = f st d in (s1, FCmp r d' x y)
+  Convert c d x => let (s1, d') = f st d in (s1, Convert c d' x)
+  Cmp r d x y => let (s1, d') = f st d in (s1, Cmp r d' x y)
+  Load t d m => let (s1, d') = f st d in (s1, Load t d' m)
+  LoadN w sg d m => let (s1, d') = f st d in (s1, LoadN w sg d' m)
+  Tag d x => let (s1, d') = f st d in (s1, Tag d' x)
+  Untag d x => let (s1, d') = f st d in (s1, Untag d' x)
+  TagOv d x l => let (s1, d') = f st d in (s1, TagOv d' x l)
+  Narrow t d x => let (s1, d') = f st d in (s1, Narrow t d' x)
+  Widen d x => let (s1, d') = f st d in (s1, Widen d' x)
+  AddrToWord d x => let (s1, d') = f st d in (s1, AddrToWord d' x)
+  WordToAddr k d x => let (s1, d') = f st d in (s1, WordToAddr k d' x)
+  ValToWord d x => let (s1, d') = f st d in (s1, ValToWord d' x)
+  WordToVal d x => let (s1, d') = f st d in (s1, WordToVal d' x)
+  LoadHeader d x => let (s1, d') = f st d in (s1, LoadHeader d' x)
+  LoadPart p d x => let (s1, d') = f st d in (s1, LoadPart p d' x)
+  AllocObj d h fs live => let (s1, d') = f st d in (s1, AllocObj d' h fs live)
+  AllocSized d p count fill live => let (s1, d') = f st d in (s1, AllocSized d' p count fill live)
+  DirectCall n args ds m live =>
+    let (s1, ds') = Location.stepPlaces f st ds in (s1, DirectCall n args ds' m live)
+  GetPinned p d => let (s1, d') = f st d in (s1, GetPinned p d')
+  SystemCall d args => let (s1, d') = f st d in (s1, SystemCall d' args)
+  Move d x => let (s1, d') = f st d in (s1, Move d' x)
+  Par cs => let (s1, cs') = copies st cs in (s1, Par cs')
+  _ => (st, i)
+  where
+    copies : s -> List (Copy enc) -> (s, List (Copy enc))
+    copies st' [] = (st', [])
+    copies st' (MkCopy d x :: cs) =
+      let (s1, d') = f st' d; (s2, cs') = copies s1 cs in (s2, MkCopy d' x :: cs')

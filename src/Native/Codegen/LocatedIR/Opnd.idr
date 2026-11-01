@@ -1,5 +1,7 @@
 ||| What an instruction reads (`Opnd`): a register, an immediate, or a
-||| static's address.
+||| static's address, indexed by the type the instruction reads it as; and
+||| an operand of some type (`Arg`), as a list of operands of several types
+||| holds them.
 |||
 ||| Part of the located IR (`Native.Codegen.LocatedIR.Program` says what it
 ||| is).
@@ -8,6 +10,7 @@ module Native.Codegen.LocatedIR.Opnd
 import Native.Codegen.LocatedIR.Location
 
 import Core.Name
+import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.Types.Enc as Types
 
 %default total
@@ -21,30 +24,54 @@ import Native.Types.Enc as Types
 ||| fixnum 0, which as a `Val` is also the erased value, under every value
 ||| encoding.
 public export
-data Opnd : Types.Enc -> Type where
-  R : Location enc -> Opnd enc
-  Imm : Int64 -> Opnd enc
+data Opnd : (enc : Types.Enc) -> IRCommon.Ty enc -> Type where
+  R : Location enc t -> Opnd enc t
+  Imm : Int64 -> Opnd enc t
   ||| The address of a static object, as a value. A static never moves, so
   ||| its address needs no register, no slot and no rooting: the rendering
   ||| loads it where it is used.
-  StaticRef : Name -> Opnd enc
+  StaticRef : Name -> Opnd enc t
 
 public export
-Show (Opnd enc) where
+Show (Opnd enc t) where
   show (R r) = show r
   show (Imm i) = "#" ++ show i
   show (StaticRef n) = "@" ++ show n
 
+||| An operand of some type: a call's argument, an object's field.
 public export
-opRegs : Opnd enc -> List (Location enc)
-opRegs (R r) = [r]
+data Arg : Types.Enc -> Type where
+  MkArg : {0 t : IRCommon.Ty enc} -> Opnd enc t -> Arg enc
+
+public export
+Show (Arg enc) where
+  show (MkArg o) = show o
+
+public export
+opRegs : Opnd enc t -> List (Location.Place enc)
+opRegs (R r) = [Location.At r]
 opRegs (Imm _) = []
 opRegs (StaticRef _) = []
 
 ||| The registers of the operands, in their order, in front of `rest`.
 export
-opsRegs : List (Opnd enc) -> (rest : List (Location enc)) -> List (Location enc)
+opsRegs : List (Arg enc) -> (rest : List (Location.Place enc)) -> List (Location.Place enc)
 opsRegs [] rest = rest
-opsRegs (R r :: os) rest = r :: opsRegs os rest
-opsRegs (Imm _ :: os) rest = opsRegs os rest
-opsRegs (StaticRef _ :: os) rest = opsRegs os rest
+opsRegs (MkArg (R r) :: os) rest = Location.At r :: opsRegs os rest
+opsRegs (MkArg (Imm _) :: os) rest = opsRegs os rest
+opsRegs (MkArg (StaticRef _) :: os) rest = opsRegs os rest
+
+||| The operand with its register replaced by the step.
+export
+stepOpnd : Location.Step s enc -> s -> Opnd enc t -> (s, Opnd enc t)
+stepOpnd f st (R r) = let (st', r') = f st r in (st', R r')
+stepOpnd _ st o = (st, o)
+
+||| The operands with their registers replaced by the step, in their order.
+export
+stepArgs : Location.Step s enc -> s -> List (Arg enc) -> (s, List (Arg enc))
+stepArgs _ st [] = (st, [])
+stepArgs f st (MkArg o :: os) =
+  let (st1, o') = stepOpnd f st o
+      (st2, os') = stepArgs f st1 os
+  in (st2, MkArg o' :: os')

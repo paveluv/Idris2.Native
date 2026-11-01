@@ -21,4 +21,4 @@ public export
 record Cont (enc : Types.Enc) where
   constructor MkCont
   resume : Label
-  live : List (Location enc)
+  live : List (Location.Place enc)

@@ -73,6 +73,7 @@ clobbers : (called : RegMask) -> LocatedIR.Instr enc -> RegMask
 clobbers called i = case i of
   -- a double's bits, made in rax
   LocatedIR.Instr.FConst _ _ => Row.clobbering [rax]
+  LocatedIR.Instr.Offset _ _ _ => arith IRCommon.Op.Add
   LocatedIR.Instr.Arith o _ _ _ => arith o
   LocatedIR.Instr.ArithOv o _ _ _ _ => arith o
   -- an immediate operand into rcx
@@ -124,17 +125,17 @@ cycleTemp c = case c of
   Rep.WordClass => 1
   Rep.FloatClass => 1
 
-||| The wants of the operands that are locations, in their order.
-located : List (LocatedIR.Opnd enc, Row.Want) -> List Row.Want
-located [] = []
-located ((LocatedIR.Opnd.R _, w) :: os) = w :: located os
-located (_ :: os) = located os
+||| The want of an operand that is a location; an immediate or a static,
+||| which no register holds, has none.
+at : LocatedIR.Opnd enc t -> Row.Want -> List Row.Want
+at (LocatedIR.Opnd.R _) w = [w]
+at _ _ = []
 
 ||| The wants of a move, and of a retyping, which renders as one: its
 ||| operand into a register of its class when both ends are slots, since no
 ||| instruction moves between two places in memory; with a register at
 ||| either end, none.
-between : LocatedIR.Location enc -> LocatedIR.Location enc -> List Row.Want
+between : LocatedIR.Location enc t -> LocatedIR.Location enc u -> List Row.Want
 between (LocatedIR.Location.Slot _ _) (LocatedIR.Location.Slot _ t) =
   [case IRCommon.Ty.class t of Rep.WordClass => rax; Rep.FloatClass => xmm0]
 between _ _ = []
@@ -151,11 +152,12 @@ row called i = let (os, rs) = wants i in MkRow os rs (clobbers called i)
       LocatedIR.Instr.CodeOf _ _ => ([], [rax])
       LocatedIR.Instr.StaticAddr _ _ => ([], [rax])
       LocatedIR.Instr.AreaAddr _ _ => ([], [rax])
-      LocatedIR.Instr.Arith _ _ x y => (located [(x, rax), (y, rcx)], [rax])
-      LocatedIR.Instr.ArithOv _ _ x y _ => (located [(x, rax), (y, rcx)], [rax])
+      LocatedIR.Instr.Offset _ x y => (at x rax ++ at y rcx, [rax])
+      LocatedIR.Instr.Arith _ _ x y => (at x rax ++ at y rcx, [rax])
+      LocatedIR.Instr.ArithOv _ _ x y _ => (at x rax ++ at y rcx, [rax])
       LocatedIR.Instr.TagOv _ _ _ => ([rax], [rax])
-      LocatedIR.Instr.Mul128 _ _ x y => (located [(x, rax), (y, rcx)], [rdx, rax])
-      LocatedIR.Instr.Div128 _ _ h l x => (located [(h, rdx), (l, rax), (x, rcx)], [rax, rdx])
+      LocatedIR.Instr.Mul128 _ _ x y => (at x rax ++ at y rcx, [rdx, rax])
+      LocatedIR.Instr.Div128 _ _ h l x => (at h rdx ++ at l rax ++ at x rcx, [rax, rdx])
       -- a narrowing loads its operand's slot narrowly: its operand stays
       LocatedIR.Instr.Ext _ _ _ _ => ([], [rax])
       LocatedIR.Instr.Convert IRCommon.Op.I2F _ _ => ([rax], [xmm0])
@@ -168,7 +170,7 @@ row called i = let (os, rs) = wants i in MkRow os rs (clobbers called i)
       LocatedIR.Instr.Unary _ _ _ => ([rax], [rax])
       LocatedIR.Instr.Tag _ _ => ([rax], [rax])
       LocatedIR.Instr.Untag _ _ => ([rax], [rax])
-      LocatedIR.Instr.Cmp _ _ x y => (located [(x, rax), (y, rcx)], [rdx])
+      LocatedIR.Instr.Cmp _ _ x y => (at x rax ++ at y rcx, [rdx])
       LocatedIR.Instr.Load _ _ _ => ([rax, rdx], [rcx])
       LocatedIR.Instr.Store _ _ _ => ([rcx, rax, rdx], [])
       LocatedIR.Instr.LoadN _ _ _ _ => ([rax, rdx], [rcx])
@@ -195,10 +197,10 @@ termRow called t = MkRow (wants t) [] (termClobbers called t)
   where
     wants : LocatedIR.Terminator enc -> List Row.Want
     wants t' = case t' of
-      LocatedIR.Terminator.Branch _ x y _ _ => located [(x, rax), (y, rcx)]
+      LocatedIR.Terminator.Branch _ x y _ _ => (at x rax ++ at y rcx)
       LocatedIR.Terminator.Switch _ _ _ => [rax]
       -- the first of the values tested; the rest are read in turn through rcx
       LocatedIR.Terminator.IfFixnums _ _ _ => [rax]
-      LocatedIR.Terminator.Return x => located [(x, rax)]
+      LocatedIR.Terminator.Return x => at x rax
       LocatedIR.Terminator.TailApply _ _ => [rdi, rsi]
       _ => []

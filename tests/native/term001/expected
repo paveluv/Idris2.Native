@@ -10,7 +10,7 @@ function Main.cmain CPS [] entry 0
     slot7:W64 := LoadN [slot6:ByteAddr + 0]
     slot28:W64 := Const 1
     StoreN [slot6:ByteAddr + slot28:W64*2 + 0] := slot7:W64
-    slot8:ByteAddr := Add slot6:ByteAddr, #8
+    slot8:ByteAddr := Offset slot6:ByteAddr, #8
     StoreN [slot8:ByteAddr + 0] := slot7:W64
     slot9:ByteAddr := getHp ()
     setHp (slot9:ByteAddr)

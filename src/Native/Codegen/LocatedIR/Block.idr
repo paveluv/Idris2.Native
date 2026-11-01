@@ -21,6 +21,6 @@ public export
 record Block (enc : Types.Enc) where
   constructor MkBlock
   label : Label
-  params : List (Location enc)
+  params : List (Location.Place enc)
   body : List (Instr enc)
   term : Terminator enc

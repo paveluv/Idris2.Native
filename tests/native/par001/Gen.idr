@@ -46,15 +46,15 @@ import Native.Types.StringEnc
 TestEnc : Types.Enc.Enc
 TestEnc = defaultEnc
 
-word : Nat -> Location TestEnc
+word : Nat -> Location TestEnc W64
 word n = Slot n W64
 
-double : Nat -> Location TestEnc
+double : Nat -> Location TestEnc F64
 double n = Slot n F64
 
 ||| A place's name in the model, which also tells the two classes'
 ||| registers apart.
-place : Location TestEnc -> String
+place : Location TestEnc t -> String
 place l@(Register _ t) = show l
 place (Slot n _) = "slot" ++ show n
 
@@ -63,7 +63,7 @@ place (Slot n _) = "slot" ++ show n
 Store : Type
 Store = List (String, String)
 
-holds : Store -> Location TestEnc -> String
+holds : Store -> Location TestEnc t -> String
 holds s l = fromMaybe (place l) (lookup (place l) s)
 
 ||| The moves run one at a time.
@@ -74,26 +74,30 @@ run (_ :: is) s = run is s
 
 ||| Whether the moves do what the parallel move means: each destination
 ||| holds what its source held, every other place of the move what it held.
-agrees : List (Location TestEnc, Location TestEnc) -> List (Instr TestEnc) -> Bool
-agrees ms is =
+agrees : List (Copy TestEnc) -> List (Instr TestEnc) -> Bool
+agrees cs is =
   let after = run is []
-      dests = map fst ms
-  in all (\(d, x) => holds after d == place x) ms
-     && all (\l => any (\d => place d == place l) dests || holds after l == place l) (map snd ms)
+      dests = map (\(MkCopy d _) => place d) cs
+  in all (\(MkCopy d x) => holds after d == place x) cs
+     && all (\(MkCopy _ x) => elem (place x) dests || holds after x == place x) cs
 
 shown : Instr TestEnc -> String
 shown (Move d x) = show d ++ " := " ++ show x
 shown _ = "?"
 
-cases : List (String, List (Location TestEnc, Location TestEnc))
+cases : List (String, List (Copy TestEnc))
 cases =
-  [ ("x to itself", [(word 0, word 0)])
-  , ("a chain", [(word 1, word 2), (word 2, word 3)])
-  , ("a swap", [(word 1, word 2), (word 2, word 1)])
-  , ("a cycle of three", [(word 1, word 2), (word 2, word 3), (word 3, word 1)])
-  , ("a cycle with a branch", [(word 1, word 2), (word 2, word 1), (word 3, word 1)])
-  , ("two swaps", [(word 1, word 2), (word 2, word 1), (word 3, word 4), (word 4, word 3)])
-  , ("a swap of doubles", [(double 1, double 2), (double 2, double 1)]) ]
+  [ ("x to itself", [MkCopy (word 0) (word 0)])
+  , ("a chain", [MkCopy (word 1) (word 2), MkCopy (word 2) (word 3)])
+  , ("a swap", [MkCopy (word 1) (word 2), MkCopy (word 2) (word 1)])
+  , ("a cycle of three",
+     [MkCopy (word 1) (word 2), MkCopy (word 2) (word 3), MkCopy (word 3) (word 1)])
+  , ("a cycle with a branch",
+     [MkCopy (word 1) (word 2), MkCopy (word 2) (word 1), MkCopy (word 3) (word 1)])
+  , ("two swaps",
+     [ MkCopy (word 1) (word 2), MkCopy (word 2) (word 1), MkCopy (word 3) (word 4)
+     , MkCopy (word 4) (word 3) ])
+  , ("a swap of doubles", [MkCopy (double 1) (double 2), MkCopy (double 2) (double 1)]) ]
 
 covering
 main : IO ()

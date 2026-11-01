@@ -76,15 +76,15 @@ TestEnc = defaultEnc
 nm : String -> Name
 nm s = NS (mkNamespace "Main") (UN (Basic s))
 
-val : Nat -> Location TestEnc
+val : Nat -> Location TestEnc Val
 val n = Slot n Val
 
 ||| A CPS function of one parameter, x in slot 0, of one block.
 fn : String -> List (Instr TestEnc) -> Terminator TestEnc -> Function TestEnc
-fn name is t = MkFunction (nm name) CPS [val 0] 0 [MkBlock 0 [] is t] EmptyFC
+fn name is t = MkFunction (nm name) CPS [At (val 0)] 0 [MkBlock 0 [] is t] EmptyFC
 
 ||| 42 made in `d` and returned from it.
-answer : String -> Location TestEnc -> Function TestEnc
+answer : String -> Location TestEnc Val -> Function TestEnc
 answer name d = fn name [Const d 42] (Return (R d))
 
 inRax, inSlot, inRcx : Function TestEnc

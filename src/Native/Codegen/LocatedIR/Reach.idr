@@ -14,6 +14,8 @@ import Native.Codegen.LocatedIR.Terminator
 import Core.Name
 import Data.SortedMap
 import Data.SortedSet
+import Native.Codegen.IRCommon.Pinned
+import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.Types.Enc as Types
 
 %default total
@@ -52,25 +54,29 @@ reach roots p =
         neutral f.blocks
       where
         ||| The names an operand refers to: a static's.
-        opnd : Opnd enc' -> Refs
+        opnd : {0 t : IRCommon.Ty enc'} -> Opnd enc' t -> Refs
         opnd (Opnd.StaticRef n) = MkRefs [] [n]
         opnd _ = neutral
 
-        opnds : List (Opnd enc') -> Refs
+        opnds : {0 t : IRCommon.Ty enc'} -> List (Opnd enc' t) -> Refs
         opnds = concatMap opnd
+
+        args : List (Opnd.Arg enc') -> Refs
+        args = concatMap (\(Opnd.MkArg o) => opnd o)
 
         ||| The names an instruction refers to.
         instr : Instr enc -> Refs
         instr (Instr.CodeOf _ f) = MkRefs [f] []
         instr (Instr.StaticAddr _ s) = MkRefs [] [s]
+        instr (Instr.Offset _ x y) = opnd x <+> opnd y
         instr (Instr.Arith _ _ x y) = opnds [x, y]
         instr (Instr.Mul128 _ _ x y) = opnds [x, y]
         instr (Instr.Div128 _ _ h l x) = opnds [h, l, x]
         instr (Instr.ArithOv _ _ x y _) = opnds [x, y]
         instr (Instr.Cmp _ _ x y) = opnds [x, y]
-        instr (Instr.AllocObj _ _ fields _) = opnds fields
+        instr (Instr.AllocObj _ _ fields _) = args fields
         instr (Instr.AllocSized _ _ _ fill _) = maybe neutral opnd fill
-        instr (Instr.DirectCall f xs _ _ _) = MkRefs [f] [] <+> opnds xs
+        instr (Instr.DirectCall f xs _ _ _) = MkRefs [f] [] <+> args xs
         instr (Instr.SetPinned _ x) = opnd x
         instr (Instr.SystemCall _ xs) = opnds xs
         instr _ = neutral
@@ -78,11 +84,11 @@ reach roots p =
         ||| The names a terminator refers to.
         terminator : Terminator enc -> Refs
         terminator (Terminator.Branch _ x y _ _) = opnds [x, y]
-        terminator (Terminator.Call f xs _) = MkRefs [f] [] <+> opnds xs
-        terminator (Terminator.TailCall f xs) = MkRefs [f] [] <+> opnds xs
+        terminator (Terminator.Call f xs _) = MkRefs [f] [] <+> args xs
+        terminator (Terminator.TailCall f xs) = MkRefs [f] [] <+> args xs
         terminator (Terminator.Return x) = opnd x
         terminator (Terminator.Enter _ xs) = opnds xs
-        terminator (Terminator.Ret xs) = opnds xs
+        terminator (Terminator.Ret xs) = args xs
         terminator _ = neutral
 
     ||| The names a static refers to: the code and the statics its fields hold.

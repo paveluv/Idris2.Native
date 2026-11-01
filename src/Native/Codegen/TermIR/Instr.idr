@@ -32,22 +32,6 @@ import Native.Width
 
 %default total
 
-||| What a conversion takes.
-public export
-convFrom : IRCommon.Op.ConvOp -> IRCommon.Ty enc
-convFrom IRCommon.Op.I2F = IRCommon.Ty.W64
-convFrom IRCommon.Op.F2I = IRCommon.Ty.F64
-convFrom IRCommon.Op.FBits = IRCommon.Ty.F64
-convFrom IRCommon.Op.BitsF = IRCommon.Ty.W64
-
-||| What a conversion makes.
-public export
-convTo : IRCommon.Op.ConvOp -> IRCommon.Ty enc
-convTo IRCommon.Op.I2F = IRCommon.Ty.F64
-convTo IRCommon.Op.F2I = IRCommon.Ty.W64
-convTo IRCommon.Op.FBits = IRCommon.Ty.W64
-convTo IRCommon.Op.BitsF = IRCommon.Ty.F64
-
 ||| An instruction of a function that may (`True`) or may not convert between
 ||| words and addresses, with the types of the results it binds.
 public export

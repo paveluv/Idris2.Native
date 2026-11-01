@@ -19,6 +19,7 @@ import Core.Name
 import Data.String
 import Native.Codegen.IRCommon.Conv as IRCommon
 import Native.Codegen.IRCommon.Op
+import Native.Codegen.IRCommon.Pinned
 import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.Data.Builder as Data
 import Native.Types.Enc as Types
@@ -37,7 +38,7 @@ functionPieces f =
           ++ " entry " ++ show f.entry ++ "\n")
   <+> concatMap blockPieces f.blocks
   where
-    regs : List (Location enc') -> String
+    regs : List (Location.Place enc') -> String
     regs rs = "[" ++ joinBy ", " (map show rs) ++ "]"
 
     -- A block's text, a line a piece.
@@ -48,8 +49,11 @@ functionPieces f =
       <+> concatMap (\i => Data.Builder.single ("    " ++ instr i ++ "\n")) b.body
       <+> Data.Builder.single ("    " ++ term b.term ++ "\n")
       where
-        ops : List (Opnd enc') -> String
+        ops : {0 t : IRCommon.Ty enc'} -> List (Opnd enc' t) -> String
         ops xs = joinBy ", " (map show xs)
+
+        args : List (Opnd.Arg enc') -> String
+        args xs = joinBy ", " (map show xs)
 
         rel : IRCommon.Op.Rel -> String
         rel IRCommon.Op.EqR = "=="
@@ -70,6 +74,7 @@ functionPieces f =
           Instr.CodeOf d f => show d ++ " := CodeOf " ++ show f
           Instr.StaticAddr d s => show d ++ " := StaticAddr " ++ show s
           Instr.AreaAddr d _ => show d ++ " := AreaAddr"
+          Instr.Offset d x y => show d ++ " := Offset " ++ show x ++ ", " ++ show y
           Instr.Arith o d x y => show d ++ " := " ++ show o ++ " " ++ ops [x, y]
           Instr.Mul128 h l x y => show h ++ ", " ++ show l ++ " := Mul128 " ++ ops [x, y]
           Instr.Div128 q r h l x => show q ++ ", " ++ show r ++ " := Div128 " ++ ops [h, l, x]
@@ -100,26 +105,27 @@ functionPieces f =
           Instr.WordToVal d x => show d ++ " := WordToVal " ++ show x
           Instr.LoadHeader d x => show d ++ " := LoadHeader " ++ show x
           Instr.LoadPart p d x => show d ++ " := LoadPart " ++ show p ++ " " ++ show x
-          Instr.AllocObj d h fs live => show d ++ " := AllocObj " ++ show h ++ " (" ++ ops fs
+          Instr.AllocObj d h fs live => show d ++ " := AllocObj " ++ show h ++ " (" ++ args fs
             ++ ") live " ++ regs live
           Instr.AllocSized d p n f live
                    => show d ++ " := AllocSized " ++ show p ++ "=" ++ show n
                         ++ maybe "" (\o => " fill " ++ show o) f ++ " live " ++ regs live
           Instr.DirectCall f xs ds m live =>
-                  assigned ds ++ "DirectCall " ++ show f ++ " (" ++ ops xs ++ ")"
+                  assigned ds ++ "DirectCall " ++ show f ++ " (" ++ args xs ++ ")"
                   ++ (if m then " mayCollect" else "") ++ " live " ++ regs live
-          i@(Instr.GetPinned _ d) => assigned [d] ++ Instr.instrName i ++ " ()"
+          i@(Instr.GetPinned _ d) => assigned [Location.At d] ++ Instr.instrName i ++ " ()"
           i@(Instr.SetPinned _ x) => Instr.instrName i ++ " (" ++ ops [x] ++ ")"
-          i@(Instr.SystemCall d xs) => assigned [d] ++ Instr.instrName i ++ " (" ++ ops xs ++ ")"
+          i@(Instr.SystemCall d xs) => assigned [Location.At d] ++ Instr.instrName i ++ " ("
+            ++ ops xs ++ ")"
           Instr.Move d s => show d ++ " := " ++ show s
-          Instr.Par ms =>
-            "(" ++ joinBy ", " (map (show . fst) ms) ++ ") := ("
-            ++ joinBy ", " (map (show . snd) ms) ++ ")"
+          Instr.Par cs =>
+            "(" ++ joinBy ", " (map (\(Instr.MkCopy d _) => show d) cs) ++ ") := ("
+            ++ joinBy ", " (map (\(Instr.MkCopy _ x) => show x) cs) ++ ")"
           Instr.Loc _ => "Loc"
           Instr.Comment s => "-- " ++ s
           where
             -- The registers an instruction defines, before its `:=`.
-            assigned : List (Location enc) -> String
+            assigned : List (Location.Place enc) -> String
             assigned [] = ""
             assigned ds = joinBy ", " (map show ds) ++ " := "
 
@@ -132,7 +138,8 @@ functionPieces f =
         term : Terminator enc -> String
         term terminator = case terminator of
           Terminator.Jump l => "Jump " ++ show l
-          Terminator.IfFixnums rs y n => "IfFixnums " ++ regs rs ++ " " ++ show y ++ " " ++ show n
+          Terminator.IfFixnums rs y n =>
+            "IfFixnums " ++ regs (map Location.At rs) ++ " " ++ show y ++ " " ++ show n
           Terminator.Branch r x y t f => "Branch " ++ show x ++ " " ++ rel r ++ " " ++ show y ++ " "
             ++ show t ++ " "
             ++ show f
@@ -140,13 +147,13 @@ functionPieces f =
                        "Switch " ++ show r ++ " ["
                          ++ joinBy ", " (map (\c => show (fst c) ++ " -> " ++ show (snd c)) cs)
                            ++ "] else " ++ show d
-          Terminator.Call f xs c => "Call " ++ show f ++ " (" ++ ops xs ++ ") " ++ cont c
-          Terminator.TailCall f xs => "TailCall " ++ show f ++ " (" ++ ops xs ++ ")"
+          Terminator.Call f xs c => "Call " ++ show f ++ " (" ++ args xs ++ ") " ++ cont c
+          Terminator.TailCall f xs => "TailCall " ++ show f ++ " (" ++ args xs ++ ")"
           Terminator.Apply f x c => "Apply " ++ show f ++ " " ++ show x ++ " " ++ cont c
           Terminator.TailApply f x => "TailApply " ++ show f ++ " " ++ show x
           Terminator.Return v => "Return " ++ show v
           Terminator.Enter c xs => "Enter " ++ show c ++ " (" ++ ops xs ++ ")"
-          Terminator.Ret vs => "Ret" ++ (if null vs then "" else " " ++ ops vs)
+          Terminator.Ret vs => "Ret" ++ (if null vs then "" else " " ++ args vs)
           Terminator.Crash s => "Crash " ++ show s
           Terminator.Unsupported s => "Unsupported " ++ show s
           where
