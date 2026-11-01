@@ -12,6 +12,7 @@ sourcedir = "src"
 -- Installed as a library too, for the tests that build terms and programs
 -- with the code generator's own modules.
 modules =
+    Native.AllocationMargin,
     Native.Area,
     Native.Carrier,
     Native.Codegen.CastWay,

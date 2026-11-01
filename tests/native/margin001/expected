@@ -1,0 +1,5 @@
+at start-up: committed
+after many allocations: committed
+after a primitive's allocation: committed
+cells: 50005000
+status: 0

@@ -11,6 +11,7 @@ import Native.Runtime.Memory
 import Native.Runtime.Ordo
 import Native.Runtime.OS
 import Native.Runtime.PortTy
+import Native.Runtime.Space
 import Native.Runtime.State
 
 import Native.Carrier
@@ -25,8 +26,8 @@ import Native.Routine
 %default total
 
 %cg native flat Runtime.Start.start
-||| `idris_start`: the two spaces reserved and the first window committed,
-||| of `window` bytes, as the allocation window; the stack limit, which
+||| `idris_start`: the two spaces reserved and the first allocation window
+||| opened, of `window` bytes (`Space.openWindow`); the stack limit, which
 ||| direct code, deepened by recursion in flat code, checks on entry: the
 ||| stack pointer at entry less the stack's limit, at most `stackCap`, plus
 ||| `stackMargin`, so that recursion too deep ends with a message before the
@@ -49,10 +50,7 @@ start entry window = do
   State.set "heapLimit" 0
   State.set "windowBytes" window
   State.set "collections" 0
-  firstEnd <- Memory.alignToPage (ByteAddr.offset fb window)
-  Memory.commitMemory fb (ByteAddr.distance firstEnd fb)
-  State.set "fromCommitted" firstEnd
-  Memory.setAllocation fb (ByteAddr.offset fb window)
+  Space.openWindow fb (ByteAddr.offset fb window)
   given <- OS.osStackLimit
   let soft = if given == 0 then defaultStack else given
   limit <- Memory.stackLimitArea

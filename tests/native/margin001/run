@@ -1,0 +1,9 @@
+. ../../testutils.sh
+
+# The allocation margin: the memory past the allocation limit is committed
+# by the margin the contract gives, at start-up, across collections, and
+# after a primitive's allocation, under an 8-byte window. It imports the
+# runtime as a package for its state.
+idris2 --cg native -p idris2-native-runtime -p idris2-native --directive nursery=8 -o margin Main.idr > /dev/null
+./build/exec/margin
+echo "status: $?"

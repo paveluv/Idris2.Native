@@ -29,6 +29,7 @@ import Native.Runtime.Ordo
 import Native.Runtime.PortTy
 import Native.Runtime.State
 
+import Native.AllocationMargin
 import Native.Area
 import Native.Carrier
 import Native.Field
@@ -160,7 +161,8 @@ Memory Ordo where
     State.set "liveBytes" (ByteAddr.distance tt tb)
     count <- State.get "collections"
     State.set "collections" (count + 1)
-    -- the program allocates after the copies
+    -- the program allocates after the copies, in the window `allocSlow`
+    -- opens next
     Memory.setAllocation tt tc
 
 ||| Whether a collection is due before `bytes` more: the from-space has grown
@@ -174,9 +176,19 @@ collectionDue bytes = do
   let threshold = if 2 * live > 4 * win then 2 * live else 4 * win
   Ordo.pure (ByteAddr.distance hp base + bytes > threshold)
 
-||| Room for `bytes` at the allocation pointer: the from-space committed to
-||| a window beyond them, under the limit; the window moved past them; the
-||| object's address.
+||| The allocation window from `hp` to the limit `lim`, the from-space
+||| committed through the limit and the allocation margin past it: the one
+||| way the limit is raised, so that whenever generated code runs, the
+||| margin past the limit is committed.
+export
+openWindow : (hp, lim : ByteAddr) -> Ordo.Op Ordo ()
+openWindow hp lim = do
+  commitSpace (State.word "fromCommitted") (State.word "fromEnd")
+    (ByteAddr.offset lim AllocationMargin.allocationMargin)
+  Memory.setAllocation hp lim
+
+||| Room for `bytes` at the allocation pointer, under the limit: a window
+||| opened past them; the object's address.
 grow : (bytes : Bits64) -> Ordo.Op Ordo ByteAddr
 grow bytes = do
   hp <- Memory.allocationPointer
@@ -187,8 +199,7 @@ grow bytes = do
   if limit /= 0 && ByteAddr.distance next base > Bits.shiftR limit 1
      then Ordo.crashOp "idris: heap limit exceeded"
      else do
-       commitSpace (State.word "fromCommitted") (State.word "fromEnd") (ByteAddr.offset next win)
-       Memory.setAllocation next (ByteAddr.offset next win)
+       openWindow next (ByteAddr.offset next win)
        Ordo.pure hp
 
 %cg native flat Runtime.Space.allocSlow
