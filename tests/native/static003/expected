@@ -90,8 +90,7 @@ lea rdi, [rip+L66]
 add rsp, 8
 ret
 listed calls nothing
-paired calls
-the flat form of Main.pair
+paired calls nothing
 Main.primes not computed by ordinary code
 Main.pair not computed by ordinary code
 == val-encoding=tag0

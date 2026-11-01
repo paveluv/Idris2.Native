@@ -261,7 +261,7 @@ Tables.huge not computed by the program
 Tables.small not computed by the program
 Tables.unit not computed by the program
 Squares.squares not computed by the program
-the flat form of Tables.flag
+no flat form of Tables.flag
 Tables.flag not computed by ordinary code
 # _flat.Main.cube
 L64:
@@ -386,7 +386,7 @@ mov rdi, 1
 add rsp, 8
 ret
 unitAt calls nothing
-# _flat.Tables.square
+# _flat.Main.squareAt
 L64:
 sub rsp, 40
 mov rax, qword ptr [rip+L17]
@@ -409,8 +409,8 @@ mov qword ptr [rbx+16], rcx
 mov rdi, qword ptr [rbx+16]
 add rsp, 40
 ret
-square calls nothing
-flagged calls
+squareAt calls nothing
+flagged calls nothing
 == val-encoding=tag0
 # _flat.Main.cube
 L64:

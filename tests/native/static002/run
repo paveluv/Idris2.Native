@@ -35,16 +35,17 @@ grep "^static .* BYTES BytesLengthP=64: " build/ir.txt
 
 # No cell for any of them either. Each constant the program evaluates
 # once, on its first use, has a cell in the image, which the collector
-# walks, so many as the runtime's `constantCount` gives; the same program
-# without its marks, made under build/, where the linter does not look,
-# has one more for each of the ten marked.
+# walks, so many as the bound of its walk (`forwardConstants`) gives, the
+# runtime's `constantCount` taken in place there; the same program without
+# its marks, made under build/, where the linter does not look, has one
+# more for each of the ten marked.
 mkdir -p build/copies
 grep -v "^%cg native static" Static.idr > build/copies/Unmarked.idr
 (cd build/copies && idris2 --cg native -p idris2-native-runtime -p idris2-native \
    --directive dump-ir=unmarked-ir.txt -o unmarked Unmarked.idr > /dev/null)
 cells () {
-  awk '$1 == "function" && $2 == "_flat.Native.Runtime.Space.constantCount" { on = 1 }
-       on && /Ret #/ { sub(/.*Ret #/, ""); print; exit }' "$1"
+  awk '/DirectCall _flat\.Native\.Runtime\.Collect\.\{forwardConstants:/ {
+         sub(/.*, #/, ""); sub(/\).*/, ""); print; exit }' "$1"
 }
 echo "$(( $(cells build/copies/unmarked-ir.txt) - $(cells build/ir.txt) )) cells fewer with the marks"
 
@@ -121,11 +122,16 @@ for c in cubes limit step ratio huge small unit; do computed Tables $c; done
 computed Squares squares
 
 # `flag`, a `Bool`, which flat code holds as its tag and ordinary code as
-# the fixnum of its constructor's number: the image has its flat form,
-# `_flat.Tables.flag`, which computes it, and `flagged` calls it; but no
+# the fixnum of its constructor's number: its flat form, which computes
+# it, is small enough that `flagged` takes it in place of the call
+# (`Native.Flat.Inline`), so the image has no `_flat.Tables.flag`; and no
 # ordinary function of its name, nor one that computes the value, since
 # ordinary code reads its value.
-if grep -q "^# _flat\.Tables\.flag\$" build/flat.s; then echo "the flat form of Tables.flag"; fi
+if grep -q "^# _flat\.Tables\.flag\$" build/flat.s; then
+  echo "the flat form of Tables.flag"
+else
+  echo "no flat form of Tables.flag"
+fi
 if grep -q -e "^# Tables\.flag\$" -e "value of Tables\.flag)" build/flat.s; then
   echo "Tables.flag computed by ordinary code"
 else
@@ -140,12 +146,13 @@ fi
 # 31, under tag0 as 30), then the return, the last block the runtime's
 # crash where no alternative matches; `pastLimit`, `stepped` and `scaled`
 # the word an immediate (`mov`: 42 itself, and 0.25 as its bits);
-# `unitAt` the erased value's word (`mov`: 1, under tag0 0); and the form
-# of `Tables.square`, which `squareAt` calls, the squares' address and one
-# load, as `cube`. None of them calls; `flagged`, which calls the form of
-# `flag`, does.
-for f in cube pick pastLimit stepped scaled unitAt; do listing build/flat.s _flat.Main.$f $f; done
-listing build/flat.s _flat.Tables.square square
+# `unitAt` the erased value's word (`mov`: 1, under tag0 0); and
+# `squareAt`, which takes the form of `Tables.square` in place, the
+# squares' address and one load, as `cube`. None of them calls, nor does
+# `flagged`, which takes the form of `flag` in place.
+for f in cube pick pastLimit stepped scaled unitAt squareAt; do
+  listing build/flat.s _flat.Main.$f $f
+done
 listing build/flat.s _flat.Main.flagged flagged | tail -n 1
 echo "== val-encoding=tag0"
 for f in cube pick unitAt; do listing build/flat-tag0.s _flat.Main.$f $f; done

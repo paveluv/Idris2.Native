@@ -27,6 +27,7 @@ import Native.Codegen.ELF
 import Native.Codegen.Evaluate
 import Native.Codegen.Link
 import Native.Codegen.Linkage.Areas as Linkage
+import Native.Codegen.Linkage.ConvertsIn
 import Native.Codegen.Linkage.ForeignFunctions
 import Native.Codegen.Linkage.OSService
 import Native.Codegen.Linkage.Realised as Linkage
@@ -84,6 +85,7 @@ import Libraries.Utils.Path
 import Native.Data.Builder as Data
 import Native.Data.WriteBuilder
 import Native.Flat.Exp
+import Native.Flat.Inline
 import Native.Flat.Marked as Flat
 import Native.Flat.Translate
 import Native.HeapObj.ValEnc
@@ -543,14 +545,22 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
         pipeline enc settings realised marked compiled flat bound defs = do
           -- the flat forms and the marks the program reaches, from its
           -- VMCode, the routines that are roots, and the implementations of
-          -- its foreign functions, with the shapes of the forms' data types
-          (reach, shapes) <- phase "flat inputs" $ do
+          -- its foreign functions, with the shapes of the forms' data types;
+          -- the small forms inlined first where flat code calls them, the
+          -- memory module's only into its own, the one module that may
+          -- convert between words and addresses
+          (forms, reach, shapes) <- phase "flat inputs" $ do
+            let forms = Flat.Inline.inlineSmall
+                          (\caller, callee =>
+                            Linkage.ConvertsIn.convertsIn caller
+                            || not (Linkage.ConvertsIn.convertsIn callee))
+                          marked.forms
             reach <- later
-              (ProgramReach.programReach marked.forms realised.services (map fst defs)
+              (ProgramReach.programReach forms realised.services (map fst defs)
                  (routineRoots (Lower.calledRoutines realised defs)) (map snd flat)
                  marked.staticConstants)
             shapes <- formShapes reach.forms
-            pure (reach, shapes)
+            pure (forms, reach, shapes)
           (staticReads, staticObjects) <- phase "the static constants evaluated"
             (checkStaticConstants enc.bignum (realisedMeanings enc realised) compiled
               marked.flatFunctions reach.marks marked.staticConstants)
@@ -563,7 +573,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
           -- every routine the runtime has, of its port's registers, whichever
           -- of them the program calls: the lowering takes the evidence
           checked <- either (\err => throw (GenericMsg EmptyFC ("native: " ++ err))) pure
-                       (Lower.checkRoutines enc realised (\n => lookup n marked.forms))
+                       (Lower.checkRoutines enc realised (\n => lookup n forms))
           Right (_ ** term) <- phase "lowering"
             (later
               (Lower.lowerProgram enc settings.platform realised checked reach.forms shapes

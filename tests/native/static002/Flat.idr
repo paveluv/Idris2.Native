@@ -10,7 +10,8 @@
 -- type is one flat code holds as ordinary code holds it, in one uniform
 -- register (a `Bytes`, a `Uniform a`), or a machine scalar (a `Bits64`, an
 -- `Int`, a `Double`). One of another type, such as a `Bool`, flat code
--- reads by calling its flat form, which computes it.
+-- reads through its flat form, which computes it, taken in place of the
+-- call where it is small (`Native.Flat.Inline`).
 --
 -- Each but the erased value is compared with the same value made as the
 -- program runs. Every code generator prints the same, so the expected
@@ -68,17 +69,17 @@ unitAt _ = unit
 
 -- Word `i` of the squares, a constant marked static in a module this one
 -- does not import, `Squares`, reached through the ordinary function
--- `Tables.square`: flat code calls the flat form of `square`, a function
--- it calls, and that form reads the squares as `cube` reads the cubes, as
--- if written
+-- `Tables.square`: flat code takes the flat form of `square`, a function
+-- it calls, in place of the call, small as it is, and that form reads the
+-- squares as `cube` reads the cubes, as if written
 --
---   square i = load (<squares' object> + 8 + 8 * i)
+--   squareAt i = load (<squares' object> + 8 + 8 * i)
 squareAt : Int -> Bits64
 squareAt i = square i
 
 -- `x + 1` if the flag is set: as if written
 --
---   flagged x = if <a call of flag's flat form> then x + 1 else x
+--   flagged x = if <flag's flat form, in place> then x + 1 else x
 flagged : Int -> Int
 flagged x = if flag then x + 1 else x
 

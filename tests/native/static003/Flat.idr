@@ -8,10 +8,11 @@
 --   listed _ = MkUniform <the address of the cell 2 :: ...>
 --
 -- Flat code holds a pair of `Int`s in two registers, not as the object
--- ordinary code reads, so `paired` reads `pair` by calling the constant's
--- flat form, which computes it, as if written
+-- ordinary code reads, so `paired` reads `pair` through the constant's
+-- flat form, which computes it, and which is small enough that flat code
+-- takes it in place of the call (`Native.Flat.Inline`), as if written
 --
---   paired x = let (a, b) = <a call of pair's flat form> in a + b + x
+--   paired x = let (a, b) = (6 * 7, 5) in a + b + x
 --
 -- and ordinary code reads `pair` as its value, the object in the image.
 -- Each is compared with the same value made as the program runs. Every

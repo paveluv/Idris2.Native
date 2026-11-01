@@ -189,9 +189,9 @@ idris2 --cg native -p idris2-native-runtime -p idris2-native --directive val-enc
 
 # The flat readers, after the entry every flat function has: `listed` the
 # address of the first cell (`lea`), under tag0 with its pointer tag,
-# then the return, calling nothing; `paired` calls the flat form of
-# `pair`, `_flat.Main.pair`, which the image has. No ordinary function
-# computes either constant.
+# then the return, calling nothing; `paired` takes the flat form of
+# `pair` in place, so it calls nothing either, and the image has no
+# `_flat.Main.pair`. No ordinary function computes either constant.
 listing build/flat.s _flat.Main.listed listed
 listing build/flat.s _flat.Main.paired paired | tail -n 1
 if grep -q "^# _flat\.Main\.pair\$" build/flat.s; then echo "the flat form of Main.pair"; fi

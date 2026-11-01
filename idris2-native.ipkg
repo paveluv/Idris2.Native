@@ -108,6 +108,7 @@ modules =
     Native.Flat.ConstType,
     Native.Flat.Definition,
     Native.Flat.Exp,
+    Native.Flat.Inline,
     Native.Flat.Judgement,
     Native.Flat.Marked,
     Native.Flat.Oracle,

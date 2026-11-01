@@ -15,9 +15,12 @@ module Main
 
 import System
 
+-- `step` calls itself, a loop for a large `y`, so it is no small form,
+-- which flat code would take in place of the call (`Native.Flat.Inline`),
+-- and `mix`'s calls stay calls
 %cg native flat Main.step
 step : Bits64 -> Bits64 -> Bits64
-step x y = x * 31 + y
+step x y = if y >= 1000 then step x (y - 1000) else x * 31 + y
 
 %cg native flat Main.mix
 mix : Bits64 -> Bits64 -> Bits64 -> Bits64 -> Bits64

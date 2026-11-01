@@ -1,0 +1,175 @@
+10
+# _flat.Main.inRange
+L64:
+sub rsp, 216
+mov rax, qword ptr [rip+L17]
+cmp rsp, rax
+jb L18
+mov rbx, rsp
+mov qword ptr [rbx], rdi
+mov qword ptr [rbx+8], rsi
+mov qword ptr [rbx+16], rdx
+mov qword ptr [rbx+24], rcx
+mov qword ptr [rbx+32], r8
+jmp L65
+L65:
+mov rax, qword ptr [rbx]
+mov qword ptr [rbx+40], rax
+mov rax, qword ptr [rbx+8]
+mov qword ptr [rbx+48], rax
+mov rax, qword ptr [rbx+16]
+mov qword ptr [rbx+56], rax
+mov rax, qword ptr [rbx+24]
+mov qword ptr [rbx+64], rax
+mov rax, qword ptr [rbx+32]
+mov qword ptr [rbx+72], rax
+jmp L66
+L66:
+xor rdx, rdx
+mov rax, qword ptr [rbx+40]
+mov rcx, qword ptr [rbx+48]
+cmp rax, rcx
+setge dl
+mov qword ptr [rbx+80], rdx
+mov rax, qword ptr [rbx+80]
+test rax, rax
+je L67
+jmp L68
+L69:
+mov rax, qword ptr [rbx+88]
+cmp rax, 1
+je L70
+test rax, rax
+je L71
+jmp L72
+L67:
+mov rax, 0
+mov qword ptr [rbx+88], rax
+jmp L69
+L68:
+mov rax, 1
+mov qword ptr [rbx+88], rax
+jmp L69
+L70:
+mov rdi, qword ptr [rbx+72]
+add rsp, 216
+ret
+L71:
+mov rax, qword ptr [rbx+40]
+mov rcx, 1
+add rax, rcx
+mov qword ptr [rbx+96], rax
+xor rdx, rdx
+mov rax, qword ptr [rbx+40]
+mov rcx, qword ptr [rbx+56]
+cmp rax, rcx
+setge dl
+mov qword ptr [rbx+104], rdx
+mov rax, qword ptr [rbx+104]
+test rax, rax
+je L73
+jmp L74
+L75:
+mov rax, qword ptr [rbx+112]
+cmp rax, 1
+je L76
+test rax, rax
+je L77
+jmp L78
+L73:
+mov rax, 0
+mov qword ptr [rbx+112], rax
+jmp L75
+L74:
+mov rax, 1
+mov qword ptr [rbx+112], rax
+jmp L75
+L79:
+mov rax, qword ptr [rbx+120]
+cmp rax, 1
+je L80
+test rax, rax
+je L81
+jmp L82
+L76:
+xor rdx, rdx
+mov rax, qword ptr [rbx+40]
+mov rcx, qword ptr [rbx+64]
+cmp rax, rcx
+setle dl
+mov qword ptr [rbx+128], rdx
+mov rax, qword ptr [rbx+128]
+test rax, rax
+je L83
+jmp L84
+L85:
+mov rax, qword ptr [rbx+136]
+mov qword ptr [rbx+120], rax
+jmp L79
+L83:
+mov rax, 0
+mov qword ptr [rbx+136], rax
+jmp L85
+L84:
+mov rax, 1
+mov qword ptr [rbx+136], rax
+jmp L85
+L77:
+mov rax, 0
+mov qword ptr [rbx+120], rax
+jmp L79
+L78:
+lea rdi, [rip+L86]
+mov rsi, 28
+jmp L3
+L87:
+mov rax, qword ptr [rbx+96]
+mov qword ptr [rbx+176], rax
+mov rax, qword ptr [rbx+48]
+mov qword ptr [rbx+184], rax
+mov rax, qword ptr [rbx+56]
+mov qword ptr [rbx+192], rax
+mov rax, qword ptr [rbx+64]
+mov qword ptr [rbx+200], rax
+mov rax, qword ptr [rbx+144]
+mov qword ptr [rbx+208], rax
+mov rax, qword ptr [rbx+176]
+mov qword ptr [rbx+40], rax
+mov rax, qword ptr [rbx+184]
+mov qword ptr [rbx+48], rax
+mov rax, qword ptr [rbx+192]
+mov qword ptr [rbx+56], rax
+mov rax, qword ptr [rbx+200]
+mov qword ptr [rbx+64], rax
+mov rax, qword ptr [rbx+208]
+mov qword ptr [rbx+72], rax
+jmp L66
+L80:
+mov rax, qword ptr [rbx+72]
+mov rcx, 1
+add rax, rcx
+mov qword ptr [rbx+152], rax
+mov rax, qword ptr [rbx+152]
+mov qword ptr [rbx+160], rax
+jmp L88
+L88:
+mov rax, qword ptr [rbx+160]
+mov qword ptr [rbx+144], rax
+jmp L87
+L81:
+mov rax, qword ptr [rbx+72]
+mov qword ptr [rbx+168], rax
+jmp L89
+L89:
+mov rax, qword ptr [rbx+168]
+mov qword ptr [rbx+144], rax
+jmp L87
+L82:
+lea rdi, [rip+L90]
+mov rsi, 28
+jmp L3
+L72:
+lea rdi, [rip+L91]
+mov rsi, 28
+jmp L3
+inRange calls nothing

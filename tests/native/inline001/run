@@ -1,0 +1,21 @@
+. ../../testutils.sh
+
+# A flat loop with a range test and pair projections: the comparisons and
+# the projections are the bodies of small flat forms taken in place, so the
+# loop's machine code calls nothing. Program labels (64 and up) are
+# renumbered in order of appearance; the seed's are fixed and kept.
+idris2 --cg native --directive dump-asm=build/inline.s Inline.idr -o inline > /dev/null
+./build/exec/inline
+awk '/^# / { on = ($0 == "# _flat.Main.inRange") }
+     on {
+       out = ""
+       while (match($0, /L[0-9]+/)) {
+         l = substr($0, RSTART, RLENGTH)
+         if (substr(l, 2) + 0 >= 64 && !(l in name)) name[l] = "L" (64 + n++)
+         out = out substr($0, 1, RSTART - 1) (l in name ? name[l] : l)
+         $0 = substr($0, RSTART + RLENGTH)
+       }
+       print out $0
+     }' build/inline.s > build/listing.s
+cat build/listing.s
+if grep -q "call" build/listing.s; then echo "inRange calls"; else echo "inRange calls nothing"; fi
