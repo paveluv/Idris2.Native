@@ -80,6 +80,15 @@ record Summary (enc : Types.Enc) where
   sides : List (LocatedIR.Label, Slots)
   ||| Each instruction, with what it reads and what it writes.
   steps : List (LocatedIR.Instr enc, Slots, Slots)
+  ||| What the block reads after each instruction before it writes it, the
+  ||| terminator included: all that is read after the instruction when the
+  ||| block jumps and branches nowhere.
+  afters : List Slots
+  ||| The slots the live lists name before the block writes them.
+  listed : Slots
+  ||| The slots the block names under a GC-visible type, and under a raw one.
+  gcNamed : Slots
+  rawNamed : Slots
 
 ||| One function's blocks by label, with each block's predecessors, summary,
 ||| and an order to compute in.
@@ -105,9 +114,20 @@ check p = traverse_ checkFunction p.functions
     covering
     checkFunction : LocatedIR.Function enc -> Either String ()
     checkFunction f = do
-      gcs <- gcVisibleSlots f
       let sh = shape f
-          live = liveIn sh
+          sums = map snd (values sh.blocks)
+          gcs = foldl (\s, sm => s .|. sm.gcNamed)
+                  (slots (filter (IRCommon.Ty.gcVisible . LocatedIR.Reg.ty) f.params)) sums
+          raws = foldl (\s, sm => s .|. sm.rawNamed)
+                   (slots (filter (not . IRCommon.Ty.gcVisible . LocatedIR.Reg.ty) f.params)) sums
+          both = gcs .&. raws
+      when (both /= 0) $ do
+        let n = lowest both
+            names : (LocatedIR.Label, (LocatedIR.Block enc, Summary enc)) -> Bool
+            names (_, (_, sm)) = testBit (sm.gcNamed .|. sm.rawNamed) n
+        reject f (fromMaybe f.entry (map fst (find names (SortedMap.toList sh.blocks))))
+          ("slot " ++ show n ++ " holds a value the collector sees and a raw word")
+      let live = liveIn sh
           defined = definedIn f sh
       traverse_
         (\(l, bsm) => maybe (Right ()) (\d => checkBlock f sh gcs live d bsm) (lookup l defined))
@@ -234,17 +254,46 @@ check p = traverse_ checkFunction p.functions
             summary : LocatedIR.Block enc -> Summary enc
             summary b =
               let steps = map (\i => (i, slots (uses i), slots (defs i))) b.body
-                  (r, w) = foldr (\(_, u, d), (r', w') => (minus r' d .|. u, w' .|. d))
-                                 (slots (termUses b.term), 0) steps
-              in MkSummary (minus r (slots b.params)) (w .|. slots b.params) (overflowsFrom 0 steps)
-                steps
+                  (r, w, as) =
+                    foldr (\(_, u, d), (r', w', as') => (minus r' d .|. u, w' .|. d, r' :: as'))
+                                     (slots (termUses b.term), 0, []) steps
+                  (sds, ls) = forward 0 steps
+                  named =
+                    foldl (\acc,
+                           i => foldl kind acc (defs i ++ uses i ++ fromMaybe [] (listedIn i)))
+                            (foldl kind (0, 0) (b.params ++ termUses b.term)) b.body
+              in MkSummary (minus r (slots b.params)) (w .|. slots b.params) sds steps as ls
+                   (fst named) (snd named)
               where
-                overflowsFrom : Slots -> List (LocatedIR.Instr enc, Slots, Slots) ->
-                                List (LocatedIR.Label, Slots)
-                overflowsFrom _ [] = []
-                overflowsFrom w ((i, _, d) :: is) =
-                  let rest = overflowsFrom (w .|. d) is
-                  in maybe rest (\l => (l, w) :: rest) (side i)
+                -- the registers a `live` list names, whether or not a
+                -- collection can start there
+                listedIn : LocatedIR.Instr enc -> Maybe (List (LocatedIR.Reg enc))
+                listedIn i = case i of
+                  LocatedIR.Instr.AllocObj _ _ _ live => Just live
+                  LocatedIR.Instr.AllocSized _ _ _ _ live => Just live
+                  LocatedIR.Instr.DirectCall _ _ _ _ live => Just live
+                  _ => Nothing
+
+                -- the `live` list of an instruction where a collection can start
+                collectingHere : LocatedIR.Instr enc -> Maybe (List (LocatedIR.Reg enc))
+                collectingHere (LocatedIR.Instr.DirectCall _ _ _ False _) = Nothing
+                collectingHere i = listedIn i
+
+                -- the overflows, each with what the block has written by then,
+                -- and what the live lists name before the block writes it
+                forward : Slots -> List (LocatedIR.Instr enc, Slots, Slots) ->
+                          (List (LocatedIR.Label, Slots), Slots)
+                forward _ [] = ([], 0)
+                forward w ((i, _, d) :: is) =
+                  let (rest, ls) = forward (w .|. d) is
+                  in (maybe rest (\l => (l, w) :: rest) (side i),
+                      maybe ls (\l => ls .|. minus (slots l) w) (collectingHere i))
+
+                kind : (Slots, Slots) -> LocatedIR.Reg enc -> (Slots, Slots)
+                kind (gc, raw) r =
+                  if IRCommon.Ty.gcVisible (LocatedIR.Reg.ty r)
+                    then (gc .|. bit (LocatedIR.Reg.slot r), raw)
+                  else (gc, raw .|. bit (LocatedIR.Reg.slot r))
 
                 ||| What an instruction writes.
                 defs : LocatedIR.Instr enc -> List (LocatedIR.Reg enc)
@@ -275,33 +324,6 @@ check p = traverse_ checkFunction p.functions
         reject : LocatedIR.Function enc -> LocatedIR.Label -> String -> Either String a
         reject f l why =
           Left ("allocation check: " ++ show f.name ++ ", block " ++ show l ++ ": " ++ why)
-
-        ||| The slots that hold values the collector must see, from every register
-        ||| the function names: a rejection if a slot holds one under one name and
-        ||| a raw word under another. A `Val` and a pointer are the same word, so a
-        ||| slot may hold both.
-        gcVisibleSlots : LocatedIR.Function enc -> Either String Slots
-        gcVisibleSlots f =
-          let (gc, raw) =
-                foldl (\acc, b => foldl one acc (names b)) (foldl one (0, 0) f.params) f.blocks
-              both = gc .&. raw
-          in if both == 0 then Right gc
-             else
-               let n = lowest both
-                   l = fromMaybe f.entry
-                         (head' [ b.label | b <- f.blocks,
-                                 any (\r => LocatedIR.Reg.slot r == n) (names b) ])
-               in reject f l
-                 ("slot " ++ show n ++ " holds a value the collector sees and a raw word")
-          where
-            names : LocatedIR.Block enc -> List (LocatedIR.Reg enc)
-            names b = b.params ++ concatMap LocatedIR.Instr.instrRegs b.body ++ termUses b.term
-
-            one : (Slots, Slots) -> LocatedIR.Reg enc -> (Slots, Slots)
-            one (gc, raw) r =
-              if IRCommon.Ty.gcVisible (LocatedIR.Reg.ty r)
-                then (gc .|. bit (LocatedIR.Reg.slot r), raw)
-              else (gc, raw .|. bit (LocatedIR.Reg.slot r))
 
         ||| What each block reads before writing it, from the block on: a may
         ||| analysis, over the blocks in postorder, again while anything changes
@@ -385,12 +407,15 @@ check p = traverse_ checkFunction p.functions
         checkBlock f sh gcs live inn (b, sm) = do
           let at = \l => fromMaybe 0 (lookup l live)
               out = foldl (\s, l => s .|. at l) 0 (succs b.term)
-              afters = if any (\(i, _, _) => isJust (collecting i)) sm.steps
-                          then snd (lives at sm.steps (out .|. slots (termUses b.term)))
-                          else map (const 0) sm.steps
-          d <- foldlM instr inn (zip sm.steps afters)
-          traverse_ (defined d "the terminator reads") (termUses b.term)
-          whenJust (continuation b.term) (resumed d)
+              afters = if not (any (\(i, _, _) => isJust (collecting i)) sm.steps)
+                          then map (const 0) sm.steps
+                          else if out == 0 && null sm.sides then sm.afters
+                          else snd (lives at sm.steps (out .|. slots (termUses b.term)))
+          when (minus (sm.reads .|. sm.listed) inn /= 0) $ do
+            d <- foldlM definedAt inn sm.steps
+            traverse_ (defined d "the terminator reads") (termUses b.term)
+          traverse_ instr (zip sm.steps afters)
+          whenJust (continuation b.term) resumed
           where
             -- what is live before the instructions, and after each of them
             lives : (LocatedIR.Label -> Slots) -> List (LocatedIR.Instr enc, Slots, Slots) ->
@@ -417,22 +442,27 @@ check p = traverse_ checkFunction p.functions
               LocatedIR.Instr.DirectCall _ _ _ True live => Just live
               _ => Nothing
 
-            instr : Slots -> ((LocatedIR.Instr enc, Slots, Slots), Slots) -> Either String Slots
-            instr d ((i, u, w), after) = do
+            -- what is defined after the instruction, from what is before:
+            -- a rejection for what it reads or lists before it is written
+            definedAt : Slots -> (LocatedIR.Instr enc, Slots, Slots) -> Either String Slots
+            definedAt d (i, u, w) = do
               when (minus u d /= 0) $ traverse_ (defined d "an instruction reads") (uses i)
+              whenJust (collecting i) $ \listed =>
+                when (minus (slots listed) d /= 0) $
+                  traverse_ (defined d "a live list names") listed
+              Right (d .|. w)
+
+            instr : ((LocatedIR.Instr enc, Slots, Slots), Slots) -> Either String ()
+            instr ((i, u, w), after) =
               whenJust (collecting i) $ \listed => do
-                let ls = slots listed
-                when (minus ls d /= 0) $ traverse_ (defined d "a live list names") listed
                 let kept = minus after w .|. u
-                    missing = minus (kept .&. gcs) ls
+                    missing = minus (kept .&. gcs) (slots listed)
                 if missing == 0 then Right ()
                    else reject f b.label ("slot " ++ show (lowest missing)
                           ++ " is GC-visible and live where a collection can start, but not listed")
-              Right (d .|. w)
 
-            resumed : Slots -> LocatedIR.Cont enc -> Either String ()
-            resumed d c = do
-              traverse_ (defined d "a continuation keeps") c.live
+            resumed : LocatedIR.Cont enc -> Either String ()
+            resumed c = do
               case lookup c.resume sh.blocks of
                 Nothing =>
                   reject f b.label ("resumes at block " ++ show c.resume ++ ", which is not there")
