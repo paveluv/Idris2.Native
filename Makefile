@@ -27,6 +27,9 @@
 #                   `sizes="64 128"` chooses the sizes
 #   make selfhost   idris2-native compiled by itself, what it could not
 #                   lower, and how far the result gets (tests/selfhost)
+#   make fixpoint   after selfhost, that idris2-native building itself
+#                   natively, timed: its image must be the one it was
+#                   built with (hours; build nothing meanwhile)
 #
 # The submodule is never edited: building it writes only files that it
 # ignores.
@@ -41,7 +44,7 @@ threads ?= $(shell nproc 2>/dev/null || echo 1)
 # after uses the pinned Idris 2's, in the prefix.
 WITH_PREFIX := IDRIS2_PREFIX=$(PREFIX)
 
-.PHONY: all upstream native release linter testbin test lint gate health check-source scaling selfhost clean
+.PHONY: all upstream native release linter testbin test lint gate health check-source scaling selfhost fixpoint clean
 
 all: native
 
@@ -136,6 +139,18 @@ scaling: native
 # (tests/selfhost/selfhost.sh). On demand, not part of the gate.
 selfhost: native
 	$(WITH_PREFIX) sh tests/selfhost/selfhost.sh $(TARGET) $(CURDIR)/build/selfhost
+
+# The self-hosting fixed point: `make selfhost`'s natively compiled
+# idris2-native builds idris2-native natively, from no TTCs, into
+# build/fixpoint, timed, and its image must be byte for byte the one it was
+# built with (tests/selfhost/fixpoint.sh). It reads the sources and the
+# prefix as it goes, so nothing is built meanwhile. On demand: not part of
+# the gate, and not meant to be, since it takes hours where the gate takes a
+# minute; that may change as the native compiler nears the speed of the
+# Chez-built one.
+fixpoint: selfhost
+	$(WITH_PREFIX) sh tests/selfhost/fixpoint.sh $(CURDIR)/build/selfhost/exec/idris2-native \
+	  $(CURDIR)/build/fixpoint
 
 clean:
 	$(RM) -r build runtime/build tools/lint/build tests/build tests/failures
