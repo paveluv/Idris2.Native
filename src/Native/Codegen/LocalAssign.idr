@@ -6,7 +6,9 @@
 ||| writes them. Today every value is in a slot of its own, so every value
 ||| an instruction reads is moved in and every value it makes moved out; a
 ||| register allocator keeps values in registers instead, and moves only
-||| where a row and a value's place disagree.
+||| where a row and a value's place disagree. A parallel move, a jump's,
+||| becomes moves first (`Native.Codegen.Sequentialise`), which the rows
+||| then place as any other.
 module Native.Codegen.LocalAssign
 
 import Native.Codegen.IRCommon.Ty as IRCommon
@@ -17,6 +19,7 @@ import Native.Codegen.LocatedIR.Location as LocatedIR
 import Native.Codegen.LocatedIR.Program as LocatedIR
 import Native.Codegen.LocatedIR.Terminator as LocatedIR
 import Native.Codegen.Row
+import Native.Codegen.Sequentialise
 
 import Data.List
 import Data.Maybe
@@ -30,12 +33,7 @@ import Native.Types.Enc as Types
 -- value of the register's class
 wanted : Row.Want -> LocatedIR.Location enc -> Maybe (LocatedIR.Location enc)
 wanted (Row.InRegister c k) (LocatedIR.Location.Slot _ t) =
-  if same (IRCommon.Ty.class t) c then Just (LocatedIR.Location.Register k t) else Nothing
-  where
-    same : Rep.RegClass -> Rep.RegClass -> Bool
-    same Rep.WordClass Rep.WordClass = True
-    same Rep.FloatClass Rep.FloatClass = True
-    same _ _ = False
+  if IRCommon.Ty.class t == c then Just (LocatedIR.Location.Register k t) else Nothing
 wanted _ _ = Nothing
 
 -- each location with its want, the wants run out wanting anywhere
@@ -56,21 +54,29 @@ assigned r i =
   in before ++ i' :: after
 
 ||| The block with its instructions' and its terminator's operands and
-||| results where the rows want them.
+||| results where the rows want them, its parallel moves made moves
+||| through the registers of `temp`.
 block : (row : LocatedIR.Instr enc -> Row) -> (termRow : LocatedIR.Terminator enc -> Row) ->
-        LocatedIR.Block enc -> LocatedIR.Block enc
-block row termRow b =
+        (temp : Rep.RegClass -> Nat) -> LocatedIR.Block enc -> LocatedIR.Block enc
+block row termRow temp b =
   let r = termRow b.term
       ins =
         map (\(w, l) => (l, wanted w l))
           (paired r.operands (LocatedIR.Terminator.termOperands b.term))
       before = mapMaybe (\(l, m) => map (\g => LocatedIR.Instr.Move g l) m) ins
       term = LocatedIR.Terminator.withTermOperands (map (\(l, m) => fromMaybe l m) ins) b.term
-  in { body := concatMap (\i => assigned (row i) i) b.body ++ before, term := term } b
+  in { body := concatMap instr b.body ++ before, term := term } b
+  where
+    instr : LocatedIR.Instr enc -> List (LocatedIR.Instr enc)
+    instr (LocatedIR.Instr.Par ms) =
+      concatMap (\m => assigned (row m) m) (Sequentialise.sequential temp ms)
+    instr i = assigned (row i) i
 
 ||| Every instruction and terminator of the program with its operands and
-||| results where `row` and `termRow` want them.
+||| results where `row` and `termRow` want them, a parallel move's cycle
+||| broken through the register of `temp`.
 export
 localAssign : (row : LocatedIR.Instr enc -> Row) -> (termRow : LocatedIR.Terminator enc -> Row) ->
-              LocatedIR.Program enc -> LocatedIR.Program enc
-localAssign row termRow p = { functions $= map (\f => { blocks $= map (block row termRow) } f) } p
+              (temp : Rep.RegClass -> Nat) -> LocatedIR.Program enc -> LocatedIR.Program enc
+localAssign row termRow temp p =
+  { functions $= map (\f => { blocks $= map (block row termRow temp) } f) } p

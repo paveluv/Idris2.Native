@@ -197,6 +197,9 @@ convs = %runElab enumerate `{Conv}
 lowerings : List (String, Lowering)
 lowerings = %runElab enumerate `{Lowering}
 
+regClasses : List (String, RegClass)
+regClasses = %runElab enumerate `{RegClass}
+
 encodings : List (String, ValEnc)
 encodings = %runElab enumerate `{ValEnc}
 
@@ -268,8 +271,8 @@ platforms = [ (show a ++ "-" ++ show o, MkPlatform a o) | (_, a) <- arches, (_, 
 ||| backend's source.
 gatedEq : List String
 gatedEq =
-  [ "Arch", "Conv", "IntegerRoutine", "Kind", "Lowering", "OS", "Platform", "Reg64", "Rep",
-    "Skeleton"
+  [ "Arch", "Conv", "IntegerRoutine", "Kind", "Lowering", "OS", "Platform", "Reg64", "RegClass",
+    "Rep", "Skeleton"
   , "StringRoutine", "Ty", "ValEnc" ]
 
 ||| The types whose hand-written `Eq` the gate does not check, each with why.
@@ -292,6 +295,7 @@ failures = concat
   , inverseFailures "parsePlatform" show parsePlatform platforms
   , eqFailures "Kind" kinds, eqFailures "Ty" tys
   , eqFailures "Conv" convs, eqFailures "Lowering" lowerings, eqFailures "Reg64" regs
+  , nonEmpty "RegClass" regClasses, eqFailures "RegClass" regClasses
   , eqFailures "ValEnc" encodings, showFailures "ValEnc" encodings
   , eqFailures "StringRoutine" stringRoutines, eqFailures "IntegerRoutine" integerRoutines
   , eqFailures "Rep" reps, eqFailures "Skeleton" skeletons

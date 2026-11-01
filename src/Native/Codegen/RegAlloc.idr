@@ -8,10 +8,9 @@
 ||| scope, and a slot holds values of one type, or the two raw types a
 ||| retyping joins, neither of which the collector sees. No value is in a
 ||| register. A join point becomes a block, and its parameters
-||| registers that each jump assigns: each argument into its parameter, or,
-||| when an argument reads one of the parameters, every argument first into
-||| a fresh register, then into the parameters, so that none is overwritten
-||| before it is read. A call's continuation becomes a resume block. An
+||| locations that each jump assigns at once, by a parallel move
+||| (`LocatedIR.Instr.Par`), which reads every argument before it writes a
+||| parameter. A call's continuation becomes a resume block. An
 ||| immediate where the IR wants a register is materialised just before its
 ||| use.
 |||
@@ -324,44 +323,32 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
       code <- jump env info xs
       pure (mergeLeft info.free (usesAll env xs), code)
       where
-        ||| A jump to a block: the arguments into its parameters. When an argument
-        ||| reads one of those parameters, every argument goes into a fresh
-        ||| register first, so that none is overwritten before it is read.
+        ||| A jump to a block: the arguments into its parameters, at once. Those
+        ||| in locations by one parallel move, which reads every argument
+        ||| before it writes a parameter, an argument that is a parameter
+        ||| included; then the constants and statics, which read nothing.
         jump : Data.RAList (HV enc) ctx -> LabelInfo enc -> All (TermIR.Opnd (TermIR.Var ctx)) ps ->
                M enc (Code enc)
         jump env info xs =
-          if any (\r => isJust (lookup (number r) (usesAll env xs))) info.params
-             then do
-               (loads, temps) <- moves info.params xs
-               pure (Data.Builder.piece (loads ++ zipWith LocatedIR.Instr.Move info.params temps),
-                     LocatedIR.Terminator.Jump info.label)
-             else pure
-               (Data.Builder.piece (direct info.params xs), LocatedIR.Terminator.Jump info.label)
+          let (ms, rest) = args info.params xs
+          in pure (Data.Builder.piece ((if null ms then [] else [LocatedIR.Instr.Par ms]) ++ rest),
+                   LocatedIR.Terminator.Jump info.label)
           where
-            ||| An operand into a given register.
-            moveInto : Data.RAList (HV enc) ctx -> LocatedIR.Location enc ->
-                       TermIR.Opnd (TermIR.Var ctx) t ->
-                       LocatedIR.Instr enc
-            moveInto env d (TermIR.Opnd.V x) = case TermIR.Var.fetch x env of
-              InReg r => LocatedIR.Instr.Move d r
-              OfStatic s => LocatedIR.Instr.StaticAddr d s
-            moveInto env d (TermIR.Opnd.W i) = LocatedIR.Instr.Const d i
-            moveInto env d (TermIR.Opnd.Fx i) = LocatedIR.Instr.Const d i
-            moveInto env d (TermIR.Opnd.Vx i) = LocatedIR.Instr.Const d i
-            moveInto env d TermIR.Opnd.Erased = LocatedIR.Instr.Const d 0
-
-            direct : List (LocatedIR.Location enc) -> All (TermIR.Opnd (TermIR.Var ctx)) qs ->
-                     List (LocatedIR.Instr enc)
-            direct (p :: ps) (x :: xs) = moveInto env p x :: direct ps xs
-            direct _ _ = []
-
-            moves : List (LocatedIR.Location enc) -> All (TermIR.Opnd (TermIR.Var ctx)) qs ->
-                    M enc (List (LocatedIR.Instr enc), List (LocatedIR.Location enc))
-            moves (p :: ps) (x :: xs) = do
-              t <- fresh (LocatedIR.Location.ty p)
-              (is, ts) <- moves ps xs
-              pure (moveInto env t x :: is, t :: ts)
-            moves _ _ = pure ([], [])
+            ||| The arguments in locations, with their parameters; and the
+            ||| others into their parameters.
+            args : List (LocatedIR.Location enc) -> All (TermIR.Opnd (TermIR.Var ctx)) qs ->
+                   (List (LocatedIR.Location enc, LocatedIR.Location enc), List (LocatedIR.Instr enc))
+            args (p :: ps) (x :: xs') =
+              let (ms, is) = args ps xs' in
+              case x of
+                TermIR.Opnd.V v => case TermIR.Var.fetch v env of
+                  InReg r => ((p, r) :: ms, is)
+                  OfStatic s => (ms, LocatedIR.Instr.StaticAddr p s :: is)
+                TermIR.Opnd.W i => (ms, LocatedIR.Instr.Const p i :: is)
+                TermIR.Opnd.Fx i => (ms, LocatedIR.Instr.Const p i :: is)
+                TermIR.Opnd.Vx i => (ms, LocatedIR.Instr.Const p i :: is)
+                TermIR.Opnd.Erased => (ms, LocatedIR.Instr.Const p 0 :: is)
+            args _ _ = ([], [])
     body (TermIR.Body.Branch rel x y a b) env li = do
       (fa, la) <- branchTo a env li
       (fb, lb) <- branchTo b env li

@@ -63,6 +63,7 @@ modules =
     Native.Codegen.ProgramReach,
     Native.Codegen.RegAlloc,
     Native.Codegen.Seed,
+    Native.Codegen.Sequentialise,
     Native.Codegen.StaticRead,
     Native.Codegen.Strings,
     Native.Codegen.Target,

@@ -48,6 +48,14 @@ ty (Slot _ t) = t
 ty (Register _ t) = t
 
 ||| A slot's number; a register has none.
+||| Whether two locations are one place: the same slot, or the same
+||| register of a class.
+public export
+samePlace : Location enc -> Location enc -> Bool
+samePlace (Slot n _) (Slot m _) = n == m
+samePlace (Register i t) (Register j u) = i == j && IRCommon.Ty.class t == IRCommon.Ty.class u
+samePlace _ _ = False
+
 public export
 slotNumber : Location enc -> Maybe Nat
 slotNumber (Slot n _) = Just n

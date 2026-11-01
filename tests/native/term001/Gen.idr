@@ -624,7 +624,7 @@ parameters {enc : Enc} {auto 0 fx : HasFixnums enc.val}
     -- rendering reads them in, and its results out of them
     let called = callClobbers x86_64
         run =
-          localAssign (row called) (termRow called) $ allocRegs x86_64
+          localAssign (row called) (termRow called) cycleTemp $ allocRegs x86_64
             (MkProgram {d = Run {enc}}
               [Defined m, Defined p, Defined s, Defined sa, Defined at, Defined sm, Defined dm,
                Defined fl, Defined by, Defined fs, Defined cr, Defined st, Defined al, Defined am]

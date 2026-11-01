@@ -592,7 +592,8 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
           let called = Target.callClobbers X86.Target.x86_64
           allocated <- phase "local assignment"
             (later
-              (LocalAssign.localAssign (X86.Rows.row called) (X86.Rows.termRow called) slotted))
+              (LocalAssign.localAssign (X86.Rows.row called) (X86.Rows.termRow called)
+                 X86.Rows.cycleTemp slotted))
           -- what the allocation made, checked by a reading of its own
           Right () <- phase "allocation checked" (later (AllocCheck.check allocated))
             | Left err => throw (InternalError ("native: " ++ err))

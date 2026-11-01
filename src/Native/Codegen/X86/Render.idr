@@ -1011,6 +1011,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                               by ]
                                   store d Asm.RAX
                 LocatedIR.Instr.Move d x => move d x
+                LocatedIR.Instr.Par _ =>
+                  Data.Stateful.failWith "a parallel move the local assignment did not make moves"
                 -- a retyping is a move: a pointer word and an address, a value
                 -- and its word, are the same word
                 LocatedIR.Instr.Narrow _ d x => move d x

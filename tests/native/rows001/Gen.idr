@@ -120,4 +120,4 @@ main = do
   for_ [inSlot, slotToSlot] $ \f =>
     putStrLn
       (show f.name ++ ", assigned: "
-       ++ rendered (localAssign (row called) (termRow called) (program f)))
+       ++ rendered (localAssign (row called) (termRow called) cycleTemp (program f)))

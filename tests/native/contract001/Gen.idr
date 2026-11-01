@@ -201,7 +201,7 @@ rendered runtime program vmdefs = either id (const "rendered") $ do
       -- then each instruction's operands moved into the registers its
       -- rendering reads them in, and its results out of them
       ir = reach (\n => isJust (lookup n symbols))
-             (localAssign (row called) (termRow called) (allocRegs x86_64 term))
+             (localAssign (row called) (termRow called) cycleTemp (allocRegs x86_64 term))
   r <- render TestEnc realised ir
   -- every function rendered in turn, the code itself not kept
   s <- foldlM (\s, f => map fst (r.functionCode s f)) r.first r.functions

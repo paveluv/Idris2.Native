@@ -112,6 +112,9 @@ functionPieces f =
           i@(Instr.SetPinned _ x) => Instr.instrName i ++ " (" ++ ops [x] ++ ")"
           i@(Instr.SystemCall d xs) => assigned [d] ++ Instr.instrName i ++ " (" ++ ops xs ++ ")"
           Instr.Move d s => show d ++ " := " ++ show s
+          Instr.Par ms =>
+            "(" ++ joinBy ", " (map (show . fst) ms) ++ ") := ("
+            ++ joinBy ", " (map (show . snd) ms) ++ ")"
           Instr.Loc _ => "Loc"
           Instr.Comment s => "-- " ++ s
           where

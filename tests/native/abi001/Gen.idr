@@ -259,7 +259,7 @@ main = do
       -- rendering reads them in, and its results out of them
       let called = callClobbers x86_64
           ir =
-            localAssign (row called) (termRow called) $ allocRegs x86_64
+            localAssign (row called) (termRow called) cycleTemp $ allocRegs x86_64
               (MkProgram {d = D}
                 [Defined m, Defined s, Defined e, Defined cr, Defined st, Defined al] []
                (MkEntry here) noConIds)

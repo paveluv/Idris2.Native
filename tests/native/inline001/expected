@@ -1,7 +1,7 @@
 10
 # _flat.Main.inRange
 L64:
-sub rsp, 216
+sub rsp, 184
 mov rax, qword ptr [rip+L17]
 cmp rsp, rax
 jb L18
@@ -52,7 +52,7 @@ mov qword ptr [rbx+88], rax
 jmp L69
 L70:
 mov rdi, qword ptr [rbx+72]
-add rsp, 216
+add rsp, 184
 ret
 L71:
 mov rax, qword ptr [rbx+40]
@@ -124,24 +124,8 @@ mov rsi, 28
 jmp L3
 L87:
 mov rax, qword ptr [rbx+96]
-mov qword ptr [rbx+176], rax
-mov rax, qword ptr [rbx+48]
-mov qword ptr [rbx+184], rax
-mov rax, qword ptr [rbx+56]
-mov qword ptr [rbx+192], rax
-mov rax, qword ptr [rbx+64]
-mov qword ptr [rbx+200], rax
-mov rax, qword ptr [rbx+144]
-mov qword ptr [rbx+208], rax
-mov rax, qword ptr [rbx+176]
 mov qword ptr [rbx+40], rax
-mov rax, qword ptr [rbx+184]
-mov qword ptr [rbx+48], rax
-mov rax, qword ptr [rbx+192]
-mov qword ptr [rbx+56], rax
-mov rax, qword ptr [rbx+200]
-mov qword ptr [rbx+64], rax
-mov rax, qword ptr [rbx+208]
+mov rax, qword ptr [rbx+144]
 mov qword ptr [rbx+72], rax
 jmp L66
 L80:

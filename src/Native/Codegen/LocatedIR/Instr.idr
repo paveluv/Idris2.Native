@@ -183,9 +183,14 @@ data Instr : Types.Enc -> Type where
   ||| A system call: its number, then its arguments, giving its result, by
   ||| the platform's convention; never a call of a function.
   SystemCall : (result : Location enc) -> List (Opnd enc) -> Instr enc
-  ||| Copy a register to another of the same type: a jump's arguments into
-  ||| its block's parameters.
+  ||| Copy a location to another of the same type.
   Move       : Location enc -> Location enc -> Instr enc
+  ||| Copy each location to another of its type, all at once: every
+  ||| destination gets its source's value from before any destination is
+  ||| written. The destinations are distinct places. A jump's arguments
+  ||| into its block's parameters, which the local assignment makes moves
+  ||| (`Native.Codegen.Sequentialise`), so that no rendering sees one.
+  Par        : List (Location enc, Location enc) -> Instr enc
   ||| The source location of what follows, for dumps and, later, debugging
   ||| information.
   Loc        : FC -> Instr enc
@@ -235,6 +240,7 @@ instrName (GetPinned r _) = "get" ++ show r
 instrName (SetPinned r _) = "set" ++ show r
 instrName (SystemCall _ _) = "syscall"
 instrName (Move _ _) = "Move"
+instrName (Par _) = "Par"
 instrName (Loc _) = "Loc"
 instrName (Comment _) = "Comment"
 
@@ -283,6 +289,7 @@ instrRegs i = case i of
   SetPinned _ x => Opnd.opRegs x
   SystemCall d args => d :: Opnd.opsRegs args []
   Move d x => [d, x]
+  Par ms => map fst ms ++ map snd ms
   Loc _ => []
   Comment _ => []
   where
@@ -328,6 +335,7 @@ operands i = case i of
   SetPinned _ x => Opnd.opRegs x
   SystemCall _ args => Opnd.opsRegs args []
   Move _ x => [x]
+  Par ms => map snd ms
   _ => []
   where
     memRegs : Mem enc -> List (Location enc)
@@ -343,6 +351,7 @@ results i = case i of
   StoreN _ _ _ => []
   DirectCall _ _ ds _ _ => ds
   SetPinned _ _ => []
+  Par ms => map fst ms
   Loc _ => []
   Comment _ => []
   _ => take 1 (instrRegs i)
@@ -388,6 +397,7 @@ withOperands rs i = case i of
   SetPinned p x => SetPinned p (fst (opnd rs x))
   SystemCall d args => SystemCall d (opnds rs args)
   Move d x => Move d (loc rs x)
+  Par ms => Par (zipWith (\(d, _), x => (d, x)) ms rs ++ drop (length rs) ms)
   _ => i
   where
     -- the next location for a register, the rest of the list after it
@@ -458,3 +468,4 @@ withResults rs@(r :: _) i = case i of
   GetPinned p _ => GetPinned p r
   SystemCall _ args => SystemCall r args
   Move _ x => Move r x
+  Par ms => Par (zipWith (\(_, x), d => (d, x)) ms rs ++ drop (length rs) ms)

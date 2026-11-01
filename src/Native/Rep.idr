@@ -35,6 +35,12 @@ import Decidable.Equality.Core
 public export
 data RegClass = WordClass | FloatClass
 
+public export
+Eq RegClass where
+  WordClass == WordClass = True
+  FloatClass == FloatClass = True
+  _ == _ = False
+
 ||| How a register holds what it holds.
 public export
 data Rep

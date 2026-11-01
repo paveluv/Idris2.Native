@@ -115,6 +115,15 @@ termClobbers called t = case t of
   LocatedIR.Terminator.IfFixnums _ _ _ => Row.clobbering [rax, rcx]
   _ => called
 
+||| The register of each class a parallel move's cycle is broken through
+||| (`Native.Codegen.Sequentialise`): rcx, xmm1; never the register a move
+||| between two slots goes through (`between`).
+export
+cycleTemp : Rep.RegClass -> Nat
+cycleTemp c = case c of
+  Rep.WordClass => 1
+  Rep.FloatClass => 1
+
 ||| The wants of the operands that are locations, in their order.
 located : List (LocatedIR.Opnd enc, Row.Want) -> List Row.Want
 located [] = []

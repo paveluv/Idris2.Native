@@ -1,0 +1,29 @@
+x to itself: agrees
+a chain: agrees
+  slot1:W64 := slot2:W64
+  slot2:W64 := slot3:W64
+a swap: agrees
+  reg1:W64 := slot1:W64
+  slot1:W64 := slot2:W64
+  slot2:W64 := reg1:W64
+a cycle of three: agrees
+  reg1:W64 := slot1:W64
+  slot1:W64 := slot2:W64
+  slot2:W64 := slot3:W64
+  slot3:W64 := reg1:W64
+a cycle with a branch: agrees
+  slot3:W64 := slot1:W64
+  reg1:W64 := slot1:W64
+  slot1:W64 := slot2:W64
+  slot2:W64 := reg1:W64
+two swaps: agrees
+  reg1:W64 := slot1:W64
+  slot1:W64 := slot2:W64
+  slot2:W64 := reg1:W64
+  reg1:W64 := slot3:W64
+  slot3:W64 := slot4:W64
+  slot4:W64 := reg1:W64
+a swap of doubles: agrees
+  reg1:F64 := slot1:F64
+  slot1:F64 := slot2:F64
+  slot2:F64 := reg1:F64
