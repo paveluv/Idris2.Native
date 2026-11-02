@@ -1,55 +1,66 @@
 function Main.wrap CPS [slot0:Val] entry 0
   0:
+    holding v0 in slot0:Val
     [3] slot1:Ptr CON := AllocObj CON ConIdP=1 ConArityP=2 (slot0:Val, @_native.con0) live [slot0:Val]
     reg0:Ptr CON := slot1:Ptr CON
     [4] slot2:Val := Widen reg0:Ptr CON
-    Call Main.count (slot0:Val, #1) resume 1 live [slot2:Val]
+    [5] Call Main.count (slot0:Val, #1) resume 1 live [slot2:Val]
   1 [slot2:Val, slot3:Val]:
-    Call Main.first (slot2:Val) resume 2 live [slot3:Val]
+    holding v4 in slot2:Val, v5 in slot3:Val
+    [6] Call Main.first (slot2:Val) resume 2 live [slot3:Val]
   2 [slot3:Val, slot4:Val]:
-    TailCall Main.count (slot4:Val, slot3:Val)
+    holding v5 in slot3:Val, v6 in slot4:Val
+    [7] TailCall Main.count (slot4:Val, slot3:Val)
 
 function Main.first CPS [slot0:Val] entry 0
   0:
+    holding v0 in slot0:Val
     reg0:Val := slot0:Val
     [1] slot1:Ptr CON := Narrow Ptr CON reg0:Val
     reg0:Ptr CON := slot1:Ptr CON
     [2] reg0:W64 := LoadPart ConIdP reg0:Ptr CON
     slot2:W64 := reg0:W64
     reg0:W64 := slot2:W64
-    Switch reg0:W64 [1 -> 1, 0 -> 2] else 3
+    [3] Switch reg0:W64 [1 -> 1, 0 -> 2] else 3
   1:
+    holding v0 in slot0:Val
     reg0:Val := slot0:Val
     [4] slot3:Ptr CON := Narrow Ptr CON reg0:Val
     reg0:Ptr CON := slot3:Ptr CON
     [5] reg1:Val := Load Val [reg0:Ptr CON + 8]
     slot4:Val := reg1:Val
     reg0:Val := slot4:Val
-    Return reg0:Val
+    [6] Return reg0:Val
   2:
-    Return #0
+    [7] Return #0
   3:
-    Crash "no case alternative matched"
+    [8] Crash "no case alternative matched"
 
 function Main.count CPS [slot0:Val, slot1:Val] entry 0
   0:
+    holding v0 in slot0:Val, v1 in slot1:Val
     reg0:Val := slot0:Val
-    IfFixnums [reg0:Val] 3 2
+    [2] IfFixnums [reg0:Val] 3 2
   1:
+    holding v1 in slot1:Val
     reg0:Val := slot1:Val
-    Return reg0:Val
+    [65] Return reg0:Val
   2:
+    holding v0 in slot0:Val, v1 in slot1:Val
     reg0:Val := slot0:Val
-    IfFixnums [reg0:Val] 6 8
+    [11] IfFixnums [reg0:Val] 6 8
   3:
+    holding v0 in slot0:Val, v1 in slot1:Val
     reg0:Val := slot0:Val
     [3] slot2:Fix := Narrow Fix reg0:Val
     reg0:Fix := slot2:Fix
-    Switch reg0:Fix [0 -> 1] else 2
+    [4] Switch reg0:Fix [0 -> 1] else 2
   4:
+    holding v8 in slot3:Val, v1 in slot1:Val
     reg0:Val := slot1:Val
-    IfFixnums [reg0:Val] 16 18
+    [39] IfFixnums [reg0:Val] 16 18
   5:
+    holding v9 in slot4:W64, v10 in slot5:W64, v1 in slot1:Val
     reg0:W64 := slot4:W64
     reg1:W64 := slot5:W64
     [27] reg0:W64 := Sub reg0:W64, reg1:W64
@@ -61,8 +72,9 @@ function Main.count CPS [slot0:Val, slot1:Val] entry 0
     [30] slot18:Val := Widen reg0:Fix
     reg0:Val := slot18:Val
     slot16:Val := reg0:Val
-    Jump 12
+    [31] Jump 12
   6:
+    holding v0 in slot0:Val, v1 in slot1:Val
     reg0:Val := slot0:Val
     [12] slot6:Fix := Narrow Fix reg0:Val
     reg0:Fix := slot6:Fix
@@ -72,8 +84,9 @@ function Main.count CPS [slot0:Val, slot1:Val] entry 0
     [14] slot8:Val := Widen reg0:Fix
     reg0:Val := slot8:Val
     slot3:Val := reg0:Val
-    Jump 4
+    [15] Jump 4
   7:
+    holding v1 in slot1:Val, v12 in slot6:Fix
     reg0:Fix := slot6:Fix
     [16] reg0:W64 := Untag reg0:Fix
     slot9:W64 := reg0:W64
@@ -81,17 +94,20 @@ function Main.count CPS [slot0:Val, slot1:Val] entry 0
     slot4:W64 := reg0:W64
     reg0:W64 := #1
     slot5:W64 := reg0:W64
-    Jump 5
+    [17] Jump 5
   8:
+    holding v0 in slot0:Val, v1 in slot1:Val
     reg0:Val := slot0:Val
-    IfFixnums [reg0:Val] 10 11
+    [19] IfFixnums [reg0:Val] 10 11
   9:
+    holding v18 in slot10:W64, v1 in slot1:Val
     reg0:W64 := slot10:W64
     slot4:W64 := reg0:W64
     reg0:W64 := #1
     slot5:W64 := reg0:W64
-    Jump 5
+    [26] Jump 5
   10:
+    holding v0 in slot0:Val, v1 in slot1:Val
     reg0:Val := slot0:Val
     [20] slot11:Fix := Narrow Fix reg0:Val
     reg0:Fix := slot11:Fix
@@ -99,8 +115,9 @@ function Main.count CPS [slot0:Val, slot1:Val] entry 0
     slot12:W64 := reg0:W64
     reg0:W64 := slot12:W64
     slot10:W64 := reg0:W64
-    Jump 9
+    [22] Jump 9
   11:
+    holding v0 in slot0:Val, v1 in slot1:Val
     reg0:Val := slot0:Val
     [23] slot13:Ptr INT64 := Narrow Ptr INT64 reg0:Val
     reg0:Ptr INT64 := slot13:Ptr INT64
@@ -108,21 +125,25 @@ function Main.count CPS [slot0:Val, slot1:Val] entry 0
     slot14:W64 := reg1:W64
     reg0:W64 := slot14:W64
     slot10:W64 := reg0:W64
-    Jump 9
+    [25] Jump 9
   12:
+    holding v28 in slot16:Val, v1 in slot1:Val
     reg0:Val := slot16:Val
     slot3:Val := reg0:Val
-    Jump 4
+    [35] Jump 4
   13:
+    holding v1 in slot1:Val, v27 in slot15:W64
     [32] slot19:Ptr INT64 := AllocObj INT64 (slot15:W64) live [slot1:Val, slot15:W64]
     reg0:Ptr INT64 := slot19:Ptr INT64
     [33] slot20:Val := Widen reg0:Ptr INT64
     reg0:Val := slot20:Val
     slot16:Val := reg0:Val
-    Jump 12
+    [34] Jump 12
   14:
-    TailCall Main.count (slot3:Val, slot21:Val)
+    holding v36 in slot21:Val, v8 in slot3:Val
+    [64] TailCall Main.count (slot3:Val, slot21:Val)
   15:
+    holding v37 in slot22:W64, v38 in slot23:W64, v8 in slot3:Val
     reg0:W64 := slot22:W64
     reg1:W64 := slot23:W64
     [55] reg0:W64 := Add reg0:W64, reg1:W64
@@ -134,8 +155,9 @@ function Main.count CPS [slot0:Val, slot1:Val] entry 0
     [58] slot36:Val := Widen reg0:Fix
     reg0:Val := slot36:Val
     slot34:Val := reg0:Val
-    Jump 22
+    [59] Jump 22
   16:
+    holding v1 in slot1:Val, v8 in slot3:Val
     reg0:Val := slot1:Val
     [40] slot24:Fix := Narrow Fix reg0:Val
     reg0:Fix := slot24:Fix
@@ -145,8 +167,9 @@ function Main.count CPS [slot0:Val, slot1:Val] entry 0
     [42] slot26:Val := Widen reg0:Fix
     reg0:Val := slot26:Val
     slot21:Val := reg0:Val
-    Jump 14
+    [43] Jump 14
   17:
+    holding v8 in slot3:Val, v40 in slot24:Fix
     reg0:Fix := slot24:Fix
     [44] reg0:W64 := Untag reg0:Fix
     slot27:W64 := reg0:W64
@@ -154,17 +177,20 @@ function Main.count CPS [slot0:Val, slot1:Val] entry 0
     slot22:W64 := reg0:W64
     reg0:W64 := #1
     slot23:W64 := reg0:W64
-    Jump 15
+    [45] Jump 15
   18:
+    holding v1 in slot1:Val, v8 in slot3:Val
     reg0:Val := slot1:Val
-    IfFixnums [reg0:Val] 20 21
+    [47] IfFixnums [reg0:Val] 20 21
   19:
+    holding v46 in slot28:W64, v8 in slot3:Val
     reg0:W64 := slot28:W64
     slot22:W64 := reg0:W64
     reg0:W64 := #1
     slot23:W64 := reg0:W64
-    Jump 15
+    [54] Jump 15
   20:
+    holding v1 in slot1:Val, v8 in slot3:Val
     reg0:Val := slot1:Val
     [48] slot29:Fix := Narrow Fix reg0:Val
     reg0:Fix := slot29:Fix
@@ -172,8 +198,9 @@ function Main.count CPS [slot0:Val, slot1:Val] entry 0
     slot30:W64 := reg0:W64
     reg0:W64 := slot30:W64
     slot28:W64 := reg0:W64
-    Jump 19
+    [50] Jump 19
   21:
+    holding v1 in slot1:Val, v8 in slot3:Val
     reg0:Val := slot1:Val
     [51] slot31:Ptr INT64 := Narrow Ptr INT64 reg0:Val
     reg0:Ptr INT64 := slot31:Ptr INT64
@@ -181,17 +208,19 @@ function Main.count CPS [slot0:Val, slot1:Val] entry 0
     slot32:W64 := reg1:W64
     reg0:W64 := slot32:W64
     slot28:W64 := reg0:W64
-    Jump 19
+    [53] Jump 19
   22:
+    holding v56 in slot34:Val, v8 in slot3:Val
     reg0:Val := slot34:Val
     slot21:Val := reg0:Val
-    Jump 14
+    [63] Jump 14
   23:
+    holding v8 in slot3:Val, v55 in slot33:W64
     [60] slot37:Ptr INT64 := AllocObj INT64 (slot33:W64) live [slot3:Val, slot33:W64]
     reg0:Ptr INT64 := slot37:Ptr INT64
     [61] slot38:Val := Widen reg0:Ptr INT64
     reg0:Val := slot38:Val
     slot34:Val := reg0:Val
-    Jump 22
+    [62] Jump 22
 
 the same IR under val-encoding=tag0

@@ -1,11 +1,14 @@
 function Main.sumTo CPS [slot0:Val, slot1:Val] entry 0
   0:
+    holding v0 in slot0:Val, v1 in slot1:Val
     reg0:Val := slot0:Val
-    IfFixnums [reg0:Val] 2 3
+    [3] IfFixnums [reg0:Val] 2 3
   1:
+    holding v2 in slot2:W64, v1 in slot1:Val
     reg0:Val := slot1:Val
-    IfFixnums [reg0:Val] 5 6
+    [11] IfFixnums [reg0:Val] 5 6
   2:
+    holding v0 in slot0:Val, v1 in slot1:Val
     reg0:Val := slot0:Val
     [4] slot3:Fix := Narrow Fix reg0:Val
     reg0:Fix := slot3:Fix
@@ -13,8 +16,9 @@ function Main.sumTo CPS [slot0:Val, slot1:Val] entry 0
     slot4:W64 := reg0:W64
     reg0:W64 := slot4:W64
     slot2:W64 := reg0:W64
-    Jump 1
+    [6] Jump 1
   3:
+    holding v0 in slot0:Val, v1 in slot1:Val
     reg0:Val := slot0:Val
     [7] slot5:Ptr INT64 := Narrow Ptr INT64 reg0:Val
     reg0:Ptr INT64 := slot5:Ptr INT64
@@ -22,8 +26,9 @@ function Main.sumTo CPS [slot0:Val, slot1:Val] entry 0
     slot6:W64 := reg1:W64
     reg0:W64 := slot6:W64
     slot2:W64 := reg0:W64
-    Jump 1
+    [9] Jump 1
   4:
+    holding v10 in slot7:W64, v2 in slot2:W64
     [18] slot12:W64 := DirectCall _flat.Main.sumTo (slot2:W64, slot7:W64) live []
     reg0:W64 := slot12:W64
     [20] reg0:Fix := TagOv reg0:W64 overflow 8
@@ -32,8 +37,9 @@ function Main.sumTo CPS [slot0:Val, slot1:Val] entry 0
     [21] slot15:Val := Widen reg0:Fix
     reg0:Val := slot15:Val
     slot13:Val := reg0:Val
-    Jump 7
+    [22] Jump 7
   5:
+    holding v1 in slot1:Val, v2 in slot2:W64
     reg0:Val := slot1:Val
     [12] slot8:Fix := Narrow Fix reg0:Val
     reg0:Fix := slot8:Fix
@@ -41,8 +47,9 @@ function Main.sumTo CPS [slot0:Val, slot1:Val] entry 0
     slot9:W64 := reg0:W64
     reg0:W64 := slot9:W64
     slot7:W64 := reg0:W64
-    Jump 4
+    [14] Jump 4
   6:
+    holding v1 in slot1:Val, v2 in slot2:W64
     reg0:Val := slot1:Val
     [15] slot10:Ptr INT64 := Narrow Ptr INT64 reg0:Val
     reg0:Ptr INT64 := slot10:Ptr INT64
@@ -50,28 +57,32 @@ function Main.sumTo CPS [slot0:Val, slot1:Val] entry 0
     slot11:W64 := reg1:W64
     reg0:W64 := slot11:W64
     slot7:W64 := reg0:W64
-    Jump 4
+    [17] Jump 4
   7:
+    holding v19 in slot13:Val
     reg0:Val := slot13:Val
-    Return reg0:Val
+    [26] Return reg0:Val
   8:
+    holding v18 in slot12:W64
     [23] slot16:Ptr INT64 := AllocObj INT64 (slot12:W64) live [slot12:W64]
     reg0:Ptr INT64 := slot16:Ptr INT64
     [24] slot17:Val := Widen reg0:Ptr INT64
     reg0:Val := slot17:Val
     slot13:Val := reg0:Val
-    Jump 7
+    [25] Jump 7
 
 function Main.side CPS [slot0:Val] entry 0
   0:
+    holding v0 in slot0:Val
     reg0:Val := slot0:Val
     [1] slot1:Ptr CON := Narrow Ptr CON reg0:Val
     reg0:Ptr CON := slot1:Ptr CON
     [2] reg0:W64 := LoadPart ConIdP reg0:Ptr CON
     slot2:W64 := reg0:W64
     reg0:W64 := slot2:W64
-    Switch reg0:W64 [0 -> 2, 1 -> 3, 2 -> 10] else 11
+    [7] Switch reg0:W64 [0 -> 2, 1 -> 3, 2 -> 10] else 11
   1:
+    holding v3 in slot3:W64, v4 in slot4:F64, v5 in slot5:W64, v6 in slot6:W64
     [37] slot26:W64 := DirectCall _flat.Main.side (slot3:W64, slot4:F64, slot5:W64, slot6:W64) live []
     reg0:W64 := slot26:W64
     [39] reg0:Fix := TagOv reg0:W64 overflow 13
@@ -80,8 +91,9 @@ function Main.side CPS [slot0:Val] entry 0
     [40] slot29:Val := Widen reg0:Fix
     reg0:Val := slot29:Val
     slot27:Val := reg0:Val
-    Jump 12
+    [41] Jump 12
   2:
+    holding v0 in slot0:Val
     reg0:Val := slot0:Val
     [8] slot7:Ptr CON := Narrow Ptr CON reg0:Val
     reg0:Ptr CON := slot7:Ptr CON
@@ -99,22 +111,25 @@ function Main.side CPS [slot0:Val] entry 0
     slot5:W64 := reg0:W64
     reg0:W64 := #0
     slot6:W64 := reg0:W64
-    Jump 1
+    [12] Jump 1
   3:
+    holding v0 in slot0:Val
     reg0:Val := slot0:Val
     [13] slot11:Ptr CON := Narrow Ptr CON reg0:Val
     reg0:Ptr CON := slot11:Ptr CON
     [14] reg1:Val := Load Val [reg0:Ptr CON + 8]
     slot12:Val := reg1:Val
     reg0:Val := slot12:Val
-    IfFixnums [reg0:Val] 5 6
+    [16] IfFixnums [reg0:Val] 5 6
   4:
+    holding v15 in slot13:W64, v13 in slot11:Ptr CON
     reg0:Ptr CON := slot11:Ptr CON
     [23] reg1:Val := Load Val [reg0:Ptr CON + 16]
     slot18:Val := reg1:Val
     reg0:Val := slot18:Val
-    IfFixnums [reg0:Val] 8 9
+    [25] IfFixnums [reg0:Val] 8 9
   5:
+    holding v13 in slot11:Ptr CON, v14 in slot12:Val
     reg0:Val := slot12:Val
     [17] slot14:Fix := Narrow Fix reg0:Val
     reg0:Fix := slot14:Fix
@@ -122,8 +137,9 @@ function Main.side CPS [slot0:Val] entry 0
     slot15:W64 := reg0:W64
     reg0:W64 := slot15:W64
     slot13:W64 := reg0:W64
-    Jump 4
+    [19] Jump 4
   6:
+    holding v13 in slot11:Ptr CON, v14 in slot12:Val
     reg0:Val := slot12:Val
     [20] slot16:Ptr INT64 := Narrow Ptr INT64 reg0:Val
     reg0:Ptr INT64 := slot16:Ptr INT64
@@ -131,8 +147,9 @@ function Main.side CPS [slot0:Val] entry 0
     slot17:W64 := reg1:W64
     reg0:W64 := slot17:W64
     slot13:W64 := reg0:W64
-    Jump 4
+    [22] Jump 4
   7:
+    holding v24 in slot19:W64, v15 in slot13:W64
     [32] slot24:F64 := FConst 0.0
     reg0:F64 := slot24:F64
     slot4:F64 := reg0:F64
@@ -142,8 +159,9 @@ function Main.side CPS [slot0:Val] entry 0
     slot6:W64 := reg0:W64
     reg0:W64 := #1
     slot3:W64 := reg0:W64
-    Jump 1
+    [33] Jump 1
   8:
+    holding v15 in slot13:W64, v23 in slot18:Val
     reg0:Val := slot18:Val
     [26] slot20:Fix := Narrow Fix reg0:Val
     reg0:Fix := slot20:Fix
@@ -151,8 +169,9 @@ function Main.side CPS [slot0:Val] entry 0
     slot21:W64 := reg0:W64
     reg0:W64 := slot21:W64
     slot19:W64 := reg0:W64
-    Jump 7
+    [28] Jump 7
   9:
+    holding v15 in slot13:W64, v23 in slot18:Val
     reg0:Val := slot18:Val
     [29] slot22:Ptr INT64 := Narrow Ptr INT64 reg0:Val
     reg0:Ptr INT64 := slot22:Ptr INT64
@@ -160,7 +179,7 @@ function Main.side CPS [slot0:Val] entry 0
     slot23:W64 := reg1:W64
     reg0:W64 := slot23:W64
     slot19:W64 := reg0:W64
-    Jump 7
+    [31] Jump 7
   10:
     [34] slot25:F64 := FConst 0.0
     reg0:F64 := slot25:F64
@@ -171,34 +190,39 @@ function Main.side CPS [slot0:Val] entry 0
     slot5:W64 := reg0:W64
     reg0:W64 := #0
     slot6:W64 := reg0:W64
-    Jump 1
+    [35] Jump 1
   11:
-    Crash "no constructor of the type"
+    [36] Crash "no constructor of the type"
   12:
+    holding v38 in slot27:Val
     reg0:Val := slot27:Val
-    Return reg0:Val
+    [45] Return reg0:Val
   13:
+    holding v37 in slot26:W64
     [42] slot30:Ptr INT64 := AllocObj INT64 (slot26:W64) live [slot26:W64]
     reg0:Ptr INT64 := slot30:Ptr INT64
     [43] slot31:Val := Widen reg0:Ptr INT64
     reg0:Val := slot31:Val
     slot27:Val := reg0:Val
-    Jump 12
+    [44] Jump 12
 
 function Main.grow CPS [slot0:Val] entry 0
   0:
+    holding v0 in slot0:Val
     reg0:Val := slot0:Val
     [1] slot1:Ptr CON := Narrow Ptr CON reg0:Val
     reg0:Ptr CON := slot1:Ptr CON
     [2] reg0:W64 := LoadPart ConIdP reg0:Ptr CON
     slot2:W64 := reg0:W64
     reg0:W64 := slot2:W64
-    Switch reg0:W64 [0 -> 2, 1 -> 3, 2 -> 10] else 11
+    [7] Switch reg0:W64 [0 -> 2, 1 -> 3, 2 -> 10] else 11
   1:
+    holding v3 in slot3:W64, v4 in slot4:F64, v5 in slot5:W64, v6 in slot6:W64
     [37] slot26:W64, slot27:F64, slot28:W64, slot29:W64 := DirectCall _flat.Main.grow (slot3:W64, slot4:F64, slot5:W64, slot6:W64) live []
     reg0:W64 := slot26:W64
-    Switch reg0:W64 [0 -> 13, 1 -> 14, 2 -> 19] else 20
+    [42] Switch reg0:W64 [0 -> 13, 1 -> 14, 2 -> 19] else 20
   2:
+    holding v0 in slot0:Val
     reg0:Val := slot0:Val
     [8] slot7:Ptr CON := Narrow Ptr CON reg0:Val
     reg0:Ptr CON := slot7:Ptr CON
@@ -216,22 +240,25 @@ function Main.grow CPS [slot0:Val] entry 0
     slot5:W64 := reg0:W64
     reg0:W64 := #0
     slot6:W64 := reg0:W64
-    Jump 1
+    [12] Jump 1
   3:
+    holding v0 in slot0:Val
     reg0:Val := slot0:Val
     [13] slot11:Ptr CON := Narrow Ptr CON reg0:Val
     reg0:Ptr CON := slot11:Ptr CON
     [14] reg1:Val := Load Val [reg0:Ptr CON + 8]
     slot12:Val := reg1:Val
     reg0:Val := slot12:Val
-    IfFixnums [reg0:Val] 5 6
+    [16] IfFixnums [reg0:Val] 5 6
   4:
+    holding v15 in slot13:W64, v13 in slot11:Ptr CON
     reg0:Ptr CON := slot11:Ptr CON
     [23] reg1:Val := Load Val [reg0:Ptr CON + 16]
     slot18:Val := reg1:Val
     reg0:Val := slot18:Val
-    IfFixnums [reg0:Val] 8 9
+    [25] IfFixnums [reg0:Val] 8 9
   5:
+    holding v13 in slot11:Ptr CON, v14 in slot12:Val
     reg0:Val := slot12:Val
     [17] slot14:Fix := Narrow Fix reg0:Val
     reg0:Fix := slot14:Fix
@@ -239,8 +266,9 @@ function Main.grow CPS [slot0:Val] entry 0
     slot15:W64 := reg0:W64
     reg0:W64 := slot15:W64
     slot13:W64 := reg0:W64
-    Jump 4
+    [19] Jump 4
   6:
+    holding v13 in slot11:Ptr CON, v14 in slot12:Val
     reg0:Val := slot12:Val
     [20] slot16:Ptr INT64 := Narrow Ptr INT64 reg0:Val
     reg0:Ptr INT64 := slot16:Ptr INT64
@@ -248,8 +276,9 @@ function Main.grow CPS [slot0:Val] entry 0
     slot17:W64 := reg1:W64
     reg0:W64 := slot17:W64
     slot13:W64 := reg0:W64
-    Jump 4
+    [22] Jump 4
   7:
+    holding v24 in slot19:W64, v15 in slot13:W64
     [32] slot24:F64 := FConst 0.0
     reg0:F64 := slot24:F64
     slot4:F64 := reg0:F64
@@ -259,8 +288,9 @@ function Main.grow CPS [slot0:Val] entry 0
     slot6:W64 := reg0:W64
     reg0:W64 := #1
     slot3:W64 := reg0:W64
-    Jump 1
+    [33] Jump 1
   8:
+    holding v15 in slot13:W64, v23 in slot18:Val
     reg0:Val := slot18:Val
     [26] slot20:Fix := Narrow Fix reg0:Val
     reg0:Fix := slot20:Fix
@@ -268,8 +298,9 @@ function Main.grow CPS [slot0:Val] entry 0
     slot21:W64 := reg0:W64
     reg0:W64 := slot21:W64
     slot19:W64 := reg0:W64
-    Jump 7
+    [28] Jump 7
   9:
+    holding v15 in slot13:W64, v23 in slot18:Val
     reg0:Val := slot18:Val
     [29] slot22:Ptr INT64 := Narrow Ptr INT64 reg0:Val
     reg0:Ptr INT64 := slot22:Ptr INT64
@@ -277,7 +308,7 @@ function Main.grow CPS [slot0:Val] entry 0
     slot23:W64 := reg1:W64
     reg0:W64 := slot23:W64
     slot19:W64 := reg0:W64
-    Jump 7
+    [31] Jump 7
   10:
     [34] slot25:F64 := FConst 0.0
     reg0:F64 := slot25:F64
@@ -288,13 +319,15 @@ function Main.grow CPS [slot0:Val] entry 0
     slot5:W64 := reg0:W64
     reg0:W64 := #0
     slot6:W64 := reg0:W64
-    Jump 1
+    [35] Jump 1
   11:
-    Crash "no constructor of the type"
+    [36] Crash "no constructor of the type"
   12:
+    holding v41 in slot30:Val
     reg0:Val := slot30:Val
-    Return reg0:Val
+    [69] Return reg0:Val
   13:
+    holding v38 in slot27:F64
     [43] slot31:Ptr DOUBLE := AllocObj DOUBLE (slot27:F64) live [slot27:F64]
     reg0:Ptr DOUBLE := slot31:Ptr DOUBLE
     [44] slot32:Val := Widen reg0:Ptr DOUBLE
@@ -303,8 +336,9 @@ function Main.grow CPS [slot0:Val] entry 0
     [46] slot34:Val := Widen reg0:Ptr CON
     reg0:Val := slot34:Val
     slot30:Val := reg0:Val
-    Jump 12
+    [47] Jump 12
   14:
+    holding v39 in slot28:W64, v40 in slot29:W64
     reg0:W64 := slot28:W64
     [49] reg0:Fix := TagOv reg0:W64 overflow 16
     slot36:Fix := reg0:Fix
@@ -312,8 +346,9 @@ function Main.grow CPS [slot0:Val] entry 0
     [50] slot37:Val := Widen reg0:Fix
     reg0:Val := slot37:Val
     slot35:Val := reg0:Val
-    Jump 15
+    [51] Jump 15
   15:
+    holding v48 in slot35:Val, v40 in slot29:W64
     reg0:W64 := slot29:W64
     [56] reg0:Fix := TagOv reg0:W64 overflow 18
     slot41:Fix := reg0:Fix
@@ -321,48 +356,55 @@ function Main.grow CPS [slot0:Val] entry 0
     [57] slot42:Val := Widen reg0:Fix
     reg0:Val := slot42:Val
     slot40:Val := reg0:Val
-    Jump 17
+    [58] Jump 17
   16:
+    holding v39 in slot28:W64, v40 in slot29:W64
     [52] slot38:Ptr INT64 := AllocObj INT64 (slot28:W64) live [slot28:W64, slot29:W64]
     reg0:Ptr INT64 := slot38:Ptr INT64
     [53] slot39:Val := Widen reg0:Ptr INT64
     reg0:Val := slot39:Val
     slot35:Val := reg0:Val
-    Jump 15
+    [54] Jump 15
   17:
+    holding v55 in slot40:Val, v48 in slot35:Val
     [62] slot45:Ptr CON := AllocObj CON ConIdP=1 ConArityP=2 (slot35:Val, slot40:Val) live [slot35:Val, slot40:Val]
     reg0:Ptr CON := slot45:Ptr CON
     [63] slot46:Val := Widen reg0:Ptr CON
     reg0:Val := slot46:Val
     slot30:Val := reg0:Val
-    Jump 12
+    [64] Jump 12
   18:
+    holding v40 in slot29:W64, v48 in slot35:Val
     [59] slot43:Ptr INT64 := AllocObj INT64 (slot29:W64) live [slot29:W64, slot35:Val]
     reg0:Ptr INT64 := slot43:Ptr INT64
     [60] slot44:Val := Widen reg0:Ptr INT64
     reg0:Val := slot44:Val
     slot40:Val := reg0:Val
-    Jump 17
+    [61] Jump 17
   19:
     reg0:Val := @_native.con2
     slot30:Val := reg0:Val
-    Jump 12
+    [67] Jump 12
   20:
-    Crash "no constructor of the type"
+    [68] Crash "no constructor of the type"
 
 function _flat.Main.sumTo Direct [slot0:W64, slot1:W64] -> [W64] entry 0
   0:
+    holding v0 in slot0:W64, v1 in slot1:W64
     reg0:W64 := slot0:W64
     slot2:W64 := reg0:W64
     reg0:W64 := slot1:W64
     slot3:W64 := reg0:W64
-    Jump 1
+    [4] Jump 1
   1:
+    holding v2 in slot2:W64, v3 in slot3:W64
     reg0:W64 := slot3:W64
-    Switch reg0:W64 [0 -> 2] else 3
+    [5] Switch reg0:W64 [0 -> 2] else 3
   2:
-    Ret slot2:W64
+    holding v2 in slot2:W64
+    [6] Ret slot2:W64
   3:
+    holding v2 in slot2:W64, v3 in slot3:W64
     reg0:W64 := slot2:W64
     reg1:W64 := slot3:W64
     [7] reg0:W64 := Add reg0:W64, reg1:W64
@@ -374,43 +416,49 @@ function _flat.Main.sumTo Direct [slot0:W64, slot1:W64] -> [W64] entry 0
     slot2:W64 := reg0:W64
     reg0:W64 := slot5:W64
     slot3:W64 := reg0:W64
-    Jump 1
+    [9] Jump 1
 
 function _flat.Main.side Direct [slot0:W64, slot1:F64, slot2:W64, slot3:W64] -> [W64] entry 0
   0:
+    holding v0 in slot0:W64, v1 in slot1:F64, v2 in slot2:W64, v3 in slot3:W64
     reg0:W64 := slot0:W64
-    Switch reg0:W64 [1 -> 2] else 3
+    [5] Switch reg0:W64 [1 -> 2] else 3
   1:
+    holding v4 in slot4:W64
     reg0:W64 := slot4:W64
     [8] reg0:W64 := Add reg0:W64, #1
     slot5:W64 := reg0:W64
-    Ret slot5:W64
+    [9] Ret slot5:W64
   2:
+    holding v2 in slot2:W64
     reg0:W64 := slot2:W64
     slot4:W64 := reg0:W64
-    Jump 1
+    [6] Jump 1
   3:
     reg0:W64 := #0
     slot4:W64 := reg0:W64
-    Jump 1
+    [7] Jump 1
 
 function _flat.Main.grow Direct [slot0:W64, slot1:F64, slot2:W64, slot3:W64] -> [W64, F64, W64, W64] entry 0
   0:
+    holding v0 in slot0:W64, v1 in slot1:F64, v2 in slot2:W64, v3 in slot3:W64
     reg0:W64 := slot0:W64
-    Switch reg0:W64 [0 -> 1, 1 -> 2, 2 -> 3] else 4
+    [4] Switch reg0:W64 [0 -> 1, 1 -> 2, 2 -> 3] else 4
   1:
+    holding v1 in slot1:F64
     [5] slot4:F64 := FConst 2.0
     reg0:F64 := slot1:F64
     reg1:F64 := slot4:F64
     [6] reg0:F64 := FMul reg0:F64, reg1:F64
     slot5:F64 := reg0:F64
-    Ret #0, slot5:F64, #0, #0
+    [7] Ret #0, slot5:F64, #0, #0
   2:
+    holding v2 in slot2:W64, v3 in slot3:W64
     [8] slot6:F64 := FConst 0.0
-    Ret #1, slot6:F64, slot3:W64, slot2:W64
+    [9] Ret #1, slot6:F64, slot3:W64, slot2:W64
   3:
     [10] slot7:F64 := FConst 0.0
-    Ret #2, slot7:F64, #0, #0
+    [11] Ret #2, slot7:F64, #0, #0
   4:
-    Crash "no case alternative matched"
+    [12] Crash "no case alternative matched"
 

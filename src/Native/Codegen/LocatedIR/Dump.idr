@@ -5,6 +5,7 @@ module Native.Codegen.LocatedIR.Dump
 
 import Native.Codegen.LocatedIR.Block
 import Native.Codegen.LocatedIR.Cont
+import Native.Codegen.LocatedIR.Content
 import Native.Codegen.LocatedIR.Function
 import Native.Codegen.LocatedIR.Instr
 import Native.Codegen.LocatedIR.Label
@@ -47,9 +48,15 @@ functionPieces f =
     blockPieces b =
       Data.Builder.single
         ("  " ++ show b.label ++ (if null b.params then "" else " " ++ regs b.params) ++ ":\n")
+      <+> (if null b.cert then neutral
+             else Data.Builder.single ("    holding " ++ held b.cert ++ "\n"))
       <+> concatMap (\i => Data.Builder.single ("    " ++ step i ++ "\n")) b.body
-      <+> Data.Builder.single ("    " ++ term b.term ++ "\n")
+      <+> Data.Builder.single ("    [" ++ show b.node ++ "] " ++ term b.term ++ "\n")
       where
+        -- what each place holds on the block's entry
+        held : List (Content, Location.Place enc') -> String
+        held cs = joinBy ", " (map (\(c, p) => show c ++ " in " ++ show p) cs)
+
         ops : {0 t : IRCommon.Ty enc'} -> List (Opnd enc' t) -> String
         ops xs = joinBy ", " (map show xs)
 

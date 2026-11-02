@@ -1,22 +1,27 @@
 function Main.main CPS [] entry 0
   0:
-    TailCall Main.countDown (#7)
+    [0] TailCall Main.countDown (#7)
 
 function Main.countDown CPS [slot0:Val] entry 0
   0:
+    holding v0 in slot0:Val
     slot1:W64 := #3
-    Jump 1
+    [2] Jump 1
   1:
-    Branch slot1:W64 == #0 3 4
+    holding v1 in slot1:W64, v0 in slot0:Val
+    [4] Branch slot1:W64 == #0 3 4
   2:
+    holding v3 in slot2:Val, v0 in slot0:Val, v1 in slot1:W64
     [9] slot5:W64 := Sub slot1:W64, #1
     (slot1:W64) := (slot5:W64)
-    Jump 1
+    [10] Jump 1
   3:
-    Return slot0:Val
+    holding v0 in slot0:Val
+    [5] Return slot0:Val
   4:
+    holding v0 in slot0:Val, v1 in slot1:W64
     [6] slot3:Ptr INT64 := AllocObj INT64 (slot1:W64) live [slot0:Val, slot1:W64]
     [7] slot4:Val := Widen slot3:Ptr INT64
     (slot2:Val) := (slot4:Val)
-    Jump 2
+    [8] Jump 2
 

@@ -50,6 +50,7 @@ import Native.Codegen.IRCommon.Ty
 import Native.Codegen.Linkage.Realised
 import Native.Codegen.LocalAssign
 import Native.Codegen.LocatedIR.Block
+import Native.Codegen.LocatedIR.Content
 import Native.Codegen.LocatedIR.Function
 import Native.Codegen.LocatedIR.Instr
 import Native.Codegen.LocatedIR.Label
@@ -82,9 +83,14 @@ nm s = NS (mkNamespace "Main") (UN (Basic s))
 val : Nat -> Location TestEnc Val
 val n = Slot n Val
 
+||| A block written by hand, of no term: no certificate, no node.
+block : LocatedIR.Label.Label -> List (Place TestEnc) -> List (Step TestEnc) ->
+        Terminator TestEnc -> Block TestEnc
+block l ps is t = MkBlock l ps [] is t 0
+
 ||| A CPS function of one parameter, x in slot 0, of one block.
 fn : String -> List (Step TestEnc) -> Terminator TestEnc -> Function TestEnc
-fn name is t = MkFunction (nm name) CPS [At (val 0)] 0 [MkBlock 0 [] is t] EmptyFC
+fn name is t = MkFunction (nm name) CPS [At (val 0)] 0 [block 0 [] is t] EmptyFC
 
 ||| 42 made in `d` and returned from it.
 answer : String -> Location TestEnc Val -> Function TestEnc
