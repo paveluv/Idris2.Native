@@ -1,13 +1,15 @@
-||| A live table: what an allocation site keeps live across its slow path,
-||| as data a slow path shared by every site reads. The site's cold code
-||| calls the shared slow path, and its table follows the call; the slow
-||| path saves the slots the table lists across `idris_alloc_slow`, the
-||| GC-visible ones where the collector forwards them, and reloads them
-||| after it.
+||| A live table: what an allocation site keeps live across its slow path
+||| that the collector must see, as data a slow path shared by every site
+||| reads. The site's cold code calls the shared slow path, and its table
+||| follows the call; the slow path puts the slots the table lists in
+||| `ROOTS` across `idris_alloc_slow`, where the collector forwards them,
+||| and reloads them after it. Only the GC-visible slots are listed. A raw
+||| slot needs nothing: nothing the slow path runs writes `SCRATCH`, since
+||| the runtime is Direct code, which keeps its slots in frames of its own,
+||| and the collector never reads it.
 |||
 ||| A table is entries of one sub-word width, little-endian: the number of
-||| GC-visible slots, the number of raw ones, then the GC-visible slots and
-||| the raw ones. The width is the narrowest that holds every entry
+||| slots, then the slots. The width is the narrowest that holds every entry
 ||| (`tableWidth`). A slot listed twice is saved twice and reloaded twice,
 ||| the same word each time, which only takes room: the code generator
 ||| lists each once.
@@ -21,14 +23,12 @@ import Native.Width
 
 %default total
 
-||| Where a table holds the number of its GC-visible slots, the number of
-||| its raw ones, and its first slot, in bytes from its start, by the
-||| width of its entries.
+||| Where a table holds the number of its slots, and its first slot, in
+||| bytes from its start, by the width of its entries.
 public export
-gcCountAt, rawCountAt, slotsAt : Width.SubWord -> Nat
-gcCountAt _ = 0
-rawCountAt w = Width.subWordBytes w
-slotsAt w = 2 * Width.subWordBytes w
+countAt, slotsAt : Width.SubWord -> Nat
+countAt _ = 0
+slotsAt w = Width.subWordBytes w
 
 ||| The narrowest width whose entries hold the numbers: none past 32 bits.
 public export
@@ -40,12 +40,12 @@ tableWidth ns =
     else if most < 4294967296 then Just Width.Sub32
     else Nothing
 
-||| The table of the GC-visible slots and the raw ones: its width and its
-||| bytes; none if an entry needs more than 32 bits.
+||| The table of the GC-visible slots: its width and its bytes; none if an
+||| entry needs more than 32 bits.
 public export
-table : (gc, raw : List Nat) -> Maybe (Width.SubWord, List Bits8)
-table gc raw = do
-  let entries = length gc :: length raw :: gc ++ raw
+table : (slots : List Nat) -> Maybe (Width.SubWord, List Bits8)
+table slots = do
+  let entries = length slots :: slots
   w <- tableWidth entries
   pure (w, foldr (entry w) [] entries)
   where
@@ -59,22 +59,15 @@ table gc raw = do
       cast v :: cast (prim__shr_Bits64 v 8) :: cast (prim__shr_Bits64 v 16)
         :: cast (prim__shr_Bits64 v 24) :: rest
 
-||| The GC-visible slots and the raw ones of a table of the width, its bytes
-||| read as `table` writes them; none if they are not a table's.
+||| The slots of a table of the width, its bytes read as `table` writes
+||| them; none if they are not a table's.
 public export
-tableSlots : Width.SubWord -> List Bits8 -> Maybe (List Nat, List Nat)
+tableSlots : Width.SubWord -> List Bits8 -> Maybe (List Nat)
 tableSlots w bytes = do
-  (gc :: raw :: slots) <- entries bytes
+  (n :: slots) <- entries bytes
     | _ => Nothing
-  (gcSlots, rawSlots) <- split gc slots
-  if length rawSlots == raw then Just (gcSlots, rawSlots) else Nothing
+  if length slots == n then Just slots else Nothing
   where
-    -- the first `n` of the entries, and the rest
-    split : Nat -> List Nat -> Maybe (List Nat, List Nat)
-    split Z ns = Just ([], ns)
-    split (S n) [] = Nothing
-    split (S n) (x :: ns) = map (\(a, b) => (x :: a, b)) (split n ns)
-
     -- the entries so far, the one being read, its bytes read and the next
     -- byte's weight: the low byte first
     step : (SnocList Nat, Nat, Nat, Nat) -> Bits8 -> (SnocList Nat, Nat, Nat, Nat)

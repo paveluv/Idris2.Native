@@ -1,22 +1,25 @@
 -- The slow path every allocation site shares, run on live tables that
 -- ordinary programs seldom or never make: a slot past 65,535, which needs
--- the table's widest entries; two and three raw slots at once; nothing live
--- at all.
+-- the table's widest entries; raw slots live, two and three at once, which
+-- the table does not list; nothing live at all.
 --
 -- A function's registers are slots of SCRATCH, one for each value it binds,
 -- so a function that binds 65,537 values has slots past 65,535; an Idris
 -- function that long is no test anyone would write, but the term IR builds
 -- one in a loop. A raw value is a machine word or a double, which the
--- collector must never see: the slow path keeps those on the machine stack,
--- the GC-visible ones in ROOTS. In ordinary code a raw value is live across
--- an allocation mostly while it is boxed, one at a time.
+-- collector must never see: the slow path leaves those in their slots,
+-- which nothing it runs writes, and puts the GC-visible ones in ROOTS. In
+-- ordinary code a raw value is live across an allocation mostly while it is
+-- boxed, one at a time.
 --
 -- Each allocation here takes the slow path: the allocation window is 8
 -- bytes, and the program's own `allocSlow` leaves it empty. That
--- `allocSlow` overwrites every slot of SCRATCH the callers have, so a slot
--- the shared slow path does not restore comes back with `allocSlow`'s word,
--- and the check after the allocation fails. It collects nothing: what a
--- collection does to the saved values is native/alloc002's.
+-- `allocSlow` overwrites the GC-visible slots of SCRATCH the tables list,
+-- so a slot the shared slow path does not restore from ROOTS comes back
+-- with `allocSlow`'s word, and the check after the allocation fails; it
+-- leaves the raw ones, as the runtime's does, and the checks after show
+-- them kept. It collects nothing: what a collection does to the saved
+-- values is native/alloc002's.
 --
 -- The program prints each function's tables, as the code generator wrote
 -- them, and exits with 0 when every check passes.
@@ -114,10 +117,12 @@ realised =
 deepValues : Nat
 deepValues = 65537
 
-||| The slots of SCRATCH `allocSlow` overwrites: `deep`'s parameter, its
-||| values and the two after them, and fewer than SCRATCH holds.
-overwritten : Nat
-overwritten = deepValues + 3
+||| The GC-visible slots of SCRATCH the tables list that `allocSlow`
+||| overwrites: slot 0, `main`'s, `deep`'s and `raws`' first value, and
+||| `deep`'s fixnum, after its 65,537 words. `deep`'s pair, after it, it
+||| leaves alone: a wrong word there would be a fault, not a failed check.
+overwritten : List Nat
+overwritten = [0, deepValues + 2]
 
 T : Decls TestEnc
 T = MkDecls
@@ -162,25 +167,23 @@ startBody = build $ \[entry, window] => do
   ret []
 
 ||| The runtime's allocation slow path, reduced to what this program needs,
-||| after overwriting the callers' slots: `bytes` fresh from the system, the
-||| object at their start, and the window left empty, so that the next
-||| allocation comes here too. Nothing is collected.
+||| after overwriting the callers' GC-visible slots, which the shared slow
+||| path restores from ROOTS: `bytes` fresh from the system, the object at
+||| their start, and the window left empty, so that the next allocation
+||| comes here too. Nothing is collected.
 allocSlowBody : Closed T (Direct [W64] False) False [W64]
 allocSlowBody = build $ \[bytes] => do
   scratch <- emit1 (AreaAddr SCRATCH)
-  -- slot i of SCRATCH, for i below `overwritten`, set to i + bytes
-  loop [W64] [W 0] $ \again, [i] =>
-    branch EqR i (W (cast overwritten))
-      (do w <- emit1 (SystemCall 6 [W 9, W 0, bytes, W 3, W 0x22, W (-1), W 0])
-          base <- emit1 (WordToByteAddr w)
-          hp <- emit1 (Offset base bytes)
-          emit0 (SetPinned Hp hp)
-          emit0 (SetPinned HpLim hp)
-          ret [w]) $ do
-      v <- emit1 (Arith Add i bytes)
-      emit0 (Store W64 (MkMem (AtBytes scratch) (Just i) 0) v)
-      i' <- emit1 (Arith Add i (W 1))
-      again [i']
+  -- each overwritten slot i set to i + bytes
+  traverse_ (\i => do v <- emit1 (Arith Add (W (cast i)) bytes)
+                      emit0 (Store W64 (MkMem (AtBytes scratch) (Just (W (cast i))) 0) v))
+    overwritten
+  w <- emit1 (SystemCall 6 [W 9, W 0, bytes, W 3, W 0x22, W (-1), W 0])
+  base <- emit1 (WordToByteAddr w)
+  hp <- emit1 (Offset base bytes)
+  emit0 (SetPinned Hp hp)
+  emit0 (SetPinned HpLim hp)
+  ret [w]
 
 ||| The runtime's `allocMutable`: the slow path's body.
 allocMutableBody : Closed T (Direct [W64] False) False [W64]
@@ -215,9 +218,9 @@ deepBody = build $ \[x] => do
   f <- emit1 (Tag w)
   v <- emit1 (WidenFix f)
   o <- emit1 (AllocObj (ConH 0 2) [x, v])
-  leaveIf NeR w (W 65537) (crash "deep: the raw slot past 65,535 not restored")
+  leaveIf NeR w (W 65537) (crash "deep: the raw slot past 65,535 not kept")
   _ <- emit1 (AllocSized StringBytesP (W 8) ())
-  leaveIf NeR w (W 65537) (crash "deep: the raw slot not restored after the string")
+  leaveIf NeR w (W 65537) (crash "deep: the raw slot not kept after the string")
   a <- emit1 (Load Val (MkMem (AtPtr o) Nothing 8))
   b <- emit1 (Load Val (MkMem (AtPtr o) Nothing 16))
   aw <- untagged a
@@ -240,10 +243,10 @@ rawsBody = build $ \[x] => do
   b <- emit1 (Arith Add xw (W 20))
   c <- emit1 (Arith Add xw (W 30))
   _ <- emit1 (AllocObj (ConH 0 1) [x])
-  leaveIf NeR c (W 37) (crash "raws: the third raw slot not restored")
+  leaveIf NeR c (W 37) (crash "raws: the third raw slot not kept")
   _ <- emit1 (AllocObj (ConH 0 1) [x])
-  leaveIf NeR a (W 17) (crash "raws: the first raw slot not restored")
-  leaveIf NeR b (W 27) (crash "raws: the second raw slot not restored")
+  leaveIf NeR a (W 17) (crash "raws: the first raw slot not kept")
+  leaveIf NeR b (W 27) (crash "raws: the second raw slot not kept")
   _ <- emit1 (AllocObj (ConH 0 1) [Vx {enc = TestEnc} 0])
   return (Vx {enc = TestEnc} 0)
 
@@ -274,9 +277,7 @@ tables (c :: Jmp _ :: Bytes bs :: is) = case calledWidth c of
   where
     describe : SubWord -> List Bits8 -> String
     describe w bs = case tableSlots w bs of
-      Just (gc, raw) =>
-        "  " ++ show (8 * subWordBytes w) ++ "-bit, " ++ show (length gc) ++ " GC-visible, "
-          ++ show (length raw) ++ " raw"
+      Just slots => "  " ++ show (8 * subWordBytes w) ++ "-bit, GC-visible slots " ++ show slots
       Nothing => "  not a table"
 tables (_ :: is) = tables is
 tables [] = []

@@ -47,10 +47,11 @@
 ||| Allocation. An object or a continuation is a bump of r15, then a check of
 ||| it against r14. Past the limit, the site's cold code, placed after the
 ||| function, calls the slow path every site shares, with the site's live
-||| table after the call (`Native.Codegen.X86.AllocLive`): it saves what is
-||| live across `idris_alloc_slow` (the GC-visible values in `ROOTS`, where
-||| the collector forwards them, the raw ones in its own frame), restores
-||| it, and returns to the jump back to the initialisation.
+||| table after the call (`Native.Codegen.X86.AllocLive`): it puts the
+||| GC-visible values live across `idris_alloc_slow` in `ROOTS`, where the
+||| collector forwards them, restores them, and returns to the jump back to
+||| the initialisation; the raw ones stay in their slots, which nothing the
+||| slow path runs writes.
 |||
 ||| Areas. The rendering records the most of each per-thread area its code
 ||| uses: the arguments and results passed in `ARGS`, the entries of a rooting
@@ -698,18 +699,17 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
 
           ||| A site's cold code, at `slow`: the call of the slow path the sites
           ||| share, the jump back to `done` it returns to, and the site's live
-          ||| table, of `live`'s slots, which the slow path saves across the
-          ||| allocation.
+          ||| table, of `live`'s GC-visible slots, which the slow path roots
+          ||| across the allocation.
           slowStub : (slow, done : Asm.Label) -> (live : List (LocatedIR.Location.Place enc)) ->
                      Render enc ()
           slowStub slow done live = do
             let gc = filter (IRCommon.Ty.gcVisible . LocatedIR.Location.Place.ty) live
-                raw = filter (not . IRCommon.Ty.gcVisible . LocatedIR.Location.Place.ty) live
             uses (Linkage.MkAreas 0 (length gc) 0 0)
-            -- the slow path saves slots: a value in a register across it is lost
+            -- the slow path keeps slots: a value in a register across it is lost
             case (traverse LocatedIR.Location.Place.slotNumber gc,
-                  traverse LocatedIR.Location.Place.slotNumber raw) of
-              (Just gs, Just rs) => case LiveTable.table gs rs of
+                  all (isJust . LocatedIR.Location.Place.slotNumber) live) of
+              (Just gs, True) => case LiveTable.table gs of
                 Just t =>
                   Data.Stateful.modify { cold $= (<>< (Asm.Lbl slow :: AllocLive.stub done t)) }
                 Nothing => Data.Stateful.failWith "a live table's entry needs more than 32 bits"

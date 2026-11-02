@@ -6,13 +6,15 @@
 ||| against r14; past the limit it jumps to its cold code: a call of the
 ||| routine for its table's width, a jump back to the site, and the site's
 ||| live table (`Native.LiveTable`), which nothing executes. The routine
-||| finds the table after the jump its call returns to. It roots what the
-||| table lists across `idris_alloc_slow`: the GC-visible slots in `ROOTS`,
-||| above the entries in use, with `NROOTS` raised once every one is
-||| written, so that the collector forwards them; the raw ones in a frame of
-||| its own on the machine stack, which the collector never reads. It
-||| reloads them all after the call, the GC-visible ones as the collector
-||| left them, and returns to the stub's jump with rax the object's room.
+||| finds the table after the jump its call returns to. It roots the slots
+||| the table lists, the GC-visible ones live across the site, across
+||| `idris_alloc_slow`: in `ROOTS`, above the entries in use, with `NROOTS`
+||| raised once every one is written, so that the collector forwards them.
+||| It reloads them after the call as the collector left them, and returns
+||| to the stub's jump with rax the object's room. The raw slots live
+||| across the site it leaves alone: nothing `idris_alloc_slow` runs writes
+||| `SCRATCH`, the runtime being Direct code, whose slots are in frames of
+||| its own.
 module Native.Codegen.X86.AllocLive
 
 import Native.Codegen.X86.AccessWidth
@@ -56,16 +58,16 @@ clobbers =
 ||| The labels a routine takes for itself.
 export
 routineLabels : Nat
-routineLabels = 8
+routineLabels = 4
 
 ||| The routine for tables of the width, its own labels numbered from
 ||| `first`, `routineLabels` of them.
 |||
 ||| Entered by a stub's call: rax is the object, r15 past it by its bytes,
 ||| r12 a complete continuation, and the stack pointer 8 below a multiple of
-||| 16, the call having pushed a word. The frame is an odd number of words,
-||| the table's address and the raw slots, so that the stack is 16-aligned
-||| at the call of `idris_alloc_slow`. Leaves rax the object's room, r15 and
+||| 16, the call having pushed a word. The frame is one word, the table's
+||| address, so that the stack is 16-aligned at the call of
+||| `idris_alloc_slow`. Leaves rax the object's room, r15 and
 ||| r14 the window `idris_alloc_slow` left, rbx `SCRATCH`, r12 and every
 ||| slot the table lists as they were or as the collector forwarded them,
 ||| and `NROOTS` and the stack as they were. Clobbers rcx, rdx, rsi, rdi, r8
@@ -84,39 +86,29 @@ routine w first =
   -- the table
   , Asm.MovRM Asm.RSI (Asm.MBase Asm.RSP 0)
   , Asm.AluI Asm.ADD Asm.RSI tableAt
-  -- the GC-visible slots onto ROOTS from entry n, then NROOTS raised to n + g
+  -- the slots onto ROOTS from entry n, then NROOTS raised to n + g
   , Asm.Lea Asm.R10 (area Linkage.Sym.SymNRoots)
   , Asm.MovRM Asm.R8 (Asm.MBase Asm.R10 0)
   , Asm.MovRR Asm.R9 Asm.R8
   , Asm.ShiftI Asm.SHL Asm.R9 (cast Area.rootShift)
   , Asm.Lea Asm.RDX (area Linkage.Sym.SymRoots)
   , Asm.Alu Asm.ADD Asm.R9 Asm.RDX
-  , entry Asm.RCX gcCount
+  , entry Asm.RCX count
   , Asm.Alu Asm.ADD Asm.R8 Asm.RCX
   , Asm.Lea Asm.RDX (Asm.MBase Asm.RSI (cast (LiveTable.slotsAt w)))
   , Asm.Test Asm.RCX Asm.RCX
   , Asm.Jcc Asm.E rooted ]
-  ++ walk roots rootBytes save ++
+  ++ walk roots save ++
   [ Asm.Lbl rooted
   , Asm.MovMR (Asm.MBase Asm.R10 0) Asm.R8
-  -- the frame: the table's address, then the raw slots
-  , entry Asm.RCX rawCount
-  , Asm.Lea Asm.R11 (Asm.MBase Asm.RCX 1)
-  , Asm.AluI Asm.OR Asm.R11 1
-  , Asm.ShiftI Asm.SHL Asm.R11 wordShift
-  , Asm.Alu Asm.SUB Asm.RSP Asm.R11
-  , Asm.MovMR (Asm.MBase Asm.RSP 0) Asm.RSI
-  , Asm.Test Asm.RCX Asm.RCX
-  , Asm.Jcc Asm.E framed
-  , Asm.Lea Asm.R9 (Asm.MBase Asm.RSP 8) ]
-  ++ walk raws 8 save ++
-  [ Asm.Lbl framed
+  -- the frame, the table's address
+  , Asm.Push Asm.RSI
   , Asm.Call (Linkage.Sym.label Linkage.Sym.SymAllocSlow)
+  , Asm.Pop Asm.RSI
   , Asm.MovRR Asm.RAX Asm.RDI
   , Asm.Lea Asm.RBX (area Linkage.Sym.SymScratch)
-  , Asm.MovRM Asm.RSI (Asm.MBase Asm.RSP 0)
-  -- NROOTS back to n, and the GC-visible slots reloaded from there
-  , entry Asm.RCX gcCount
+  -- NROOTS back to n, and the slots reloaded from there
+  , entry Asm.RCX count
   , Asm.Lea Asm.R10 (area Linkage.Sym.SymNRoots)
   , Asm.MovRM Asm.R8 (Asm.MBase Asm.R10 0)
   , Asm.Alu Asm.SUB Asm.R8 Asm.RCX
@@ -127,62 +119,38 @@ routine w first =
   , Asm.Lea Asm.RDX (Asm.MBase Asm.RSI (cast (LiveTable.slotsAt w)))
   , Asm.Test Asm.RCX Asm.RCX
   , Asm.Jcc Asm.E unrooted ]
-  ++ walk unroots rootBytes reload ++
+  ++ walk unroots reload ++
   [ Asm.Lbl unrooted
-  , entry Asm.RCX rawCount
-  , Asm.Test Asm.RCX Asm.RCX
-  , Asm.Jcc Asm.E unframed
-  , Asm.Lea Asm.R9 (Asm.MBase Asm.RSP 8) ]
-  ++ walk unraws 8 reload ++
-  [ Asm.Lbl unframed
-  -- the frame given back
-  , entry Asm.RCX rawCount
-  , Asm.AluI Asm.ADD Asm.RCX 1
-  , Asm.AluI Asm.OR Asm.RCX 1
-  , Asm.ShiftI Asm.SHL Asm.RCX wordShift
-  , Asm.Alu Asm.ADD Asm.RSP Asm.RCX
   , Asm.Ret ]
   where
-    rooted, framed, unrooted, unframed, roots, raws, unroots, unraws : Asm.Label
+    rooted, unrooted, roots, unroots : Asm.Label
     rooted = first
-    framed = first + 1
-    unrooted = first + 2
-    unframed = first + 3
-    roots = first + 4
-    raws = first + 5
-    unroots = first + 6
-    unraws = first + 7
+    unrooted = first + 1
+    roots = first + 2
+    unroots = first + 3
 
     area : Linkage.Sym -> Asm.Mem
     area s = Asm.MRip (Linkage.Sym.label s) 0
 
-    -- the table's counts, by rsi, its address
-    gcCount, rawCount : Asm.Mem
-    gcCount = Asm.MBase Asm.RSI (cast (LiveTable.gcCountAt w))
-    rawCount = Asm.MBase Asm.RSI (cast (LiveTable.rawCountAt w))
+    -- the table's count, by rsi, its address
+    count : Asm.Mem
+    count = Asm.MBase Asm.RSI (cast (LiveTable.countAt w))
 
     -- an entry of the table into the register
     entry : Asm.Reg64 -> Asm.Mem -> Asm.Instr
     entry r = Asm.Load (AccessWidth.accessWidth w) False r
 
-    rootBytes : Int
-    rootBytes = cast (Area.rootOffset 1)
-
-    -- a word's bytes, as the power of two they are
-    wordShift : Bits8
-    wordShift = 3
-
     -- for each of the rcx slots whose entries start at rdx: the slot's
-    -- address in r11, then `move` between the slot and the word at r9,
-    -- which moves on by `stride` each time
-    walk : Asm.Label -> (stride : Int) -> (move : List Asm.Instr) -> List Asm.Instr
-    walk l stride move =
+    -- address in r11, then `move` between the slot and the root at r9,
+    -- which moves on to the next root each time
+    walk : Asm.Label -> (move : List Asm.Instr) -> List Asm.Instr
+    walk l move =
       [ Asm.Lbl l
       , entry Asm.R11 (Asm.MBase Asm.RDX 0)
       , Asm.ShiftI Asm.SHL Asm.R11 (cast Area.slotShift)
       , Asm.Alu Asm.ADD Asm.R11 Asm.RBX ]
       ++ move ++
-      [ Asm.AluI Asm.ADD Asm.R9 stride
+      [ Asm.AluI Asm.ADD Asm.R9 (cast (Area.rootOffset 1))
       , Asm.AluI Asm.ADD Asm.RDX (cast (Width.subWordBytes w))
       , Asm.AluI Asm.SUB Asm.RCX 1
       , Asm.Jcc Asm.NE l ]

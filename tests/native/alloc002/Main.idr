@@ -2,8 +2,9 @@
 -- allocation takes the slow path every site shares, and the collector runs
 -- again and again, moving what is live.
 --
--- An allocation site's slow path saves what is live across the allocation
--- and reloads it: what the code after the allocation still reads. In
+-- An allocation site's slow path saves what is GC-visible and live across
+-- the allocation, what the code after the allocation still reads, and
+-- reloads it. In
 --
 --   pairUp a b = (a + b, [a, b, a * b])
 --
@@ -17,7 +18,8 @@
 --   spread a b = [a + b, a * b, a - b]
 --
 -- allocates the box of `a - b` while the result itself, a raw double, is
--- live, and the collector must not take it for a pointer. `Wide.wide`
+-- live: the collector must not take it for a pointer, and it stays in its
+-- slot, which nothing the slow path runs writes. `Wide.wide`
 -- binds 300 values and builds the list of them, so the list's first cell
 -- is allocated with all 301 live, and the slots of a function that binds
 -- 300 values go past 255: its table's entries take 16 bits.

@@ -12,15 +12,16 @@
 -- window's limit, the site's slow path runs `idris_alloc_slow`, which may
 -- collect and move objects. So the GC-visible values live across the
 -- allocation (pointers to objects, like `xs`) go where the collector finds
--- and forwards them, ROOTS, and are reloaded from there after it; the slow
--- path keeps the raw ones (a Bits64, a Double, a code address) where the
--- collector never looks.
+-- and forwards them, ROOTS, and are reloaded from there after it. The raw
+-- ones (a Bits64, a Double, a code address) need nothing: they stay in
+-- their slots, which nothing the slow path runs writes, and the collector
+-- never looks there.
 --
 -- Every site shares one routine for that. Its cold code is a call of the
 -- routine, a jump back, and the site's live table: how many GC-visible
--- slots, how many raw ones, then the slots, each entry 1, 2 or 4 bytes,
--- the narrowest that holds them all. The routine finds the table just past
--- the jump its call returns to.
+-- slots, then the slots, each entry 1, 2 or 4 bytes, the narrowest that
+-- holds them all. The routine finds the table just past the jump its call
+-- returns to.
 module Main
 
 import Data.List
@@ -36,48 +37,47 @@ widthName Sub16 = "16-bit"
 widthName Sub32 = "32-bit"
 
 -- the table, then reading it back gives the slots it was made of
-roundTrip : (List Nat, List Nat) -> String
-roundTrip (gc, raw) = case table gc raw of
+roundTrip : List Nat -> String
+roundTrip slots = case table slots of
   Nothing => "no table"
   Just (w, bytes) =>
     widthName w ++ ", " ++ show (length bytes) ++ " bytes, "
-      ++ (if tableSlots w bytes == Just (gc, raw) then "reads back" else "DOES NOT READ BACK")
+      ++ (if tableSlots w bytes == Just slots then "reads back" else "DOES NOT READ BACK")
 
 -- the slots of `n` consecutive slots from `from`
 run : (from, n : Nat) -> List Nat
 run from n = take n [from ..]
 
-cases : List (String, (List Nat, List Nat))
+cases : List (String, List Nat)
 cases =
-  [ ("nothing live", ([], []))
-  , ("one raw slot, slot 0", ([], [0]))
-  , ("slots 3 and 5 GC-visible, 7 raw", ([3, 5], [7]))
-  , ("slot 255, the last of 8 bits", ([255], []))
-  , ("slot 256, the first past 8 bits", ([256], []))
-  , ("slot 65535, the last of 16 bits", ([], [65535]))
-  , ("slot 65536, the first past 16 bits", ([65536], [1]))
-  , ("255 GC-visible slots, a count of 8 bits", (run 0 255, []))
-  , ("256 GC-visible slots, a count past 8 bits", (run 0 256, []))
-  , ("slot 2^32, past every width", ([4294967296], [])) ]
+  [ ("nothing live", [])
+  , ("slot 0", [0])
+  , ("slots 3 and 5", [3, 5])
+  , ("slot 255, the last of 8 bits", [255])
+  , ("slot 256, the first past 8 bits", [256])
+  , ("slot 65535, the last of 16 bits", [65535])
+  , ("slots 1 and 65536, the first past 16 bits", [1, 65536])
+  , ("255 slots, a count of 8 bits", run 0 255)
+  , ("256 slots, a count past 8 bits", run 0 256)
+  , ("slot 2^32, past every width", [4294967296]) ]
 
 main : IO ()
 main = do
   putStrLn "-- tables round-trip"
   traverse_ (\(name, c) => putStrLn (name ++ ": " ++ roundTrip c)) cases
-  -- the format's bytes, little-endian: counts, then the GC-visible slots,
-  -- then the raw ones
+  -- the format's bytes, little-endian: the count, then the slots
   putStrLn "-- bytes"
-  putStrLn ("slots 3 and 5 GC-visible, 7 raw: " ++ show (map snd (table [3, 5] [7])))
-  putStrLn ("slot 300 GC-visible: " ++ show (map snd (table [300] [])))
-  putStrLn ("raw slot 70000: " ++ show (map snd (table [] [70000])))
+  putStrLn ("slots 3 and 5: " ++ show (map snd (table [3, 5])))
+  putStrLn ("slot 300: " ++ show (map snd (table [300])))
+  putStrLn ("slot 70000: " ++ show (map snd (table [70000])))
   -- bytes that are no table: a count larger than the slots that follow,
   -- a slot cut short
   putStrLn "-- not tables"
-  putStrLn ("two GC-visible counted, one given: " ++ show (tableSlots Sub8 [2, 0, 9]))
-  putStrLn ("a 16-bit slot cut short: " ++ show (tableSlots Sub16 [1, 0, 0, 0, 44]))
+  putStrLn ("two counted, one given: " ++ show (tableSlots Sub8 [2, 9]))
+  putStrLn ("a 16-bit slot cut short: " ++ show (tableSlots Sub16 [1, 0, 44]))
   -- a site's cold code: the call, the jump back to label 99, the table
   putStrLn "-- the stub"
-  traverse_ (putStrLn . show) (stub 99 (Sub8, [2, 1, 3, 5, 7]))
+  traverse_ (putStrLn . show) (stub 99 (Sub8, [2, 3, 5]))
   -- the table starts where the call returns to plus the jump's length,
   -- which every jump has
   putStrLn ("the table after the jump: " ++ show tableAt ++ " bytes")

@@ -207,11 +207,11 @@ jmp L86
 L81:
 call L6
 jmp L82
-.byte 1, 1, 1, 15
+.byte 1, 1
 L91:
 call L6
 jmp L92
-.byte 1, 1, 3, 33
+.byte 1, 3
 == val-encoding=tag0
 # Main.count
 L64:
@@ -421,8 +421,8 @@ jmp L86
 L81:
 call L6
 jmp L82
-.byte 1, 1, 1, 15
+.byte 1, 1
 L91:
 call L6
 jmp L92
-.byte 1, 1, 3, 33
+.byte 1, 3
