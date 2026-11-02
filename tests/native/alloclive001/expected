@@ -1,27 +1,31 @@
 -- tables round-trip
 nothing live: 8-bit, 1 bytes, reads back
-slot 0: 8-bit, 2 bytes, reads back
-slots 3 and 5: 8-bit, 3 bytes, reads back
-slot 255, the last of 8 bits: 8-bit, 2 bytes, reads back
-slot 256, the first past 8 bits: 16-bit, 4 bytes, reads back
-slot 65535, the last of 16 bits: 16-bit, 4 bytes, reads back
-slots 1 and 65536, the first past 16 bits: 32-bit, 12 bytes, reads back
-255 slots, a count of 8 bits: 8-bit, 256 bytes, reads back
-256 slots, a count past 8 bits: 16-bit, 514 bytes, reads back
-slot 2^32, past every width: no table
+the floating-point registers alone: 8-bit, 1 bytes, reads back
+word 0: 8-bit, 2 bytes, reads back
+words 3 and 15, and the floating-point registers: 8-bit, 3 bytes, reads back
+word 255, the last of 8 bits: 8-bit, 2 bytes, reads back
+word 256, the first past 8 bits: 16-bit, 4 bytes, reads back
+word 65535, the last of 16 bits: 16-bit, 4 bytes, reads back
+words 1 and 65536, the first past 16 bits: 32-bit, 12 bytes, reads back
+127 words, the most an 8-bit count holds: 8-bit, 128 bytes, reads back
+128 words, a count past 8 bits: 16-bit, 258 bytes, reads back
+word 2^32, past every width: no table
 -- bytes
-slots 3 and 5: Just [2, 3, 5]
-slot 300: Just [1, 0, 44, 1]
-slot 70000: Just [1, 0, 0, 0, 112, 17, 1, 0]
+words 3 and 15: Just [4, 3, 15]
+the same, the floating-point registers too: Just [5, 3, 15]
+word 300: Just [2, 0, 44, 1]
+word 70000: Just [2, 0, 0, 0, 112, 17, 1, 0]
+word register 2: 2; slot 0: 11; slot 7: 18
 -- not tables
 two counted, one given: Nothing
-a 16-bit slot cut short: Nothing
+a 16-bit word cut short: Nothing
 -- the stub
 call L6
 jmp L99
-.byte 2, 3, 5
+.byte 4, 3, 15
 the table after the jump: 5 bytes
 -- the routines
-8-bit: 209 bytes
-16-bit: 209 bytes
-32-bit: 203 bytes
+8-bit: 671 bytes, sized 224 bytes
+16-bit: 671 bytes, sized 224 bytes
+32-bit: 663 bytes, sized 218 bytes
+SAVE: 27 words

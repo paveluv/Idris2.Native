@@ -1,11 +1,11 @@
 Main.main:
-  8-bit, GC-visible slots []
-  8-bit, GC-visible slots [0]
+  8-bit, GC-visible words []
+  8-bit, GC-visible words [11]
 Main.deep:
-  32-bit, GC-visible slots [0, 65539]
-  32-bit, GC-visible slots [65540]
+  32-bit, GC-visible words [11, 65550]
+  32-bit, GC-visible words [65551]
 Main.raws:
-  8-bit, GC-visible slots [0]
-  8-bit, GC-visible slots [0]
-  8-bit, GC-visible slots []
+  8-bit, GC-visible words [11]
+  8-bit, GC-visible words [11]
+  8-bit, GC-visible words []
 exit status: 0

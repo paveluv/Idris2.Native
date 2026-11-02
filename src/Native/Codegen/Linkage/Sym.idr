@@ -28,9 +28,10 @@ data Sym
     SymUnsupported
   | ||| `idris_alloc_slow(n)`: the allocation slow path, the runtime's
     SymAllocSlow
-  | ||| `idris_alloc_live8`, `16`, `32`: the slow path every allocation site
-    ||| of generated code shares, reading the site's live table
-    ||| (`Native.LiveTable`) of entries of the width
+  | ||| `idris_alloc_live8`, `16`, `32`: the slow path the allocation sites
+    ||| of generated code of a fixed size share, which keeps every register,
+    ||| reading the site's live table (`Native.LiveTable`) of entries of the
+    ||| width
     SymAllocLive Width.SubWord
   | ||| rodata: the static HALT continuation, the bottom of every
     ||| continuation chain
@@ -44,6 +45,13 @@ data Sym
   | ||| bss: SCRATCH, sized by `Areas`: extra registers for register
     ||| allocation
     SymScratch
+  | ||| bss: SAVE, the allocatable registers' words across the shared
+    ||| allocation slow path, `SCRATCH` right after it
+    SymSave
+  | ||| The shared allocation slow path of a site whose size is known only
+    ||| at run time, or past the allocation margin, for live tables of
+    ||| entries of the width
+    SymAllocSized Width.SubWord
   | ||| `idris_apply(f, a)`: apply a closure to one argument (CPS)
     SymApply
   | ||| `idris_alloc_mutable(n)`: the only way a mutable object is
@@ -83,6 +91,10 @@ label SymArgs = 10
 label SymRoots = 11
 label SymNRoots = 12
 label SymScratch = 13
+label SymSave = 15
+label (SymAllocSized Width.Sub8) = 24
+label (SymAllocSized Width.Sub16) = 25
+label (SymAllocSized Width.Sub32) = 26
 label SymApply = 14
 label SymAllocMutable = 16
 label SymStackLimit = 17
@@ -110,6 +122,10 @@ symName SymArgs = "ARGS"
 symName SymRoots = "ROOTS"
 symName SymNRoots = "NROOTS"
 symName SymScratch = "SCRATCH"
+symName SymSave = "SAVE"
+symName (SymAllocSized Width.Sub8) = "idris_alloc_sized8"
+symName (SymAllocSized Width.Sub16) = "idris_alloc_sized16"
+symName (SymAllocSized Width.Sub32) = "idris_alloc_sized32"
 symName SymApply = "idris_apply"
 symName SymAllocMutable = "idris_alloc_mutable"
 symName SymStackLimit = "STACK_LIMIT"
@@ -126,6 +142,7 @@ areaSym : Area -> Sym
 areaSym Area.ARGS = SymArgs
 areaSym Area.ROOTS = SymRoots
 areaSym Area.NROOTS = SymNRoots
+areaSym Area.SAVE = SymSave
 areaSym Area.SCRATCH = SymScratch
 areaSym Area.STACK_LIMIT = SymStackLimit
 areaSym Area.ARGV = SymArgv

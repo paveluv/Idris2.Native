@@ -15,6 +15,7 @@ import Native.Codegen.X86.Asm
 import Native.Codegen.X86.RegSet
 import Native.Codegen.X86.Writes
 
+import Data.List
 import Data.SortedMap
 import Data.SortedSet
 import Data.String
@@ -53,6 +54,38 @@ add is c =
     entries (Asm.Comment _ :: rest) = entries rest
     entries (Asm.Lbl l :: rest) = l :: entries rest
     entries _ = []
+
+||| The registers a routine restores: each it stores, in the run of stores
+||| to fixed words of memory its code begins with (past its alignment and
+||| labels), to a word it loads it back from, in the run of loads its code
+||| ends with before its return. Whatever writes such a register in
+||| between, the routine leaves it as it found it, but for what it writes
+||| to the word on purpose.
+export
+restored : List Asm.Instr -> RegSet
+restored is =
+  let saved = stores (dropWhile prelude is)
+      loaded = loads (reverse is)
+  in foldl (\s, (r, l, o) => if elem (r, l, o) loaded then RegSet.union s (RegSet.gpr r) else s)
+       RegSet.none saved
+  where
+    prelude : Asm.Instr -> Bool
+    prelude (Asm.Align _) = True
+    prelude (Asm.Lbl _) = True
+    prelude _ = False
+
+    stores : List Asm.Instr -> List (Asm.Reg64, Asm.Label, Int)
+    stores (Asm.MovMR (Asm.MRip l o) r :: rest) = (r, l, o) :: stores rest
+    stores _ = []
+
+    -- the loads before the return, the last first
+    loads : List Asm.Instr -> List (Asm.Reg64, Asm.Label, Int)
+    loads (Asm.Ret :: rest) = go rest
+      where
+        go : List Asm.Instr -> List (Asm.Reg64, Asm.Label, Int)
+        go (Asm.MovRM r (Asm.MRip l o) :: more) = (r, l, o) :: go more
+        go _ = []
+    loads _ = []
 
 ||| Whether the routine's code, which may call recorded functions, leaves
 ||| changed only registers `declared` names: else why not, the registers it

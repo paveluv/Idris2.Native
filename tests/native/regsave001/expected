@@ -1,0 +1,5 @@
+the value check: accepted
+Main.keep:
+  GC-visible words [11], the floating-point registers saved
+  GC-visible words [10], the floating-point registers saved
+exit status: 0

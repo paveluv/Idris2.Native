@@ -17,6 +17,7 @@ import Native.Codegen.X86.Clobbers as X86
 import Native.Codegen.X86.Datum as X86
 import Native.Codegen.X86.Encode
 import Native.Codegen.X86.LabelTable as X86
+import Native.Codegen.X86.RegSet as X86
 import Native.Codegen.X86.Render as X86
 
 import Data.Maybe
@@ -60,13 +61,21 @@ renderInto asm dump r = do
       dump is
       X86.Assembler.encode asm is
 
-    -- the shared allocation slow path at each width, which generated code
-    -- calls, against what it declares it may change
+    -- the shared allocation slow paths at each width, which generated code
+    -- calls, against what each declares it may change, the registers a
+    -- routine restores aside
     slowPaths : X86.Clobbers -> Either String ()
     slowPaths c =
-      traverse_ (\w => X86.Clobbers.conforms c "the shared allocation slow path"
-                         X86.AllocLive.clobbers (X86.AllocLive.routine w 0))
+      traverse_ (\w => do
+                   checked c "the shared allocation slow path" X86.AllocLive.clobbers
+                     (X86.AllocLive.routine w 0)
+                   checked c "the shared allocation slow path of sized sites"
+                     X86.AllocLive.sizedClobbers (X86.AllocLive.sizedRoutine w 0))
         [Width.Sub8, Width.Sub16, Width.Sub32]
+      where
+        checked : X86.Clobbers -> String -> X86.RegSet -> List X86.Asm.Instr -> Either String ()
+        checked c' name declared is =
+          X86.Clobbers.conforms c' name (X86.RegSet.union declared (X86.Clobbers.restored is)) is
 
     functions : X86.Render.RS enc -> X86.Clobbers -> List (LocatedIR.Function enc) ->
                 IO (Either String X86.Render.Rendered)

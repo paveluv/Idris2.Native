@@ -359,6 +359,20 @@ collecting : Instr enc -> Maybe (List (Location.Place enc))
 collecting (DirectCall _ _ _ False _) = Nothing
 collecting i = listed i
 
+||| Whether objects of the kind are allocated by a call to the runtime's
+||| `idris_alloc_mutable`, never by the inline bump: the kinds whose objects
+||| hold values the collector follows and are written after they are made,
+||| so that a collector with a nursery can keep them out of it, and then a
+||| write into an old object never makes it point into the nursery. A raw
+||| object (`BYTES`) may be written too, but holds no pointer, so the bump
+||| serves it.
+export
+isMutable : Types.Kind -> Bool
+isMutable Types.Kind.IOREF = True
+isMutable Types.Kind.ARRAY = True
+isMutable Types.Kind.STRUCT = True
+isMutable _ = False
+
 ||| Whether the instruction is an allocation, which initialises its object
 ||| from its operands after the collection it may start, where any other
 ||| operation reads them first.

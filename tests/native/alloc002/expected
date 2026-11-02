@@ -1,5 +1,5 @@
 status: 0
 a table with nothing live: yes
-a table with 2 to 5 GC-visible slots: yes
-a table with 256 GC-visible slots or more: yes
+a table with 2 to 5 GC-visible words: yes
+a table with 256 GC-visible words or more: yes
 a table of 16-bit entries: yes

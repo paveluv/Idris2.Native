@@ -7,6 +7,7 @@
 ||| without a row here is rendered from wherever its operands are.
 module Native.Codegen.X86.Rows
 
+import Native.Codegen.X86.AllocLive
 import Native.Codegen.X86.Asm
 import Native.Codegen.X86.Target
 
@@ -24,6 +25,7 @@ import Native.Codegen.Row
 import Native.Codegen.Target
 import Native.Rep
 import Native.Types.Enc as Types
+import Native.Types.Header as Types
 
 %default total
 
@@ -70,7 +72,7 @@ arith o = Row.clobbering (if division o then [rcx, rdx] else [rcx])
 ||| registers besides its results, given what a call may write (`called`,
 ||| the target's call model): an operation's instruction's; a shuffle, none.
 export
-clobbers : (called : RegMask) -> LocatedIR.Step enc -> RegMask
+clobbers : {enc : Types.Enc} -> (called : RegMask) -> LocatedIR.Step enc -> RegMask
 clobbers called (LocatedIR.Step.Op _ i) = instrClobbers i
   where
     instrClobbers : LocatedIR.Instr enc -> RegMask
@@ -92,8 +94,16 @@ clobbers called (LocatedIR.Step.Op _ i) = instrClobbers i
       -- a double through rcx, which no want of a word register moves
       LocatedIR.Instr.Load _ _ _ => Row.clobbering [rcx]
       LocatedIR.Instr.Store _ _ _ => Row.clobbering [rcx]
-      -- the collector may run, by a call
-      LocatedIR.Instr.AllocObj _ _ _ _ => called
+      -- an object of a fixed size up to the allocation margin, made in rax
+      -- through rdx, whose slow path keeps every register but the
+      -- floating-point ones, which it keeps where one is live; any other
+      -- allocation through a slow path that keeps none, or a call
+      LocatedIR.Instr.AllocObj {k} _ h _ live =>
+        if not (LocatedIR.Instr.isMutable k)
+             && AllocLive.fixedSlow (8 * Types.Header.objectWords h)
+          then RegMask.union (Row.clobbering [rax, rdx])
+                 (if AllocLive.savesFloats live then RegMask.none else MkRegMask 0 called.floats)
+          else called
       LocatedIR.Instr.AllocSized _ _ _ _ _ => called
       LocatedIR.Instr.DirectCall _ _ _ _ _ => called
       -- the number and the arguments into the registers of Linux's convention,
@@ -146,7 +156,7 @@ between _ _ = []
 ||| results, and what else it writes (`clobbers`): a move's as `between`
 ||| says, a value put into a location made in rax.
 export
-row : (called : RegMask) -> LocatedIR.Step enc -> Row
+row : {enc : Types.Enc} -> (called : RegMask) -> LocatedIR.Step enc -> Row
 row called s = let (os, rs) = wants s in MkRow os rs (clobbers called s)
   where
     instrWants : LocatedIR.Instr enc -> (List Row.Want, List Row.Want)

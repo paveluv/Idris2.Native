@@ -13,6 +13,7 @@ import Native.Codegen.Linkage.Areas as Linkage
 import Native.Codegen.Linkage.ResumePoint
 import Native.Codegen.Linkage.Sym as Linkage
 import Native.Codegen.Target
+import Native.Codegen.X86.AllocLive as X86
 import Native.Codegen.X86.Asm
 import Native.Codegen.X86.Datum as X86
 import Native.Codegen.X86.Target
@@ -283,16 +284,18 @@ seedAreas : Linkage.Areas
 seedAreas = Linkage.MkAreas 0 2 0 0
 
 ||| The zero-initialised areas, 8-aligned, in bss: `ARGS`, then `ROOTS`,
-||| `NROOTS`, `SCRATCH`, `STACK_LIMIT`, `ARGV`, `RUNTIME` and `CONSTANTS`.
+||| `NROOTS`, `SAVE`, `SCRATCH` right after it, `STACK_LIMIT`, `ARGV`,
+||| `RUNTIME` and `CONSTANTS`.
 export
 seedBss : Linkage.Areas -> List (Linkage.Sym, Int)
 seedBss a =
   let roots = 8 * cast a.args
       nroots = roots + 8 * cast a.roots
-      limit = nroots + 8 + 8 * cast a.scratch
+      scratch = nroots + 8 + 8 * cast X86.AllocLive.saveWords
+      limit = scratch + 8 * cast a.scratch
   in [ (Linkage.Sym.SymArgs, 0),
     (Linkage.Sym.SymRoots, roots), (Linkage.Sym.SymNRoots, nroots),
-      (Linkage.Sym.SymScratch, nroots + 8),
+      (Linkage.Sym.SymSave, nroots + 8), (Linkage.Sym.SymScratch, scratch),
       (Linkage.Sym.SymStackLimit, limit)
      , (Linkage.Sym.SymArgv, limit + 8), (Linkage.Sym.SymRuntime, limit + 16)
      , (Linkage.Sym.SymConstants, limit + 16 + 8 * cast Area.runtimeWords) ]
@@ -300,4 +303,5 @@ seedBss a =
 export
 seedBssSize : Linkage.Areas -> Int
 seedBssSize a =
-  8 * (cast (a.args + a.roots + 1 + a.scratch + 2 + a.constants) + cast Area.runtimeWords)
+  8 * (cast (a.args + a.roots + 1 + X86.AllocLive.saveWords + a.scratch + 2 + a.constants)
+       + cast Area.runtimeWords)

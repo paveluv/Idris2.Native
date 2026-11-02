@@ -268,14 +268,18 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
           { text $= (<>< is)
           , written $= \w => foldl (\v, i => RegSet.union (Writes.writes i) v) w is }
 
-      ||| The slow path the allocation sites share, for live tables of the
-      ||| width, with labels of its own.
+      ||| The slow paths the allocation sites share, for live tables of the
+      ||| width, each with labels of its own.
       sharedSlowPath : Width.SubWord -> Render enc ()
       sharedSlowPath w = do
         first <-
           Data.Stateful.state
             (\s => ({ nextLabel := s.nextLabel + AllocLive.routineLabels } s, s.nextLabel))
         emits (AllocLive.routine w first)
+        sized <-
+          Data.Stateful.state
+            (\s => ({ nextLabel := s.nextLabel + AllocLive.sizedRoutineLabels } s, s.nextLabel))
+        emits (AllocLive.sizedRoutine w sized)
 
       sym : Linkage.Sym -> Asm.Label
       sym = Linkage.Sym.label
@@ -697,36 +701,54 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                    putWordBy out r Asm.RCX)
                 (Data.Numbered.numbered gc)
 
-          ||| A site's cold code, at `slow`: the call of the slow path the sites
-          ||| share, the jump back to `done` it returns to, and the site's live
-          ||| table, of `live`'s GC-visible slots, which the slow path roots
-          ||| across the allocation.
-          slowStub : (slow, done : Asm.Label) -> (live : List (LocatedIR.Location.Place enc)) ->
-                     Render enc ()
-          slowStub slow done live = do
+          ||| A site's cold code, at `slow`: the call of the slow path, the jump
+          ||| back to `back` it returns to, and the site's live table, of `live`'s
+          ||| GC-visible words, which the slow path roots across the allocation.
+          ||| The fixed-size slow path keeps every register, the floating-point
+          ||| ones where a value is live in one; the sized one keeps none, and a
+          ||| site of it has none live.
+          slowStub : (fixed : Bool) -> (slow, back : Asm.Label) ->
+                     (live : List (LocatedIR.Location.Place enc)) -> Render enc ()
+          slowStub fixed slow back live = do
             let gc = filter (IRCommon.Ty.gcVisible . LocatedIR.Location.Place.ty) live
+                floats = AllocLive.savesFloats live
+                routine = if fixed then Linkage.Sym.SymAllocLive else Linkage.Sym.SymAllocSized
             uses (Linkage.MkAreas 0 (length gc) 0 0)
-            -- the slow path keeps slots: a value in a register across it is lost
-            case (traverse LocatedIR.Location.Place.slotNumber gc,
-                  all (isJust . LocatedIR.Location.Place.slotNumber) live) of
-              (Just gs, True) => case LiveTable.table gs of
-                Just t =>
-                  Data.Stateful.modify { cold $= (<>< (Asm.Lbl slow :: AllocLive.stub done t)) }
-                Nothing => Data.Stateful.failWith "a live table's entry needs more than 32 bits"
-              _ => Data.Stateful.failWith "a register live across an allocation"
+            unless (fixed || all (isJust . LocatedIR.Location.Place.slotNumber) live) $
+              Data.Stateful.failWith
+                "a register live across an allocation of a size known at run time"
+            case LiveTable.table floats (map word gc) of
+              Just (w, bytes) =>
+                Data.Stateful.modify
+                  { cold $= (<>< (Asm.Lbl slow :: AllocLive.stub (routine w) back (w, bytes))) }
+              Nothing => Data.Stateful.failWith "a live table's entry needs more than 32 bits"
+            where
+              -- a GC-visible location's word, as the table names it
+              word : LocatedIR.Location.Place enc -> Nat
+              word (LocatedIR.Location.At (LocatedIR.Location.Register i _)) = AllocLive.savedWord i
+              word (LocatedIR.Location.At (LocatedIR.Location.Slot n _)) = AllocLive.slotWord n
 
-          ||| Allocate `bytes` into rax: the fast path inline, the shared slow path
-          ||| called from the site's cold code, with `live` saved across it. The
-          ||| fast path bumps r15 before it checks it against r14, so the slow path
-          ||| finds the bytes as r15 less rax, and puts r15 back. Leaves rax
-          ||| pointing at the uninitialised object.
+          ||| Allocate `bytes` into rax: the fast path inline, a shared slow path
+          ||| called from the site's cold code, with `live` saved across it. Up
+          ||| to the allocation margin, the fast path checks r15 against r14
+          ||| before it bumps it, and the slow path, which keeps every register,
+          ||| returns to the bump, which the margin holds; past it, the fast path
+          ||| bumps r15 before it checks it, so the sized slow path finds the bytes
+          ||| as r15 less rax and puts r15 back. Leaves rax pointing at the
+          ||| uninitialised object.
           allocate : (bytes : Nat) -> (live : List (LocatedIR.Location.Place enc)) -> Render enc ()
           allocate bytes live = do
             slow <- fresh
-            done <- fresh
-            emits [ Asm.MovRR Asm.RAX Asm.R15, Asm.AluI Asm.ADD Asm.R15 (cast bytes),
-                   Asm.Alu Asm.CMP Asm.R15 Asm.R14, Asm.Jcc Asm.A slow, Asm.Lbl done ]
-            slowStub slow done live
+            back <- fresh
+            if AllocLive.fixedSlow bytes
+              then do
+                emits [ Asm.Alu Asm.CMP Asm.R15 Asm.R14, Asm.Jcc Asm.AE slow, Asm.Lbl back
+                      , Asm.MovRR Asm.RAX Asm.R15, Asm.AluI Asm.ADD Asm.R15 (cast bytes) ]
+                slowStub True slow back live
+              else do
+                emits [ Asm.MovRR Asm.RAX Asm.R15, Asm.AluI Asm.ADD Asm.R15 (cast bytes),
+                        Asm.Alu Asm.CMP Asm.R15 Asm.R14, Asm.Jcc Asm.A slow, Asm.Lbl back ]
+                slowStub False slow back live
 
           ||| Load an operand into a floating-point register: a slot's bits, or an
           ||| immediate's word, through rax.
@@ -1023,7 +1045,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                      (cast (snd (Types.Header.place p))))
                                   store d Asm.RAX
                 LocatedIR.Instr.AllocObj {k} d h fs live => do
-                                  if mutableKind k
+                                  if LocatedIR.Instr.isMutable k
                                      then allocateMutable
                                        (\r =>
                                          emit (Asm.MovRI r (cast (8 * Types.Header.objectWords h))))
@@ -1066,7 +1088,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                          - 1)),
                                      Asm.Alu Asm.CMP Asm.RCX Asm.RDX, Asm.Jcc Asm.A big]
                                   size <- partSize p
-                                  if mutableKind k
+                                  if LocatedIR.Instr.isMutable k
                                      then allocateMutable (\r => do getWord r count
                                                                     emits (size r)) live
                                      else allocateSized count size live
@@ -1246,7 +1268,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                     emits (size Asm.RDX)
                     emits [ Asm.MovRR Asm.RAX Asm.R15, Asm.Alu Asm.ADD Asm.R15 Asm.RDX,
                            Asm.Alu Asm.CMP Asm.R15 Asm.R14, Asm.Jcc Asm.A slow, Asm.Lbl done ]
-                    slowStub slow done live
+                    slowStub False slow done live
 
                   ||| A callee of a direct call that is no function of the program: an
                   ||| error, which names it. The lowering declares outside the program
@@ -1365,18 +1387,6 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                         if fitsImm32 v then emit (Asm.AluI op Asm.RAX (cast v))
                           else emits [Asm.MovRI Asm.RCX v, Asm.Alu op Asm.RAX Asm.RCX]
                       aluTwice op y = do loadTwice Asm.RCX y; emit (Asm.Alu op Asm.RAX Asm.RCX)
-
-                  ||| The kinds whose objects hold values the collector follows and are
-                  ||| written after they are made. They are allocated by a call to
-                  ||| `idris_alloc_mutable`, never by the inline bump, so that a collector
-                  ||| with a nursery can keep them out of it, and then a write into an old
-                  ||| object never makes it point into the nursery. A raw object (`BYTES`)
-                  ||| may be written too, but holds no pointer, so the bump serves it.
-                  mutableKind : Types.Kind -> Bool
-                  mutableKind Types.Kind.IOREF = True
-                  mutableKind Types.Kind.ARRAY = True
-                  mutableKind Types.Kind.STRUCT = True
-                  mutableKind _ = False
 
                   ||| Allocate a mutable object of the bytes `bytesInto` computes into a
                   ||| register, by a call to `idris_alloc_mutable` with `live` saved across it.

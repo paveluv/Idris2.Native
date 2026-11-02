@@ -4,8 +4,9 @@
 # make: a slot past 65,535 (32-bit entries), two and three raw slots,
 # nothing live. The program is built from the term IR, with the code
 # generator's modules (the package `idris2-native`); each allocation takes
-# the slow path, whose stand-in overwrites SCRATCH, so every slot must come
-# back restored.
+# the slow path, whose stand-in overwrites the GC-visible slots the tables
+# list, which must come back restored, and leaves the raw ones, which must
+# be kept.
 idris2 -p idris2-native -p idris2 Gen.idr -o gen > /dev/null
 ./build/exec/gen
 ./term 2>&1

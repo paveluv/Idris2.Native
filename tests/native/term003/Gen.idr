@@ -34,6 +34,7 @@ import Data.List.Quantifiers
 import Data.So
 import Data.SortedMap
 import Data.SortedSet
+import Native.AllocationMargin
 import Native.Area
 import Native.Codegen.ELF
 import Native.Codegen.IRCommon.ConIds
@@ -168,9 +169,11 @@ startBody = build $ \[entry, window] => do
 
 ||| The runtime's allocation slow path, reduced to what this program needs,
 ||| after overwriting the callers' GC-visible slots, which the shared slow
-||| path restores from ROOTS: `bytes` fresh from the system, the object at
-||| their start, and the window left empty, so that the next allocation
-||| comes here too. Nothing is collected.
+||| path restores from ROOTS: `bytes` fresh from the system and the
+||| allocation margin past them, which a site of a fixed size bumps into
+||| when the slow path returns (it asks for no bytes), the object at their
+||| start, and the window left empty, so that the next allocation comes
+||| here too. Nothing is collected.
 allocSlowBody : Closed T (Direct [W64] False) False [W64]
 allocSlowBody = build $ \[bytes] => do
   scratch <- emit1 (AreaAddr SCRATCH)
@@ -178,7 +181,8 @@ allocSlowBody = build $ \[bytes] => do
   traverse_ (\i => do v <- emit1 (Arith Add (W (cast i)) bytes)
                       emit0 (Store W64 (MkMem (AtBytes scratch) (Just (W (cast i))) 0) v))
     overwritten
-  w <- emit1 (SystemCall 6 [W 9, W 0, bytes, W 3, W 0x22, W (-1), W 0])
+  mapped <- emit1 (Arith Add bytes (W (cast allocationMargin)))
+  w <- emit1 (SystemCall 6 [W 9, W 0, mapped, W 3, W 0x22, W (-1), W 0])
   base <- emit1 (WordToByteAddr w)
   hp <- emit1 (Offset base bytes)
   emit0 (SetPinned Hp hp)
@@ -265,7 +269,7 @@ mainBody = build $ \[] => do
 ||| A table's width by the routine its stub calls.
 calledWidth : Asm.Instr -> Maybe SubWord
 calledWidth (Call l) =
-  find (\w => label (SymAllocLive w) == l) [Sub8, Sub16, Sub32]
+  find (\w => label (SymAllocLive w) == l || label (SymAllocSized w) == l) [Sub8, Sub16, Sub32]
 calledWidth _ = Nothing
 
 ||| The tables of a function's code: the width of each, by the call before
@@ -276,8 +280,9 @@ tables (c :: Jmp _ :: Bytes bs :: is) = case calledWidth c of
   Nothing => tables is
   where
     describe : SubWord -> List Bits8 -> String
-    describe w bs = case tableSlots w bs of
-      Just slots => "  " ++ show (8 * subWordBytes w) ++ "-bit, GC-visible slots " ++ show slots
+    describe w bs = case tableEntries w bs of
+      Just (_, words) =>
+        "  " ++ show (8 * subWordBytes w) ++ "-bit, GC-visible words " ++ show words
       Nothing => "  not a table"
 tables (_ :: is) = tables is
 tables [] = []

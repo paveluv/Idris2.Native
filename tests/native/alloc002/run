@@ -11,19 +11,20 @@ idris2 --cg native -p idris2-native-runtime -p idris2-native --directive nursery
 echo "status: $?"
 # what the tables of the program's own functions cover, from the listing:
 # a stub calls the routine for its table's width (L6 for 8-bit entries, L8
-# for 16-bit), and its table follows: the count of the GC-visible slots,
-# then the slots
+# for 16-bit), and its table follows: twice the number of the GC-visible
+# words listed, plus one if the floating-point registers are saved, then
+# the words
 awk '/^# /{ on = ($0 ~ /^# Main\./ || $0 ~ /^# Wide\./) }
      on && /^call L(6|8)$/ { w = $2; next }
      on && /^\.byte / && w != "" {
        sub(/^\.byte /, ""); split($0, b, ", ")
-       if (w == "L6") { g = b[1] } else { g = b[1] + 256 * b[2]; wide = 1 }
+       if (w == "L6") { g = int(b[1] / 2) } else { g = int((b[1] + 256 * b[2]) / 2); wide = 1 }
        if (g == 0) none = 1
        if (g >= 2 && g <= 5) few = 1
        if (g >= 256) many = 1
        w = "" }
      END {
        print "a table with nothing live: " (none ? "yes" : "no")
-       print "a table with 2 to 5 GC-visible slots: " (few ? "yes" : "no")
-       print "a table with 256 GC-visible slots or more: " (many ? "yes" : "no")
+       print "a table with 2 to 5 GC-visible words: " (few ? "yes" : "no")
+       print "a table with 256 GC-visible words or more: " (many ? "yes" : "no")
        print "a table of 16-bit entries: " (wide ? "yes" : "no") }' build/alloc.s

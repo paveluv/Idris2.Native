@@ -33,6 +33,13 @@ data Area
     ROOTS
   | ||| The number of entries of `ROOTS` in use.
     NROOTS
+  | ||| The allocatable registers' words while the allocation slow path
+    ||| every site shares runs: it saves each register here on entry and
+    ||| restores it on return, the GC-visible ones as the collector left
+    ||| them, so that no register is lost across an allocation. `SCRATCH`
+    ||| follows it, so that a live table indexes the registers' words and
+    ||| the slots alike.
+    SAVE
   | ||| Extra registers for register allocation; see `Slot`.
     SCRATCH
   | ||| The lowest the machine stack pointer may go in direct code, which
