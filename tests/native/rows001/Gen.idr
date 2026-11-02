@@ -14,8 +14,10 @@
 --     answer : a -> Int
 --     answer _ = 42
 --
--- the 42 made by a constant and returned. x86-64 makes a constant in rax,
--- where the row of a constant wants its result:
+-- the 42 put into a location and returned: a constant the term returns
+-- as an immediate, which register allocation puts into a location of its
+-- own (`Remat`). x86-64 makes it in rax, where the row of a value put
+-- into a location wants it:
 --
 -- * with the result in rax, the code writes rax, the result's register:
 --   rendered;
@@ -28,10 +30,10 @@
 -- And a move of x from its slot into another, which no x86-64 instruction
 -- does between two places in memory: refused.
 --
--- The slot's constant and the move are then rendered after the local
+-- The 42 in a slot and the move are then rendered after the local
 -- assignment (`Native.Codegen.LocalAssign`), as the code generator renders
 -- every function. It puts each operand and result where its row wants it,
--- with moves before and after: the constant into rax, then rax to its
+-- with moves before and after: the 42 into rax, then rax to its
 -- slot; x from its slot into rax, then rax to the other. In surface terms
 -- nothing changes, the 42 is still returned; the code now writes rax only
 -- where rax is a result, and both are rendered.
@@ -54,6 +56,7 @@ import Native.Codegen.LocatedIR.Label
 import Native.Codegen.LocatedIR.Location
 import Native.Codegen.LocatedIR.Opnd
 import Native.Codegen.LocatedIR.Program
+import Native.Codegen.LocatedIR.Step
 import Native.Codegen.LocatedIR.Terminator
 import Native.Codegen.RegMask
 import Native.Codegen.Target
@@ -80,12 +83,12 @@ val : Nat -> Location TestEnc Val
 val n = Slot n Val
 
 ||| A CPS function of one parameter, x in slot 0, of one block.
-fn : String -> List (Instr TestEnc) -> Terminator TestEnc -> Function TestEnc
+fn : String -> List (Step TestEnc) -> Terminator TestEnc -> Function TestEnc
 fn name is t = MkFunction (nm name) CPS [At (val 0)] 0 [MkBlock 0 [] is t] EmptyFC
 
 ||| 42 made in `d` and returned from it.
 answer : String -> Location TestEnc Val -> Function TestEnc
-answer name d = fn name [Const d 42] (Return (R d))
+answer name d = fn name [Remat d (Immediate 42)] (Return (R d))
 
 inRax, inSlot, inRcx : Function TestEnc
 inRax = answer "inRax" (Register 0 Val)

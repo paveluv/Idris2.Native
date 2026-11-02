@@ -45,6 +45,7 @@ import Native.Codegen.LocatedIR.Mem as LocatedIR
 import Native.Codegen.LocatedIR.Opnd as LocatedIR
 import Native.Codegen.LocatedIR.Program as LocatedIR
 import Native.Codegen.LocatedIR.Static as LocatedIR
+import Native.Codegen.LocatedIR.Step as LocatedIR
 import Native.Codegen.LocatedIR.Terminator as LocatedIR
 import Native.Codegen.Target
 import Native.Codegen.TermIR.Body as TermIR
@@ -180,6 +181,8 @@ JoinFrees = (Nat, SortedSet Read)
 record St (enc : Types.Enc) where
   constructor MkSt
   nextReg : Nat
+  ||| The number of the term's next definition (`freshDefs`).
+  nextDef : Nat
   nextLabel : Nat
   ||| The blocks made so far, by label. Labels are taken in reading order.
   blocks : SortedMap LocatedIR.Label (LocatedIR.Block enc)
@@ -198,13 +201,25 @@ freshAll : (ts : List (IRCommon.Ty enc)) -> M enc (All (RV enc) ts)
 freshAll [] = pure []
 freshAll (t :: ts) = [| fresh t :: freshAll ts |]
 
+||| The numbers of the term's next `n` definitions, the first of them: the
+||| lowering numbers every definition as it meets it, each node's when its
+||| lowering begins, before anything under it, so that the allocation
+||| check, which numbers the term in the same order, knows which
+||| definition each operation realises. A node that binds values numbers
+||| them, one each (an instruction's results, a join's parameters, a
+||| call's result, an overflow's, a fixnum test's narrowings), and one
+||| that binds none takes one number (a terminator, a store), the numbers
+||| of a node's values its own.
+freshDefs : Nat -> M enc Nat
+freshDefs n = Data.Stateful.state (\s => ({ nextDef := s.nextDef + n } s, s.nextDef))
+
 freshLabel : M enc LocatedIR.Label
 freshLabel = Data.Stateful.state (\s => ({ nextLabel := S s.nextLabel } s, s.nextLabel))
 
 ||| A block's code: its instructions, as the lowering produces them, and
 ||| its terminator.
 Code : Types.Enc -> Type
-Code enc = (Data.Builder (LocatedIR.Instr enc), LocatedIR.Terminator enc)
+Code enc = (Data.Builder (LocatedIR.Step enc), LocatedIR.Terminator enc)
 
 addBlock : LocatedIR.Label -> List (LocatedIR.Location.Place enc) -> Code enc -> M enc ()
 addBlock l ps (is, t) =
@@ -238,19 +253,24 @@ wordOperands : Data.RAList (HV enc) ctx -> {k : Nat} ->
 wordOperands env {k = Z} [] = []
 wordOperands env {k = S k'} (x :: xs) = operand env x :: wordOperands env xs
 
-||| An operand in a register, with the instruction that materialises an
-||| immediate.
+||| A value put into a location, and an immediate.
+remat : LocatedIR.Location enc t -> LocatedIR.Step.Materialised -> LocatedIR.Step enc
+remat = LocatedIR.Step.Remat
+
+immediate : LocatedIR.Location enc t -> Int64 -> LocatedIR.Step enc
+immediate r i = LocatedIR.Step.Remat r (LocatedIR.Step.Immediate i)
+
+||| An operand in a register, with the shuffle that puts an immediate or a
+||| static's address into one.
 asReg : Data.RAList (HV enc) ctx -> TermIR.Opnd (TermIR.Var ctx) t ->
-        M enc (List (LocatedIR.Instr enc), LocatedIR.Location enc t)
+        M enc (List (LocatedIR.Step enc), LocatedIR.Location enc t)
 asReg env (TermIR.Opnd.V x) = case TermIR.Var.fetch x env of
   InReg r => pure ([], r)
-  OfStatic s t' => do r <- fresh t'; pure ([LocatedIR.Instr.StaticAddr r s], r)
-asReg env (TermIR.Opnd.W i) = do r <- fresh IRCommon.Ty.W64; pure ([LocatedIR.Instr.Const r i], r)
-asReg env (TermIR.Opnd.Fx {fx} i) = do r <- fresh IRCommon.Ty.Fix
-                                       pure ([LocatedIR.Instr.Const r i], r)
-asReg env (TermIR.Opnd.Vx {fx} i) = do r <- fresh IRCommon.Ty.Val
-                                       pure ([LocatedIR.Instr.Const r i], r)
-asReg env TermIR.Opnd.Erased = do r <- fresh IRCommon.Ty.Val; pure ([LocatedIR.Instr.Const r 0], r)
+  OfStatic s t' => do r <- fresh t'; pure ([remat r (LocatedIR.Step.StaticAddress s)], r)
+asReg env (TermIR.Opnd.W i) = do r <- fresh IRCommon.Ty.W64; pure ([immediate r i], r)
+asReg env (TermIR.Opnd.Fx {fx} i) = do r <- fresh IRCommon.Ty.Fix; pure ([immediate r i], r)
+asReg env (TermIR.Opnd.Vx {fx} i) = do r <- fresh IRCommon.Ty.Val; pure ([immediate r i], r)
+asReg env TermIR.Opnd.Erased = do r <- fresh IRCommon.Ty.Val; pure ([immediate r 0], r)
 
 ------------------------------------------------------------------------------
 -- Instructions and bodies
@@ -277,9 +297,11 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
     ||| jumps to a block without parameters, that block.
     branchTo : TermIR.Body d c m ls ctx -> Data.RAList (HV enc) ctx -> Data.RAList (LI enc) ls ->
                M enc (RegMap enc, LocatedIR.Label)
-    branchTo (TermIR.Body.Jump l []) env li = let info =
-                                                    TermIR.Var.fetch l li in pure
-                                                      (info.free, info.label)
+    -- the jump's number taken though it is no block's
+    branchTo (TermIR.Body.Jump l []) env li = do
+      _ <- freshDefs 1
+      let info = TermIR.Var.fetch l li
+      pure (info.free, info.label)
     branchTo b env li = do
       lb <- freshLabel
       (fb, code) <- body b env li
@@ -292,16 +314,18 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
     body : TermIR.Body d c m ls ctx -> Data.RAList (HV enc) ctx -> Data.RAList (LI enc) ls ->
            M enc (Lowered enc)
     -- a static's address is held as itself, and so is the value it widens to
-    body (TermIR.Body.Bind {ts = [IRCommon.Ty.PtrTo kd]} (TermIR.Instr.StaticAddr s) k) env li =
+    body (TermIR.Body.Bind {ts = [IRCommon.Ty.PtrTo kd]} (TermIR.Instr.StaticAddr s) k) env li = do
+      _ <- freshDefs 1
       body k (OfStatic (varSym s) (IRCommon.Ty.PtrTo kd) :: env) li
     body (TermIR.Body.Bind (TermIR.Instr.WidenPtr (TermIR.Opnd.V x)) k) env li =
       case TermIR.Var.fetch x env of
-      OfStatic s _ => body k (OfStatic s IRCommon.Ty.Val :: env) li
+      OfStatic s _ => do _ <- freshDefs 1; body k (OfStatic s IRCommon.Ty.Val :: env) li
       InReg _ => bind [IRCommon.Ty.Val] (TermIR.Instr.WidenPtr (TermIR.Opnd.V x)) k env li
     body (TermIR.Body.Bind {ts} i k) env li = bind ts i k env li
     body (TermIR.Body.Join ps b r) env li = do
       l <- freshLabel
       params <- freshAll ps
+      _ <- freshDefs (length ps)
       (depth, levels) <- popJoin
       let fb = registersAt env depth levels
           li' = MkLabelInfo l params fb :: li
@@ -329,6 +353,7 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
               _ => m
             add m (Right _) = m
     body (TermIR.Body.Jump l xs) env li = do
+      _ <- freshDefs 1
       let info = TermIR.Var.fetch l li
       code <- jump env info xs
       pure (mergeLeft info.free (usesAll env xs), code)
@@ -342,30 +367,32 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
                M enc (Code enc)
         jump env info xs =
           let (ms, rest) = args info.params xs
-          in pure (Data.Builder.piece ((if null ms then [] else [LocatedIR.Instr.Par ms]) ++ rest),
+          in pure (Data.Builder.piece ((if null ms then [] else [LocatedIR.Step.Par ms]) ++ rest),
                    LocatedIR.Terminator.Jump info.label)
           where
             ||| The arguments in locations, each a copy into its parameter; and
             ||| the others into their parameters.
             args : All (RV enc) qs -> All (TermIR.Opnd (TermIR.Var ctx)) qs ->
-                   (List (LocatedIR.Instr.Copy enc), List (LocatedIR.Instr enc))
+                   (List (LocatedIR.Step.Copy enc), List (LocatedIR.Step enc))
             args (p :: ps) (x :: xs') =
               let (ms, is) = args ps xs' in
               case x of
                 TermIR.Opnd.V v => case TermIR.Var.fetch v env of
-                  InReg r => (LocatedIR.Instr.MkCopy p r :: ms, is)
-                  OfStatic s _ => (ms, LocatedIR.Instr.StaticAddr p s :: is)
-                TermIR.Opnd.W i => (ms, LocatedIR.Instr.Const p i :: is)
-                TermIR.Opnd.Fx i => (ms, LocatedIR.Instr.Const p i :: is)
-                TermIR.Opnd.Vx i => (ms, LocatedIR.Instr.Const p i :: is)
-                TermIR.Opnd.Erased => (ms, LocatedIR.Instr.Const p 0 :: is)
+                  InReg r => (LocatedIR.Step.MkCopy p r :: ms, is)
+                  OfStatic s _ => (ms, remat p (LocatedIR.Step.StaticAddress s) :: is)
+                TermIR.Opnd.W i => (ms, immediate p i :: is)
+                TermIR.Opnd.Fx i => (ms, immediate p i :: is)
+                TermIR.Opnd.Vx i => (ms, immediate p i :: is)
+                TermIR.Opnd.Erased => (ms, immediate p 0 :: is)
             args [] [] = ([], [])
     body (TermIR.Body.Branch rel x y a b) env li = do
+      _ <- freshDefs 1
       (fa, la) <- branchTo a env li
       (fb, lb) <- branchTo b env li
       pure (mergeLeft (mergeLeft (uses env x) (uses env y)) (mergeLeft fa fb),
             (neutral, LocatedIR.Terminator.Branch rel (operand env x) (operand env y) la lb))
     body (TermIR.Body.IfFixnums {fx} vs y no) env li = do
+      _ <- freshDefs 1
       ly <- freshLabel
       loaded <- traverse (asReg env) vs
       let rs = map snd loaded
@@ -380,15 +407,18 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
         usesVect : Data.RAList (HV enc) ctx -> Vect n (TermIR.Opnd (TermIR.Var ctx) t) -> RegMap enc
         usesVect env = foldr (\x, m => mergeLeft (uses env x) m) empty
 
+        -- each narrowing a definition of its own
         narrowAll : Vect n (LocatedIR.Location enc IRCommon.Ty.Val) ->
-                    M enc (List (LocatedIR.Instr enc),
+                    M enc (List (LocatedIR.Step enc),
                            All (RV enc) (replicate n (IRCommon.Ty.Fix {enc})))
         narrowAll [] = pure ([], [])
         narrowAll (r :: rs) = do
+          n <- freshDefs 1
           f <- fresh IRCommon.Ty.Fix
           (is, fs) <- narrowAll rs
-          pure (LocatedIR.Instr.Narrow IRCommon.Ty.Fix f r :: is, f :: fs)
+          pure (LocatedIR.Step.Op n (LocatedIR.Instr.Narrow IRCommon.Ty.Fix f r) :: is, f :: fs)
     body (TermIR.Body.ArithOv {t} o x y ok ovf) env li = do
+      n <- freshDefs 1
       f <- fresh t
       (fok, (isOk, tOk)) <- body ok (InReg f :: env) li
       (fov, lo) <- branchTo ovf env li
@@ -396,16 +426,21 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
         (mergeLeft (mergeLeft (uses env x) (uses env y))
          (mergeLeft (without [LocatedIR.Location.At f] fok) fov),
             (Data.Builder.single
-              (LocatedIR.Instr.ArithOv (TermIR.OvOp.ovArith o) f (operand env x) (operand env y) lo)
+              (LocatedIR.Step.Op n
+                (LocatedIR.Instr.ArithOv (TermIR.OvOp.ovArith o) f (operand env x) (operand env y)
+                  lo))
               <+> isOk, tOk))
     body (TermIR.Body.TagOv {fx} x ok ovf) env li = do
+      n <- freshDefs 1
       (px, rx) <- asReg env x
       f <- fresh IRCommon.Ty.Fix
       (fok, (isOk, tOk)) <- body ok (InReg f :: env) li
       (fov, lo) <- branchTo ovf env li
       pure (mergeLeft (uses env x) (mergeLeft (without [LocatedIR.Location.At f] fok) fov),
-            (Data.Builder.piece (px ++ [LocatedIR.Instr.TagOv f rx lo]) <+> isOk, tOk))
+            (Data.Builder.piece (px ++ [LocatedIR.Step.Op n (LocatedIR.Instr.TagOv f rx lo)])
+             <+> isOk, tOk))
     body (TermIR.Body.Switch x keys bs dflt) env li = do
+      _ <- freshDefs 1
       (px, rx) <- asReg env x
       (fcs, labels) <- cases bs env li
       (fd, ld) <- branchTo dflt env li
@@ -422,6 +457,7 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
           (fbs, ls) <- cases bs env li
           pure (mergeLeft fb fbs, l :: ls)
     body (TermIR.Body.Call f xs k) env li = do
+      _ <- freshDefs 1
       lr <- freshLabel
       r <- fresh IRCommon.Ty.Val
       (fk, codeK) <- body k (InReg r :: env) li
@@ -431,9 +467,11 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
       pure (mergeLeft (usesAll env xs) outer,
             (neutral,
               LocatedIR.Terminator.Call (varName f) (operands env xs) (LocatedIR.MkCont lr live)))
-    body (TermIR.Body.TailCall f xs) env li =
+    body (TermIR.Body.TailCall f xs) env li = do
+      _ <- freshDefs 1
       pure (usesAll env xs, (neutral, LocatedIR.Terminator.TailCall (varName f) (operands env xs)))
     body (TermIR.Body.Apply f x k) env li = do
+      _ <- freshDefs 1
       (pf, rf) <- asReg env f
       (px, rx) <- asReg env x
       lr <- freshLabel
@@ -446,23 +484,30 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
             (Data.Builder.piece (pf ++ px),
               LocatedIR.Terminator.Apply rf rx (LocatedIR.MkCont lr live)))
     body (TermIR.Body.TailApply f x) env li = do
+      _ <- freshDefs 1
       (pf, rf) <- asReg env f
       (px, rx) <- asReg env x
       pure (mergeLeft (uses env f) (uses env x),
             (Data.Builder.piece (pf ++ px), LocatedIR.Terminator.TailApply rf rx))
-    body (TermIR.Body.Return x) env li =
+    body (TermIR.Body.Return x) env li = do
+      _ <- freshDefs 1
       pure (uses env x, (neutral, LocatedIR.Terminator.Return (operand env x)))
     body (TermIR.Body.Enter f xs) env li = do
+      _ <- freshDefs 1
       (pf, rf) <- asReg env f
       pure (mergeLeft (uses env f) (usesList env xs),
             (Data.Builder.piece pf, LocatedIR.Terminator.Enter rf (map (operand env) xs)))
       where
         usesList : Data.RAList (HV enc) ctx -> List (TermIR.Opnd (TermIR.Var ctx) t) -> RegMap enc
         usesList env = foldr (\x, m => mergeLeft (uses env x) m) empty
-    body (TermIR.Body.Ret xs) env li =
+    body (TermIR.Body.Ret xs) env li = do
+      _ <- freshDefs 1
       pure (usesAll env xs, (neutral, LocatedIR.Terminator.Ret (operands env xs)))
-    body (TermIR.Body.Crash s) env li = pure (empty, (neutral, LocatedIR.Terminator.Crash s))
-    body (TermIR.Body.Unsupported s) env li =
+    body (TermIR.Body.Crash s) env li = do
+      _ <- freshDefs 1
+      pure (empty, (neutral, LocatedIR.Terminator.Crash s))
+    body (TermIR.Body.Unsupported s) env li = do
+      _ <- freshDefs 1
       pure (empty, (neutral, LocatedIR.Terminator.Unsupported s))
 
     ||| An instruction's registers, bound in the environment of the rest.
@@ -470,10 +515,11 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
            TermIR.Body d c m ls (ts ++ ctx) ->
            Data.RAList (HV enc) ctx -> Data.RAList (LI enc) ls -> M enc (Lowered enc)
     bind ts i k env li = do
+      def <- freshDefs (max 1 (length ts))
       ds <- results ts i
       (after, (is, t)) <- body k (Data.RAList.prepend (held ds) env) li
       let outer = without (regs ds) after
-      pre <- instr env ds outer i
+      pre <- instr def env ds outer i
       pure (mergeLeft (instrUses env i) outer, (Data.Builder.piece pre <+> is, t))
       where
         ||| The variable's register under the type, or a fresh one if it has
@@ -504,25 +550,32 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
                       Data.Stateful (RegMap enc) Void (TermIR.Opnd (TermIR.Var ctx) t)
             collect env x = do Data.Stateful.modify (mergeLeft (uses env x)); pure x
 
-        ||| The IR of an instruction binding the registers `ds`, given what is live
-        ||| after it.
-        instr : Data.RAList (HV enc) ctx''' -> All (RV enc) ts' -> (after : RegMap enc) ->
-                TermIR.Instr d m' (TermIR.Var ctx''') ts' ->
-                M enc (List (LocatedIR.Instr enc))
-        instr env z after instr' = case (z, instr') of
-          ([r], TermIR.Instr.FConst x) => pure [LocatedIR.Instr.FConst r x]
-          ([r], TermIR.Instr.CodeOf f) => pure [LocatedIR.Instr.CodeOf r (varName f)]
+        ||| The steps of an instruction binding the registers `ds`, given what is
+        ||| live after it: the operation of number `def` and the shuffles that
+        ||| put its immediate operands into registers.
+        instr : (def : Nat) -> Data.RAList (HV enc) ctx''' -> All (RV enc) ts' ->
+                (after : RegMap enc) -> TermIR.Instr d m' (TermIR.Var ctx''') ts' ->
+                M enc (List (LocatedIR.Step enc))
+        instr def env z after instr' = case (z, instr') of
+          ([r], TermIR.Instr.FConst x) => pure [LocatedIR.Step.Op def (LocatedIR.Instr.FConst r x)]
+          ([r], TermIR.Instr.CodeOf f) =>
+            pure [LocatedIR.Step.Op def (LocatedIR.Instr.CodeOf r (varName f))]
           -- not reached: `body` holds a static's address as itself, in no register
-          ([r], TermIR.Instr.StaticAddr s) => pure [LocatedIR.Instr.StaticAddr r (varSym s)]
-          ([r], TermIR.Instr.AreaAddr a) => pure [LocatedIR.Instr.AreaAddr r a]
+          ([r], TermIR.Instr.StaticAddr s) =>
+            pure [remat r (LocatedIR.Step.StaticAddress (varSym s))]
+          ([r], TermIR.Instr.AreaAddr a) =>
+            pure [LocatedIR.Step.Op def (LocatedIR.Instr.AreaAddr r a)]
           ([r], TermIR.Instr.Offset a n) =>
-            pure [LocatedIR.Instr.Offset r (operand env a) (operand env n)]
+            pure [LocatedIR.Step.Op def (LocatedIR.Instr.Offset r (operand env a) (operand env n))]
           ([r], TermIR.Instr.Arith o x y) =>
-            pure [LocatedIR.Instr.Arith o r (operand env x) (operand env y)]
+            pure [LocatedIR.Step.Op def (LocatedIR.Instr.Arith o r (operand env x) (operand env y))]
           ([h, l], TermIR.Instr.Mul128 x y) =>
-            pure [LocatedIR.Instr.Mul128 h l (operand env x) (operand env y)]
+            pure
+              [LocatedIR.Step.Op def (LocatedIR.Instr.Mul128 h l (operand env x) (operand env y))]
           ([q, r], TermIR.Instr.Div128 h l x) =>
-            pure [LocatedIR.Instr.Div128 q r (operand env h) (operand env l) (operand env x)]
+            pure
+              [LocatedIR.Step.Op def
+               (LocatedIR.Instr.Div128 q r (operand env h) (operand env l) (operand env x))]
           ([r], TermIR.Instr.Unary o x) => unary env x (LocatedIR.Instr.Unary o r)
           ([r], TermIR.Instr.Ext w s x) => unary env x (LocatedIR.Instr.Ext w s r)
           ([r], TermIR.Instr.FArith o x y) => binary env x y (LocatedIR.Instr.FArith o r)
@@ -531,19 +584,27 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
           ([r], TermIR.Instr.FCmp rel x y) => binary env x y (LocatedIR.Instr.FCmp rel r)
           ([r], TermIR.Instr.Convert op x) => unary env x (LocatedIR.Instr.Convert op r)
           ([r], TermIR.Instr.Cmp rel x y) =>
-            pure [LocatedIR.Instr.Cmp rel r (operand env x) (operand env y)]
+            pure [LocatedIR.Step.Op def (LocatedIR.Instr.Cmp rel r (operand env x) (operand env y))]
           ([r], TermIR.Instr.Load t mem) => do (p, m') <- memRef env mem
-                                               pure (p ++ [LocatedIR.Instr.Load t r m'])
+                                               pure
+                                                 (p
+                                                   ++
+                                                     [LocatedIR.Step.Op def
+                                                      (LocatedIR.Instr.Load t r m')])
           ([], TermIR.Instr.Store t mem x) => do
             (p, m') <- memRef env mem
             (px, rx) <- asReg env x
-            pure (p ++ px ++ [LocatedIR.Instr.Store t m' rx])
+            pure (p ++ px ++ [LocatedIR.Step.Op def (LocatedIR.Instr.Store t m' rx)])
           ([r], TermIR.Instr.LoadN w s mem) => do (p, m') <- memRef env mem
-                                                  pure (p ++ [LocatedIR.Instr.LoadN w s r m'])
+                                                  pure
+                                                    (p
+                                                      ++
+                                                        [LocatedIR.Step.Op def
+                                                         (LocatedIR.Instr.LoadN w s r m')])
           ([], TermIR.Instr.StoreN w mem x) => do
             (p, m') <- memRef env mem
             (px, rx) <- asReg env x
-            pure (p ++ px ++ [LocatedIR.Instr.StoreN w m' rx])
+            pure (p ++ px ++ [LocatedIR.Step.Op def (LocatedIR.Instr.StoreN w m' rx)])
           ([r], TermIR.Instr.Tag {fx} x) => unary env x (LocatedIR.Instr.Tag r)
           ([r], TermIR.Instr.Untag {fx} x) => unary env x (LocatedIR.Instr.Untag r)
           ([r], TermIR.Instr.NarrowFix {fx} x) =>
@@ -560,13 +621,13 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
           -- the word in the result's
           ([r], TermIR.Instr.ByteAddrToWord (TermIR.Opnd.V x)) => retyping x r
           ([r], TermIR.Instr.WordToByteAddr (TermIR.Opnd.V x)) => retyping x r
-          ([r], TermIR.Instr.WordToByteAddr (TermIR.Opnd.W w)) => pure [LocatedIR.Instr.Const r w]
+          ([r], TermIR.Instr.WordToByteAddr (TermIR.Opnd.W w)) => pure [immediate r w]
           ([r], TermIR.Instr.LoadHeader x) => unary env x (LocatedIR.Instr.LoadHeader r)
           ([r], TermIR.Instr.LoadPart p x) => unary env x (LocatedIR.Instr.LoadPart p r)
           ([r], TermIR.Instr.AllocObj h fs) =>
             -- the fields are written after the slow path's collection
             let live = values (mergeLeft after (usesAll env fs))
-            in pure [LocatedIR.Instr.AllocObj r h (operands env fs) live]
+            in pure [LocatedIR.Step.Op def (LocatedIR.Instr.AllocObj r h (operands env fs) live)]
           ([r], TermIR.Instr.AllocSized p n f) => do
             (pn, rn) <- asReg env n
             let fill = fillOperand p f
@@ -574,17 +635,22 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
                   values
                     (mergeLeft after
                      (mergeLeft (one (InReg rn)) (maybe empty (fillUses p f) (Just ()))))
-            pure (pn ++ [LocatedIR.Instr.AllocSized r p rn fill live])
+            pure (pn ++ [LocatedIR.Step.Op def (LocatedIR.Instr.AllocSized r p rn fill live)])
           (ds, TermIR.Instr.DirectCall f xs) =>
             pure
-              [LocatedIR.Instr.DirectCall (varName f) (operands env xs) (regs ds) (isCollecting f)
-               (values after)]
-          ([d], TermIR.Instr.GetPinned r) => pure [LocatedIR.Instr.GetPinned r d]
-          ([], TermIR.Instr.SetPinned r x) => pure [LocatedIR.Instr.SetPinned r (operand env x)]
+              [LocatedIR.Step.Op def
+                (LocatedIR.Instr.DirectCall (varName f) (operands env xs) (regs ds) (isCollecting f)
+               (values after))]
+          ([d], TermIR.Instr.GetPinned r) =>
+            pure [LocatedIR.Step.Op def (LocatedIR.Instr.GetPinned r d)]
+          ([], TermIR.Instr.SetPinned r x) =>
+            pure [LocatedIR.Step.Op def (LocatedIR.Instr.SetPinned r (operand env x))]
           ([d], TermIR.Instr.SystemCall n xs) =>
-            pure [LocatedIR.Instr.SystemCall d (wordOperands env {k = S (finToNat n)} xs)]
-          ([], TermIR.Instr.Loc fc) => pure [LocatedIR.Instr.Loc fc]
-          ([], TermIR.Instr.Comment s) => pure [LocatedIR.Instr.Comment s]
+            pure
+              [LocatedIR.Step.Op def
+               (LocatedIR.Instr.SystemCall d (wordOperands env {k = S (finToNat n)} xs))]
+          ([], TermIR.Instr.Loc fc) => pure [LocatedIR.Step.Op def (LocatedIR.Instr.Loc fc)]
+          ([], TermIR.Instr.Comment s) => pure [LocatedIR.Step.Op def (LocatedIR.Instr.Comment s)]
           where
             fillOperand : {0 kind : Types.Kind} -> (q : Types.Header.HeaderPart kind) ->
                           TermIR.Sizes.Fill (TermIR.Var ctx''') q ->
@@ -602,7 +668,7 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
               IRCommon.Conv.Direct _ col => col
 
             memRef : Data.RAList (HV enc'') ctx'' -> TermIR.Mem (TermIR.Var ctx'') cell ->
-                     M enc'' (List (LocatedIR.Instr enc''), LocatedIR.Mem enc'')
+                     M enc'' (List (LocatedIR.Step enc''), LocatedIR.Mem enc'')
             memRef env (TermIR.MkMem b i o) = do
               (pb, rb) <- baseReg env b
               case i of
@@ -611,7 +677,7 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
                              pure (pb ++ pi, LocatedIR.MkMem rb (Just ri) o)
               where
                 baseReg : Data.RAList (HV enc') ctx' -> TermIR.Mem.Base (TermIR.Var ctx') b' ->
-                          M enc' (List (LocatedIR.Instr enc'), LocatedIR.Mem.Base enc')
+                          M enc' (List (LocatedIR.Step enc'), LocatedIR.Mem.Base enc')
                 baseReg env (TermIR.Mem.AtBytes x) = do (p, r) <- asReg env x
                                                         pure (p, LocatedIR.Mem.AtBytes r)
                 baseReg env (TermIR.Mem.AtPtr x) = do (p, r) <- asReg env x
@@ -620,25 +686,25 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
             ||| A retyping of a variable: nothing if it is in a register, which
             ||| the result is already; a static's address put in the result.
             retyping : TermIR.Var ctx''' s -> LocatedIR.Location enc u ->
-                       M enc (List (LocatedIR.Instr enc))
+                       M enc (List (LocatedIR.Step enc))
             retyping x r = case TermIR.Var.fetch x env of
               InReg _ => pure []
-              OfStatic n _ => pure [LocatedIR.Instr.StaticAddr r n]
+              OfStatic n _ => pure [remat r (LocatedIR.Step.StaticAddress n)]
 
             ||| One register, through an instruction that reads it from an operand.
             unary : Data.RAList (HV enc) ctx' -> TermIR.Opnd (TermIR.Var ctx') t ->
                     (LocatedIR.Location enc t -> LocatedIR.Instr enc) ->
-                    M enc (List (LocatedIR.Instr enc))
-            unary env x f = do (p, r) <- asReg env x; pure (p ++ [f r])
+                    M enc (List (LocatedIR.Step enc))
+            unary env x f = do (p, r) <- asReg env x; pure (p ++ [LocatedIR.Step.Op def (f r)])
 
             binary : Data.RAList (HV enc) ctx' -> TermIR.Opnd (TermIR.Var ctx') t ->
                      TermIR.Opnd (TermIR.Var ctx') u ->
                      (LocatedIR.Location enc t -> LocatedIR.Location enc u ->
                       LocatedIR.Instr enc) ->
-                     M enc (List (LocatedIR.Instr enc))
+                     M enc (List (LocatedIR.Step enc))
             binary env x y f = do (px, rx) <- asReg env x
                                   (py, ry) <- asReg env y
-                                  pure (px ++ py ++ [f rx ry])
+                                  pure (px ++ py ++ [LocatedIR.Step.Op def (f rx ry)])
 
   functions : (ss : List (TermIR.Sig enc)) -> All (TermIR.Def d) ss -> List (LocatedIR.Function enc)
   functions [] [] = []
@@ -650,11 +716,12 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
         let run : M enc (List (LocatedIR.Location.Place enc))
             run = do
               ps <- freshAll s.params
+              _ <- freshDefs (length s.params)
               Data.Stateful.modify { joins := snd (frees b (length s.params) 0 []) [] }
               (_, code) <- body b (Data.RAList.fromAll (held ps)) []
               addBlock 0 [] code
               pure (regs ps)
-        in case Data.Stateful.toPair (Data.Stateful.outcome (MkSt 0 1 empty []) run) of
+        in case Data.Stateful.toPair (Data.Stateful.outcome (MkSt 0 0 1 empty []) run) of
              (st, ps) => LocatedIR.MkFunction s.name s.conv ps 0 (values st.blocks) EmptyFC
         where
           ||| The levels a body reads of the variables bound outside it, directly or

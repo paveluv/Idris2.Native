@@ -4,9 +4,9 @@
 ||| is).
 module Native.Codegen.LocatedIR.Block
 
-import Native.Codegen.LocatedIR.Instr
 import Native.Codegen.LocatedIR.Label
 import Native.Codegen.LocatedIR.Location
+import Native.Codegen.LocatedIR.Step
 import Native.Codegen.LocatedIR.Terminator
 
 import Native.Types.Enc as Types
@@ -22,5 +22,5 @@ record Block (enc : Types.Enc) where
   constructor MkBlock
   label : Label
   params : List (Location.Place enc)
-  body : List (Instr enc)
+  body : List (Step enc)
   term : Terminator enc

@@ -9,6 +9,7 @@ import Native.Codegen.LocatedIR.Instr
 import Native.Codegen.LocatedIR.Opnd
 import Native.Codegen.LocatedIR.Program
 import Native.Codegen.LocatedIR.Static
+import Native.Codegen.LocatedIR.Step
 import Native.Codegen.LocatedIR.Terminator
 
 import Core.Name
@@ -50,7 +51,7 @@ reach roots p =
     ||| join copies only an instruction's few names.
     function : Function enc -> Refs
     function f =
-      foldr (\b, rest => foldr (\i, r => instr i <+> r) (terminator b.term <+> rest) b.body)
+      foldr (\b, rest => foldr (\i, r => step i <+> r) (terminator b.term <+> rest) b.body)
         neutral f.blocks
       where
         ||| The names an operand refers to: a static's.
@@ -67,7 +68,6 @@ reach roots p =
         ||| The names an instruction refers to.
         instr : Instr enc -> Refs
         instr (Instr.CodeOf _ f) = MkRefs [f] []
-        instr (Instr.StaticAddr _ s) = MkRefs [] [s]
         instr (Instr.Offset _ x y) = opnd x <+> opnd y
         instr (Instr.Arith _ _ x y) = opnds [x, y]
         instr (Instr.Mul128 _ _ x y) = opnds [x, y]
@@ -80,6 +80,13 @@ reach roots p =
         instr (Instr.SetPinned _ x) = opnd x
         instr (Instr.SystemCall _ xs) = opnds xs
         instr _ = neutral
+
+        ||| The names a step refers to: an operation's, and a static's address
+        ||| put into a location.
+        step : Step enc -> Refs
+        step (Step.Op _ i) = instr i
+        step (Step.Remat _ (Step.StaticAddress s)) = MkRefs [] [s]
+        step _ = neutral
 
         ||| The names a terminator refers to.
         terminator : Terminator enc -> Refs

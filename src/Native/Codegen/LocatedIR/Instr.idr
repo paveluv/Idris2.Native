@@ -23,34 +23,19 @@ import Native.Width
 
 %default total
 
-||| One copy of a parallel move (`Par`): a destination, and its source, of
-||| one type.
-public export
-data Copy : Types.Enc -> Type where
-  MkCopy : {0 t : IRCommon.Ty enc} -> (dest, source : Location enc t) -> Copy enc
-
-||| An instruction. Most define one register, their destination, which
-||| comes first; `Mul128` and `Div128` define two, and `DirectCall` the
-||| callee's results. The types of its locations and operands are its
-||| index's, the term's (`Native.Codegen.TermIR.Program`), which the
-||| conversion keeps.
+||| An instruction, what a step of a block that realises an instruction of
+||| the term does (`Native.Codegen.LocatedIR.Step`). Most define one
+||| register, their destination, which comes first; `Mul128` and `Div128`
+||| define two, and `DirectCall` the callee's results. The types of its
+||| locations and operands are its index's, the term's
+||| (`Native.Codegen.TermIR.Program`), which the conversion keeps.
 public export
 data Instr : Types.Enc -> Type where
-  ||| A constant, into a `W64`, a `Val` or a `Fix`. Into a `W64` it is the
-  ||| word itself. Into a `Val` or a `Fix` it is the integer, and the
-  ||| rendering turns it into the value encoding's word (`valWord` in
-  ||| `HeapObj.ValEnc`), so that the IR is the same under every value
-  ||| encoding; as a `Val`, 0 is also the erased value. No constant is a
-  ||| pointer.
-  Const      : {0 t : IRCommon.Ty enc} -> Location enc t -> Int64 -> Instr enc
   ||| A double constant, into an `F64`.
   FConst     : Location enc IRCommon.Ty.F64 -> Double -> Instr enc
   ||| The entry address of a function of this program, into a `CodeAddr`: a
   ||| closure's code pointer.
   CodeOf     : Location enc IRCommon.Ty.CodeAddr -> Name -> Instr enc
-  ||| The address of a static object of this program, into a `Val`, or into a
-  ||| `PtrTo k` of the static's kind.
-  StaticAddr : {0 t : IRCommon.Ty enc} -> Location enc t -> Name -> Instr enc
   ||| The address of a per-thread area, into a `ByteAddr`.
   AreaAddr   : Location enc IRCommon.Ty.ByteAddr -> Area -> Instr enc
   ||| A byte address moved by a count of bytes, into a `ByteAddr`.
@@ -222,14 +207,6 @@ data Instr : Types.Enc -> Type where
   ||| the platform's convention; never a call of a function.
   SystemCall : (result : Location enc IRCommon.Ty.W64) -> List (Opnd enc IRCommon.Ty.W64) ->
                Instr enc
-  ||| Copy a location to another of the same type.
-  Move       : {0 t : IRCommon.Ty enc} -> Location enc t -> Location enc t -> Instr enc
-  ||| Copy each location to another of its type, all at once: every
-  ||| destination gets its source's value from before any destination is
-  ||| written. The destinations are distinct places. A jump's arguments
-  ||| into its block's parameters, which the local assignment makes moves
-  ||| (`Native.Codegen.Sequentialise`), so that no rendering sees one.
-  Par        : List (Copy enc) -> Instr enc
   ||| The source location of what follows, for dumps and, later, debugging
   ||| information.
   Loc        : FC -> Instr enc
@@ -239,10 +216,8 @@ data Instr : Types.Enc -> Type where
 ||| A short name for messages.
 public export
 instrName : Instr enc -> String
-instrName (Const _ _) = "Const"
 instrName (FConst _ _) = "FConst"
 instrName (CodeOf _ _) = "CodeOf"
-instrName (StaticAddr _ _) = "StaticAddr"
 instrName (AreaAddr _ _) = "AreaAddr"
 instrName (Offset _ _ _) = "Offset"
 instrName (Arith op _ _ _) = show op
@@ -279,8 +254,6 @@ instrName (DirectCall f _ _ _ _) = "DirectCall " ++ show f
 instrName (GetPinned r _) = "get" ++ show r
 instrName (SetPinned r _) = "set" ++ show r
 instrName (SystemCall _ _) = "syscall"
-instrName (Move _ _) = "Move"
-instrName (Par _) = "Par"
 instrName (Loc _) = "Loc"
 instrName (Comment _) = "Comment"
 
@@ -327,18 +300,14 @@ operands i = case i of
   DirectCall _ args _ _ _ => Opnd.opsRegs args []
   SetPinned _ x => Opnd.opRegs x
   SystemCall _ args => concatMap Opnd.opRegs args
-  Move _ x => [Location.At x]
-  Par cs => map (\(MkCopy _ x) => Location.At x) cs
   _ => []
 
 ||| What an instruction writes, in the order of its fields.
 export
 results : Instr enc -> List (Location.Place enc)
 results i = case i of
-  Const d _ => [Location.At d]
   FConst d _ => [Location.At d]
   CodeOf d _ => [Location.At d]
-  StaticAddr d _ => [Location.At d]
   AreaAddr d _ => [Location.At d]
   Offset d _ _ => [Location.At d]
   Arith _ d _ _ => [Location.At d]
@@ -371,8 +340,6 @@ results i = case i of
   DirectCall _ _ ds _ _ => ds
   GetPinned _ d => [Location.At d]
   SystemCall d _ => [Location.At d]
-  Move d _ => [Location.At d]
-  Par cs => map (\(MkCopy d _) => Location.At d) cs
   _ => []
 
 ||| The registers the instruction names, its destinations, its operands'
@@ -432,8 +399,6 @@ traverseOperands f st i = case i of
                                        Opnd.stepArgs f st args in (s1, DirectCall n args' ds m live)
   SetPinned p x => let (s1, x') = opnd st x in (s1, SetPinned p x')
   SystemCall d args => let (s1, args') = opnds st args in (s1, SystemCall d args')
-  Move d x => let (s1, x') = f st x in (s1, Move d x')
-  Par cs => let (s1, cs') = copies st cs in (s1, Par cs')
   _ => (st, i)
   where
     opnd : {0 t : IRCommon.Ty enc} -> s -> Opnd enc t -> (s, Opnd enc t)
@@ -457,20 +422,13 @@ traverseOperands f st i = case i of
       let (s1, b') = Mem.stepBase f st' m.base; (s2, ix') = maybeLoc s1 m.index
       in (s2, { base := b', index := ix' } m)
 
-    copies : s -> List (Copy enc) -> (s, List (Copy enc))
-    copies st' [] = (st', [])
-    copies st' (MkCopy d x :: cs) =
-      let (s1, x') = f st' x; (s2, cs') = copies s1 cs in (s2, MkCopy d x' :: cs')
-
 ||| The instruction with its results replaced by the step, in the order
 ||| `results` lists them.
 export
 traverseResults : Location.Step s enc -> s -> Instr enc -> (s, Instr enc)
 traverseResults f st i = case i of
-  Const d c => let (s1, d') = f st d in (s1, Const d' c)
   FConst d c => let (s1, d') = f st d in (s1, FConst d' c)
   CodeOf d n => let (s1, d') = f st d in (s1, CodeOf d' n)
-  StaticAddr d n => let (s1, d') = f st d in (s1, StaticAddr d' n)
   AreaAddr d a => let (s1, d') = f st d in (s1, AreaAddr d' a)
   Offset d x y => let (s1, d') = f st d in (s1, Offset d' x y)
   Arith o d x y => let (s1, d') = f st d in (s1, Arith o d' x y)
@@ -504,11 +462,4 @@ traverseResults f st i = case i of
     let (s1, ds') = Location.stepPlaces f st ds in (s1, DirectCall n args ds' m live)
   GetPinned p d => let (s1, d') = f st d in (s1, GetPinned p d')
   SystemCall d args => let (s1, d') = f st d in (s1, SystemCall d' args)
-  Move d x => let (s1, d') = f st d in (s1, Move d' x)
-  Par cs => let (s1, cs') = copies st cs in (s1, Par cs')
   _ => (st, i)
-  where
-    copies : s -> List (Copy enc) -> (s, List (Copy enc))
-    copies st' [] = (st', [])
-    copies st' (MkCopy d x :: cs) =
-      let (s1, d') = f st' d; (s2, cs') = copies s1 cs in (s2, MkCopy d' x :: cs')

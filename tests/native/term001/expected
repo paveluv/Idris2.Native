@@ -1,48 +1,48 @@
 function Main.cmain CPS [] entry 0
   0:
-    slot0:F64 := FConst 1.5
-    slot1:F64 := FAdd slot0:F64, slot0:F64
-    slot2:F64 := FNeg slot1:F64
-    slot3:W64 := FCmp slot2:F64 <s slot0:F64
-    slot4:W64 := Convert slot1:F64
-    slot5:F64 := Convert slot4:W64
-    slot6:ByteAddr := AreaAddr
-    slot7:W64 := LoadN [slot6:ByteAddr + 0]
-    slot28:W64 := Const 1
-    StoreN [slot6:ByteAddr + slot28:W64*2 + 0] := slot7:W64
-    slot8:ByteAddr := Offset slot6:ByteAddr, #8
-    StoreN [slot8:ByteAddr + 0] := slot7:W64
-    slot9:ByteAddr := getHp ()
-    setHp (slot9:ByteAddr)
-    slot10:ByteAddr := getHpLim ()
-    setHpLim (slot10:ByteAddr)
-    slot11:Ptr CONT := getK ()
-    setK (slot11:Ptr CONT)
-    slot12:W64 := syscall (#39)
-    slot27:W64 := Const 5
-    slot13:Ptr STRING := AllocSized StringBytesP=slot27:W64 live [slot3:W64, slot5:F64, slot27:W64]
-    slot14:W64 := LoadHeader slot13:Ptr STRING
-    slot15:Ptr INT64 := AllocObj INT64 (#5) live [slot3:W64, slot5:F64, slot14:W64]
-    slot16:Ptr DOUBLE := AllocObj DOUBLE (slot5:F64) live [slot3:W64, slot5:F64, slot14:W64, slot15:Ptr INT64]
-    slot17:Ptr IOREF := AllocObj IOREF (#0) live [slot3:W64, slot14:W64, slot15:Ptr INT64]
-    slot18:Ptr PTR := AllocObj PTR (slot14:W64) live [slot3:W64, slot14:W64, slot15:Ptr INT64]
-    slot19:Ptr ARRAY := AllocObj ARRAY ArrayElemsP=2 (#1, #2) live [slot3:W64, slot15:Ptr INT64]
-    slot20:Ptr STRING := AllocObj STRING StringAsciiP=1 StringBytesP=3 (#0) live [slot3:W64, slot15:Ptr INT64]
-    slot21:Ptr BYTES := AllocObj BYTES BytesLengthP=9 (#0, #0) live [slot3:W64, slot15:Ptr INT64]
-    slot22:W64 := DirectCall Main.Memory.roundTrip (slot3:W64) live [slot15:Ptr INT64]
-    DirectCall idris_routine () mayCollect live [slot15:Ptr INT64, slot22:W64]
-    slot23:Val := Widen slot15:Ptr INT64
-    slot24:CodeAddr := CodeOf Main.cmain
-    slot25:Fix := TagOv slot22:W64 overflow 1
-    slot26:Val := Widen slot25:Fix
+    [0] slot0:F64 := FConst 1.5
+    [1] slot1:F64 := FAdd slot0:F64, slot0:F64
+    [2] slot2:F64 := FNeg slot1:F64
+    [3] slot3:W64 := FCmp slot2:F64 <s slot0:F64
+    [4] slot4:W64 := Convert slot1:F64
+    [5] slot5:F64 := Convert slot4:W64
+    [6] slot6:ByteAddr := AreaAddr
+    [7] slot7:W64 := LoadN [slot6:ByteAddr + 0]
+    slot28:W64 := #1
+    [8] StoreN [slot6:ByteAddr + slot28:W64*2 + 0] := slot7:W64
+    [9] slot8:ByteAddr := Offset slot6:ByteAddr, #8
+    [12] StoreN [slot8:ByteAddr + 0] := slot7:W64
+    [13] slot9:ByteAddr := getHp ()
+    [14] setHp (slot9:ByteAddr)
+    [15] slot10:ByteAddr := getHpLim ()
+    [16] setHpLim (slot10:ByteAddr)
+    [17] slot11:Ptr CONT := getK ()
+    [18] setK (slot11:Ptr CONT)
+    [19] slot12:W64 := syscall (#39)
+    slot27:W64 := #5
+    [20] slot13:Ptr STRING := AllocSized StringBytesP=slot27:W64 live [slot3:W64, slot5:F64, slot27:W64]
+    [21] slot14:W64 := LoadHeader slot13:Ptr STRING
+    [22] slot15:Ptr INT64 := AllocObj INT64 (#5) live [slot3:W64, slot5:F64, slot14:W64]
+    [23] slot16:Ptr DOUBLE := AllocObj DOUBLE (slot5:F64) live [slot3:W64, slot5:F64, slot14:W64, slot15:Ptr INT64]
+    [24] slot17:Ptr IOREF := AllocObj IOREF (#0) live [slot3:W64, slot14:W64, slot15:Ptr INT64]
+    [25] slot18:Ptr PTR := AllocObj PTR (slot14:W64) live [slot3:W64, slot14:W64, slot15:Ptr INT64]
+    [26] slot19:Ptr ARRAY := AllocObj ARRAY ArrayElemsP=2 (#1, #2) live [slot3:W64, slot15:Ptr INT64]
+    [27] slot20:Ptr STRING := AllocObj STRING StringAsciiP=1 StringBytesP=3 (#0) live [slot3:W64, slot15:Ptr INT64]
+    [28] slot21:Ptr BYTES := AllocObj BYTES BytesLengthP=9 (#0, #0) live [slot3:W64, slot15:Ptr INT64]
+    [29] slot22:W64 := DirectCall Main.Memory.roundTrip (slot3:W64) live [slot15:Ptr INT64]
+    [30] DirectCall idris_routine () mayCollect live [slot15:Ptr INT64, slot22:W64]
+    [31] slot23:Val := Widen slot15:Ptr INT64
+    [32] slot24:CodeAddr := CodeOf Main.cmain
+    [33] slot25:Fix := TagOv slot22:W64 overflow 1
+    [34] slot26:Val := Widen slot25:Fix
     Enter slot24:CodeAddr (slot26:Val, slot23:Val)
   1:
     TailApply slot23:Val slot23:Val
 
 function Main.Memory.roundTrip Direct [slot0:W64] -> [W64] entry 0
   0:
-    slot1:Ptr CON := WordToAddr CON slot0:W64
-    slot2:W64 := AddrToWord slot1:Ptr CON
+    [1] slot1:Ptr CON := WordToAddr CON slot0:W64
+    [2] slot2:W64 := AddrToWord slot1:Ptr CON
     Ret slot2:W64
 
 exit status: 42

@@ -101,6 +101,7 @@ import Native.Codegen.LocatedIR.Mem as LocatedIR
 import Native.Codegen.LocatedIR.Opnd as LocatedIR
 import Native.Codegen.LocatedIR.Program as LocatedIR
 import Native.Codegen.LocatedIR.Static as LocatedIR
+import Native.Codegen.LocatedIR.Step as LocatedIR
 import Native.Codegen.LocatedIR.Terminator as LocatedIR
 import Native.Codegen.RegDesc
 import Native.Codegen.RegMask
@@ -419,7 +420,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
               block : Nat -> LocatedIR.Block enc -> Nat
               block n b =
                 past
-                  (foldl (\m, i => past m (LocatedIR.Instr.instrRegs i)) (past n b.params) b.body)
+                  (foldl (\m, i => past m (LocatedIR.Step.places i)) (past n b.params) b.body)
                   (LocatedIR.Terminator.termRegs b.term)
 
           ||| Slot n of the function's slots.
@@ -909,10 +910,10 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                 emit (Asm.MovRM Asm.R12 (Asm.MBase Asm.R12 (8 - ptag)))
               Nothing => emit (Asm.Lbl (blk b.label))
             traverse_
-              (\i => conforming mr (LocatedIR.Instr.instrName i)
+              (\i => conforming mr (LocatedIR.Step.stepName i)
                        (RegMask.union (Rows.clobbers called i)
-                         (registersIn (LocatedIR.Instr.results i)))
-                       (instr blk i))
+                         (registersIn (LocatedIR.Step.results i)))
+                       (step blk i))
               b.body
             conforming mr (LocatedIR.Terminator.termName b.term)
               (Rows.termClobbers called b.term)
@@ -920,16 +921,9 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
             where
               instr : (LocatedIR.Label -> Asm.Label) -> LocatedIR.Instr enc -> Render enc ()
               instr blk instr' = case instr' of
-                LocatedIR.Instr.Const d c => do emit
-                                                  (Asm.MovRI Asm.RAX
-                                                   (immWord (LocatedIR.Location.ty d) c))
-                                                store d Asm.RAX
                 LocatedIR.Instr.CodeOf d f => do l <- funLabel names f
                                                  emit (Asm.Lea Asm.RAX (Asm.MRip l 0))
                                                  store d Asm.RAX
-                LocatedIR.Instr.StaticAddr d s => do l <- staticLabel names s
-                                                     emit (Asm.Lea Asm.RAX (Asm.MRip l ptag))
-                                                     store d Asm.RAX
                 -- a byte address moved by a word: their sum
                 LocatedIR.Instr.Offset d x y => do
                                   wordArith IRCommon.Op.Add x y Nothing
@@ -1012,9 +1006,6 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                             , Asm.ShiftI (if s then Asm.SAR else Asm.SHR) Asm.RAX
                                               by ]
                                   store d Asm.RAX
-                LocatedIR.Instr.Move d x => move d x
-                LocatedIR.Instr.Par _ =>
-                  Data.Stateful.failWith "a parallel move the local assignment did not make moves"
                 -- a retyping is a move: a pointer word and an address, a value
                 -- and its word, are the same word
                 LocatedIR.Instr.Narrow _ d x => move d x
@@ -1431,6 +1422,21 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                       scale 2 = Asm.S2
                       scale 4 = Asm.S4
                       scale _ = Asm.S8
+
+              ||| A step: an operation by its instruction; a move, and a value put
+              ||| into a location, made in rax, an immediate as its type has it.
+              step : (LocatedIR.Label -> Asm.Label) -> LocatedIR.Step enc -> Render enc ()
+              step blk (LocatedIR.Step.Op _ i) = instr blk i
+              step _ (LocatedIR.Step.Move d x) = move d x
+              step _ (LocatedIR.Step.Remat d (LocatedIR.Step.Immediate c)) = do
+                emit (Asm.MovRI Asm.RAX (immWord (LocatedIR.Location.ty d) c))
+                store d Asm.RAX
+              step _ (LocatedIR.Step.Remat d (LocatedIR.Step.StaticAddress s)) = do
+                l <- staticLabel names s
+                emit (Asm.Lea Asm.RAX (Asm.MRip l ptag))
+                store d Asm.RAX
+              step _ (LocatedIR.Step.Par _) =
+                Data.Stateful.failWith "a parallel move the local assignment did not make moves"
 
       -- a function's code, its slow paths after it, rendered after what
       -- the rendering has made

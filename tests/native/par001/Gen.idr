@@ -31,8 +31,8 @@ module Main
 import Data.List
 import Data.Maybe
 import Native.Codegen.IRCommon.Ty
-import Native.Codegen.LocatedIR.Instr
 import Native.Codegen.LocatedIR.Location
+import Native.Codegen.LocatedIR.Step
 import Native.Codegen.Sequentialise
 import Native.Codegen.X86.Rows
 import Native.HeapObj.ValEnc
@@ -67,21 +67,21 @@ holds : Store -> Location TestEnc t -> String
 holds s l = fromMaybe (place l) (lookup (place l) s)
 
 ||| The moves run one at a time.
-run : List (Instr TestEnc) -> Store -> Store
+run : List (Step TestEnc) -> Store -> Store
 run [] s = s
 run (Move d x :: is) s = run is ((place d, holds s x) :: s)
 run (_ :: is) s = run is s
 
 ||| Whether the moves do what the parallel move means: each destination
 ||| holds what its source held, every other place of the move what it held.
-agrees : List (Copy TestEnc) -> List (Instr TestEnc) -> Bool
+agrees : List (Copy TestEnc) -> List (Step TestEnc) -> Bool
 agrees cs is =
   let after = run is []
       dests = map (\(MkCopy d _) => place d) cs
   in all (\(MkCopy d x) => holds after d == place x) cs
      && all (\(MkCopy _ x) => elem (place x) dests || holds after x == place x) cs
 
-shown : Instr TestEnc -> String
+shown : Step TestEnc -> String
 shown (Move d x) = show d ++ " := " ++ show x
 shown _ = "?"
 

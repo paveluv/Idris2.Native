@@ -14,9 +14,9 @@ module Native.Codegen.LocalAssign
 import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.Codegen.LocatedIR.Block as LocatedIR
 import Native.Codegen.LocatedIR.Function as LocatedIR
-import Native.Codegen.LocatedIR.Instr as LocatedIR
 import Native.Codegen.LocatedIR.Location as LocatedIR
 import Native.Codegen.LocatedIR.Program as LocatedIR
+import Native.Codegen.LocatedIR.Step as LocatedIR
 import Native.Codegen.LocatedIR.Terminator as LocatedIR
 import Native.Codegen.Row
 import Native.Codegen.Sequentialise
@@ -35,51 +35,51 @@ wanted _ _ = Nothing
 
 -- an operand where the next want puts it, after the move that puts it
 -- there; the wants run out wanting anywhere
-operand : (List Row.Want, SnocList (LocatedIR.Instr enc)) -> LocatedIR.Location enc t ->
-          ((List Row.Want, SnocList (LocatedIR.Instr enc)), LocatedIR.Location enc t)
+operand : (List Row.Want, SnocList (LocatedIR.Step enc)) -> LocatedIR.Location enc t ->
+          ((List Row.Want, SnocList (LocatedIR.Step enc)), LocatedIR.Location enc t)
 operand ([], ms) l = (([], ms), l)
 operand (w :: ws, ms) l = case wanted w l of
-  Just g => ((ws, ms :< LocatedIR.Instr.Move g l), g)
+  Just g => ((ws, ms :< LocatedIR.Step.Move g l), g)
   Nothing => ((ws, ms), l)
 
 -- a result where the next want puts it, before the move that takes it to
 -- its place
-result : (List Row.Want, SnocList (LocatedIR.Instr enc)) -> LocatedIR.Location enc t ->
-         ((List Row.Want, SnocList (LocatedIR.Instr enc)), LocatedIR.Location enc t)
+result : (List Row.Want, SnocList (LocatedIR.Step enc)) -> LocatedIR.Location enc t ->
+         ((List Row.Want, SnocList (LocatedIR.Step enc)), LocatedIR.Location enc t)
 result ([], ms) l = (([], ms), l)
 result (w :: ws, ms) l = case wanted w l of
-  Just g => ((ws, ms :< LocatedIR.Instr.Move l g), g)
+  Just g => ((ws, ms :< LocatedIR.Step.Move l g), g)
   Nothing => ((ws, ms), l)
 
-||| The instruction with its operands and results where its row wants them,
-||| after the moves that put the operands there and before those that take
-||| the results to their slots.
-assigned : Row -> LocatedIR.Instr enc -> List (LocatedIR.Instr enc)
-assigned r i =
-  let ((_, before), i1) = LocatedIR.Instr.traverseOperands operand (r.operands, [<]) i
-      ((_, after), i2) = LocatedIR.Instr.traverseResults result (r.results, [<]) i1
-  in before <>> i2 :: (after <>> [])
+||| The step with its operands and results where its row wants them, after
+||| the moves that put the operands there and before those that take the
+||| results to their slots: an operation keeps its definition's number.
+assigned : Row -> LocatedIR.Step enc -> List (LocatedIR.Step enc)
+assigned r s =
+  let ((_, before), s1) = LocatedIR.Step.traverseOperands operand (r.operands, [<]) s
+      ((_, after), s2) = LocatedIR.Step.traverseResults result (r.results, [<]) s1
+  in before <>> s2 :: (after <>> [])
 
-||| The block with its instructions' and its terminator's operands and
+||| The block with its steps' and its terminator's operands and
 ||| results where the rows want them, its parallel moves made moves
 ||| through the registers of `temp`.
-block : (row : LocatedIR.Instr enc -> Row) -> (termRow : LocatedIR.Terminator enc -> Row) ->
+block : (row : LocatedIR.Step enc -> Row) -> (termRow : LocatedIR.Terminator enc -> Row) ->
         (temp : Rep.RegClass -> Nat) -> LocatedIR.Block enc -> LocatedIR.Block enc
 block row termRow temp b =
   let ((_, before), term) =
         LocatedIR.Terminator.traverseTermOperands operand ((termRow b.term).operands, [<]) b.term
   in { body := concatMap instr b.body ++ (before <>> []), term := term } b
   where
-    instr : LocatedIR.Instr enc -> List (LocatedIR.Instr enc)
-    instr (LocatedIR.Instr.Par cs) =
+    instr : LocatedIR.Step enc -> List (LocatedIR.Step enc)
+    instr (LocatedIR.Step.Par cs) =
       concatMap (\m => assigned (row m) m) (Sequentialise.sequential temp cs)
     instr i = assigned (row i) i
 
-||| Every instruction and terminator of the program with its operands and
+||| Every step and terminator of the program with its operands and
 ||| results where `row` and `termRow` want them, a parallel move's cycle
 ||| broken through the register of `temp`.
 export
-localAssign : (row : LocatedIR.Instr enc -> Row) -> (termRow : LocatedIR.Terminator enc -> Row) ->
+localAssign : (row : LocatedIR.Step enc -> Row) -> (termRow : LocatedIR.Terminator enc -> Row) ->
               (temp : Rep.RegClass -> Nat) -> LocatedIR.Program enc -> LocatedIR.Program enc
 localAssign row termRow temp p =
   { functions $= map (\f => { blocks $= map (block row termRow temp) } f) } p

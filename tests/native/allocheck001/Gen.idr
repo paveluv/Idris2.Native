@@ -48,6 +48,7 @@ import Native.Codegen.LocatedIR.Label
 import Native.Codegen.LocatedIR.Location
 import Native.Codegen.LocatedIR.Opnd
 import Native.Codegen.LocatedIR.Program
+import Native.Codegen.LocatedIR.Step
 import Native.Codegen.LocatedIR.Terminator
 import Native.Codegen.X86.Target
 import Native.HeapObj.Shape
@@ -80,11 +81,16 @@ cons n = Slot n (PtrTo CON)
 fn : String -> List (Block TestEnc) -> Function TestEnc
 fn name bs = MkFunction (nm name) CPS [At (val 0)] 0 bs EmptyFC
 
+||| An operation, of no term: the check here reads the located IR alone,
+||| so the number of the definition it realises is any.
+op : Instr TestEnc -> Step TestEnc
+op = Op 0
+
 ||| The cons cell of `x` and the empty list, as a `Val`.
-cell : (live : List (Place TestEnc)) -> List (Instr TestEnc)
+cell : (live : List (Place TestEnc)) -> List (Step TestEnc)
 cell live =
-  [ AllocObj (cons 1) (ConH 1 2) [MkArg (R (val 0)), MkArg (Imm {t = Val} 0)] live
-  , Widen (val 2) (cons 1) ]
+  [ op (AllocObj (cons 1) (ConH 1 2) [MkArg (R (val 0)), MkArg (Imm {t = Val} 0)] live)
+  , op (Widen (val 2) (cons 1)) ]
 
 ||| `keep`, right: x is a field, so live across its own allocation.
 keep : Function TestEnc
@@ -98,7 +104,7 @@ readUnwritten = fn "readUnwritten" [MkBlock 0 [] [] (Return (R (val 5)))]
 twoKinds : Function TestEnc
 twoKinds =
   fn "twoKinds"
-    [MkBlock 0 [] [Move (val 3) (val 0), Arith Add (word 4) (R (word 3)) (Imm 1)]
+    [MkBlock 0 [] [Move (val 3) (val 0), op (Arith Add (word 4) (R (word 3)) (Imm 1))]
        (Return (R (val 0)))]
 
 ||| x read after the allocation, its live list empty.
@@ -143,7 +149,7 @@ registerAcrossCall : Function TestEnc
 registerAcrossCall =
   fn "registerAcrossCall"
     [MkBlock 0 [] [ Move (Register 1 Val) (val 0)
-                  , DirectCall (nm "probe") [] [At (word 3)] False [At (Register 1 Val)] ]
+                  , op (DirectCall (nm "probe") [] [At (word 3)] False [At (Register 1 Val)]) ]
        (Return (R (Register 1 Val)))]
 
 ||| A register past the target's description.
@@ -156,7 +162,7 @@ undescribed =
 joinHalf : Function TestEnc
 joinHalf =
   fn "joinHalf"
-    [ MkBlock 0 [] [ValToWord (word 1) (val 0)] (Branch EqR (R (word 1)) (Imm 0) 1 2)
+    [ MkBlock 0 [] [op (ValToWord (word 1) (val 0))] (Branch EqR (R (word 1)) (Imm 0) 1 2)
     , MkBlock 1 [] [Move (val 4) (val 0)] (Jump 3)
     , MkBlock 2 [] [] (Jump 3)
     , MkBlock 3 [] [] (Return (R (val 4))) ]

@@ -16,6 +16,7 @@ import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.Codegen.LocatedIR.Instr as LocatedIR
 import Native.Codegen.LocatedIR.Location as LocatedIR
 import Native.Codegen.LocatedIR.Opnd as LocatedIR
+import Native.Codegen.LocatedIR.Step as LocatedIR
 import Native.Codegen.LocatedIR.Terminator as LocatedIR
 import Native.Codegen.RegDesc
 import Native.Codegen.RegMask
@@ -65,37 +66,41 @@ arith o = Row.clobbering (if division o then [rcx, rdx] else [rcx])
     division IRCommon.Op.RemU = True
     division _ = False
 
-||| What x86-64's rendering of each instruction writes of the allocatable
+||| What x86-64's rendering of each step writes of the allocatable
 ||| registers besides its results, given what a call may write (`called`,
-||| the target's call model).
+||| the target's call model): an operation's instruction's; a shuffle, none.
 export
-clobbers : (called : RegMask) -> LocatedIR.Instr enc -> RegMask
-clobbers called i = case i of
-  -- a double's bits, made in rax
-  LocatedIR.Instr.FConst _ _ => Row.clobbering [rax]
-  LocatedIR.Instr.Offset _ _ _ => arith IRCommon.Op.Add
-  LocatedIR.Instr.Arith o _ _ _ => arith o
-  LocatedIR.Instr.ArithOv o _ _ _ _ => arith o
-  -- an immediate operand into rcx
-  LocatedIR.Instr.Mul128 _ _ _ _ => Row.clobbering [rcx]
-  LocatedIR.Instr.Div128 _ _ _ _ _ => Row.clobbering [rcx]
-  -- the sign bit flipped in the double's bits, through rax and rcx
-  LocatedIR.Instr.FNeg _ _ => Row.clobbering [rax, rcx]
-  -- (in)equality's parity flag, in rcx
-  LocatedIR.Instr.FCmp _ _ _ _ => Row.clobbering [rcx]
-  -- an immediate or a static into rax or rcx
-  LocatedIR.Instr.Cmp _ _ _ _ => Row.clobbering [rax, rcx]
-  -- a double through rcx, which no want of a word register moves
-  LocatedIR.Instr.Load _ _ _ => Row.clobbering [rcx]
-  LocatedIR.Instr.Store _ _ _ => Row.clobbering [rcx]
-  -- the collector may run, by a call
-  LocatedIR.Instr.AllocObj _ _ _ _ => called
-  LocatedIR.Instr.AllocSized _ _ _ _ _ => called
-  LocatedIR.Instr.DirectCall _ _ _ _ _ => called
-  -- the number and the arguments into the registers of Linux's convention,
-  -- the result from rax; the kernel writes rcx and r11
-  LocatedIR.Instr.SystemCall _ _ => Row.clobbering [rax, rcx, rdx, rsi, rdi, r8, r9, r10, r11]
-  _ => RegMask.none
+clobbers : (called : RegMask) -> LocatedIR.Step enc -> RegMask
+clobbers called (LocatedIR.Step.Op _ i) = instrClobbers i
+  where
+    instrClobbers : LocatedIR.Instr enc -> RegMask
+    instrClobbers i' = case i' of
+      -- a double's bits, made in rax
+      LocatedIR.Instr.FConst _ _ => Row.clobbering [rax]
+      LocatedIR.Instr.Offset _ _ _ => arith IRCommon.Op.Add
+      LocatedIR.Instr.Arith o _ _ _ => arith o
+      LocatedIR.Instr.ArithOv o _ _ _ _ => arith o
+      -- an immediate operand into rcx
+      LocatedIR.Instr.Mul128 _ _ _ _ => Row.clobbering [rcx]
+      LocatedIR.Instr.Div128 _ _ _ _ _ => Row.clobbering [rcx]
+      -- the sign bit flipped in the double's bits, through rax and rcx
+      LocatedIR.Instr.FNeg _ _ => Row.clobbering [rax, rcx]
+      -- (in)equality's parity flag, in rcx
+      LocatedIR.Instr.FCmp _ _ _ _ => Row.clobbering [rcx]
+      -- an immediate or a static into rax or rcx
+      LocatedIR.Instr.Cmp _ _ _ _ => Row.clobbering [rax, rcx]
+      -- a double through rcx, which no want of a word register moves
+      LocatedIR.Instr.Load _ _ _ => Row.clobbering [rcx]
+      LocatedIR.Instr.Store _ _ _ => Row.clobbering [rcx]
+      -- the collector may run, by a call
+      LocatedIR.Instr.AllocObj _ _ _ _ => called
+      LocatedIR.Instr.AllocSized _ _ _ _ _ => called
+      LocatedIR.Instr.DirectCall _ _ _ _ _ => called
+      -- the number and the arguments into the registers of Linux's convention,
+      -- the result from rax; the kernel writes rcx and r11
+      LocatedIR.Instr.SystemCall _ _ => Row.clobbering [rax, rcx, rdx, rsi, rdi, r8, r9, r10, r11]
+      _ => RegMask.none
+clobbers _ _ = RegMask.none
 
 ||| What x86-64's rendering of each terminator writes of the allocatable
 ||| registers. A terminator that leaves the function leaves nothing in its
@@ -137,17 +142,16 @@ between (LocatedIR.Location.Slot _ _) (LocatedIR.Location.Slot _ t) =
   [case IRCommon.Ty.class t of Rep.WordClass => rax; Rep.FloatClass => xmm0]
 between _ _ = []
 
-||| Where x86-64's rendering of each instruction wants its register
-||| operands and results, and what else it writes (`clobbers`).
+||| Where x86-64's rendering of each step wants its register operands and
+||| results, and what else it writes (`clobbers`): a move's as `between`
+||| says, a value put into a location made in rax.
 export
-row : (called : RegMask) -> LocatedIR.Instr enc -> Row
-row called i = let (os, rs) = wants i in MkRow os rs (clobbers called i)
+row : (called : RegMask) -> LocatedIR.Step enc -> Row
+row called s = let (os, rs) = wants s in MkRow os rs (clobbers called s)
   where
-    wants : LocatedIR.Instr enc -> (List Row.Want, List Row.Want)
-    wants i' = case i' of
-      LocatedIR.Instr.Const _ _ => ([], [rax])
+    instrWants : LocatedIR.Instr enc -> (List Row.Want, List Row.Want)
+    instrWants i' = case i' of
       LocatedIR.Instr.CodeOf _ _ => ([], [rax])
-      LocatedIR.Instr.StaticAddr _ _ => ([], [rax])
       LocatedIR.Instr.AreaAddr _ _ => ([], [rax])
       LocatedIR.Instr.Offset _ x y => (at x rax ++ at y rcx, [rax])
       LocatedIR.Instr.Arith _ _ x y => (at x rax ++ at y rcx, [rax])
@@ -173,7 +177,6 @@ row called i = let (os, rs) = wants i in MkRow os rs (clobbers called i)
       LocatedIR.Instr.LoadN _ _ _ _ => ([rax, rdx], [rcx])
       LocatedIR.Instr.StoreN _ _ _ => ([rcx, rax, rdx], [])
       LocatedIR.Instr.LoadPart _ _ _ => ([rax], [rax])
-      LocatedIR.Instr.Move d x => (between d x, [])
       LocatedIR.Instr.Narrow _ d x => (between d x, [])
       LocatedIR.Instr.Widen d x => (between d x, [])
       LocatedIR.Instr.AddrToWord d x => (between d x, [])
@@ -181,6 +184,12 @@ row called i = let (os, rs) = wants i in MkRow os rs (clobbers called i)
       LocatedIR.Instr.ValToWord d x => (between d x, [])
       LocatedIR.Instr.WordToVal d x => (between d x, [])
       _ => ([], [])
+
+    wants : LocatedIR.Step enc -> (List Row.Want, List Row.Want)
+    wants (LocatedIR.Step.Op _ i) = instrWants i
+    wants (LocatedIR.Step.Move d x) = (between d x, [])
+    wants (LocatedIR.Step.Remat _ _) = ([], [rax])
+    wants (LocatedIR.Step.Par _) = ([], [])
 
 ||| Where x86-64's rendering of each terminator wants its register
 ||| operands, and what it writes (`termClobbers`). A call's arguments and a

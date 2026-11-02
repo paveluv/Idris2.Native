@@ -13,6 +13,7 @@ import Native.Codegen.LocatedIR.Mem
 import Native.Codegen.LocatedIR.Opnd
 import Native.Codegen.LocatedIR.Program
 import Native.Codegen.LocatedIR.Static
+import Native.Codegen.LocatedIR.Step
 import Native.Codegen.LocatedIR.Terminator
 
 import Core.Name
@@ -46,7 +47,7 @@ functionPieces f =
     blockPieces b =
       Data.Builder.single
         ("  " ++ show b.label ++ (if null b.params then "" else " " ++ regs b.params) ++ ":\n")
-      <+> concatMap (\i => Data.Builder.single ("    " ++ instr i ++ "\n")) b.body
+      <+> concatMap (\i => Data.Builder.single ("    " ++ step i ++ "\n")) b.body
       <+> Data.Builder.single ("    " ++ term b.term ++ "\n")
       where
         ops : {0 t : IRCommon.Ty enc'} -> List (Opnd enc' t) -> String
@@ -69,10 +70,8 @@ functionPieces f =
 
         instr : Instr enc -> String
         instr instr' = case instr' of
-          Instr.Const d c => show d ++ " := Const " ++ show c
           Instr.FConst d c => show d ++ " := FConst " ++ show c
           Instr.CodeOf d f => show d ++ " := CodeOf " ++ show f
-          Instr.StaticAddr d s => show d ++ " := StaticAddr " ++ show s
           Instr.AreaAddr d _ => show d ++ " := AreaAddr"
           Instr.Offset d x y => show d ++ " := Offset " ++ show x ++ ", " ++ show y
           Instr.Arith o d x y => show d ++ " := " ++ show o ++ " " ++ ops [x, y]
@@ -117,10 +116,6 @@ functionPieces f =
           i@(Instr.SetPinned _ x) => Instr.instrName i ++ " (" ++ ops [x] ++ ")"
           i@(Instr.SystemCall d xs) => assigned [Location.At d] ++ Instr.instrName i ++ " ("
             ++ ops xs ++ ")"
-          Instr.Move d s => show d ++ " := " ++ show s
-          Instr.Par cs =>
-            "(" ++ joinBy ", " (map (\(Instr.MkCopy d _) => show d) cs) ++ ") := ("
-            ++ joinBy ", " (map (\(Instr.MkCopy _ x) => show x) cs) ++ ")"
           Instr.Loc _ => "Loc"
           Instr.Comment s => "-- " ++ s
           where
@@ -134,6 +129,16 @@ functionPieces f =
             mem w m = "[" ++ show m.base
               ++ maybe "" (\i => " + " ++ show i ++ "*" ++ show w) m.index
                         ++ " + " ++ show m.offset ++ "]"
+
+        -- an operation after the number of the definition it realises; a
+        -- shuffle as itself
+        step : Step enc -> String
+        step (Step.Op n i) = "[" ++ show n ++ "] " ++ instr i
+        step (Step.Move d x) = show d ++ " := " ++ show x
+        step (Step.Par cs) =
+          "(" ++ joinBy ", " (map (\(Step.MkCopy d _) => show d) cs) ++ ") := ("
+          ++ joinBy ", " (map (\(Step.MkCopy _ x) => show x) cs) ++ ")"
+        step (Step.Remat d m) = show d ++ " := " ++ show m
 
         term : Terminator enc -> String
         term terminator = case terminator of

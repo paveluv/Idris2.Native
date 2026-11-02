@@ -50,6 +50,7 @@ import Native.Codegen.LocatedIR.Instr as LocatedIR
 import Native.Codegen.LocatedIR.Label as LocatedIR
 import Native.Codegen.LocatedIR.Location
 import Native.Codegen.LocatedIR.Program as LocatedIR
+import Native.Codegen.LocatedIR.Step as LocatedIR
 import Native.Codegen.LocatedIR.Terminator as LocatedIR
 import Native.Codegen.RegDesc
 import Native.Codegen.Target
@@ -88,7 +89,7 @@ record Summary (enc : Types.Enc) where
   ||| has written by then.
   sides : List (LocatedIR.Label, Slots)
   ||| Each instruction, with what it reads and what it writes.
-  steps : List (LocatedIR.Instr enc, Slots, Slots)
+  steps : List (LocatedIR.Step enc, Slots, Slots)
   ||| What the block reads after each instruction before it writes it, the
   ||| terminator included: all that is read after the instruction when the
   ||| block jumps and branches nowhere.
@@ -143,8 +144,8 @@ check p = traverse_ checkFunction p.functions
     registers = bit (rd.wordCount + rd.floatCount) - 1
 
     ||| A direct call, after which a callee has written any register.
-    directCall : LocatedIR.Instr enc -> Bool
-    directCall (LocatedIR.Instr.DirectCall _ _ _ _ _) = True
+    directCall : LocatedIR.Step enc -> Bool
+    directCall (LocatedIR.Step.Op _ (LocatedIR.Instr.DirectCall _ _ _ _ _)) = True
     directCall _ = False
 
     ||| What a location's number names, for a rejection.
@@ -186,9 +187,9 @@ check p = traverse_ checkFunction p.functions
         (SortedMap.toList sh.blocks)
       where
         ||| The block an instruction may leave to, an overflow's.
-        side : LocatedIR.Instr enc -> Maybe LocatedIR.Label
-        side (LocatedIR.Instr.ArithOv _ _ _ _ l) = Just l
-        side (LocatedIR.Instr.TagOv _ _ l) = Just l
+        side : LocatedIR.Step enc -> Maybe LocatedIR.Label
+        side (LocatedIR.Step.Op _ (LocatedIR.Instr.ArithOv _ _ _ _ l)) = Just l
+        side (LocatedIR.Step.Op _ (LocatedIR.Instr.TagOv _ _ l)) = Just l
         side _ = Nothing
 
         ||| The blocks a terminator jumps or branches to. A non-tail call's resume
@@ -262,7 +263,7 @@ check p = traverse_ checkFunction p.functions
               let steps =
                     map
                       (\i =>
-                       (i, slots (LocatedIR.Instr.operands i), slots (LocatedIR.Instr.results i)))
+                       (i, slots (LocatedIR.Step.operands i), slots (LocatedIR.Step.results i)))
                         b.body
                   (r, w, as) =
                     foldr (\(_, u, d), (r', w', as') => (minus r' d .|. u, w' .|. d, r' :: as'))
@@ -272,7 +273,7 @@ check p = traverse_ checkFunction p.functions
                     foldl (\acc,
                            i =>
                              foldl kind acc
-                               (LocatedIR.Instr.results i ++ LocatedIR.Instr.operands i
+                               (LocatedIR.Step.results i ++ LocatedIR.Step.operands i
                                 ++ fromMaybe [] (listedIn i)))
                             (foldl kind (0, 0, [])
                               (b.params ++ LocatedIR.Terminator.termRegs b.term))
@@ -283,21 +284,22 @@ check p = traverse_ checkFunction p.functions
               where
                 -- the registers a `live` list names, whether or not a
                 -- collection can start there
-                listedIn : LocatedIR.Instr enc -> Maybe (List (LocatedIR.Location.Place enc))
+                listedIn : LocatedIR.Step enc -> Maybe (List (LocatedIR.Location.Place enc))
                 listedIn i = case i of
-                  LocatedIR.Instr.AllocObj _ _ _ live => Just live
-                  LocatedIR.Instr.AllocSized _ _ _ _ live => Just live
-                  LocatedIR.Instr.DirectCall _ _ _ _ live => Just live
+                  LocatedIR.Step.Op _ (LocatedIR.Instr.AllocObj _ _ _ live) => Just live
+                  LocatedIR.Step.Op _ (LocatedIR.Instr.AllocSized _ _ _ _ live) => Just live
+                  LocatedIR.Step.Op _ (LocatedIR.Instr.DirectCall _ _ _ _ live) => Just live
                   _ => Nothing
 
                 -- the `live` list of an instruction where a collection can start
-                collectingHere : LocatedIR.Instr enc -> Maybe (List (LocatedIR.Location.Place enc))
-                collectingHere (LocatedIR.Instr.DirectCall _ _ _ False _) = Nothing
+                collectingHere : LocatedIR.Step enc -> Maybe (List (LocatedIR.Location.Place enc))
+                collectingHere (LocatedIR.Step.Op _ (LocatedIR.Instr.DirectCall _ _ _ False _)) =
+                  Nothing
                 collectingHere i = listedIn i
 
                 -- the overflows, each with what the block has written by then,
                 -- and what the live lists name before the block writes it
-                forward : Slots -> List (LocatedIR.Instr enc, Slots, Slots) ->
+                forward : Slots -> List (LocatedIR.Step enc, Slots, Slots) ->
                           (List (LocatedIR.Label, Slots), Slots)
                 forward _ [] = ([], 0)
                 forward w ((i, _, d) :: is) =
@@ -431,7 +433,7 @@ check p = traverse_ checkFunction p.functions
           whenJust (continuation b.term) resumed
           where
             -- what is live before the instructions, and after each of them
-            lives : (LocatedIR.Label -> Slots) -> List (LocatedIR.Instr enc, Slots, Slots) ->
+            lives : (LocatedIR.Label -> Slots) -> List (LocatedIR.Step enc, Slots, Slots) ->
                     (end : Slots) -> (Slots, List Slots)
             lives _ [] end = (end, [])
             lives at ((i, u, d) :: is) end =
@@ -448,25 +450,25 @@ check p = traverse_ checkFunction p.functions
               else reject f b.label (what ++ " " ++ show r ++ " before it is written")
 
             ||| Where a collection can start at the instruction: its `live` list.
-            collecting : LocatedIR.Instr enc -> Maybe (List (LocatedIR.Location.Place enc))
+            collecting : LocatedIR.Step enc -> Maybe (List (LocatedIR.Location.Place enc))
             collecting i = case i of
-              LocatedIR.Instr.AllocObj _ _ _ live => Just live
-              LocatedIR.Instr.AllocSized _ _ _ _ live => Just live
-              LocatedIR.Instr.DirectCall _ _ _ True live => Just live
+              LocatedIR.Step.Op _ (LocatedIR.Instr.AllocObj _ _ _ live) => Just live
+              LocatedIR.Step.Op _ (LocatedIR.Instr.AllocSized _ _ _ _ live) => Just live
+              LocatedIR.Step.Op _ (LocatedIR.Instr.DirectCall _ _ _ True live) => Just live
               _ => Nothing
 
             -- what is defined after the instruction, from what is before:
             -- a rejection for what it reads or lists before it is written
-            definedAt : Slots -> (LocatedIR.Instr enc, Slots, Slots) -> Either String Slots
+            definedAt : Slots -> (LocatedIR.Step enc, Slots, Slots) -> Either String Slots
             definedAt d (i, u, w) = do
               when (minus u d /= 0) $
-                traverse_ (defined d "an instruction reads") (LocatedIR.Instr.operands i)
+                traverse_ (defined d "an instruction reads") (LocatedIR.Step.operands i)
               whenJust (collecting i) $ \listed =>
                 when (minus (slots listed) d /= 0) $
                   traverse_ (defined d "a live list names") listed
               Right (d .|. w)
 
-            instr : ((LocatedIR.Instr enc, Slots, Slots), Slots) -> Either String ()
+            instr : ((LocatedIR.Step enc, Slots, Slots), Slots) -> Either String ()
             instr ((i, u, w), after) = do
               whenJust (collecting i) $ \listed => do
                 let kept = minus after w .|. u

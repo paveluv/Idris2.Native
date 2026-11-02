@@ -52,6 +52,7 @@ modules =
     Native.Codegen.LocatedIR.Reach,
     Native.Codegen.LocatedIR.Location,
     Native.Codegen.LocatedIR.Static,
+    Native.Codegen.LocatedIR.Step,
     Native.Codegen.LocatedIR.Terminator,
     Native.Codegen.Lower,
     Native.Codegen.LowerFlat,
