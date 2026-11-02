@@ -22,7 +22,6 @@
 ||| that a call of one stops the compile.
 module Native.Codegen.Native
 
-import Native.Codegen.AllocCheck
 import Native.Codegen.ConstantWord
 import Native.Codegen.ELF
 import Native.Codegen.Evaluate
@@ -595,14 +594,14 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
             (later
               (LocalAssign.localAssign (X86.Rows.row called) (X86.Rows.termRow called)
                  X86.Rows.cycleTemp slotted))
-          -- what the allocation made, checked by a reading of its own
-          Right () <- phase "allocation checked" (later (AllocCheck.check allocated))
-            | Left err => throw (InternalError ("native: " ++ err))
-          -- every location holding the value the term reads there, checked by
-          -- a reading of the term of its own
+          -- what the allocation made, checked by a reading of its own, of
+          -- the term and the located program: every location holding the
+          -- value the term reads there, and the program one the rendering
+          -- and the collector can keep to
           Right () <- phase "values checked"
             (later
-              (ValueCheck.check {d = decls} (X86.Rows.clobbers called) (X86.Rows.termClobbers called)
+              (ValueCheck.check {d = decls} (X86.Rows.clobbers called)
+                (X86.Rows.termClobbers called)
                  term allocated))
             | Left err => throw (InternalError ("native: " ++ err))
           -- the image holds what the entry and the routines the seed reaches

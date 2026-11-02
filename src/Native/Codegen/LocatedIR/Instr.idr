@@ -342,15 +342,22 @@ results i = case i of
   SystemCall d _ => [Location.At d]
   _ => []
 
+||| The `live` list of an instruction that has one, an allocation or a
+||| direct call: every register live across it.
+export
+listed : Instr enc -> Maybe (List (Location.Place enc))
+listed (AllocObj _ _ _ live) = Just live
+listed (AllocSized _ _ _ _ live) = Just live
+listed (DirectCall _ _ _ _ live) = Just live
+listed _ = Nothing
+
 ||| The `live` list of an instruction where a collection can start, an
 ||| allocation or a direct call that may collect: every register the
 ||| collector keeps, the GC-visible ones forwarded.
 export
 collecting : Instr enc -> Maybe (List (Location.Place enc))
-collecting (AllocObj _ _ _ live) = Just live
-collecting (AllocSized _ _ _ _ live) = Just live
-collecting (DirectCall _ _ _ True live) = Just live
-collecting _ = Nothing
+collecting (DirectCall _ _ _ False _) = Nothing
+collecting i = listed i
 
 ||| Whether the instruction is an allocation, which initialises its object
 ||| from its operands after the collection it may start, where any other
@@ -366,14 +373,7 @@ isAllocation _ = False
 ||| names it, in no order to rely on.
 export
 instrRegs : Instr enc -> List (Location.Place enc)
-instrRegs i = results i ++ operands i ++ kept i
-  where
-    -- the registers its `live` list keeps
-    kept : Instr enc -> List (Location.Place enc)
-    kept (AllocObj _ _ _ live) = live
-    kept (AllocSized _ _ _ _ live) = live
-    kept (DirectCall _ _ _ _ live) = live
-    kept _ = []
+instrRegs i = results i ++ operands i ++ maybe [] id (listed i)
 
 ||| The instruction with its register operands replaced by the step, in the
 ||| order `operands` lists them.

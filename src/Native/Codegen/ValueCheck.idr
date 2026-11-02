@@ -1,6 +1,8 @@
-||| The value check (`check`): that every location the located program reads
-||| holds the value the term reads there. It reads the term and the located
-||| program, never the allocator that made one from the other.
+||| The value check (`check`), the check of what register allocation made:
+||| that every location the located program reads holds the value the term
+||| reads there, and that the program is one the rendering and the collector
+||| can keep to. It reads the term and the located program, never the
+||| allocator that made one from the other.
 |||
 ||| The term's definitions are numbered as register allocation numbers them
 ||| (`Native.Codegen.RegAlloc.freshDefs`): a node's numbers when it is met,
@@ -29,6 +31,18 @@
 ||| A definition that lowers to no operation (a retyping of a raw word, a
 ||| static's address held as itself) is what its operand is: its number is
 ||| an alias, which every content read is taken through (`canonical`).
+|||
+||| What the rendering and the collector rely on, besides: a register
+||| written is one of the target's, by its index among those of its class
+||| in the target's description; a live list, an allocation's, a direct
+||| call's or a continuation's, names only locations that hold a value,
+||| each at the kind of what it holds, since the rendering keeps each by
+||| the kind the list gives it, the collector forwarding the GC-visible
+||| ones and no other; and a resume block's parameters are its
+||| continuation's live locations and then the result. A read of a location
+||| that holds nothing is refused as any wrong value is, which covers a
+||| register read after what overwrites it, the allocation slow path and a
+||| direct call among them, whose rows say they write every register.
 module Native.Codegen.ValueCheck
 
 import Native.Codegen.IRCommon.Conv as IRCommon
@@ -47,7 +61,9 @@ import Native.Codegen.LocatedIR.Opnd as LocatedIR
 import Native.Codegen.LocatedIR.Program as LocatedIR
 import Native.Codegen.LocatedIR.Step as LocatedIR
 import Native.Codegen.LocatedIR.Terminator as LocatedIR
+import Native.Codegen.RegDesc
 import Native.Codegen.RegMask
+import Native.Codegen.Target
 import Native.Codegen.TermIR.Body as TermIR
 import Native.Codegen.TermIR.Decls as TermIR
 import Native.Codegen.TermIR.Def as TermIR
@@ -66,12 +82,12 @@ import Data.List
 import Data.List.Quantifiers
 import Data.Singleton
 import Data.SortedMap
-import Data.SortedSet
 import Data.Vect
 import Data.Zippable
 import Native.Data.RAList as Data
 import Native.Data.Stateful as Data
 import Native.HeapObj.ValEnc
+import Native.Rep
 import Native.Types.Enc as Types
 import Native.Types.Header as Types
 import Native.Types.Kind as Types
@@ -82,14 +98,15 @@ import Native.Types.Kind as Types
 -- What the term says
 
 ||| What the located program must do, by the numbers of the term's
-||| definitions: an operation's operands and results, in the order its
-||| instruction lists them (`views`); a terminator's operands; a jump's
+||| definitions: an operation's operands, in the order its instruction
+||| lists them (`views`), and how many results it binds, the values of the
+||| numbers from its own; a terminator's operands; a jump's
 ||| target's first parameter and its arguments; the definitions that are
 ||| what their operand is.
 record Expected where
   constructor MkExpected
   next : Nat
-  ops : SortedMap Nat (List LocatedIR.Content, List LocatedIR.Content)
+  ops : SortedMap Nat (List LocatedIR.Content, Nat)
   terms : SortedMap Nat (List LocatedIR.Content)
   jumps : SortedMap Nat (Nat, List LocatedIR.Content)
   aliases : SortedMap Nat LocatedIR.Content
@@ -154,19 +171,19 @@ parameters {0 d : TermIR.Decls enc} (statics : Data.RAList Singleton d.statics)
         let tested = map (content env) (toList vs)
         term n tested
         first <- numbers (length vs)
-        traverse_ (\(k, c) => op (first + k) [c] [LocatedIR.Content.Value (first + k)])
+        traverse_ (\(k, c) => op (first + k) [c] 1)
           (zip [0 .. length tested] tested)
         walk y (Data.RAList.prepend (inPlace first (replicate (S n') (IRCommon.Ty.Fix {enc}))) env)
           li
         branchTo no env li
       TermIR.Body.ArithOv _ x y ok ovf => do
         n <- numbers 1
-        op n [content env x, content env y] [LocatedIR.Content.Value n]
+        op n [content env x, content env y] 1
         walk ok (InPlace (LocatedIR.Content.Value n) :: env) li
         branchTo ovf env li
       TermIR.Body.TagOv x ok ovf => do
         n <- numbers 1
-        op n [content env x] [LocatedIR.Content.Value n]
+        op n [content env x] 1
         walk ok (InPlace (LocatedIR.Content.Value n) :: env) li
         branchTo ovf env li
       TermIR.Body.Switch x _ bs dflt => do
@@ -234,8 +251,8 @@ parameters {0 d : TermIR.Decls enc} (statics : Data.RAList Singleton d.statics)
         contents env (x :: xs) = content env x :: contents env xs
 
         ||| An operation's expectations, by its number.
-        op : Nat -> List LocatedIR.Content -> List LocatedIR.Content -> W ()
-        op n os rs = Data.Stateful.modify { ops $= insert n (os, rs) }
+        op : Nat -> List LocatedIR.Content -> Nat -> W ()
+        op n os k = Data.Stateful.modify { ops $= insert n (os, k) }
 
         alias : Nat -> LocatedIR.Content -> W ()
         alias n c = Data.Stateful.modify { aliases $= insert n c }
@@ -251,17 +268,12 @@ parameters {0 d : TermIR.Decls enc} (statics : Data.RAList Singleton d.statics)
               alias n c
               walk k (Data.RAList.prepend (replicateAll ts (InPlace c)) env) li
             Right os => do
-              op n os (valuesFrom n (length ts))
+              op n os (length ts)
               walk k (Data.RAList.prepend (inPlace n ts) env) li
           where
             replicateAll : (us : List (IRCommon.Ty enc)) -> Held -> All HV us
             replicateAll [] _ = []
             replicateAll (_ :: us) h = h :: replicateAll us h
-
-            ||| The values of the definitions numbered from `n`, `k` of them.
-            valuesFrom : (n, k : Nat) -> List LocatedIR.Content
-            valuesFrom _ Z = []
-            valuesFrom n (S k) = LocatedIR.Content.Value n :: valuesFrom (S n) k
 
             ||| What an instruction of the term reads, in the order its located
             ||| instruction lists its operands (`views`); or, for one that lowers to
@@ -330,16 +342,22 @@ parameters {0 d : TermIR.Decls enc} (statics : Data.RAList Singleton d.statics)
                     base (TermIR.Mem.AtBytes x) = content env x
                     base (TermIR.Mem.AtPtr x) = content env x
 
-||| What the term says of each of its functions, by name.
+||| What the term says of each of its functions, by name, each made only
+||| when it is asked for, so that no more than the function being checked
+||| holds its own while the others are checked.
 expectations : (statics : Data.RAList Singleton d.statics) -> (ss : List (TermIR.Sig enc)) ->
-               All (TermIR.Def d) ss -> List (Name, Expected)
+               All (TermIR.Def d) ss -> List (Name, () -> Expected)
 expectations _ [] [] = []
 expectations statics (s :: ss) (TermIR.Def.Defined b :: ds) =
-  let start = MkExpected (length s.params) empty empty empty empty
-      (e, _) = Data.Stateful.toPair
-                 (Data.Stateful.outcome start
-                   (walk statics b (Data.RAList.fromAll (inPlace 0 s.params)) []))
-  in (s.name, e) :: expectations statics ss ds
+  (s.name, \() => made s b) :: expectations statics ss ds
+  where
+    made : (s' : TermIR.Sig enc) -> TermIR.Body d s'.conv s'.converts [] s'.params -> Expected
+    made s' b' =
+      let start = MkExpected (length s'.params) empty empty empty empty
+          (e, _) = Data.Stateful.toPair
+                     (Data.Stateful.outcome start
+                       (walk statics b' (Data.RAList.fromAll (inPlace 0 s'.params)) []))
+      in e
 expectations statics (_ :: ss) (TermIR.Def.External :: ds) = expectations statics ss ds
 
 ------------------------------------------------------------------------------
@@ -352,33 +370,62 @@ data View : Types.Enc -> Type where
   Is : LocatedIR.Content -> View enc
 
 ||| What each location holds, with the location as it was written, at the
-||| type of what it holds: the registers, few, apart from the slots, by
-||| number, so that what a step writes besides its results, registers
-||| alone, is cheap to forget.
+||| type of what it holds: the registers, few, apart from the slots, so
+||| that what a step writes besides its results, registers alone, is cheap
+||| to forget; and the slots by number, those of a value the collector sees
+||| apart from the raw ones, so that a collection, which keeps of the first
+||| only those its live list names, reads the list and not every slot. A
+||| slot is in one of the two.
 record State (enc : Types.Enc) where
   constructor MkState
   registers : List (LocatedIR.Location.Place enc, LocatedIR.Content)
-  slots : SortedMap Nat (LocatedIR.Location.Place enc, LocatedIR.Content)
+  visible : SortedMap Nat (LocatedIR.Location.Place enc, LocatedIR.Content)
+  raw : SortedMap Nat (LocatedIR.Location.Place enc, LocatedIR.Content)
 
 namespace State
+
+  ||| Nothing held.
+  export
+  none : State enc
+  none = MkState [] empty empty
+
+  isVisible : LocatedIR.Location.Place enc -> Bool
+  isVisible p = IRCommon.Ty.gcVisible (LocatedIR.Location.Place.ty p)
+
+  ||| What the place holds, with the place as it was written.
+  export
+  entry : LocatedIR.Location.Place enc -> State enc ->
+          Maybe (LocatedIR.Location.Place enc, LocatedIR.Content)
+  entry (LocatedIR.Location.At (LocatedIR.Location.Slot n _)) st =
+    maybe (lookup n st.raw) Just (lookup n st.visible)
+  entry p st = find (LocatedIR.Location.Place.same p . fst) st.registers
 
   ||| What the place holds.
   export
   held : LocatedIR.Location.Place enc -> State enc -> Maybe LocatedIR.Content
-  held (LocatedIR.Location.At (LocatedIR.Location.Slot n _)) st = map snd (lookup n st.slots)
-  held p st = map snd (find (LocatedIR.Location.Place.same p . fst) st.registers)
+  held p st = map snd (entry p st)
 
   ||| The place holding nothing.
   export
   erased : LocatedIR.Location.Place enc -> State enc -> State enc
-  erased (LocatedIR.Location.At (LocatedIR.Location.Slot n _)) st = { slots $= delete n } st
+  erased (LocatedIR.Location.At (LocatedIR.Location.Slot n _)) st =
+    case lookup n st.visible of
+      Just _ => { visible $= delete n } st
+      Nothing => { raw $= delete n } st
   erased p st = { registers $= filter (not . LocatedIR.Location.Place.same p . fst) } st
 
   ||| The place holding the content, written at the place's type.
   export
   written : LocatedIR.Location.Place enc -> LocatedIR.Content -> State enc -> State enc
   written p@(LocatedIR.Location.At (LocatedIR.Location.Slot n _)) c st =
-    { slots $= insert n (p, c) } st
+    if isVisible p
+      then { visible $= insert n (p, c), raw $= forget } st
+      else { raw $= insert n (p, c), visible $= forget } st
+    where
+      -- the slot out of the other kind's, where it seldom is
+      forget : SortedMap Nat (LocatedIR.Location.Place enc, LocatedIR.Content) ->
+               SortedMap Nat (LocatedIR.Location.Place enc, LocatedIR.Content)
+      forget m = maybe m (const (delete n m)) (lookup n m)
   written p c st = { registers $= ((p, c) ::) } (erased p st)
 
   ||| The registers of the mask holding nothing.
@@ -398,16 +445,18 @@ namespace State
   export
   collected : List (LocatedIR.Location.Place enc) -> State enc -> State enc
   collected live st =
-    let listed = SortedSet.fromList (mapMaybe LocatedIR.Location.Place.slotNumber live) in
-    MkState (filter (kept . fst) st.registers)
-      (foldl (\m, (n, (q, _)) => if visible q && not (contains n listed) then delete n m else m)
-         st.slots (SortedMap.toList st.slots))
+    { registers := filter (kept . fst) st.registers,
+      visible := foldl forwarded empty live } st
     where
-      visible : LocatedIR.Location.Place enc -> Bool
-      visible q = IRCommon.Ty.gcVisible (LocatedIR.Location.Place.ty q)
-
       kept : LocatedIR.Location.Place enc -> Bool
-      kept q = not (visible q) || any (LocatedIR.Location.Place.same q) live
+      kept q = not (isVisible q) || any (LocatedIR.Location.Place.same q) live
+
+      forwarded : SortedMap Nat (LocatedIR.Location.Place enc, LocatedIR.Content) ->
+                  LocatedIR.Location.Place enc ->
+                  SortedMap Nat (LocatedIR.Location.Place enc, LocatedIR.Content)
+      forwarded m (LocatedIR.Location.At (LocatedIR.Location.Slot n _)) =
+        maybe m (\x => insert n x m) (lookup n st.visible)
+      forwarded m _ = m
 
 ||| Every function of the located program checked against the term it was
 ||| allocated from: the first refusal, if any. `clobbers` and
@@ -419,17 +468,18 @@ check : {d : TermIR.Decls enc} -> (clobbers : LocatedIR.Step enc -> RegMask) ->
         TermIR.Program enc d -> LocatedIR.Program enc -> Either String ()
 check clob tclob (TermIR.MkProgram defs _ _ _) p =
   let expected = SortedMap.fromList (expectations (Data.RAList.fromList d.statics) d.sigs defs)
+      rd = p.target.allocatable
   in traverse_ (\f => case lookup f.name expected of
-                        Just e => checkFunction clob tclob e f
+                        Just e => checkFunction rd clob tclob (e ()) f
                         Nothing =>
                           Left ("value check: " ++ show f.name ++ " is no function of the term"))
        p.functions
   where
     ||| A function checked against what the term says of it.
-    checkFunction : (clobbers : LocatedIR.Step enc -> RegMask) ->
+    checkFunction : RegDesc -> (clobbers : LocatedIR.Step enc -> RegMask) ->
                     (termClobbers : LocatedIR.Terminator enc -> RegMask) -> Expected ->
                     LocatedIR.Function enc -> Either String ()
-    checkFunction clob tclob e f = do
+    checkFunction rd clob tclob e f = do
       let blocks = SortedMap.fromList (map (\b => (b.label, b)) f.blocks)
       entry <- found ("its entry, block " ++ show f.entry) (lookup f.entry blocks)
       unless (entryHolds entry.cert f.params 0) $
@@ -442,6 +492,37 @@ check clob tclob (TermIR.MkProgram defs _ _ _) p =
         -- the message made only for a refusal, as `agree`'s
         found : Lazy String -> Maybe a -> Either String a
         found what = maybe (Left ("value check: " ++ show f.name ++ ": no " ++ what)) Right
+
+        -- a location written, a register only one the target describes, by
+        -- its index among those of its class
+        described : LocatedIR.Label -> LocatedIR.Location.Place enc -> Either String ()
+        described l p@(LocatedIR.Location.At (LocatedIR.Location.Register i t)) =
+          let count = case IRCommon.Ty.class t of
+                        Rep.WordClass => rd.wordCount
+                        Rep.FloatClass => rd.floatCount
+          in unless (i < count) $
+               reject l (show p ++ " is a register the target does not describe")
+        described _ _ = Right ()
+
+        -- a live list names only locations that hold a value, each at the
+        -- kind of what it holds, since the rendering keeps each by the kind
+        -- the list gives it, a GC-visible one where the collector forwards
+        -- it
+        listsHeld : LocatedIR.Label -> Lazy String -> State enc ->
+                    List (LocatedIR.Location.Place enc) -> Either String ()
+        listsHeld l what st live = traverse_ one live
+          where
+            visible : LocatedIR.Location.Place enc -> Bool
+            visible q = IRCommon.Ty.gcVisible (LocatedIR.Location.Place.ty q)
+
+            one : LocatedIR.Location.Place enc -> Either String ()
+            one p = case State.entry p st of
+              Nothing => reject l (what ++ " names " ++ show p ++ ", which holds nothing")
+              Just (q, _) =>
+                unless (visible p == visible q) $
+                  reject l
+                    (what ++ " names " ++ show p ++ ", which holds a value of the other kind, "
+                            ++ "written as " ++ show q)
 
         canonical : LocatedIR.Content -> LocatedIR.Content
         canonical c@(LocatedIR.Content.Value n) = maybe c id (lookup n e.aliases)
@@ -456,7 +537,7 @@ check clob tclob (TermIR.MkProgram defs _ _ _) p =
         entryHolds _ _ _ = False
 
         fromCert : List (LocatedIR.Content, LocatedIR.Location.Place enc) -> State enc
-        fromCert = foldl (\m, (c, p) => State.written p (canonical c) m) (MkState [] empty)
+        fromCert = foldl (\m, (c, p) => State.written p (canonical c) m) State.none
 
         holds : State enc -> LocatedIR.Content -> View enc -> Bool
         holds st c (From p) = maybe False (LocatedIR.Content.same c) (State.held p st)
@@ -503,7 +584,11 @@ check clob tclob (TermIR.MkProgram defs _ _ _) p =
                   Nat -> LocatedIR.Cont enc -> Either String ()
         resumes blocks from st n c = do
           b <- found ("block " ++ show c.resume) (lookup c.resume blocks)
-          let kept = foldl reload (MkState [] empty) c.live
+          listsHeld from "the call's continuation" st c.live
+          unless (shaped b.params c.live) $
+            reject c.resume
+              "a resume block's parameters are not its continuation's live locations and the result"
+          let kept = foldl reload State.none c.live
               entered = maybe kept (\p => State.written p (LocatedIR.Content.Value n) kept)
                           (LocatedIR.Block.result b)
           enters blocks from entered (const Nothing) c.resume
@@ -511,6 +596,13 @@ check clob tclob (TermIR.MkProgram defs _ _ _) p =
             -- a live location, reloaded with what it held at the call
             reload : State enc -> LocatedIR.Location.Place enc -> State enc
             reload m p = maybe m (\x => State.written p x m) (State.held p st)
+
+            -- the live locations, then the result
+            shaped : List (LocatedIR.Location.Place enc) -> List (LocatedIR.Location.Place enc) ->
+                     Bool
+            shaped [_] [] = True
+            shaped (p :: ps) (q :: qs) = LocatedIR.Location.Place.same p q && shaped ps qs
+            shaped _ _ = False
 
         at : LocatedIR.Location enc t -> View enc
         at l = From (LocatedIR.Location.At l)
@@ -575,33 +667,45 @@ check clob tclob (TermIR.MkProgram defs _ _ _) p =
         step : SortedMap LocatedIR.Label (LocatedIR.Block enc) -> LocatedIR.Label -> State enc ->
                LocatedIR.Step enc -> Either String (State enc)
         step blocks l st s@(LocatedIR.Step.Op d i) = do
-          (os, rs) <- found
+          (os, k) <- found
             ("definition " ++ show d ++ ", of operation " ++ LocatedIR.Instr.instrName i)
                         (lookup d e.ops)
-          let clobbered = State.clobbered (clob s) st
-              after = maybe clobbered (\live => State.collected live clobbered)
-                        (LocatedIR.Instr.collecting i)
+          let collecting = LocatedIR.Instr.collecting i
+              clobbered = State.clobbered (clob s) st
+              after = maybe clobbered (\live => State.collected live clobbered) collecting
+          whenJust collecting $ listsHeld l ("operation [" ++ show d ++ "]'s live list") st
           -- an allocation reads its operands after its collection
           agree l ("operation [" ++ show d ++ "] " ++ LocatedIR.Instr.instrName i)
             (if LocatedIR.Instr.isAllocation i then after else st) (views i) os
           let ps = LocatedIR.Instr.results i
-          unless (length ps == length rs) $
+          unless (length ps == k) $
             reject l ("operation [" ++ show d ++ "] writes " ++ show (length ps)
-                      ++ " results, where the term binds " ++ show (length rs))
-          let st' = foldl (flip State.erased) after ps
-          whenJust (side i) $ \to => enters blocks l st' (const Nothing) to
-          pure (foldl (\m, (p, c) => State.written p c m) st' (zip ps rs))
-        step _ _ st (LocatedIR.Step.Move d x) =
-          let to = LocatedIR.Location.At d in
+                      ++ " results, where the term binds " ++ show k)
+          traverse_ (described l) ps
+          -- an overflow leaves before the results are written
+          whenJust (side i) $ \to =>
+            enters blocks l (foldl (flip State.erased) after ps) (const Nothing) to
+          pure (results d ps after)
+          where
+            -- the results, the values of the numbers from the operation's
+            results : Nat -> List (LocatedIR.Location.Place enc) -> State enc -> State enc
+            results _ [] st' = st'
+            results j (p :: ps') st' =
+              results (S j) ps' (State.written p (LocatedIR.Content.Value j) st')
+        step _ l st (LocatedIR.Step.Move d x) = do
+          let to = LocatedIR.Location.At d
+          described l to
           pure (maybe (State.erased to st) (\c => State.written to c st)
                       (State.held (LocatedIR.Location.At x) st))
-        step _ _ st (LocatedIR.Step.Remat d m) =
+        step _ l st (LocatedIR.Step.Remat d m) = do
+          described l (LocatedIR.Location.At d)
           pure (State.written (LocatedIR.Location.At d) (LocatedIR.Content.Put m) st)
-        step _ _ st (LocatedIR.Step.Par cs) =
+        step _ l st (LocatedIR.Step.Par cs) = do
           let read = map (\(LocatedIR.Step.MkCopy d x) =>
                             (LocatedIR.Location.At d, State.held (LocatedIR.Location.At x) st)) cs
-          in pure (foldl (\m, (to, c) => maybe (State.erased to m) (\c' => State.written to c' m) c)
-                     st read)
+          traverse_ (described l . fst) read
+          pure (foldl (\m, (to, c) => maybe (State.erased to m) (\c' => State.written to c' m) c)
+                  st read)
 
         ||| A terminator's operands, in the order `Terminator.termOperands` lists
         ||| them, its immediates and statics included.
@@ -632,6 +736,7 @@ check clob tclob (TermIR.MkProgram defs _ _ _) p =
         block : SortedMap LocatedIR.Label (LocatedIR.Block enc) -> LocatedIR.Block enc ->
                 Either String ()
         block blocks b = do
+          traverse_ (described b.label . snd) b.cert
           st <- foldlM (step blocks b.label) (fromCert b.cert) b.body
           let n = b.node
               st' = State.clobbered (tclob b.term) st

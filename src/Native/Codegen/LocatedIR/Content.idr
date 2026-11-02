@@ -1,5 +1,5 @@
 ||| What a location holds (`Content`), as register allocation states it of a
-||| block's entry (`Block.cert`) and the allocation check follows it.
+||| block's entry (`Block.cert`) and the value check follows it.
 |||
 ||| Part of the located IR (`Native.Codegen.LocatedIR.Program` says what it
 ||| is).

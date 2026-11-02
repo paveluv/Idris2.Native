@@ -22,7 +22,7 @@ import Native.Types.Enc as Types
 |||
 ||| Its certificate (`cert`) says what each location the block reads from
 ||| outside holds on its entry, its parameters' included: what register
-||| allocation put there, which the allocation check holds to, at the
+||| allocation put there, which the value check holds to, at the
 ||| block's entry and at every jump or branch to it. Its terminator realises
 ||| the term's node of number `node`, as register allocation numbers the
 ||| term's definitions (`Step.Op`).

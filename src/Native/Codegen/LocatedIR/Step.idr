@@ -41,7 +41,7 @@ Show Materialised where
 ||| A step: an operation, `Op`, the instruction that realises the term's
 ||| definition of number `def`, as register allocation numbers the term's
 ||| definitions (`Native.Codegen.RegAlloc`); or a shuffle, which realises
-||| none, and which the allocation check follows by its own rule: a move of
+||| none, and which the value check follows by its own rule: a move of
 ||| a location to another of its type, or, for a retyping, of the type it
 ||| is read as; a parallel move, every destination given its source's value
 ||| from before any destination is written, the destinations distinct

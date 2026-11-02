@@ -21,6 +21,14 @@
 --     pair x = (x, 5)            -- 5 boxed, then the pair: `x` lives
 --                                -- across the box's allocation
 --
+--     inc : Bits64 -> Bits64     -- a Direct function, which a machine
+--     inc n = n + 1              -- call reaches
+--
+--     bump : a -> a
+--     bump x = let w = 3 + 4 in
+--              if w + inc w == 0 then x else x   -- `w` lives across the
+--                                                -- direct call
+--
 -- `go` a loop: a join, a block with parameters, which jumps back to itself
 -- passing the next counter and accumulator at once.
 --
@@ -42,9 +50,21 @@
 -- with block 1, the loop's head, holding i in slot1 and acc in slot2; and
 -- `main`'s block 0 computes w into reg0, saves it in slot0 and calls
 -- `count`, the call's continuation keeping slot0 live, and its resume
--- block, 1, reloads w from slot0 into reg0 to compare it; and `pair`'s
+-- block, 1, reloads w from slot0 into reg0 to compare it; `pair`'s
 -- allocations each list what is live across them, x in slot0 among them,
--- for the collector to forward.
+-- for the collector to forward; and `bump`'s block 0 computes w into reg0,
+-- saves it in slot1, calls `inc`, and reloads w from slot1 into reg0 (its
+-- step 3) for the sum.
+--
+-- The mistakes come in two sorts: a location holding the wrong value where
+-- it is read; and, last, a located program the rendering or the collector
+-- could not keep to at all: a slot read that nothing wrote, a live list
+-- naming what holds nothing or naming it at the other kind (a word for a
+-- value the collector must see), a resume block whose parameters are not
+-- its continuation's and the result, a join entered from a block that did
+-- not write what it reads, a value left in a register across an allocation
+-- or a direct call, which no register survives, and a register the target
+-- does not have.
 module Main
 
 import Core.Name
@@ -106,10 +126,15 @@ nm s = NS (mkNamespace "Main") (UN (Basic s))
 
 Prog : Decls Types.Enc.defaultEnc
 Prog = MkDecls [ MkSig (nm "main") CPS [] False, MkSig (nm "count") CPS [Val] False
-               , MkSig (nm "pair") CPS [Val] False ] []
+               , MkSig (nm "pair") CPS [Val] False
+               , MkSig (nm "inc") (Direct [W64] False) [W64] False
+               , MkSig (nm "bump") CPS [Val] False ] []
 
 countRef : Var (sigs Prog) (MkSig (nm "count") CPS [Val] False)
 countRef = later here
+
+incRef : Var (sigs Prog) (MkSig (nm "inc") (Direct [W64] False) [W64] False)
+incRef = later (later (later here))
 
 ||| The entry, `main`: `w` computed before the call to `count` and read
 ||| after it.
@@ -140,6 +165,26 @@ pairBody = build $ \[x] => do
   p <- emit1 (AllocObj (ConH 0 2) [x, bv])
   pv <- emit1 (WidenPtr p)
   return pv
+
+||| `inc n`, `n + 1`, a Direct function: a machine call reaches it, and it
+||| returns its result in a register.
+incBody : Closed Prog (Direct [W64] False) False [W64]
+incBody = build $ \[n] => do
+  m <- emit1 (Arith Add n (W 1))
+  ret [m]
+
+||| The single operand of a list of one.
+only : All p [t] -> p t
+only [x] = x
+
+||| `bump x`: `w` computed before a direct call of `inc` and read after it.
+bumpBody : Closed Prog CPS False [Val]
+bumpBody = build $ \[x] => do
+  w <- emit1 (Arith Add (W 3) (W 4))
+  r <- directCall incRef [w]
+  s <- emit1 (Arith Add w (only r))
+  leaveIf EqR s (W 0) (return x)
+  return x
 
 0 Located : Type
 Located = LocatedIR.Program.Program Types.Enc.defaultEnc
@@ -217,6 +262,45 @@ keepsNothing (MkBlock l ps cert body (LocatedIR.Terminator.Call f xs (MkCont r _
   MkBlock l ps cert body (LocatedIR.Terminator.Call f xs (MkCont r [])) n
 keepsNothing b = b
 
+||| A block with its parameters changed.
+params : (List (Place Types.Enc.defaultEnc) -> List (Place Types.Enc.defaultEnc)) ->
+         Block Types.Enc.defaultEnc -> Block Types.Enc.defaultEnc
+params f (MkBlock l ps cert body t n) = MkBlock l (f ps) cert body t n
+
+||| A block with its allocations' live lists changed.
+lists : (List (Place Types.Enc.defaultEnc) -> List (Place Types.Enc.defaultEnc)) ->
+        Block Types.Enc.defaultEnc -> Block Types.Enc.defaultEnc
+lists f = steps (map relist)
+  where
+    relist : LocatedIR.Step.Step Types.Enc.defaultEnc -> LocatedIR.Step.Step Types.Enc.defaultEnc
+    relist (Op d (LocatedIR.Instr.AllocObj r h fs live)) =
+      Op d (LocatedIR.Instr.AllocObj r h fs (f live))
+    relist st = st
+
+||| Slot 0, a `Val`'s, named as a word's.
+asWord : Place Types.Enc.defaultEnc -> Place Types.Enc.defaultEnc
+asWord (At (Slot 0 _)) = At (slot 0)
+asWord q = q
+
+||| A block whose operation [3], the pair's allocation, reads `x` from
+||| register 1, moved there from slot0 before the box's allocation, and
+||| lists it there.
+viaRegister : Block Types.Enc.defaultEnc -> Block Types.Enc.defaultEnc
+viaRegister = steps (\ss => Move (Register 1 Val) (Slot 0 Val) :: map moved ss)
+  where
+    arg : Arg Types.Enc.defaultEnc -> Arg Types.Enc.defaultEnc
+    arg (MkArg (R (Slot 0 t))) = MkArg (R (Register 1 t))
+    arg a = a
+
+    place : Place Types.Enc.defaultEnc -> Place Types.Enc.defaultEnc
+    place (At (Slot 0 t)) = At (Register 1 t)
+    place q = q
+
+    moved : LocatedIR.Step.Step Types.Enc.defaultEnc -> LocatedIR.Step.Step Types.Enc.defaultEnc
+    moved (Op 3 (LocatedIR.Instr.AllocObj r h fs live)) =
+      Op 3 (LocatedIR.Instr.AllocObj r h (map arg fs) (map place live))
+    moved st = st
+
 ||| A block with its allocations' live lists leaving out the GC-visible
 ||| locations, as if none were live there.
 unrooted : Block Types.Enc.defaultEnc -> Block Types.Enc.defaultEnc
@@ -291,9 +375,10 @@ verdicts term = do
   -- out; but the callee may write every register
   verdict term (callClobbers x86_64) "a value kept in a register across a call"
     (changed "main" 1 (steps (drop 1) . certificate (moved (slot 0) (reg 0))) (assigned term))
-  -- `w` left out of the call's continuation, as if it were dead there
+  -- `w` left out of the call's continuation, as if it were dead there,
+  -- and so out of its resume block's parameters
   verdict term (callClobbers x86_64) "a live value left out of a continuation"
-    (changed "main" 0 keepsNothing (assigned term))
+    (changed "main" 1 (params (drop 1)) (changed "main" 0 keepsNothing (assigned term)))
   -- `x` left out of the box's allocation's live list: the collector, which
   -- forwards only what it lists, may leave its slot stale
   verdict term (callClobbers x86_64) "a live value left out of an allocation's live list"
@@ -302,6 +387,33 @@ verdicts term = do
   -- object is initialised from them after the collection
   verdict term (callClobbers x86_64) "an allocation's fields left out of its live list"
     (changed "pair" 0 fieldsUnlisted (assigned term))
+  -- the counter's load from slot9, which nothing writes
+  verdict term (callClobbers x86_64) "a read of a slot nothing wrote"
+    (body (at 0 [Move (reg 0) (slot 9)]) (assigned term))
+  -- the allocations' live lists naming slot9 too
+  verdict term (callClobbers x86_64) "a live list naming a slot nothing wrote"
+    (changed "pair" 0 (lists (At (Slot 9 Val) ::)) (assigned term))
+  -- x's slot listed as a word's: the collector would not forward it
+  verdict term (callClobbers x86_64) "a live list naming a value as a word"
+    (changed "pair" 0 (lists (map asWord)) (assigned term))
+  -- the resume block's parameters, w's slot and the result's, reversed
+  verdict term (callClobbers x86_64) "a resume block's parameters out of their order"
+    (changed "main" 1 (params reverse) (assigned term))
+  -- the entry's store of the accumulator's 0 left out: the loop's head is
+  -- entered from there without it, and from the loop's body with it
+  verdict term (callClobbers x86_64) "a join entered from a block that did not write its value"
+    (changed "count" 0 (steps (at 3 [])) (assigned term))
+  -- x in register 1 across the box's allocation, whose slow path keeps
+  -- no register
+  verdict term (callClobbers x86_64) "a value in a register across an allocation"
+    (changed "pair" 0 viaRegister (assigned term))
+  -- w's reload after the call to `inc` left out: the sum reads it from
+  -- reg0, which the callee may write
+  verdict term (callClobbers x86_64) "a value in a register across a direct call"
+    (changed "bump" 0 (steps (at 3 [])) (assigned term))
+  -- the counter loaded into register 99, which x86-64 does not have
+  verdict term (callClobbers x86_64) "a register the target does not have"
+    (body (at 0 [Move (Register 99 W64) (slot 1)]) (assigned term))
 
 covering
 main : IO ()
@@ -309,8 +421,11 @@ main = do
   let Just m = close mainBody | Nothing => putStrLn "main: a level outside its context"
   let Just c = close countBody | Nothing => putStrLn "count: a level outside its context"
   let Just pr = close pairBody | Nothing => putStrLn "pair: a level outside its context"
+  let Just inc = close incBody | Nothing => putStrLn "inc: a level outside its context"
+  let Just bump = close bumpBody | Nothing => putStrLn "bump: a level outside its context"
   -- the names' distinctness decided here, as a producer decides it
   case choose (distinct (map (.name) (sigs Prog)) && distinct (map (.sym) (statics Prog))) of
     Left ok =>
-      verdicts (MkProgram {d = Prog} [Defined m, Defined c, Defined pr] [] (MkEntry here) noConIds)
+      verdicts (MkProgram {d = Prog} [Defined m, Defined c, Defined pr, Defined inc, Defined bump]
+                  [] (MkEntry here) noConIds)
     Right _ => putStrLn "names repeat"
