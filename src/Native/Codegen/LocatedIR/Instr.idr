@@ -342,6 +342,25 @@ results i = case i of
   SystemCall d _ => [Location.At d]
   _ => []
 
+||| The `live` list of an instruction where a collection can start, an
+||| allocation or a direct call that may collect: every register the
+||| collector keeps, the GC-visible ones forwarded.
+export
+collecting : Instr enc -> Maybe (List (Location.Place enc))
+collecting (AllocObj _ _ _ live) = Just live
+collecting (AllocSized _ _ _ _ live) = Just live
+collecting (DirectCall _ _ _ True live) = Just live
+collecting _ = Nothing
+
+||| Whether the instruction is an allocation, which initialises its object
+||| from its operands after the collection it may start, where any other
+||| operation reads them first.
+export
+isAllocation : Instr enc -> Bool
+isAllocation (AllocObj _ _ _ _) = True
+isAllocation (AllocSized _ _ _ _ _) = True
+isAllocation _ = False
+
 ||| The registers the instruction names, its destinations, its operands'
 ||| and its memory operands', and those it keeps live: each as often as it
 ||| names it, in no order to rely on.

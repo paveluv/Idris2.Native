@@ -1,0 +1,9 @@
+. ../../testutils.sh
+
+# The value check (Native.Codegen.ValueCheck): a program built from the term
+# IR, allocated as the code generator allocates, accepted; then mutations of
+# its located IR, each a mistake an allocator that keeps values in
+# registers could make, each refused. Built with the code generator's
+# modules (the package `idris2-native`).
+idris2 -p idris2-native -p idris2 Gen.idr -o gen > /dev/null
+./build/exec/gen

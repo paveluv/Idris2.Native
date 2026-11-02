@@ -49,6 +49,7 @@ import Native.Codegen.StaticRead
 import Native.Codegen.Target
 import Native.Codegen.TermIR.Decls as TermIR
 import Native.Codegen.TermIR.Program as TermIR
+import Native.Codegen.ValueCheck
 import Native.Codegen.X86.Asm
 import Native.Codegen.X86.Assembler
 import Native.Codegen.X86.Encode
@@ -579,7 +580,7 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
           -- of them the program calls: the lowering takes the evidence
           checked <- either (\err => throw (GenericMsg EmptyFC ("native: " ++ err))) pure
                        (Lower.checkRoutines enc realised (\n => lookup n forms))
-          Right (_ ** term) <- phase "lowering"
+          Right (decls ** term) <- phase "lowering"
             (later
               (Lower.lowerProgram enc settings.platform realised checked reach.forms shapes
                  staticReads staticObjects constants flat bound defs))
@@ -596,6 +597,13 @@ codegenNative = MkCG compileExpr executeExpr Nothing Nothing
                  X86.Rows.cycleTemp slotted))
           -- what the allocation made, checked by a reading of its own
           Right () <- phase "allocation checked" (later (AllocCheck.check allocated))
+            | Left err => throw (InternalError ("native: " ++ err))
+          -- every location holding the value the term reads there, checked by
+          -- a reading of the term of its own
+          Right () <- phase "values checked"
+            (later
+              (ValueCheck.check {d = decls} (X86.Rows.clobbers called) (X86.Rows.termClobbers called)
+                 term allocated))
             | Left err => throw (InternalError ("native: " ++ err))
           -- the image holds what the entry and the routines the seed reaches
           -- by symbol reach

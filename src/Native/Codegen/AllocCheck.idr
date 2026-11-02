@@ -39,7 +39,8 @@
 |||
 ||| What this does not check is that a register holds the value the term IR
 ||| means at its use: the located IR alone does not say which value that
-||| is. Each rejection names the function and the block.
+||| is, and the value check (`Native.Codegen.ValueCheck`) reads the term
+||| for it. Each rejection names the function and the block.
 module Native.Codegen.AllocCheck
 
 import Native.Codegen.IRCommon.Ty as IRCommon
@@ -293,9 +294,8 @@ check p = traverse_ checkFunction p.functions
 
                 -- the `live` list of an instruction where a collection can start
                 collectingHere : LocatedIR.Step enc -> Maybe (List (LocatedIR.Location.Place enc))
-                collectingHere (LocatedIR.Step.Op _ (LocatedIR.Instr.DirectCall _ _ _ False _)) =
-                  Nothing
-                collectingHere i = listedIn i
+                collectingHere (LocatedIR.Step.Op _ i) = LocatedIR.Instr.collecting i
+                collectingHere _ = Nothing
 
                 -- the overflows, each with what the block has written by then,
                 -- and what the live lists name before the block writes it
@@ -451,11 +451,8 @@ check p = traverse_ checkFunction p.functions
 
             ||| Where a collection can start at the instruction: its `live` list.
             collecting : LocatedIR.Step enc -> Maybe (List (LocatedIR.Location.Place enc))
-            collecting i = case i of
-              LocatedIR.Step.Op _ (LocatedIR.Instr.AllocObj _ _ _ live) => Just live
-              LocatedIR.Step.Op _ (LocatedIR.Instr.AllocSized _ _ _ _ live) => Just live
-              LocatedIR.Step.Op _ (LocatedIR.Instr.DirectCall _ _ _ True live) => Just live
-              _ => Nothing
+            collecting (LocatedIR.Step.Op _ i) = LocatedIR.Instr.collecting i
+            collecting _ = Nothing
 
             -- what is defined after the instruction, from what is before:
             -- a rejection for what it reads or lists before it is written

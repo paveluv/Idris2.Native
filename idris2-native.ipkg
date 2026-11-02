@@ -69,6 +69,7 @@ modules =
     Native.Codegen.StaticRead,
     Native.Codegen.Strings,
     Native.Codegen.Target,
+    Native.Codegen.ValueCheck,
     Native.Codegen.TermIR.Body,
     Native.Codegen.TermIR.Build,
     Native.Codegen.TermIR.Decls,

@@ -10,6 +10,7 @@ import Native.Codegen.LocatedIR.Location
 import Native.Codegen.LocatedIR.Step
 import Native.Codegen.LocatedIR.Terminator
 
+import Data.List
 import Native.Types.Enc as Types
 
 %default total
@@ -34,3 +35,9 @@ record Block (enc : Types.Enc) where
   body : List (Step enc)
   term : Terminator enc
   node : Nat
+
+||| A resume block's result register, the last of its parameters, where its
+||| call's result arrives.
+export
+result : Block enc -> Maybe (Location.Place enc)
+result b = last' b.params

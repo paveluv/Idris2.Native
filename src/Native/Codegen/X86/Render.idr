@@ -899,9 +899,8 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
               Just (live, word) => do
                 emits (Linkage.ResumePoint.resumePoint (blk b.label) word)
                 emits setBase
-                case reverse b.params of
-                  (LocatedIR.Location.At result :: _) => store result Asm.RAX
-                  [] => pure ()
+                whenJust (LocatedIR.Block.result b) $ \(LocatedIR.Location.At r) =>
+                  store r Asm.RAX
                 traverse_
                   (\(i, LocatedIR.Location.At r) => do
                      emit (Asm.MovRM Asm.RCX (Asm.MBase Asm.R12 (cast (16 + 8 * i) - ptag)))

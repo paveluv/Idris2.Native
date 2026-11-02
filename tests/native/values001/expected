@@ -1,0 +1,11 @@
+as allocated: accepted
+a load from the wrong slot: value check: Main.count, block 3: operation [7] Add reads reg0:W64, which does not hold v2
+a load left out: value check: Main.count, block 3: operation [7] Add reads reg0:W64, which does not hold v2
+a register reused before it is saved: value check: Main.count, block 3: block 1's certificate has v1 in slot1:W64, which does not hold v6 here
+a register overwritten before its use: value check: Main.count, block 3: operation [6] Sub reads reg0:W64, which does not hold v1
+a certificate with the counter and accumulator crossed: value check: Main.count, block 0: block 1's certificate has v2 in slot1:W64, which does not hold #0 here
+the jump's arguments swapped: value check: Main.count, block 3: block 1's certificate has v1 in slot1:W64, which does not hold v6 here
+a value kept in a register across a call: value check: Main.main, block 0: block 1's certificate has v0 in reg0:W64, which does not hold it here
+a live value left out of a continuation: value check: Main.main, block 0: block 1's certificate has v0 in slot0:W64, which does not hold it here
+a live value left out of an allocation's live list: value check: Main.pair, block 0: operation [3] AllocObj reads slot0:Val, which does not hold v0
+an allocation's fields left out of its live list: value check: Main.pair, block 0: operation [3] AllocObj reads slot0:Val, which does not hold v0
