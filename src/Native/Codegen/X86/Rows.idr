@@ -25,7 +25,6 @@ import Native.Codegen.Row
 import Native.Codegen.Target
 import Native.Rep
 import Native.Types.Enc as Types
-import Native.Types.Header as Types
 
 %default total
 
@@ -70,7 +69,9 @@ arith o = Row.clobbering (if division o then [rcx, rdx] else [rcx])
 
 ||| What x86-64's rendering of each step writes of the allocatable
 ||| registers besides its results, given what a call may write (`called`,
-||| the target's call model): an operation's instruction's; a shuffle, none.
+||| the target's call model): an operation's instruction's; a check, the
+||| floating-point registers where none is listed, which its slow path then
+||| does not save; a shuffle, none.
 export
 clobbers : {enc : Types.Enc} -> (called : RegMask) -> LocatedIR.Step enc -> RegMask
 clobbers called (LocatedIR.Step.Op _ i) = instrClobbers i
@@ -94,22 +95,19 @@ clobbers called (LocatedIR.Step.Op _ i) = instrClobbers i
       -- a double through rcx, which no want of a word register moves
       LocatedIR.Instr.Load _ _ _ => Row.clobbering [rcx]
       LocatedIR.Instr.Store _ _ _ => Row.clobbering [rcx]
-      -- an object of a fixed size up to the allocation margin, made in rax
-      -- through rdx, whose slow path keeps every register but the
-      -- floating-point ones, which it keeps where one is live; any other
-      -- allocation through a slow path that keeps none, or a call
-      LocatedIR.Instr.AllocObj {k} _ h _ live =>
-        if not (LocatedIR.Instr.isMutable k)
-             && AllocLive.fixedSlow (8 * Types.Header.objectWords h)
-          then RegMask.union (Row.clobbering [rax, rdx])
-                 (if AllocLive.savesFloats live then RegMask.none else MkRegMask 0 called.floats)
-          else called
+      -- a bump past a check, the object made in rax through rdx; an
+      -- allocation that checks for itself, through a slow path that keeps
+      -- no register, or a call
+      LocatedIR.Instr.AllocObj _ _ _ Nothing => Row.clobbering [rax, rdx]
+      LocatedIR.Instr.AllocObj _ _ _ (Just _) => called
       LocatedIR.Instr.AllocSized _ _ _ _ _ => called
       LocatedIR.Instr.DirectCall _ _ _ _ _ => called
       -- the number and the arguments into the registers of Linux's convention,
       -- the result from rax; the kernel writes rcx and r11
       LocatedIR.Instr.SystemCall _ _ => Row.clobbering [rax, rcx, rdx, rsi, rdi, r8, r9, r10, r11]
       _ => RegMask.none
+clobbers called (LocatedIR.Step.Check _ live) =
+  if AllocLive.savesFloats live then RegMask.none else MkRegMask 0 called.floats
 clobbers _ _ = RegMask.none
 
 ||| What x86-64's rendering of each terminator writes of the allocatable
@@ -200,6 +198,7 @@ row called s = let (os, rs) = wants s in MkRow os rs (clobbers called s)
     wants (LocatedIR.Step.Move d x) = (between d x, [])
     wants (LocatedIR.Step.Remat _ _) = ([], [rax])
     wants (LocatedIR.Step.Par _) = ([], [])
+    wants (LocatedIR.Step.Check _ _) = ([], [])
 
 ||| Where x86-64's rendering of each terminator wants its register
 ||| operands, and what it writes (`termClobbers`). A call's arguments and a

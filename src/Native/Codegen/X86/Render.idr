@@ -740,7 +740,7 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
           allocate bytes live = do
             slow <- fresh
             back <- fresh
-            if AllocLive.fixedSlow bytes
+            if LocatedIR.Instr.withinMargin bytes
               then do
                 emits [ Asm.Alu Asm.CMP Asm.R15 Asm.R14, Asm.Jcc Asm.AE slow, Asm.Lbl back
                       , Asm.MovRR Asm.RAX Asm.R15, Asm.AluI Asm.ADD Asm.R15 (cast bytes) ]
@@ -1045,12 +1045,16 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                      (cast (snd (Types.Header.place p))))
                                   store d Asm.RAX
                 LocatedIR.Instr.AllocObj {k} d h fs live => do
-                                  if LocatedIR.Instr.isMutable k
-                                     then allocateMutable
-                                       (\r =>
-                                         emit (Asm.MovRI r (cast (8 * Types.Header.objectWords h))))
-                                         live
-                                     else allocate (8 * Types.Header.objectWords h) live
+                                  let bytes = 8 * Types.Header.objectWords h
+                                  case live of
+                                    -- a bump past a check
+                                    Nothing => emits [ Asm.MovRR Asm.RAX Asm.R15
+                                                     , Asm.AluI Asm.ADD Asm.R15 (cast bytes) ]
+                                    Just across =>
+                                      if LocatedIR.Instr.isMutable k
+                                        then allocateMutable
+                                               (\r => emit (Asm.MovRI r (cast bytes))) across
+                                        else allocate bytes across
                                   emits [Asm.MovRI Asm.RDX (cast (Types.Header.encodeHeader h)),
                                          Asm.MovMR (Asm.MBase Asm.RAX 0) Asm.RDX]
                                   let (from, count) = Types.Header.scanned h
@@ -1446,6 +1450,13 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                 store d Asm.RAX
               step _ (LocatedIR.Step.Par _) =
                 Data.Stateful.failWith "a parallel move the local assignment did not make moves"
+              -- the allocation pointer against the limit; past it, the slow path,
+              -- which returns to the bumps after
+              step _ (LocatedIR.Step.Check _ live) = do
+                slow <- fresh
+                back <- fresh
+                emits [Asm.Alu Asm.CMP Asm.R15 Asm.R14, Asm.Jcc Asm.AE slow, Asm.Lbl back]
+                slowStub True slow back live
 
       -- a function's code, its slow paths after it, rendered after what
       -- the rendering has made

@@ -20,7 +20,8 @@ function Main.countDown CPS [slot0:Val] entry 0
     [5] Return slot0:Val
   4:
     holding v0 in slot0:Val, v1 in slot1:W64
-    [6] slot3:Ptr INT64 := AllocObj INT64 (slot1:W64) live [slot0:Val, slot1:W64]
+    check 16 live [slot0:Val, slot1:W64]
+    [6] slot3:Ptr INT64 := AllocObj INT64 (slot1:W64)
     [7] slot4:Val := Widen slot3:Ptr INT64
     (slot2:Val) := (slot4:Val)
     [8] Jump 2

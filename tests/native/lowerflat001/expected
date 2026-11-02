@@ -64,7 +64,8 @@ function Main.sumTo CPS [slot0:Val, slot1:Val] entry 0
     [26] Return reg0:Val
   8:
     holding v18 in slot12:W64
-    [23] slot16:Ptr INT64 := AllocObj INT64 (slot12:W64) live [slot12:W64]
+    check 16 live [slot12:W64]
+    [23] slot16:Ptr INT64 := AllocObj INT64 (slot12:W64)
     reg0:Ptr INT64 := slot16:Ptr INT64
     [24] slot17:Val := Widen reg0:Ptr INT64
     reg0:Val := slot17:Val
@@ -199,7 +200,8 @@ function Main.side CPS [slot0:Val] entry 0
     [45] Return reg0:Val
   13:
     holding v37 in slot26:W64
-    [42] slot30:Ptr INT64 := AllocObj INT64 (slot26:W64) live [slot26:W64]
+    check 16 live [slot26:W64]
+    [42] slot30:Ptr INT64 := AllocObj INT64 (slot26:W64)
     reg0:Ptr INT64 := slot30:Ptr INT64
     [43] slot31:Val := Widen reg0:Ptr INT64
     reg0:Val := slot31:Val
@@ -328,10 +330,12 @@ function Main.grow CPS [slot0:Val] entry 0
     [69] Return reg0:Val
   13:
     holding v38 in slot27:F64
-    [43] slot31:Ptr DOUBLE := AllocObj DOUBLE (slot27:F64) live [slot27:F64]
+    check 16 live [slot27:F64]
+    [43] slot31:Ptr DOUBLE := AllocObj DOUBLE (slot27:F64)
     reg0:Ptr DOUBLE := slot31:Ptr DOUBLE
     [44] slot32:Val := Widen reg0:Ptr DOUBLE
-    [45] slot33:Ptr CON := AllocObj CON ConIdP=0 ConArityP=1 (slot32:Val) live [slot32:Val]
+    check 16 live [slot32:Val]
+    [45] slot33:Ptr CON := AllocObj CON ConIdP=0 ConArityP=1 (slot32:Val)
     reg0:Ptr CON := slot33:Ptr CON
     [46] slot34:Val := Widen reg0:Ptr CON
     reg0:Val := slot34:Val
@@ -359,7 +363,8 @@ function Main.grow CPS [slot0:Val] entry 0
     [58] Jump 17
   16:
     holding v39 in slot28:W64, v40 in slot29:W64
-    [52] slot38:Ptr INT64 := AllocObj INT64 (slot28:W64) live [slot28:W64, slot29:W64]
+    check 16 live [slot28:W64, slot29:W64]
+    [52] slot38:Ptr INT64 := AllocObj INT64 (slot28:W64)
     reg0:Ptr INT64 := slot38:Ptr INT64
     [53] slot39:Val := Widen reg0:Ptr INT64
     reg0:Val := slot39:Val
@@ -367,7 +372,8 @@ function Main.grow CPS [slot0:Val] entry 0
     [54] Jump 15
   17:
     holding v55 in slot40:Val, v48 in slot35:Val
-    [62] slot45:Ptr CON := AllocObj CON ConIdP=1 ConArityP=2 (slot35:Val, slot40:Val) live [slot35:Val, slot40:Val]
+    check 24 live [slot35:Val, slot40:Val]
+    [62] slot45:Ptr CON := AllocObj CON ConIdP=1 ConArityP=2 (slot35:Val, slot40:Val)
     reg0:Ptr CON := slot45:Ptr CON
     [63] slot46:Val := Widen reg0:Ptr CON
     reg0:Val := slot46:Val
@@ -375,7 +381,8 @@ function Main.grow CPS [slot0:Val] entry 0
     [64] Jump 12
   18:
     holding v40 in slot29:W64, v48 in slot35:Val
-    [59] slot43:Ptr INT64 := AllocObj INT64 (slot29:W64) live [slot29:W64, slot35:Val]
+    check 16 live [slot29:W64, slot35:Val]
+    [59] slot43:Ptr INT64 := AllocObj INT64 (slot29:W64)
     reg0:Ptr INT64 := slot43:Ptr INT64
     [60] slot44:Val := Widen reg0:Ptr INT64
     reg0:Val := slot44:Val

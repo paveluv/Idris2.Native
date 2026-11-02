@@ -41,8 +41,12 @@
 ||| ones and no other; and a resume block's parameters are its
 ||| continuation's live locations and then the result. A read of a location
 ||| that holds nothing is refused as any wrong value is, which covers a
-||| register read after what overwrites it, the allocation slow path and a
-||| direct call among them, whose rows say they write every register.
+||| register read after what overwrites it, the slow paths and a direct
+||| call that keep no register among them, whose rows say they write every
+||| one. A check (`Step.Check`) is a collection, and its bytes the most the
+||| bumps after it in its block, up to the next check, take (`budget`): a
+||| bump with no check before it in its block, or past what its check left,
+||| is refused, since its memory might not be committed.
 module Native.Codegen.ValueCheck
 
 import Native.Codegen.IRCommon.Conv as IRCommon
@@ -375,19 +379,21 @@ data View : Types.Enc -> Type where
 ||| to forget; and the slots by number, those of a value the collector sees
 ||| apart from the raw ones, so that a collection, which keeps of the first
 ||| only those its live list names, reads the list and not every slot. A
-||| slot is in one of the two.
+||| slot is in one of the two. And the bytes the bumps after the last check
+||| may still take (`budget`), none at a block's entry.
 record State (enc : Types.Enc) where
   constructor MkState
   registers : List (LocatedIR.Location.Place enc, LocatedIR.Content)
   visible : SortedMap Nat (LocatedIR.Location.Place enc, LocatedIR.Content)
   raw : SortedMap Nat (LocatedIR.Location.Place enc, LocatedIR.Content)
+  budget : Nat
 
 namespace State
 
   ||| Nothing held.
   export
   none : State enc
-  none = MkState [] empty empty
+  none = MkState [] empty empty 0
 
   isVisible : LocatedIR.Location.Place enc -> Bool
   isVisible p = IRCommon.Ty.gcVisible (LocatedIR.Location.Place.ty p)
@@ -463,7 +469,7 @@ namespace State
 ||| `termClobbers` are what the target's renderings write besides their
 ||| results (its rows).
 export
-check : {d : TermIR.Decls enc} -> (clobbers : LocatedIR.Step enc -> RegMask) ->
+check : {enc : Types.Enc} -> {d : TermIR.Decls enc} -> (clobbers : LocatedIR.Step enc -> RegMask) ->
         (termClobbers : LocatedIR.Terminator enc -> RegMask) ->
         TermIR.Program enc d -> LocatedIR.Program enc -> Either String ()
 check clob tclob (TermIR.MkProgram defs _ _ _) p =
@@ -682,16 +688,33 @@ check clob tclob (TermIR.MkProgram defs _ _ _) p =
             reject l ("operation [" ++ show d ++ "] writes " ++ show (length ps)
                       ++ " results, where the term binds " ++ show k)
           traverse_ (described l) ps
+          -- a bump past a check takes from the bytes it left
+          bumped <- case i of
+            LocatedIR.Instr.AllocObj _ h _ Nothing => do
+              let n = 8 * Types.Header.objectWords h
+              unless (n <= after.budget) $
+                reject l ("operation [" ++ show d ++ "] bumps " ++ show n ++ " bytes "
+                          ++ (if after.budget == 0 then "with no check before it in its block"
+                                else "where its check left " ++ show after.budget))
+              pure ({ budget := minus after.budget n } after)
+            _ => pure after
           -- an overflow leaves before the results are written
           whenJust (side i) $ \to =>
-            enters blocks l (foldl (flip State.erased) after ps) (const Nothing) to
-          pure (results d ps after)
+            enters blocks l (foldl (flip State.erased) bumped ps) (const Nothing) to
+          pure (results d ps bumped)
           where
             -- the results, the values of the numbers from the operation's
             results : Nat -> List (LocatedIR.Location.Place enc) -> State enc -> State enc
             results _ [] st' = st'
             results j (p :: ps') st' =
               results (S j) ps' (State.written p (LocatedIR.Content.Value j) st')
+        -- a check: where a collection can start, its budget at most the
+        -- allocation margin, for the bumps after it
+        step _ l st s@(LocatedIR.Step.Check n live) = do
+          unless (LocatedIR.Instr.withinMargin n) $
+            reject l ("a check for " ++ show n ++ " bytes, past the allocation margin")
+          listsHeld l "a check's live list" st live
+          pure ({ budget := n } (State.collected live (State.clobbered (clob s) st)))
         step _ l st (LocatedIR.Step.Move d x) = do
           let to = LocatedIR.Location.At d
           described l to

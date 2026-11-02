@@ -51,10 +51,10 @@
 -- `main`'s block 0 computes w into reg0, saves it in slot0 and calls
 -- `count`, the call's continuation keeping slot0 live, and its resume
 -- block, 1, reloads w from slot0 into reg0 to compare it; `pair`'s
--- allocations each list what is live across them, x in slot0 among them,
--- for the collector to forward; and `bump`'s block 0 computes w into reg0,
--- saves it in slot1, calls `inc`, and reloads w from slot1 into reg0 (its
--- step 3) for the sum.
+-- allocations each have a check before them, which lists what is live
+-- across them, x in slot0 among them, for the collector to forward; and
+-- `bump`'s block 0 computes w into reg0, saves it in slot1, calls `inc`,
+-- and reloads w from slot1 into reg0 (its step 3) for the sum.
 --
 -- The mistakes come in two sorts: a location holding the wrong value where
 -- it is read; and, last, a located program the rendering or the collector
@@ -62,9 +62,12 @@
 -- naming what holds nothing or naming it at the other kind (a word for a
 -- value the collector must see), a resume block whose parameters are not
 -- its continuation's and the result, a join entered from a block that did
--- not write what it reads, a value left in a register across an allocation
--- or a direct call, which no register survives, and a register the target
--- does not have.
+-- not write what it reads, a value left in a register a bump writes, or
+-- across a direct call, which no register survives, a register the target
+-- does not have, and an allocation's bump with no check before it, or past
+-- what its check left, or a check past the allocation margin; a value in a
+-- register across an allocation, whose slow path keeps every register, is
+-- accepted.
 module Main
 
 import Core.Name
@@ -267,15 +270,30 @@ params : (List (Place Types.Enc.defaultEnc) -> List (Place Types.Enc.defaultEnc)
          Block Types.Enc.defaultEnc -> Block Types.Enc.defaultEnc
 params f (MkBlock l ps cert body t n) = MkBlock l (f ps) cert body t n
 
-||| A block with its allocations' live lists changed.
+||| A block with its checks' live lists changed.
 lists : (List (Place Types.Enc.defaultEnc) -> List (Place Types.Enc.defaultEnc)) ->
         Block Types.Enc.defaultEnc -> Block Types.Enc.defaultEnc
 lists f = steps (map relist)
   where
     relist : LocatedIR.Step.Step Types.Enc.defaultEnc -> LocatedIR.Step.Step Types.Enc.defaultEnc
-    relist (Op d (LocatedIR.Instr.AllocObj r h fs live)) =
-      Op d (LocatedIR.Instr.AllocObj r h fs (f live))
+    relist (Check n live) = Check n (f live)
     relist st = st
+
+||| A block with its checks' bytes `n`.
+budgeted : Nat -> Block Types.Enc.defaultEnc -> Block Types.Enc.defaultEnc
+budgeted n = steps (map rebudget)
+  where
+    rebudget : LocatedIR.Step.Step Types.Enc.defaultEnc -> LocatedIR.Step.Step Types.Enc.defaultEnc
+    rebudget (Check _ live) = Check n live
+    rebudget st = st
+
+||| A block without its checks.
+unchecked : Block Types.Enc.defaultEnc -> Block Types.Enc.defaultEnc
+unchecked = steps (filter (not . isCheck))
+  where
+    isCheck : LocatedIR.Step.Step Types.Enc.defaultEnc -> Bool
+    isCheck (Check _ _) = True
+    isCheck _ = False
 
 ||| Slot 0, a `Val`'s, named as a word's.
 asWord : Place Types.Enc.defaultEnc -> Place Types.Enc.defaultEnc
@@ -283,44 +301,42 @@ asWord (At (Slot 0 _)) = At (slot 0)
 asWord q = q
 
 ||| A block whose operation [3], the pair's allocation, reads `x` from
-||| register 1, moved there from slot0 before the box's allocation, and
-||| lists it there.
-viaRegister : Block Types.Enc.defaultEnc -> Block Types.Enc.defaultEnc
-viaRegister = steps (\ss => Move (Register 1 Val) (Slot 0 Val) :: map moved ss)
+||| word register `r`, moved there from slot0 before the box's check, and
+||| whose checks list it there.
+viaRegister : Nat -> Block Types.Enc.defaultEnc -> Block Types.Enc.defaultEnc
+viaRegister r = steps (\ss => Move (Register r Val) (Slot 0 Val) :: map moved ss)
   where
     arg : Arg Types.Enc.defaultEnc -> Arg Types.Enc.defaultEnc
-    arg (MkArg (R (Slot 0 t))) = MkArg (R (Register 1 t))
+    arg (MkArg (R (Slot 0 t))) = MkArg (R (Register r t))
     arg a = a
 
     place : Place Types.Enc.defaultEnc -> Place Types.Enc.defaultEnc
-    place (At (Slot 0 t)) = At (Register 1 t)
+    place (At (Slot 0 t)) = At (Register r t)
     place q = q
 
     moved : LocatedIR.Step.Step Types.Enc.defaultEnc -> LocatedIR.Step.Step Types.Enc.defaultEnc
-    moved (Op 3 (LocatedIR.Instr.AllocObj r h fs live)) =
-      Op 3 (LocatedIR.Instr.AllocObj r h (map arg fs) (map place live))
+    moved (Op 3 (LocatedIR.Instr.AllocObj o h fs live)) =
+      Op 3 (LocatedIR.Instr.AllocObj o h (map arg fs) live)
+    moved (Check n live) = Check n (map place live)
     moved st = st
 
-||| A block with its allocations' live lists leaving out the GC-visible
+||| A block with its checks' live lists leaving out the GC-visible
 ||| locations, as if none were live there.
 unrooted : Block Types.Enc.defaultEnc -> Block Types.Enc.defaultEnc
-unrooted = steps (map forget)
-  where
-    forget : LocatedIR.Step.Step Types.Enc.defaultEnc -> LocatedIR.Step.Step Types.Enc.defaultEnc
-    forget (Op d (LocatedIR.Instr.AllocObj r h fs live)) =
-      Op d (LocatedIR.Instr.AllocObj r h fs (filter (not . gcVisible . Place.ty) live))
-    forget st = st
+unrooted = lists (filter (not . gcVisible . Place.ty))
 
-||| A block with each allocation's live list leaving out the allocation's
-||| own fields, as if it read them before its collection.
+||| A block with each check's live list leaving out the fields of the
+||| allocation it stands for, as if that allocation read them before the
+||| check's collection.
 fieldsUnlisted : Block Types.Enc.defaultEnc -> Block Types.Enc.defaultEnc
-fieldsUnlisted = steps (map forget)
+fieldsUnlisted = steps forget
   where
-    forget : LocatedIR.Step.Step Types.Enc.defaultEnc -> LocatedIR.Step.Step Types.Enc.defaultEnc
-    forget (Op d (LocatedIR.Instr.AllocObj r h fs live)) =
+    forget : Steps -> Steps
+    forget (Check n live :: o@(Op _ (LocatedIR.Instr.AllocObj _ _ fs Nothing)) :: rest) =
       let own = opsRegs fs [] in
-      Op d (LocatedIR.Instr.AllocObj r h fs (filter (\p => not (any (Place.same p) own)) live))
-    forget st = st
+      Check n (filter (\p => not (any (Place.same p) own)) live) :: o :: forget rest
+    forget (st :: rest) = st :: forget rest
+    forget [] = []
 
 ||| The steps with each parallel move of two from slots given its sources
 ||| swapped, each read at its own destination's type.
@@ -403,10 +419,23 @@ verdicts term = do
   -- entered from there without it, and from the loop's body with it
   verdict term (callClobbers x86_64) "a join entered from a block that did not write its value"
     (changed "count" 0 (steps (at 3 [])) (assigned term))
-  -- x in register 1 across the box's allocation, whose slow path keeps
-  -- no register
+  -- x in register 1, rcx, across the box's allocation, whose slow path
+  -- keeps every register: accepted
   verdict term (callClobbers x86_64) "a value in a register across an allocation"
-    (changed "pair" 0 viaRegister (assigned term))
+    (changed "pair" 0 (viaRegister 1) (assigned term))
+  -- x in register 0, rax, which the box's bump writes
+  verdict term (callClobbers x86_64) "a value in the register a bump writes"
+    (changed "pair" 0 (viaRegister 0) (assigned term))
+  -- the box's and the pair's checks left out
+  verdict term (callClobbers x86_64) "a bump with no check before it"
+    (changed "pair" 0 unchecked (assigned term))
+  -- the checks' bytes fewer than their bumps'
+  verdict term (callClobbers x86_64) "a check for fewer bytes than its bump"
+    (changed "pair" 0 (budgeted 8) (assigned term))
+  -- a check past the allocation margin, which the runtime commits past the
+  -- limit
+  verdict term (callClobbers x86_64) "a check past the allocation margin"
+    (changed "pair" 0 (budgeted 9000) (assigned term))
   -- w's reload after the call to `inc` left out: the sum reads it from
   -- reg0, which the callee may write
   verdict term (callClobbers x86_64) "a value in a register across a direct call"

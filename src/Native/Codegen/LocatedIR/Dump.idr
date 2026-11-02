@@ -112,7 +112,7 @@ functionPieces f =
           Instr.LoadHeader d x => show d ++ " := LoadHeader " ++ show x
           Instr.LoadPart p d x => show d ++ " := LoadPart " ++ show p ++ " " ++ show x
           Instr.AllocObj d h fs live => show d ++ " := AllocObj " ++ show h ++ " (" ++ args fs
-            ++ ") live " ++ regs live
+            ++ ")" ++ maybe "" (\l => " live " ++ regs l) live
           Instr.AllocSized d p n f live
                    => show d ++ " := AllocSized " ++ show p ++ "=" ++ show n
                         ++ maybe "" (\o => " fill " ++ show o) f ++ " live " ++ regs live
@@ -146,6 +146,7 @@ functionPieces f =
           "(" ++ joinBy ", " (map (\(Step.MkCopy d _) => show d) cs) ++ ") := ("
           ++ joinBy ", " (map (\(Step.MkCopy _ x) => show x) cs) ++ ")"
         step (Step.Remat d m) = show d ++ " := " ++ show m
+        step (Step.Check n live) = "check " ++ show n ++ " live " ++ regs live
 
         term : Terminator enc -> String
         term terminator = case terminator of

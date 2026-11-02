@@ -310,7 +310,7 @@ record Declared (d : TermIR.Decls enc) where
   sigs : Data.RAList Singleton d.sigs
   statics : Data.RAList Singleton d.statics
 
-parameters {0 d : TermIR.Decls enc} (declared : Declared d)
+parameters {enc : Types.Enc} {0 d : TermIR.Decls enc} (declared : Declared d)
   varName : TermIR.Var d.sigs s -> Name
   varName r = (TermIR.Var.entry declared.sigs r).name
 
@@ -661,9 +661,15 @@ parameters {0 d : TermIR.Decls enc} (declared : Declared d)
           ([r], TermIR.Instr.LoadHeader x) => unary env x (LocatedIR.Instr.LoadHeader r)
           ([r], TermIR.Instr.LoadPart p x) => unary env x (LocatedIR.Instr.LoadPart p r)
           ([r], TermIR.Instr.AllocObj h fs) =>
-            -- the fields are written after the slow path's collection
+            -- the fields are written after the slow path's collection; an
+            -- object of a fixed size up to the margin is a bump past a check
+            -- of its own, any other checks for itself
             let live = places (mergeLeft after (usesAll env fs))
-            in pure [LocatedIR.Step.Op def (LocatedIR.Instr.AllocObj r h (operands env fs) live)]
+                made = LocatedIR.Instr.AllocObj r h (operands env fs)
+            in pure (if LocatedIR.Instr.afterCheck h
+                       then [ LocatedIR.Step.Check (8 * Types.Header.objectWords h) live
+                            , LocatedIR.Step.Op def (made Nothing) ]
+                       else [LocatedIR.Step.Op def (made (Just live))])
           ([r], TermIR.Instr.AllocSized p n f) => do
             (pn, rn) <- asReg env n
             let fill = fillOperand p f
@@ -906,7 +912,8 @@ LocatedProgram enc = LocatedIR.Program enc
 
 ||| The program in the IR, for the target.
 export
-allocRegs : {d : TermIR.Decls enc} -> Target -> TermIR.Program enc d -> LocatedIR.Program enc
+allocRegs : {enc : Types.Enc} -> {d : TermIR.Decls enc} -> Target -> TermIR.Program enc d ->
+            LocatedIR.Program enc
 allocRegs target (TermIR.MkProgram fs ss e conIds) =
   let declared = MkDeclared (Data.RAList.fromList d.sigs) (Data.RAList.fromList d.statics)
   in LocatedIR.MkProgram target (functions declared d.sigs fs) (statics declared d.statics ss)

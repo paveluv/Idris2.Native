@@ -1,7 +1,7 @@
 ||| The slow paths the allocation sites of generated code share, on x86-64,
 ||| and the cold code of a site that calls one (`stub`).
 |||
-||| A site of a fixed size, up to the allocation margin (`fixedSlow`),
+||| A site of a fixed size, up to the allocation margin (`Instr.withinMargin`),
 ||| checks the allocation pointer against the limit before it bumps it;
 ||| past the limit it jumps to its cold code: a call of the routine for
 ||| its table's width (`idris_alloc_live8`, `16`, `32`), a jump back to the
@@ -37,7 +37,6 @@ import Native.Codegen.X86.Encode
 import Native.Codegen.X86.RegSet
 import Native.Codegen.X86.Target
 
-import Native.AllocationMargin
 import Native.Area
 import Native.Codegen.IRCommon.Ty as IRCommon
 import Native.Codegen.Linkage.Sym as Linkage
@@ -76,12 +75,6 @@ savedWord i = i
 export
 slotWord : (slot : Nat) -> Nat
 slotWord n = length words + n
-
-||| Whether a site of `bytes` takes the slow path of a fixed size: up to the
-||| allocation margin, which a bump after the check may run past the limit.
-export
-fixedSlow : (bytes : Nat) -> Bool
-fixedSlow bytes = cast bytes <= AllocationMargin.allocationMargin
 
 ||| Whether the fixed-size slow path is to save the floating-point registers
 ||| for a site of the live list: where a value is live in one.

@@ -10,10 +10,14 @@ a live value left out of a continuation: value check: Main.main, block 0: block 
 a live value left out of an allocation's live list: value check: Main.pair, block 0: operation [3] AllocObj reads slot0:Val, which does not hold v0
 an allocation's fields left out of its live list: value check: Main.pair, block 0: operation [3] AllocObj reads slot0:Val, which does not hold v0
 a read of a slot nothing wrote: value check: Main.count, block 3: operation [6] Sub reads reg0:W64, which does not hold v1
-a live list naming a slot nothing wrote: value check: Main.pair, block 0: operation [1]'s live list names slot9:Val, which holds nothing
-a live list naming a value as a word: value check: Main.pair, block 0: operation [1]'s live list names slot0:W64, which holds a value of the other kind, written as slot0:Val
+a live list naming a slot nothing wrote: value check: Main.pair, block 0: a check's live list names slot9:Val, which holds nothing
+a live list naming a value as a word: value check: Main.pair, block 0: a check's live list names slot0:W64, which holds a value of the other kind, written as slot0:Val
 a resume block's parameters out of their order: value check: Main.main, block 1: a resume block's parameters are not its continuation's live locations and the result
 a join entered from a block that did not write its value: value check: Main.count, block 0: block 1's certificate has v2 in slot2:W64, which does not hold #0 here
-a value in a register across an allocation: value check: Main.pair, block 0: operation [3]'s live list names reg1:Val, which holds nothing
+a value in a register across an allocation: accepted
+a value in the register a bump writes: value check: Main.pair, block 0: operation [3] AllocObj reads reg0:Val, which does not hold v0
+a bump with no check before it: value check: Main.pair, block 0: operation [1] bumps 16 bytes with no check before it in its block
+a check for fewer bytes than its bump: value check: Main.pair, block 0: operation [1] bumps 16 bytes where its check left 8
+a check past the allocation margin: value check: Main.pair, block 0: a check for 9000 bytes, past the allocation margin
 a value in a register across a direct call: value check: Main.bump, block 0: operation [3] Add reads reg0:W64, which does not hold v1
 a register the target does not have: value check: Main.count, block 3: reg99:W64 is a register the target does not describe

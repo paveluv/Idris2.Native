@@ -11,6 +11,7 @@ import Native.Codegen.LocatedIR.Opnd
 
 import Core.FC
 import Core.Name
+import Native.AllocationMargin
 import Native.Area
 import Native.Codegen.IRCommon.Op
 import Native.Codegen.IRCommon.Pinned as IRCommon
@@ -158,16 +159,19 @@ data Instr : Types.Enc -> Type where
   ||| known when the program is compiled, and so is its kind, which the
   ||| instruction keeps; there is no `Header enc CONT`.
   |||
-  ||| It renders as an inline bump of the allocation pointer, with a slow
-  ||| path that may collect. `live` is every register live across the
-  ||| instruction, from which the rendering builds the slow path's stub: the
-  ||| stub stores the GC-visible members in `ROOTS` and saves the raw ones,
-  ||| since the slow path clobbers every register that is not pinned. Live
-  ||| across includes the field registers, because the fields are written
-  ||| after the slow path's collection. The rendering may rematerialise a
-  ||| static's address instead of saving it.
+  ||| An object the inline bump makes, of a size up to the allocation margin
+  ||| (`afterCheck`), takes no `live` list: it is a bump past a check
+  ||| (`Step.Check`), which is where a collection can start, and no
+  ||| collection can start at the bump. Any other checks for itself, and its
+  ||| `live` list is every register live across it, from which the rendering
+  ||| builds the slow path's stub: an object of a mutable kind by a call to
+  ||| `idris_alloc_mutable`, one past the margin by a bump, then a check, then
+  ||| the slow path of a size known at run time, which keeps no register.
+  ||| Live across includes the field registers, because the fields are
+  ||| written after the slow path's collection.
   AllocObj   : {k : Types.Kind} -> Location enc (IRCommon.Ty.PtrTo k) -> Types.Header enc k ->
-               (fields : List (Opnd.Arg enc)) -> (live : List (Location.Place enc)) -> Instr enc
+               (fields : List (Opnd.Arg enc)) -> (live : Maybe (List (Location.Place enc))) ->
+               Instr enc
   ||| A whole object whose size is known only at run time: the destination, a
   ||| `PtrTo k`, becomes a new object of the part's kind, whose size part is
   ||| `count`, a `W64`: an `ARRAY`'s elements, a `STRING`'s or a `BYTES`'s
@@ -346,7 +350,7 @@ results i = case i of
 ||| direct call: every register live across it.
 export
 listed : Instr enc -> Maybe (List (Location.Place enc))
-listed (AllocObj _ _ _ live) = Just live
+listed (AllocObj _ _ _ live) = live
 listed (AllocSized _ _ _ _ live) = Just live
 listed (DirectCall _ _ _ _ live) = Just live
 listed _ = Nothing
@@ -358,6 +362,13 @@ export
 collecting : Instr enc -> Maybe (List (Location.Place enc))
 collecting (DirectCall _ _ _ False _) = Nothing
 collecting i = listed i
+
+||| Whether `bytes` of a fixed size are bumped past a check: up to the
+||| allocation margin, which a bump after a check that passed may run past
+||| the limit, since the runtime keeps that much committed past it.
+export
+withinMargin : (bytes : Nat) -> Bool
+withinMargin bytes = cast bytes <= AllocationMargin.allocationMargin
 
 ||| Whether objects of the kind are allocated by a call to the runtime's
 ||| `idris_alloc_mutable`, never by the inline bump: the kinds whose objects
@@ -372,6 +383,13 @@ isMutable Types.Kind.IOREF = True
 isMutable Types.Kind.ARRAY = True
 isMutable Types.Kind.STRUCT = True
 isMutable _ = False
+
+||| Whether an object of the header is allocated past a check
+||| (`Step.Check`): one the inline bump makes (not of a mutable kind), of a
+||| size up to the allocation margin.
+export
+afterCheck : {enc : Types.Enc} -> {k : Types.Kind} -> Types.Header enc k -> Bool
+afterCheck h = not (isMutable k) && withinMargin (8 * Types.Header.objectWords h)
 
 ||| Whether the instruction is an allocation, which initialises its object
 ||| from its operands after the collection it may start, where any other

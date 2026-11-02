@@ -336,8 +336,7 @@ hold n r ss = case break writes ss of
 
     renamed : LocatedIR.Step.Step TestEnc -> LocatedIR.Step.Step TestEnc
     renamed st = case snd (traverseOperands rename () st) of
-      Op d (LocatedIR.Instr.AllocObj o h fs live) =>
-        Op d (LocatedIR.Instr.AllocObj o h fs (map place live))
+      Check bytes live => Check bytes (map place live)
       st' => st'
 
 ||| `keep`'s values in registers across its allocations: its 7 words in

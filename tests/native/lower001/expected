@@ -1,7 +1,8 @@
 function Main.wrap CPS [slot0:Val] entry 0
   0:
     holding v0 in slot0:Val
-    [3] slot1:Ptr CON := AllocObj CON ConIdP=1 ConArityP=2 (slot0:Val, @_native.con0) live [slot0:Val]
+    check 24 live [slot0:Val]
+    [3] slot1:Ptr CON := AllocObj CON ConIdP=1 ConArityP=2 (slot0:Val, @_native.con0)
     reg0:Ptr CON := slot1:Ptr CON
     [4] slot2:Val := Widen reg0:Ptr CON
     [5] Call Main.count (slot0:Val, #1) resume 1 live [slot2:Val]
@@ -133,7 +134,8 @@ function Main.count CPS [slot0:Val, slot1:Val] entry 0
     [35] Jump 4
   13:
     holding v1 in slot1:Val, v27 in slot15:W64
-    [32] slot19:Ptr INT64 := AllocObj INT64 (slot15:W64) live [slot1:Val, slot15:W64]
+    check 16 live [slot1:Val, slot15:W64]
+    [32] slot19:Ptr INT64 := AllocObj INT64 (slot15:W64)
     reg0:Ptr INT64 := slot19:Ptr INT64
     [33] slot20:Val := Widen reg0:Ptr INT64
     reg0:Val := slot20:Val
@@ -216,7 +218,8 @@ function Main.count CPS [slot0:Val, slot1:Val] entry 0
     [63] Jump 14
   23:
     holding v8 in slot3:Val, v55 in slot33:W64
-    [60] slot37:Ptr INT64 := AllocObj INT64 (slot33:W64) live [slot3:Val, slot33:W64]
+    check 16 live [slot3:Val, slot33:W64]
+    [60] slot37:Ptr INT64 := AllocObj INT64 (slot33:W64)
     reg0:Ptr INT64 := slot37:Ptr INT64
     [61] slot38:Val := Widen reg0:Ptr INT64
     reg0:Val := slot38:Val

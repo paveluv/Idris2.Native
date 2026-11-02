@@ -48,12 +48,22 @@ Show Materialised where
 ||| places, a jump's arguments into its block's parameters, which the local
 ||| assignment makes moves (`Native.Codegen.Sequentialise`), so that no
 ||| rendering sees one; and a value put into a location (`Materialised`).
+|||
+||| Besides, a check (`Check`), which register allocation inserts before
+||| the allocations it stands for: the allocation pointer compared with the
+||| limit, and past it the slow path, where a collection can start, which
+||| keeps every register and roots the GC-visible locations of `live`, every
+||| register live across it. The allocations after it in its block, up to
+||| the next check, bump at most `bytes`, which is at most the allocation
+||| margin: past a check that passed, the bumps stay within the memory the
+||| runtime keeps committed past the limit.
 public export
 data Step : Types.Enc -> Type where
   Op : (def : Nat) -> Instr enc -> Step enc
   Move : {0 t : IRCommon.Ty enc} -> Location enc t -> Location enc t -> Step enc
   Par : List (Copy enc) -> Step enc
   Remat : {0 t : IRCommon.Ty enc} -> Location enc t -> Materialised -> Step enc
+  Check : (bytes : Nat) -> (live : List (Location.Place enc)) -> Step enc
 
 ||| A short name for messages.
 public export
@@ -62,6 +72,7 @@ stepName (Op _ i) = Instr.instrName i
 stepName (Move _ _) = "Move"
 stepName (Par _) = "Par"
 stepName (Remat _ _) = "Remat"
+stepName (Check _ _) = "Check"
 
 ||| What a step reads, its register operands, in the order of their
 ||| fields: an operation's (`Instr.operands`), a move's source, a parallel
@@ -72,6 +83,7 @@ operands (Op _ i) = Instr.operands i
 operands (Move _ x) = [Location.At x]
 operands (Par cs) = map (\(MkCopy _ x) => Location.At x) cs
 operands (Remat _ _) = []
+operands (Check _ _) = []
 
 ||| What a step writes, in the order of their fields.
 export
@@ -80,12 +92,14 @@ results (Op _ i) = Instr.results i
 results (Move d _) = [Location.At d]
 results (Par cs) = map (\(MkCopy d _) => Location.At d) cs
 results (Remat d _) = [Location.At d]
+results (Check _ _) = []
 
 ||| The registers the step names: its results, its operands, and those an
-||| operation keeps live (`Instr.instrRegs`).
+||| operation or a check keeps live (`Instr.instrRegs`).
 export
 places : Step enc -> List (Location.Place enc)
 places (Op _ i) = Instr.instrRegs i
+places (Check _ live) = live
 places s = results s ++ operands s
 
 ||| The step with its register operands replaced by the step of a
@@ -101,6 +115,7 @@ traverseOperands f st (Par cs) = let (s1, cs') = copies st cs in (s1, Par cs')
     copies st' (MkCopy d x :: cs') =
       let (s1, x') = f st' x; (s2, cs'') = copies s1 cs' in (s2, MkCopy d x' :: cs'')
 traverseOperands _ st r@(Remat _ _) = (st, r)
+traverseOperands _ st c@(Check _ _) = (st, c)
 
 ||| The step with its results replaced by the step of a traversal, in the
 ||| order `results` lists them.
@@ -115,3 +130,4 @@ traverseResults f st (Par cs) = let (s1, cs') = copies st cs in (s1, Par cs')
     copies st' (MkCopy d x :: cs') =
       let (s1, d') = f st' d; (s2, cs'') = copies s1 cs' in (s2, MkCopy d' x :: cs'')
 traverseResults f st (Remat d m) = let (s1, d') = f st d in (s1, Remat d' m)
+traverseResults _ st c@(Check _ _) = (st, c)
