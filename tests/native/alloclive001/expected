@@ -25,7 +25,7 @@ jmp L99
 .byte 4, 3, 15
 the table after the jump: 5 bytes
 -- the routines
-8-bit: 671 bytes, sized 224 bytes
-16-bit: 671 bytes, sized 224 bytes
-32-bit: 663 bytes, sized 218 bytes
-SAVE: 27 words
+8-bit: 664 bytes, sized 217 bytes
+16-bit: 664 bytes, sized 217 bytes
+32-bit: 656 bytes, sized 211 bytes
+SAVE: 11 words, FSAVE: 16 words

@@ -28,7 +28,6 @@ sample: CON ConIdP=0 ConArityP=10: _native.double_4598175219545276416, _native.s
 its found: CON ConIdP=1 ConArityP=1: #9
 # Main.primesFrom
 L64:
-lea rbx, [rip+L13]
 mov qword ptr [rbx], rdi
 jmp L65
 L65:
@@ -37,7 +36,6 @@ jmp qword ptr [r12]
 primesFrom calls nothing
 # Main.countedFrom
 L64:
-lea rbx, [rip+L13]
 mov qword ptr [rbx], rdi
 jmp L65
 L65:
@@ -79,11 +77,9 @@ status: 0
 # _flat.Main.listed
 L64:
 sub rsp, 8
-mov rax, qword ptr [rip+L17]
-cmp rsp, rax
+cmp rsp, qword ptr [rbx-96]
 jb L18
-mov rbx, rsp
-mov qword ptr [rbx], rdi
+mov qword ptr [rsp], rdi
 jmp L65
 L65:
 lea rdi, [rip+L66]
@@ -97,11 +93,9 @@ Main.pair not computed by ordinary code
 # _flat.Main.listed
 L64:
 sub rsp, 8
-mov rax, qword ptr [rip+L17]
-cmp rsp, rax
+cmp rsp, qword ptr [rbx-96]
 jb L18
-mov rbx, rsp
-mov qword ptr [rbx], rdi
+mov qword ptr [rsp], rdi
 jmp L65
 L65:
 lea rdi, [rip+L66+1]

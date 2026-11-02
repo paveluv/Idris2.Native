@@ -3,39 +3,34 @@ exit status: 0
 # _flat.Main.mix
 L64:
 sub rsp, 72
-mov rax, qword ptr [rip+L17]
-cmp rsp, rax
+cmp rsp, qword ptr [rbx-96]
 jb L18
-mov rbx, rsp
-mov qword ptr [rbx], rdi
-mov qword ptr [rbx+8], rsi
-mov qword ptr [rbx+16], rdx
-mov qword ptr [rbx+24], rcx
+mov qword ptr [rsp], rdi
+mov qword ptr [rsp+8], rsi
+mov qword ptr [rsp+16], rdx
+mov qword ptr [rsp+24], rcx
 jmp L65
 L65:
-mov rdi, qword ptr [rbx]
-mov rsi, qword ptr [rbx+8]
+mov rdi, qword ptr [rsp]
+mov rsi, qword ptr [rsp+8]
 call L66
-mov rbx, rsp
-mov qword ptr [rbx+32], rdi
-mov rdi, qword ptr [rbx+16]
-mov rsi, qword ptr [rbx+24]
+mov qword ptr [rsp+32], rdi
+mov rdi, qword ptr [rsp+16]
+mov rsi, qword ptr [rsp+24]
 call L66
-mov rbx, rsp
-mov qword ptr [rbx+40], rdi
-mov rdi, qword ptr [rbx+32]
-mov rsi, qword ptr [rbx+40]
+mov qword ptr [rsp+40], rdi
+mov rdi, qword ptr [rsp+32]
+mov rsi, qword ptr [rsp+40]
 call L66
-mov rbx, rsp
-mov qword ptr [rbx+48], rdi
-mov rax, qword ptr [rbx+48]
-mov rcx, qword ptr [rbx]
+mov qword ptr [rsp+48], rdi
+mov rax, qword ptr [rsp+48]
+mov rcx, qword ptr [rsp]
 add rax, rcx
-mov qword ptr [rbx+56], rax
-mov rax, qword ptr [rbx+56]
-mov rcx, qword ptr [rbx+16]
+mov qword ptr [rsp+56], rax
+mov rax, qword ptr [rsp+56]
+mov rcx, qword ptr [rsp+16]
 add rax, rcx
-mov qword ptr [rbx+64], rax
-mov rdi, qword ptr [rbx+64]
+mov qword ptr [rsp+64], rax
+mov rdi, qword ptr [rsp+64]
 add rsp, 72
 ret

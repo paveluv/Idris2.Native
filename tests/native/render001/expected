@@ -1,7 +1,6 @@
 == val-encoding=tag1
 # Main.count
 L64:
-lea rbx, [rip+L13]
 mov qword ptr [rbx], rdi
 mov qword ptr [rbx+8], rsi
 jmp L65
@@ -215,7 +214,6 @@ jmp L92
 == val-encoding=tag0
 # Main.count
 L64:
-lea rbx, [rip+L13]
 mov qword ptr [rbx], rdi
 mov qword ptr [rbx+8], rsi
 jmp L65

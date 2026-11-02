@@ -56,6 +56,8 @@ seedText enc window = startText enc.val window ++ haltText enc.val ++ unsupporte
     startText venc window =
       [ X86.Asm.Comment "_start: idris_start(entry, window), then main under k = HALT"
       , X86.Asm.Lbl (Linkage.Sym.label Linkage.Sym.SymStart)
+      -- the areas' base, for the whole run
+      , X86.Asm.Lea X86.Asm.RBX (X86.Asm.MRip (Linkage.Sym.label Linkage.Sym.SymScratch) 0)
       , X86.Asm.MovRR X86.Asm.RDI X86.Asm.RSP, X86.Asm.MovRI X86.Asm.RSI (cast window)
       , X86.Asm.Call (Linkage.Sym.label Linkage.Sym.SymRuntimeStart)
       , X86.Asm.Lea X86.Asm.R12
@@ -283,25 +285,37 @@ export
 seedAreas : Linkage.Areas
 seedAreas = Linkage.MkAreas 0 2 0 0
 
+||| Where `STACK_LIMIT` is, in bytes from `SCRATCH`'s start, which rbx holds
+||| for the whole run: right before `SAVE`'s words, which `SCRATCH` follows,
+||| within a one-byte displacement, so that a Direct function's stack check
+||| is one comparison of the stack pointer with a word of memory.
+export
+stackLimitAt : Int
+stackLimitAt = negate (8 * cast (S X86.AllocLive.saveWords))
+
 ||| The zero-initialised areas, 8-aligned, in bss: `ARGS`, then `ROOTS`,
-||| `NROOTS`, `SAVE`, `SCRATCH` right after it, `STACK_LIMIT`, `ARGV`,
-||| `RUNTIME` and `CONSTANTS`.
+||| `NROOTS`, `FSAVE`, `STACK_LIMIT`, `SAVE`, `SCRATCH` right after it,
+||| `ARGV`, `RUNTIME` and `CONSTANTS`. rbx holds `SCRATCH`'s start, and
+||| `STACK_LIMIT` is at `stackLimitAt` from it.
 export
 seedBss : Linkage.Areas -> List (Linkage.Sym, Int)
 seedBss a =
   let roots = 8 * cast a.args
       nroots = roots + 8 * cast a.roots
-      scratch = nroots + 8 + 8 * cast X86.AllocLive.saveWords
-      limit = scratch + 8 * cast a.scratch
+      fsave = nroots + 8
+      scratch = fsave + 8 * cast (X86.AllocLive.floatSaveWords + S X86.AllocLive.saveWords)
+      argv = scratch + 8 * cast a.scratch
   in [ (Linkage.Sym.SymArgs, 0),
     (Linkage.Sym.SymRoots, roots), (Linkage.Sym.SymNRoots, nroots),
-      (Linkage.Sym.SymSave, nroots + 8), (Linkage.Sym.SymScratch, scratch),
-      (Linkage.Sym.SymStackLimit, limit)
-     , (Linkage.Sym.SymArgv, limit + 8), (Linkage.Sym.SymRuntime, limit + 16)
-     , (Linkage.Sym.SymConstants, limit + 16 + 8 * cast Area.runtimeWords) ]
+      (Linkage.Sym.SymFSave, fsave), (Linkage.Sym.SymStackLimit, scratch + stackLimitAt),
+      (Linkage.Sym.SymSave, scratch - 8 * cast X86.AllocLive.saveWords),
+      (Linkage.Sym.SymScratch, scratch)
+     , (Linkage.Sym.SymArgv, argv), (Linkage.Sym.SymRuntime, argv + 8)
+     , (Linkage.Sym.SymConstants, argv + 8 + 8 * cast Area.runtimeWords) ]
 
 export
 seedBssSize : Linkage.Areas -> Int
 seedBssSize a =
-  8 * (cast (a.args + a.roots + 1 + X86.AllocLive.saveWords + a.scratch + 2 + a.constants)
+  8 * (cast (a.args + a.roots + 1 + X86.AllocLive.floatSaveWords + 1 + X86.AllocLive.saveWords
+             + a.scratch + 1 + a.constants)
        + cast Area.runtimeWords)

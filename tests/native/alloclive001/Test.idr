@@ -16,9 +16,10 @@
 -- ones (a Bits64, a Double, a code address) need nothing: they stay in
 -- their slots, which nothing the slow path runs writes, and the collector
 -- never looks there. A value may be in a register instead: the slow path
--- of a site of a fixed size saves every register in SAVE, the words just
--- before SCRATCH, and restores it after, so a GC-visible one is listed by
--- its word in SAVE, and a slot by its word past them.
+-- of a site of a fixed size saves every word register in SAVE, the words
+-- just before SCRATCH (the floating-point ones in FSAVE), and restores it
+-- after, so a GC-visible one is listed by its word in SAVE, and a slot by
+-- its word past them.
 --
 -- Every site shares one routine for that (one for sizes fixed when the
 -- program is compiled, one for the rest). Its cold code is a call of the
@@ -100,9 +101,9 @@ main = do
   traverse_ (\w => putStrLn (widthName w ++ ": " ++ show (size 0 (routine w 100))
                              ++ " bytes, sized " ++ show (size 0 (sizedRoutine w 100)) ++ " bytes"))
             [Sub8, Sub16, Sub32]
-  -- the words of SAVE, before SCRATCH: x86-64's 16 floating-point
-  -- registers and 11 word registers
-  putStrLn ("SAVE: " ++ show saveWords ++ " words")
+  -- the words of SAVE, before SCRATCH, x86-64's 11 word registers, and of
+  -- FSAVE, its 16 floating-point registers
+  putStrLn ("SAVE: " ++ show saveWords ++ " words, FSAVE: " ++ show floatSaveWords ++ " words")
   where
     size : Int -> List Instr -> Int
     size pc [] = pc

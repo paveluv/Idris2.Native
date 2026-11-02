@@ -58,12 +58,17 @@ words = map Asm.regOfNum Target.x86_64.allocatable.words
 floats : List Asm.Xmm
 floats = map Asm.xmmOfNum Target.x86_64.allocatable.floats
 
-||| The words of `SAVE`: one for each allocatable floating-point register,
-||| then one for each word register, in the order of the target's
-||| description; `SCRATCH` follows.
+||| The words of `SAVE`: one for each allocatable word register, in the order
+||| of the target's description; `SCRATCH` follows.
 export
 saveWords : Nat
-saveWords = length floats + length words
+saveWords = length words
+
+||| The words of `FSAVE`: one for each allocatable floating-point register,
+||| in the order of the target's description.
+export
+floatSaveWords : Nat
+floatSaveWords = length floats
 
 ||| A word register's word, as a live table's entry: its index in the
 ||| target's description.
@@ -103,22 +108,21 @@ stub r back (w, bytes) =
   , Asm.Jmp back
   , Asm.Bytes bytes ]
 
-||| What the fixed-size routine may leave changed: rbx, `SCRATCH`; r12, the
-||| continuation, which the collector may move; r14 and r15, the window; and
-||| the floating-point registers, which it restores only where the table
-||| says. The words it saves and restores it leaves as they were, or as the
-||| collector forwarded them. The rendering checks it against what the
-||| routine and every function `idris_alloc_slow` reaches write, the
-||| registers it restores aside (`Clobbers.restored`).
+||| What the fixed-size routine may leave changed: r12, the continuation,
+||| which the collector may move; r14 and r15, the window; and the
+||| floating-point registers, which it restores only where the table says. The
+||| words it saves and restores it leaves as they were, or as the collector
+||| forwarded them. The rendering checks it against what the routine and every
+||| function `idris_alloc_slow` reaches write, the registers it restores aside
+||| (`Clobbers.restored`).
 export
 clobbers : RegSet
 clobbers =
-  RegSet.union (RegSet.gprs [Asm.RBX, Asm.R12, Asm.R14, Asm.R15])
+  RegSet.union (RegSet.gprs [Asm.R12, Asm.R14, Asm.R15])
     (foldl (\s, x => RegSet.union s (RegSet.xmm x)) RegSet.none floats)
 
 ||| What the sized routine may leave changed: every allocatable register,
-||| rax the object's room among them, since it keeps none; rbx, `SCRATCH`;
-||| r12; r14 and r15.
+||| rax the object's room among them, since it keeps none; r12; r14 and r15.
 export
 sizedClobbers : RegSet
 sizedClobbers = foldl (\s, r => RegSet.union s (RegSet.gpr r)) clobbers words
@@ -138,7 +142,7 @@ area s off = Asm.MRip (Linkage.Sym.label s) off
 
 ||| The word of `SAVE` of the word register at the index.
 wordSave : Nat -> Asm.Mem
-wordSave i = area Linkage.Sym.SymSave (cast (8 * (length floats + i)))
+wordSave i = area Linkage.Sym.SymSave (cast (8 * i))
 
 ||| The table's count, by rsi, its address.
 count : Width.SubWord -> Asm.Mem
@@ -149,7 +153,7 @@ entry : Width.SubWord -> Asm.Reg64 -> Asm.Mem -> Asm.Instr
 entry w r = Asm.Load (AccessWidth.accessWidth w) False r
 
 ||| For each of the rcx words whose entries start at rdx: the word's
-||| address in r11, from rbx, the first word register's word, then `move`
+||| address in r11, from rax, the first word register's word, then `move`
 ||| between the word and the root at r9, which moves on to the next root
 ||| each time.
 walk : Width.SubWord -> Asm.Label -> (move : List Asm.Instr) -> List Asm.Instr
@@ -157,7 +161,7 @@ walk w l move =
   [ Asm.Lbl l
   , entry w Asm.R11 (Asm.MBase Asm.RDX 0)
   , Asm.ShiftI Asm.SHL Asm.R11 3
-  , Asm.Alu Asm.ADD Asm.R11 Asm.RBX ]
+  , Asm.Alu Asm.ADD Asm.R11 Asm.RAX ]
   ++ move ++
   [ Asm.AluI Asm.ADD Asm.R9 (cast (Area.rootOffset 1))
   , Asm.AluI Asm.ADD Asm.RDX (cast (Width.subWordBytes w))
@@ -176,7 +180,7 @@ reload =
 ||| plus their number: rsi the table, rcx its count, halved.
 rooting : Width.SubWord -> (roots, rooted : Asm.Label) -> List Asm.Instr
 rooting w roots rooted =
-  [ Asm.Lea Asm.RBX (wordSave 0)
+  [ Asm.Lea Asm.RAX (wordSave 0)
   , Asm.Lea Asm.R10 (area Linkage.Sym.SymNRoots 0)
   , Asm.MovRM Asm.R8 (Asm.MBase Asm.R10 0)
   , Asm.MovRR Asm.R9 Asm.R8
@@ -195,7 +199,7 @@ rooting w roots rooted =
 ||| table, rcx its count, halved.
 unrooting : Width.SubWord -> (unroots, unrooted : Asm.Label) -> List Asm.Instr
 unrooting w unroots unrooted =
-  [ Asm.Lea Asm.RBX (wordSave 0)
+  [ Asm.Lea Asm.RAX (wordSave 0)
   , Asm.Lea Asm.R10 (area Linkage.Sym.SymNRoots 0)
   , Asm.MovRM Asm.R8 (Asm.MBase Asm.R10 0)
   , Asm.Alu Asm.SUB Asm.R8 Asm.RCX
@@ -218,7 +222,7 @@ unrooting w unroots unrooted =
 ||| The frame is one word, the table's address, so that the stack is
 ||| 16-aligned at the call of `idris_alloc_slow`. Leaves every register it
 ||| saved as it was, or as the collector forwarded it where the table lists
-||| it, r15 and r14 the window `idris_alloc_slow` opened, rbx `SCRATCH`, r12
+||| it, r15 and r14 the window `idris_alloc_slow` opened, rbx as it was, r12
 ||| as the collector left it, and `NROOTS` and the stack as they were.
 export
 routine : Width.SubWord -> (first : Asm.Label) -> List Asm.Instr
@@ -249,8 +253,7 @@ routine w first =
   , Asm.TestI Asm.RCX 1
   , Asm.Jcc Asm.E floatsRestored ]
   ++ map (\(i, x) => Asm.MovsdRM x (floatSave i)) (Data.Numbered.numbered floats) ++
-  [ Asm.Lbl floatsRestored
-  , Asm.Lea Asm.RBX (area Linkage.Sym.SymScratch 0) ]
+  [ Asm.Lbl floatsRestored ]
   -- every word register from its word, the GC-visible ones as forwarded
   ++ map (\(i, r) => Asm.MovRM r (wordSave i)) (Data.Numbered.numbered words) ++
   [ Asm.Ret ]
@@ -265,7 +268,7 @@ routine w first =
 
     ||| The word of `SAVE` of the floating-point register at the index.
     floatSave : Nat -> Asm.Mem
-    floatSave i = area Linkage.Sym.SymSave (cast (8 * i))
+    floatSave i = area Linkage.Sym.SymFSave (cast (8 * i))
 
 ||| The sized routine for tables of the width, its own labels numbered from
 ||| `first`, `sizedRoutineLabels` of them.
@@ -274,7 +277,7 @@ routine w first =
 ||| past it by its bytes, r12 a complete continuation, and the stack
 ||| pointer 8 below a multiple of 16. The frame is one word, the table's
 ||| address. Leaves rax the object's room, r15 and r14 the window
-||| `idris_alloc_slow` left, rbx `SCRATCH`, r12 and every slot the table
+||| `idris_alloc_slow` left, rbx as it was, r12 and every slot the table
 ||| lists as they were or as the collector forwarded them, and `NROOTS` and
 ||| the stack as they were. Keeps no other register (`sizedClobbers`).
 export
@@ -296,11 +299,11 @@ sizedRoutine w first =
   [ Asm.Push Asm.RSI
   , Asm.Call (Linkage.Sym.label Linkage.Sym.SymAllocSlow)
   , Asm.Pop Asm.RSI
-  , Asm.MovRR Asm.RAX Asm.RDI
   , entry w Asm.RCX (count w)
   , Asm.ShiftI Asm.SHR Asm.RCX 1 ]
   ++ unrooting w unroots unrooted ++
-  [ Asm.Lea Asm.RBX (area Linkage.Sym.SymScratch 0)
+  -- the object's room, which the unrooting leaves in rdi
+  [ Asm.MovRR Asm.RAX Asm.RDI
   , Asm.Ret ]
   where
     roots, rooted, unroots, unrooted : Asm.Label

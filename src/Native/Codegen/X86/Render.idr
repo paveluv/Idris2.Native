@@ -5,9 +5,10 @@
 ||| (`Native.Codegen.LocatedIR.Location`): a slot, CPS code's in `SCRATCH`,
 ||| since a CPS function never nests, a Direct function's in its own frame
 ||| on the machine stack, or one of the target's allocatable registers.
-||| `rbx` holds the slots' base, so slot n is `[rbx + 8n]`, and is set at
-||| every function entry, every resume point and after every runtime call,
-||| since no register survives a transfer or a direct call. An instruction
+||| `rbx` holds `SCRATCH`'s start for the whole run, set once by `_start`
+||| and by no generated code, so that CPS code's slot n is `[rbx + 8n]`; a
+||| Direct function's slot n is `[rsp + 8n]`, since the stack pointer is its
+||| frame's start throughout its body. An instruction
 ||| finds its operands in the registers its row (`Native.Codegen.X86.Rows`)
 ||| wants them in, where register allocation moved them, or reads them where
 ||| they are, and writes its results where they go. Every allocatable
@@ -34,7 +35,8 @@
 ||| frame, its registers' slots, an odd number of words, so that the stack
 ||| stays 16-aligned inside it since the call pushed one, and raises it again
 ||| before it returns. On entry it also compares the stack pointer with the
-||| limit the seed sets at start-up (`STACK_LIMIT`), and below it ends the
+||| limit the seed sets at start-up (`STACK_LIMIT`, at a fixed displacement
+||| from rbx: `Seed.stackLimitAt`), and below it ends the
 ||| program with a message, so that deep recursion in direct code is
 ||| reported rather than a fault. A direct call passes the arguments as a
 ||| call does and executes a machine call; the callee's `Ret` passes its
@@ -106,6 +108,7 @@ import Native.Codegen.LocatedIR.Step as LocatedIR
 import Native.Codegen.LocatedIR.Terminator as LocatedIR
 import Native.Codegen.RegDesc
 import Native.Codegen.RegMask
+import Native.Codegen.Seed
 import Native.Codegen.Target
 import Native.Data.LittleEndian
 import Native.Data.Numbered
@@ -374,12 +377,10 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
               IRCommon.Conv.CPS => 0
         case f.conv of
           IRCommon.Conv.Direct _ _ =>
-            emits [ Asm.AluI Asm.SUB Asm.RSP frame,
-                   Asm.MovRM Asm.RAX (Asm.MRip (sym Linkage.Sym.SymStackLimit) 0),
-                     Asm.Alu Asm.CMP Asm.RSP Asm.RAX
-                                            , Asm.Jcc Asm.B (sym Linkage.Sym.SymStackOverflow) ]
+            emits [ Asm.AluI Asm.SUB Asm.RSP frame
+                  , Asm.AluRM Asm.CMP Asm.RSP (Asm.MBase Asm.RBX Seed.stackLimitAt)
+                  , Asm.Jcc Asm.B (sym Linkage.Sym.SymStackOverflow) ]
           IRCommon.Conv.CPS => uses (Linkage.MkAreas 0 0 n 0)
-        emits setBase
         takeValues f.params
         emit (Asm.Jmp (blk f.entry))
         -- bound once: an argument of a partial application is evaluated again
@@ -428,9 +429,13 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                   (foldl (\m, i => past m (LocatedIR.Step.places i)) (past n b.params) b.body)
                   (LocatedIR.Terminator.termRegs b.term)
 
-          ||| Slot n of the function's slots.
+          ||| Slot n of the function's slots: CPS code's in `SCRATCH`, at rbx, a
+          ||| Direct function's in its frame, at the stack pointer, which is the
+          ||| frame's start throughout its body.
           slotMem : Nat -> Asm.Mem
-          slotMem n = Asm.MBase Asm.RBX (cast (Area.slotOffset (cast n)))
+          slotMem n = case f.conv of
+            IRCommon.Conv.CPS => Asm.MBase Asm.RBX (cast (Area.slotOffset (cast n)))
+            IRCommon.Conv.Direct _ _ => Asm.MBase Asm.RSP (cast (Area.slotOffset (cast n)))
 
           ||| The machine register of the class's allocatable register at the
           ||| index.
@@ -675,13 +680,6 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
               out (Asm.AluI Asm.ADD Asm.RDX (cast (length gc)))
               out (Asm.MovMR (Asm.MBase Asm.RSI 0) Asm.RDX)
 
-          ||| The slots' base into rbx: `SCRATCH` for CPS code; for a Direct
-          ||| function its frame, at the stack pointer its prologue left.
-          setBase : List Asm.Instr
-          setBase = case f.conv of
-            IRCommon.Conv.CPS => [Asm.Lea Asm.RBX (Asm.MRip (sym Linkage.Sym.SymScratch) 0)]
-            IRCommon.Conv.Direct _ _ => [Asm.MovRR Asm.RBX Asm.RSP]
-
           ||| Restore what `saveLive` saved, with rbx set, leaving rax alone.
           restoreLive : (collects : Bool) -> (Asm.Instr -> Render enc ()) ->
                         List (LocatedIR.Location.Place enc) -> Render enc ()
@@ -920,7 +918,6 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
             case lookup b.label rs of
               Just (live, word) => do
                 emits (Linkage.ResumePoint.resumePoint (blk b.label) word)
-                emits setBase
                 whenJust (LocatedIR.Block.result b) $ \(LocatedIR.Location.At r) =>
                   store r Asm.RAX
                 traverse_
@@ -1124,7 +1121,6 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                                   saveLive collects emit live
                                   putValues tys args
                                   emit (Asm.Call callee)
-                                  emits setBase
                                   takeValues ds
                                   restoreLive collects emit live
                 LocatedIR.Instr.Convert IRCommon.Op.I2F d x => do
@@ -1403,7 +1399,6 @@ parameters (enc : Types.Enc) (realised : Linkage.Realised)
                     bytesInto Asm.RDI
                     emit (Asm.Call (sym Linkage.Sym.SymAllocMutable))
                     emit (Asm.MovRR Asm.RAX Asm.RDI)
-                    emits setBase
                     restoreLive True emit live
 
                   ||| A memory operand as the machine addresses it, for an access `width`

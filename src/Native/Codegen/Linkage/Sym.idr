@@ -45,9 +45,11 @@ data Sym
   | ||| bss: SCRATCH, sized by `Areas`: extra registers for register
     ||| allocation
     SymScratch
-  | ||| bss: SAVE, the allocatable registers' words across the shared
+  | ||| bss: SAVE, the allocatable word registers' words across the shared
     ||| allocation slow path, `SCRATCH` right after it
     SymSave
+  | ||| bss: FSAVE, the allocatable floating-point registers' words across it
+    SymFSave
   | ||| The shared allocation slow path of a site whose size is known only
     ||| at run time, or past the allocation margin, for live tables of
     ||| entries of the width
@@ -92,6 +94,7 @@ label SymRoots = 11
 label SymNRoots = 12
 label SymScratch = 13
 label SymSave = 15
+label SymFSave = 27
 label (SymAllocSized Width.Sub8) = 24
 label (SymAllocSized Width.Sub16) = 25
 label (SymAllocSized Width.Sub32) = 26
@@ -123,6 +126,7 @@ symName SymRoots = "ROOTS"
 symName SymNRoots = "NROOTS"
 symName SymScratch = "SCRATCH"
 symName SymSave = "SAVE"
+symName SymFSave = "FSAVE"
 symName (SymAllocSized Width.Sub8) = "idris_alloc_sized8"
 symName (SymAllocSized Width.Sub16) = "idris_alloc_sized16"
 symName (SymAllocSized Width.Sub32) = "idris_alloc_sized32"
@@ -143,6 +147,7 @@ areaSym Area.ARGS = SymArgs
 areaSym Area.ROOTS = SymRoots
 areaSym Area.NROOTS = SymNRoots
 areaSym Area.SAVE = SymSave
+areaSym Area.FSAVE = SymFSave
 areaSym Area.SCRATCH = SymScratch
 areaSym Area.STACK_LIMIT = SymStackLimit
 areaSym Area.ARGV = SymArgv
